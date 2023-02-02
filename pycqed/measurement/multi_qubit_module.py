@@ -689,8 +689,12 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         if exp_metadata is None:
             exp_metadata = dict()
         if acq_length is None:
-            acq_length = qubits[0].instr_acq.get_instr().acq_weights_n_samples/\
-                qubits[0].instr_acq.get_instr().acq_sampling_rate
+            acq_dev = qubits[0].instr_acq.get_instr()
+            if (n := acq_dev.acq_weights_n_samples) is None:
+                raise ValueError(
+                    'acq_length has to be provided because the acquisition '
+                    'device does not have a default acq_weights_n_samples.')
+            acq_length = n / acq_dev.acq_sampling_rate
         temp_val = [(qb.acq_length, acq_length) for qb in qubits]
         with temporary_value(*temp_val):
             [qb.prepare(drive='timedomain') for qb in qubits]

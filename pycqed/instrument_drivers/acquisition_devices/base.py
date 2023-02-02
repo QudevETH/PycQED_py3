@@ -30,7 +30,8 @@ class AcquisitionDevice():
         acq_sampling_rate (float): sampling rate of the acquisition units in
             Hertz (*)
         acq_weights_n_samples (int): number of samples of auto-generated
-            integration weights (*)
+            integration weights. If None, the acquisition length needs to be
+            passed to acquisition_set_weights. (*)
         acq_Q_sign (1 or -1): sign of auto-generated integration weights for
             the second weighted-integration channel in a pair (*)
         allowed_weights_types (list of str): allowed types of auto-generated
@@ -491,6 +492,7 @@ class AcquisitionDevice():
 
     def _acquisition_generate_weights(self, weights_type, mod_freq=None,
                                       acq_IQ_angle=0,
+                                      acq_length=None,
                                       weights_I=(), weights_Q=()):
         """
         Generates integration weights based on the provided settings.
@@ -518,6 +520,9 @@ class AcquisitionDevice():
         :param acq_IQ_angle: (float) The phase (in rad) of the integration
             weights when using weights type SSB, DSB, DSB, or square_rot.
             Ignored in other cases.
+        :param acq_length: (float) The length of the acquisition (in seconds)
+            for which weights should be generated. This parameter is ignored
+            (and may thus be None) if acq_weights_n_samples is not None.
         :param weights_I: (list/tuple of np.array or None) The i-th entry of
             the list defines the weights for first physical input channel
             used in the i-th integration channel. Must have (at least) one
@@ -550,8 +555,10 @@ class AcquisitionDevice():
             log.warning(f'No modulation frequency provided. Not setting '
                         f'integration weights.')
             return []
+        if self.acq_weights_n_samples is not None:
+            acq_length = self.acq_weights_n_samples / self.acq_sampling_rate
         tbase = np.arange(
-            0, self.acq_weights_n_samples / self.acq_sampling_rate,
+            0, acq_length,
             1 / self.acq_sampling_rate)
         cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
