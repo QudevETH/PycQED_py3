@@ -32,7 +32,7 @@ class VC707(VC707_core, AcquisitionDevice):
     settings is changed for one of the channels, all settings are reuploaded.
     """
     n_acq_units = 2
-    n_acq_int_channels = 8  # TODO
+    n_acq_int_channels = 8
     # TODO: max length seems to be 2**16, but we probably do not want pycqed
     # to record so long traces by default.
     # TODO: In state discrimination mode this is actually 256.

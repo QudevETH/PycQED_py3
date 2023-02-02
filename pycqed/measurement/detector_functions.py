@@ -1816,8 +1816,6 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
         self.bins = [b for b in itertools.product(*[
             range(self.nr_bins[k]) for k in self.channels])]
         self.peak_to_peak = peak_to_peak or {}
-        # self.acq_data_len_scaling = np.prod(
-        #     self.nr_bins.values())  # to be used in MC
         # Disable MC live plotting by default for histogram acquisition
         self.live_plot_allowed = kw.get('live_plot_allowed', False)
         self.value_names = [f'{acq_dev.name}_hist_{b}' for b in self.bins]
@@ -1832,7 +1830,6 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
         self.nr_sweep_points //= self.nr_shots
 
     def process_data(self, data_raw):
-        # TODO
         return [[data['data'][b] for data in data_raw[0]] for b in self.bins]
 
 class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
