@@ -460,6 +460,11 @@ class AcquisitionDevice():
     def set_classifier_params(self, channels, params):
         """Set the classifier parameters on the acquisition device.
 
+        The default behavior is that calling the method does not have any
+        effect. Child classes that support classification in the hardware
+        need to override this method to implement setting the classifier
+        parameters in the hardware.
+
         Arguments:
             channels (list of tuple): Channels for which to set the parameters.
             params: A dictionnary containing various classifier parameters that
@@ -469,9 +474,7 @@ class AcquisitionDevice():
                 * ``thresholds``: OrderedDict containing the thresholds for
                   state discrimination.
         """
-
-        raise NotImplementedError("Not implemented in class "
-                                 f"'{self.__class__.__name__}'")
+        pass
 
     def get_awg_control_object(self):
         """
