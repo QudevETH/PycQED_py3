@@ -649,7 +649,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
 
     def __init__(self, acq_dev=None, detectors=None,
                  prepare_and_finish_pulsar=False,
-                 channels=(),
+                 channels=(), always_prepare=False,
                  **kw):
         """
         Init of the PollDetector base class.
@@ -662,6 +662,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
             prepare_and_finish_pulsar (bool, optional): Whether to start and
                 stop all other AWGs in pulsar in addition to the AWGs being part
                 of the df itself. Defaults to False.
+            always_prepare (bool) : when True the acquire/get_values method will
+                first call the prepare statement.
 
         Keyword args: passed to parent class
 
@@ -670,7 +672,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         these detectors.
         """
         super().__init__(**kw)
-        self.always_prepare = kw.get('always_prepare', False)
+        self.always_prepare = always_prepare
         self.prepare_and_finish_pulsar = prepare_and_finish_pulsar
 
         if detectors is None:
