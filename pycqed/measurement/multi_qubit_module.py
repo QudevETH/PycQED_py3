@@ -275,13 +275,12 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 data_type='raw', **kw)
             for uhf in uhfs])
     elif df_name == 'dig_log_det':
-        kw.setdefault('data_type', 'digitized')
         return det.MultiPollDetector([
             det.IntegratingSingleShotPollDetector(
                 acq_dev=uhf_instances[uhf], AWG=AWG,
                 channels=int_channels[uhf],
                 integration_length=max_int_len[uhf], nr_shots=nr_shots,
-                **kw)
+                data_type='digitized', **kw)
             for uhf in uhfs])
     elif df_name == 'int_avg_det':
         return det.MultiPollDetector([
