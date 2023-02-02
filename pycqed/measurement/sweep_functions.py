@@ -59,6 +59,13 @@ class Sweep_function(object):
         """
         return False
 
+    def get_nr_parameters(self):
+        """
+        Returns:
+            int: Number of parameters set by this sweep_function
+        """
+        return 1
+
 
 class UploadingSweepFunction(Sweep_function):
     def __init__(self, sequence=None, upload=True, upload_first=True,

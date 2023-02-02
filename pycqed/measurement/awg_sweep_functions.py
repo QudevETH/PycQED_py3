@@ -8,6 +8,7 @@ from pycqed.measurement.pulse_sequences import fluxing_sequences as fsqs
 from pycqed.measurement.pulse_sequences import calibration_elements as csqs
 from pycqed.measurement.pulse_sequences import multi_qubit_tek_seq_elts as mq_sqs
 from pycqed.measurement.waveform_control import pulsar as ps
+from pycqed.measurement import sweep_points as sp_mod
 
 import time
 
@@ -183,6 +184,55 @@ class SegmentHardSweep(swf.UploadingSweepFunction, swf.Hard_Sweep):
 
     def set_parameter(self, value):
         pass
+
+
+class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
+    # TODO hard or soft?
+    def __init__(self, circuit_builder, params, block=None,
+                 block_func=None, parameter_name='None',
+                 unit='', upload=True, **kw):
+        super().__init__(sequence=None, upload=upload,
+                         upload_first=False,
+                         parameter_name=parameter_name, unit=unit, **kw)
+        self.name = 'Block soft sweep'
+        self.block = block
+        self.block_func = block_func
+        self.circuit_builder = circuit_builder
+        self.params = params
+        self.sweep_points = None
+
+    def set_parameter(self, vals, **kw):
+        self.sweep_points = sp_mod.SweepPoints([{
+            p: ([vs[i] for vs in vals], '', p)
+            for i, p in enumerate(self.params)}])
+        self.sequence, _ = self.circuit_builder.sweep_n_dim(
+            sweep_points=self.sweep_points, body_block=self.block,
+            body_block_func=self.block_func,
+            **(getattr(self, 'sweep_kwargs', {})))
+        self.upload_sequence()
+
+    def configure_upload(self, upload=True, upload_first=False,
+                        start_pulsar=True):
+        """Overwrites parent method
+        :meth:`~pycqed.measurement.sweep_function.Sweep_function.configure_upload`
+        and sets the correspoding attributes.
+
+        Args:
+            upload (bool, optional): Defaults to True.
+            upload_first (bool, optional): Defaults to True.
+            start_pulsar (bool, optional): Defaults to True.
+
+        Returns:
+            bool: True if a sequence to upload is stored in the
+                UploadingSweepFunction, and False otherwise
+        """
+        self.upload = upload
+        self.upload_first = upload_first
+        self.start_pulsar = start_pulsar
+        return True
+
+    def get_nr_parameters(self):
+        return len(self.params)
 
 
 class SegmentSoftSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):

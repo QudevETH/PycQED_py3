@@ -1141,7 +1141,7 @@ class CircuitBuilder:
                     s.repeat_ro(ro_op, self.operation_dict)
 
         if sweep_dims == 1:
-            return seqs, [np.arange(seqs[0].n_acq_elements())]
+            return seqs[0], [np.arange(seqs[0].n_acq_elements())]
         else:
             return seqs, [np.arange(seqs[0].n_acq_elements()),
                           np.arange(nr_sp_list[1])]

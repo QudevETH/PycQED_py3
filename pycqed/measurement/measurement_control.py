@@ -25,6 +25,7 @@ from pycqed.measurement.calibration import calibration_points as cp_mod
 
 # Used for auto qcodes parameter wrapping
 from pycqed.measurement import sweep_functions as swf
+from pycqed.measurement import awg_sweep_functions as awg_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_det
 from pycqed.analysis.tools.data_manipulation import get_generation_means
@@ -194,6 +195,8 @@ class MeasurementControl(Instrument):
         self._last_percdone_log_time = 0  # last time progress was logged
 
         self.parameter_checks = {}
+
+        self.af_pars = {}
 
     ##############################################
     # Functions used to control the measurements #
@@ -475,12 +478,18 @@ class MeasurementControl(Instrument):
         '''
         self.save_optimization_settings()
         self.adaptive_function = self.af_pars.pop('adaptive_function')
+        self.data_processing_function = self.af_pars.pop(
+            'data_processing_function', self._default_data_processing_function)
         if self._live_plot_enabled():
             self.initialize_plot_monitor()
             self.initialize_plot_monitor_adaptive()
         for sweep_function in self.sweep_functions:
             sweep_function.prepare()
-        self.detector_function.prepare()
+        if self.detector_function.detector_control != 'hard':
+            # A hard detector requires sweep points, these will only be
+            # generated later in optimization_function, which then takes care of
+            # calling self.detector_function.prepare(sp).
+            self.detector_function.prepare()
         self.get_measurement_preparetime()
 
         if self.adaptive_function == 'Powell':
@@ -556,19 +565,19 @@ class MeasurementControl(Instrument):
         len_new_data = stop_idx-start_idx
         if len(np.shape(new_data)) == 1:
             old_vals = self.dset[start_idx:stop_idx,
-                                 len(self.sweep_functions)]
+                                 self._get_nr_sweep_point_columns()]
             new_vals = ((new_data + old_vals*self.soft_iteration) /
                         (1+self.soft_iteration))
 
             self.dset[start_idx:stop_idx,
-                      len(self.sweep_functions)] = new_vals
+                      self._get_nr_sweep_point_columns()] = new_vals
         else:
             old_vals = self.dset[start_idx:stop_idx,
-                                 len(self.sweep_functions):]
+                                 self._get_nr_sweep_point_columns():]
             new_vals = ((new_data + old_vals * self.soft_iteration) /
                         (1 + self.soft_iteration))
             self.dset[start_idx:stop_idx,
-                      len(self.sweep_functions):] = new_vals
+                      self._get_nr_sweep_point_columns():] = new_vals
         sweep_len = len(self.get_sweep_points().T) * self.acq_data_len_scaling
 
 
@@ -611,14 +620,21 @@ class MeasurementControl(Instrument):
         '''
         if np.size(x) == 1:
             x = [x]
-        if np.size(x) != len(self.sweep_functions):
-            raise ValueError(
-                'size of x "%s" not equal to # sweep functions' % x)
         # The following will be set to True (in the second-last iteration,
         # sweep dimension 1) if the sweep point can be skipped (in the
         # last iteration, sweep dimension 0) in a filtered sweep.
         filter_out = False
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
+            if len(self.sweep_functions) == 1 and \
+                    isinstance(sweep_function, awg_swf.BlockSoftHardSweep):
+                # TODO comment
+                x = np.atleast_2d(x)
+                sweep_function.set_parameter(x)
+                tmp_df_acq_data_len_scaling = self.detector_function.acq_data_len_scaling
+                self.detector_function.acq_data_len_scaling = 1
+                self.detector_function.prepare(x)
+                self.detector_function.acq_data_len_scaling = tmp_df_acq_data_len_scaling
+                break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
             # will not be called. This is important when setting a parameter
@@ -683,13 +699,17 @@ class MeasurementControl(Instrument):
             vals = np.ones(len(self.detector_function.value_names)) * np.nan
         else:
             vals = self.detector_function.acquire_data_point()
+
+        if len(self.sweep_functions) == 1 and \
+                    isinstance(sweep_function, awg_swf.BlockSoftHardSweep):
+            vals = vals.T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        new_data = np.append(x, vals)
+        new_data = np.concatenate((x, vals), axis=1)
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
@@ -707,6 +727,15 @@ class MeasurementControl(Instrument):
         self.iteration += 1
         if self.mode != 'adaptive':
             self.print_progress()
+        return vals
+
+    @staticmethod
+    def _default_data_processing_function(vals, dset):
+        # This takes care of data that comes from a "single" segment of a
+        # detector for a larger shape such as the UFHQC single int avg detector
+        # that gives back data in the shape [[I_val_seg0, Q_val_seg0]]
+        if len(np.shape(vals)) == 2:
+            vals = np.array(vals)[:, 0]
         return vals
 
     def optimization_function(self, x):
@@ -727,18 +756,14 @@ class MeasurementControl(Instrument):
                 x[i] = float(x[i])/float(self.x_scale[i])
 
         vals = self.measurement_function(x)
-        # This takes care of data that comes from a "single" segment of a
-        # detector for a larger shape such as the UFHQC single int avg detector
-        # that gives back data in the shape [[I_val_seg0, Q_val_seg0]]
-        if len(np.shape(vals)) == 2:
-            vals = np.array(vals)[:, 0]
+        vals = self.data_processing_function(vals, self.dset)
         if self.minimize_optimization:
             if (self.f_termination is not None):
                 if (vals < self.f_termination):
                     raise StopIteration()
         else:
             vals = self.measurement_function(x)
-            # when maximizing interrupt when larger than condition before
+            # when maximizing, interrupt when larger than condition before
             # inverting
             if (self.f_termination is not None):
                 if (vals > self.f_termination):
@@ -1713,12 +1738,16 @@ class MeasurementControl(Instrument):
             kwargs.update({'compression': "gzip", 'compression_opts': 9})
         return kwargs
 
+    def _get_nr_sweep_point_columns(self):
+        return np.sum([sweep_function.get_nr_parameters() \
+            for sweep_function in self.sweep_functions])
+
     def create_experimentaldata_dataset(self):
         data_group = self._get_experimentaldata_group()
         self.dset = data_group.create_dataset(
-            'Data', (0, len(self.sweep_functions) +
+            'Data', (0, self._get_nr_sweep_point_columns() +
                      len(self.detector_function.value_names)),
-            maxshape=(None, len(self.sweep_functions) +
+            maxshape=(None, self._get_nr_sweep_point_columns() +
                       len(self.detector_function.value_names)),
             dtype='float64', **self._get_create_dataset_kwargs())
         self.get_column_names()
@@ -2289,7 +2318,7 @@ class MeasurementControl(Instrument):
         for i, sweep_func in enumerate(sweep_functions):
             # If it is not a sweep function, assume it is a qc.parameter
             # and try to auto convert it it
-            if not hasattr(sweep_func, 'sweep_control'):
+            if not isinstance(sweep_func, swf.Sweep_function):
                 sweep_func = wrap_par_to_swf(sweep_func)
                 sweep_functions[i] = sweep_func
             sweep_function_names.append(str(sweep_func.name))

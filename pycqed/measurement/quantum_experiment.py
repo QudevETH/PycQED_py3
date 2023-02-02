@@ -296,7 +296,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # run measurement
             try:
                 self.MC.run(name=self.label, exp_metadata=self.exp_metadata,
-                            mode=mode)
+                            mode=getattr(self, 'mc_mode', mode))
             except (Exception, KeyboardInterrupt) as e:
                 exception = e  # exception will be raised below
         self.extract_timestamp()
