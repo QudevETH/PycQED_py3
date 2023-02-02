@@ -1823,7 +1823,7 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
         self.progress_scaling = self.nr_shots
 
     def prepare(self, sweep_points=None):
-        self.acq_dev.nb_bins = self.nr_bins
+        self.acq_dev.nb_bins = deepcopy(self.nr_bins)
         self.acq_dev.peak_to_peak = deepcopy(self.peak_to_peak)
         super().prepare(sweep_points=sweep_points)
         # undo scaling done in super method because we receive only 1 histogram
