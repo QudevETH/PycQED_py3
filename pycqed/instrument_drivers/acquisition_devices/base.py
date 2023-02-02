@@ -54,7 +54,7 @@ class AcquisitionDevice():
     acq_weights_n_samples = None
     acq_Q_sign = 1
     allowed_modes = []
-    allowed_weights_types = ['optimal', 'optimal_qutrit', 'SSB',
+    allowed_weights_types = ['custom', 'custom_2D', 'SSB',
                              'DSB', 'DSB2', 'square_rot']
 
     def __init__(self, *args, **kwargs):
@@ -497,9 +497,9 @@ class AcquisitionDevice():
         :param weights_type: (str) the type of weights can be:
             - manual: do not set any weights (keep what is configured in the
                 acquisition device)
-            - optimal: use the optimal weights for single-channel integration
+            - custom: use the weights for single-channel integration
                 provided in weights_I[0], weights_Q[0].
-            - optimal_qutrit: use the optimal weights for two-channel
+            - custom_2D: use the weights for two-channel
                 integration provided in weights_I[:2], weights_Q[:2]
             - SSB: single-sideband demodulation using two integration
                 channels and both physical input channels.
@@ -521,8 +521,8 @@ class AcquisitionDevice():
         :param weights_I: (list/tuple of np.array or None) The i-th entry of
             the list defines the weights for first physical input channel
             used in the i-th integration channel. Must have (at least) one
-            entry if weights type is optimal and two entries if weights type
-            is optimal_qutrit. Unneeded entries are ignored, and the whole
+            entry if weights type is custom and two entries if weights type
+            is custom_2D. Unneeded entries are ignored, and the whole
             list is ignored for other weights types.
         :param weights_Q: (list of np.array or None) Like weights_I,
             but for the second physical input channel.
@@ -533,7 +533,7 @@ class AcquisitionDevice():
             raise ValueError(f'Weights type {weights_type} not supported by '
                              f'{self.name}.')
         aQs = self.acq_Q_sign
-        for wt, n_chan in [('optimal', 1), ('optimal_qutrit', 2)]:
+        for wt, n_chan in [('custom', 1), ('custom_2D', 2)]:
             if weights_type == wt:
                 if (len(weights_I) < n_chan or len(weights_Q) < n_chan
                         or any([w is None for w in weights_I[:n_chan]])
