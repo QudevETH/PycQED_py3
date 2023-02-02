@@ -600,23 +600,11 @@ class MeasurementObject(Instrument):
     def configure_pulsar(self):
         """
         Configure MeasurementObject-specific settings in pulsar:
-        - Reset modulation frequency and amplitude scaling
-        - set AWG channel DC offsets and switch sigouts on,
-           see configure_offsets
-        - set flux distortion, see set_distortion_in_pulsar
+        - Set AWG channel DC offsets and switch sigouts on,
+        see configure_offsets
         """
-        pulsar = self.instr_pulsar.get_instr()
-        # make sure that some settings are reset to their default values
-        for quad in ['I', 'Q']:
-            ch = self.get(f'ge_{quad}_channel')
-            if f'{ch}_mod_freq' in pulsar.parameters:
-                pulsar.parameters[f'{ch}_mod_freq'](None)
-            if f'{ch}_amplitude_scaling' in pulsar.parameters:
-                pulsar.parameters[f'{ch}_amplitude_scaling'](1)
         # set offsets and turn on AWG outputs
         self.configure_offsets()
-        # set flux distortion
-        self.set_distortion_in_pulsar()
 
     def link_param_to_operation(self, operation_name, parameter_name,
                                 argument_name):

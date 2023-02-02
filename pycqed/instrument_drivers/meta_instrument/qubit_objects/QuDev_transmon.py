@@ -2576,6 +2576,24 @@ class QuDev_transmon(MeasurementObject):
             except Exception:
                 ma.MeasurementAnalysis(TwoD=False)
 
+    def configure_pulsar(self):
+        """
+        In addition to the super call:
+        - Reset modulation frequency and amplitude scaling
+        - Set flux distortion, see set_distortion_in_pulsar
+        """
+        super().configure_pulsar()
+        pulsar = self.instr_pulsar.get_instr()
+        # make sure that some settings are reset to their default values
+        for quad in ['I', 'Q']:
+            ch = self.get(f'ge_{quad}_channel')
+            if f'{ch}_mod_freq' in pulsar.parameters:
+                pulsar.parameters[f'{ch}_mod_freq'](None)
+            if f'{ch}_amplitude_scaling' in pulsar.parameters:
+                pulsar.parameters[f'{ch}_amplitude_scaling'](1)
+        # set flux distortion
+        self.set_distortion_in_pulsar()
+
     def configure_offsets(self, set_ro_offsets=True, set_ge_offsets=True,
                           offset_list=None):
         """
