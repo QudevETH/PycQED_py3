@@ -14,7 +14,8 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -1884,7 +1885,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
             })
         d['task_list_fields'].update({
             SingleQubitGateCalibExperiment.__name__: odict({
-                'qb': ((Qubit, 'single_select'), None),
+                'qb': ((QuDev_transmon, 'single_select'), None),
                 'transition_name': (['ge', 'ef', 'fh'], 'ge'),
             })
         })
@@ -3824,12 +3825,8 @@ class ActiveReset(CalibBuilder):
             # perpare correspondance between integration unit (key)
             # and uhf channel; check if only one channel is asked for
             # (not asked for all qb channels and weight type uses only 1)
-            if not all_qb_channels and qb.acq_weights_type() \
-                    in ('square_root', 'optimal'):
-                chs = {0: qb.acq_I_channel()}
-            else:
-                # other weight types have 2 channels
-                chs = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+            chs = {i: ch for i, ch in enumerate([
+                qb.get_acq_int_channels(2 if all_qb_channels else None)])}
 
             #get clf thresholds
             if from_clf_params:
