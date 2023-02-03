@@ -494,8 +494,7 @@ class MeasurementControl(Instrument):
 
         if self.adaptive_function == 'Powell':
             self.adaptive_function = fmin_powell
-        if (isinstance(self.adaptive_function, types.FunctionType) or
-                isinstance(self.adaptive_function, np.ufunc)):
+        if callable(self.adaptive_function):
             try:
                 # exists so it is possible to extract the result
                 # of an optimization post experiment
