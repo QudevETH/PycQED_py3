@@ -33,10 +33,6 @@ class VC707(VC707_core, AcquisitionDevice):
     """
     n_acq_units = 2
     n_acq_int_channels = 8
-    # TODO: max length seems to be 2**16, but we probably do not want pycqed
-    # to record so long traces by default.
-    # TODO: In state discrimination mode this is actually 256.
-    acq_weights_n_samples = 4096
     acq_length_granularity = 8
     allowed_modes = {
         "avg": [], # averaged raw input (time trace) in V
