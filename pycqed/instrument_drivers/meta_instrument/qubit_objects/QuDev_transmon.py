@@ -1063,7 +1063,7 @@ class QuDev_transmon(MeasurementObject):
                     operation_dict[f'X180{tn} ' + self.name][
                         'mod_frequency'] = None
                 else:
-                    operation_dict['X180_ef ' + self.name][
+                    operation_dict[f'X180{tn} ' + self.name][
                         'mod_frequency'] = self.get(f'{tr_name}_freq') - \
                                            self.ge_freq() + self.ge_mod_freq()
             operation_dict.update(add_suffix_to_dict_keys(
