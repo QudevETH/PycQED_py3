@@ -15,7 +15,6 @@ from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
-import time
 import logging
 
 from pycqed.utilities.timer import Timer
