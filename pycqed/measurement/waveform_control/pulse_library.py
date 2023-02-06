@@ -373,6 +373,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'cphase': None,
             'cphase_calib_dict': None,
             'cphase_ctrl_params': ['trans_amplitude2', 'basis_rotation'],
+            'fixed_pulse_length': None,
         }
         return params
 
@@ -497,6 +498,11 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             self.amplitudes.append([0, ma + ao, ia, ta, -ta, -ia, -ma + ao, 0])
             self.lengths.append([bs + d - cl0, cl0 + ml / 2, il, tl / 2,
                                  tl / 2, il, ml / 2 + cl1, be - d - cl1])
+        if self.fixed_pulse_length is not None:
+            current_length = np.sum(self.lengths[0])
+            difference = self.fixed_pulse_length - current_length
+            self.lengths[0][0] += difference / 2
+            self.lengths[0][-1] += difference / 2
         while len(self.lengths) < len(self.channels):
             self.lengths += [[]]
         while len(self.amplitudes) < len(self.channels):
