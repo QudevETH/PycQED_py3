@@ -3780,14 +3780,33 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
         rdd = self.raw_data_dict
         pdd = self.proc_data_dict
 
-        pdd['data_reshaped'] = {qb: [] for qb in pdd['data_to_fit']}
-        pdd['amps_reshaped'] = np.unique(self.metadata['hard_sweep_params']['ro_amp_scale']['values'])
-        pdd['phases_reshaped'] = []
-        for amp in pdd['amps_reshaped']:
-            mask = self.metadata['hard_sweep_params']['ro_amp_scale']['values'] == amp
-            pdd['phases_reshaped'].append(self.metadata['hard_sweep_params']['phase']['values'][mask])
-            for qb in self.qb_names:
-                pdd['data_reshaped'][qb].append(pdd['data_to_fit'][qb][:len(mask)][mask])
+        try: # Extract data
+            pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
+                'amplitude'] for qbn in self.qb_names}
+            pdd['phases_reshaped'] = [pdd['sweep_points_dict'][
+                self.qb_names[0]]['msmt_sweep_points']] * len(pdd[
+                    'amps_reshaped'][self.qb_names[0]])
+            pdd['data_reshaped'] = {
+                qbn: np.array(pdd['data_to_fit'][qbn])[:, :-2]
+                for qbn in self.qb_names}
+        except Exception:
+            # If a problem occurred, this might come from old data
+            # incompatible with the QuantumExperiment framework, for instance
+            # missing SweepPoints per qubit. In this case, try to extract
+            # data the old way:
+            pdd['data_reshaped'] = {qb: [] for qb in pdd['data_to_fit']}
+            pdd['amps_reshaped'] = {qb: np.unique(
+                self.metadata['hard_sweep_params']['ro_amp_scale']['values'])
+                                    for qb in pdd['data_to_fit']}
+            pdd['phases_reshaped'] = []
+            for amp in pdd['amps_reshaped'][self.qb_names[0]]:
+                mask = self.metadata['hard_sweep_params']['ro_amp_scale'][
+                           'values'] == amp
+                pdd['phases_reshaped'].append(
+                    self.metadata['hard_sweep_params']['phase']['values'][mask])
+                for qb in self.qb_names:
+                    pdd['data_reshaped'][qb].append(
+                        pdd['data_to_fit'][qb][:len(mask)][mask])
 
     def prepare_fitting(self):
         pdd = self.proc_data_dict
@@ -3835,14 +3854,14 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
             self.fit_dicts[f'phase_contrast_fit_{qb}'] = {
                 'model': gauss_mod,
                 'guess_dict': {'center': {'value': 0, 'vary': False}},
-                'fit_xvals': {'x': pdd['amps_reshaped']},
+                'fit_xvals': {'x': pdd['amps_reshaped'][qb]},
                 'fit_yvals': {'data': pdd['phase_contrast'][qb]}}
 
             quadratic_mod = lmfit.models.QuadraticModel()
             self.fit_dicts[f'phase_offset_fit_{qb}'] = {
                 'model': quadratic_mod,
                 'guess_dict': {'b': {'value': 0, 'vary': False}},
-                'fit_xvals': {'x': pdd['amps_reshaped']},
+                'fit_xvals': {'x': pdd['amps_reshaped'][qb]},
                 'fit_yvals': {'data': pdd['phase_offset'][qb]}}
 
             self.run_fitting()
@@ -3878,7 +3897,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'plotfn': self.plot_colorxy,
                     'xvals': pdd['phases_reshaped'][0],
-                    'yvals': pdd['amps_reshaped'],
+                    'yvals': pdd['amps_reshaped'][qb],
                     'zvals': pdd['data_reshaped'][qb],
                     'xlabel': r'Pulse phase, $\phi$',
                     'xunit': 'deg',
@@ -3888,8 +3907,8 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 }
 
             colormap = self.get_param_value('colormap', mpl.cm.Blues)
-            for i, amp in enumerate(pdd['amps_reshaped']):
-                color = colormap(i/(len(pdd['amps_reshaped'])-1))
+            for i, amp in enumerate(pdd['amps_reshaped'][qb]):
+                color = colormap(i/(len(pdd['amps_reshaped'][qb])-1))
                 label = f'cos_data_{qb}_{i}'
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
@@ -3909,8 +3928,8 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_pos': 'upper left',
                 }
             if self.do_fitting:
-                for i, amp in enumerate(pdd['amps_reshaped']):
-                    color = colormap(i/(len(pdd['amps_reshaped'])-1))
+                for i, amp in enumerate(pdd['amps_reshaped'][qb]):
+                    color = colormap(i/(len(pdd['amps_reshaped'][qb])-1))
                     label = f'cos_fit_{qb}_{i}'
                     self.plot_dicts[label] = {
                         'ax_id': f'amplitude_crossections_{qb}',
@@ -3927,7 +3946,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*pdd['phase_contrast'][qb],
                     'xlabel': r'Readout pulse amplitude scale, $V_{RO}/V_{ref}$',
                     'xunit': '',
@@ -3941,7 +3960,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_contrast_fit_{qb}'] = {
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*self.fit_res[f'phase_contrast_fit_{qb}'].best_fit,
                     'color': 'r',
                     'marker': '',
@@ -3951,7 +3970,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_contrast_labels_{qb}'] = {
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*pdd['phase_contrast'][qb],
                     'marker': '',
                     'linestyle': '',
@@ -3968,7 +3987,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': pdd['phase_offset'][qb],
                     'xlabel': r'Readout pulse amplitude scale, $V_{RO}/V_{ref}$',
                     'xunit': '',
@@ -3982,7 +4001,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_offset_fit_{qb}'] = {
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': self.fit_res[f'phase_offset_fit_{qb}'].best_fit,
                     'color': 'r',
                     'marker': '',
@@ -3992,7 +4011,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_offset_labels_{qb}'] = {
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': pdd['phase_offset'][qb],
                     'marker': '',
                     'linestyle': '',
@@ -5363,9 +5382,10 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         if self.do_fitting:
             apd = self.proc_data_dict['analysis_params_dict']
             for outer_key, ramsey_pars_dict in apd.items():
-                if outer_key in ['qubit_frequencies', 'reparking_params']:
-                    # This is only for ReparkingRamseyAnalysis.
-                    # It is handled by prepare_fitting_qubit_freqs of that class
+                if outer_key in ['qubit_frequencies', 'reparking_params',
+                                 'residual_ZZs']:
+                    # This is only for ReparkingRamseyAnalysis and
+                    # ResidualZZAnalysis. It is handled those classes directly.
                     continue
                 # outer_key is of the form qbn_i if TwoD else qbn.
                 # split into qbn and i. (outer_key + '_') is needed because if
@@ -5687,6 +5707,175 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                     'marker': 'o',
                     'line_kws': {'markersize': 10},
                     'linestyle': ''}
+
+
+class ResidualZZAnalysis(RamseyAnalysis):
+    """
+    Analysis for a ResidualZZ measurement.
+
+    Extracts the residual ZZ couling by comparing the frequencies of two Ramsey
+    measurements and adds one additional plot for each residual ZZ measurement
+    to display the extracted residual ZZ couling.
+    """
+
+    def __init__(self, echo=False, **kwargs):
+        """
+        Args:
+            echo (bool, optional): Whether the Ramsey sequence included an echo
+                pulse or not. This is relevant for the analysis as this causes a
+                factor of 1/2 in the frequency difference between the two Ramsey
+                measurements compared to the measurements without echo pulse.
+                Defaults to False.
+        """
+        self.echo = echo
+        super().__init__(**kwargs)
+
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
+        task_list = self.get_param_value('task_list', default_value=[])
+        for task in task_list:
+            params_dict[f'qbc_of_' + task['qb']] = task['qbc']
+        self.raw_data_dict.update(params_dict)
+
+    def analyze_fit_results(self):
+        super().analyze_fit_results()
+        residual_ZZs_dicts = OrderedDict()
+        for qbn in self.qb_names:
+            residual_ZZs_dicts[qbn] = OrderedDict()
+            for fk in self.fit_keys:
+                fit_res_base = self.fit_dicts[f'{fk}{qbn}_0']['fit_res']
+                fit_res_prep = self.fit_dicts[f'{fk}{qbn}_1']['fit_res']
+                residual_ZZs_dicts[qbn][f'{fk}'] = \
+                    self.get_residual_zz(fit_res_base, fit_res_prep)
+        self.proc_data_dict['analysis_params_dict']['residual_ZZs'] = \
+            residual_ZZs_dicts
+        hdf_group_name_suffix = self.get_param_value(
+            'hdf_group_name_suffix', '')
+        self.save_processed_data(key='analysis_params_dict' +
+                                     hdf_group_name_suffix)
+
+    def get_residual_zz(self, fit_res_base, fit_res_prep):
+        """Compute the residual ZZ coupling from the two Ramsey fits.
+
+        Args:
+            fit_res_base (lmfit.ModelResult): Ramsey fit for the measurement
+                with the control qubit in the ground state the whole time.
+            fit_res_prep (lmfit.ModelResult): Ramsey fit for the measurement
+                with the control qubit excited.
+
+        Returns:
+            dict with the individual detunings ('freq_g', 'freq_e') and the
+            extracted residual ZZ ('shift_Hz') and its standard error
+            ('shift_Hz_stderr').
+        """
+        freq_g = fit_res_base.best_values['frequency']
+        freq_e = fit_res_prep.best_values['frequency']
+        shift = freq_e - freq_g
+        stderr = np.sqrt(fit_res_prep.params['frequency'].stderr**2
+                         + fit_res_base.params['frequency'].stderr**2)
+        # When the measurement was implemented using an echo pulse, the control
+        # qubit only got excited during the second half of the Ramsey sequence.
+        # The resulting shift between the fitted detuning frequencies therefore
+        # corresponds to only half the residual ZZ coupling. This is compensated
+        # by the following factor:
+        x = 2 if self.echo else 1
+        return {'freq_g': freq_g, 'freq_e': freq_e,
+                'shift_Hz': x*shift, 'shift_Hz_stderr': x*stderr}
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        if self.do_fitting:
+            apd = self.proc_data_dict['analysis_params_dict']
+            for qb, residual_zz_dict in apd['residual_ZZs'].items():
+                qbc = self.raw_data_dict[f'qbc_of_{qb}']
+                plot_name = f'ResidualZZ_{qb}_{qbc}'
+
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qb][
+                    'sweep_points']
+                dtf = self.proc_data_dict['data_to_fit'][qb]
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[0],
+                    data_label=f'{qbc} in g',
+                    do_legend_data=False,
+                    do_legend_cal_states=False,
+                    sweep_points=sweep_points,
+                    plot_name_suffix=qb+'fit0',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+                self.prepare_projected_data_plot(
+                    fig_name=plot_name,
+                    data=dtf[1][:-self.num_cal_points],
+                    plot_cal_points=False,
+                    data_label=f'{qbc} in e',
+                    do_legend_data=False,
+                    do_legend_cal_states=False,
+                    sweep_points=sweep_points[:-self.num_cal_points],
+                    plot_name_suffix=qb+'fit1',
+                    qb_name=qb, TwoD=False,
+                    title_suffix="")
+
+                textstr = ''
+                for fk, residual_zz in residual_zz_dict.items():
+                    key = fk.split('_')[0]
+                    textstr += f'$\Delta f_{{0_{{{key}}}}}$ = ' \
+                               + f'{1e-3*residual_zz["freq_g"]:.3f} kHz\n'
+                    textstr += f'$\Delta f_{{1_{{{key}}}}}$ = ' \
+                               + f'{1e-3*residual_zz["freq_e"]:.3f} kHz\n'
+                    textstr += f'$\Omega_{{ZZ_{{{key}}}}}/2\pi$ = ' \
+                               + f'{1e-3*residual_zz["shift_Hz"]:.3f} $\pm$ ' \
+                               + f'{1e-3*residual_zz["shift_Hz_stderr"]:.3f} ' \
+                               + f'kHz\n'
+                textstr += f'target: {qb}, control: {qbc}'
+                self.plot_dicts['text_msg'] = {
+                    'fig_id': plot_name,
+                    'ypos': -0.2,
+                    'xpos': -0.025,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'color': 'black',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr,}
+
+
+            # helper variable to prevent having labels twice in the legend
+            labels_set = False
+            for outer_key, ramsey_pars_dict in apd.items():
+                if outer_key in ['qubit_frequencies', 'reparking_params',
+                                 'residual_ZZs']:
+                    # We only care about the fit types saved in the apd.
+                    continue
+                # outer_key is of the form qbn_i if TwoD else qbn.
+                # split into qbn and i. (outer_key + '_') is needed because if
+                # outer_key = qbn doing outer_key.split('_') will only have one
+                # output and assignment to two variables will fail.
+                qbn = (outer_key + '_').split('_')[0]
+
+                qbc = self.raw_data_dict[f'qbc_of_{qbn}']
+                plot_name = f'ResidualZZ_{qbn}_{qbc}'
+
+                for i, fit_type in enumerate(ramsey_pars_dict):
+                    fit_res = self.fit_dicts[f'{fit_type}_{outer_key}'][
+                        'fit_res']
+                    label = 'exp decay fit' if i == 0 else 'gauss decay fit'
+                    self.plot_dicts[
+                        f'ResidualZZ_fit_{outer_key}_{fit_type}'] = {
+                            'fig_id': plot_name,
+                            'plotfn': self.plot_fit,
+                            'fit_res': fit_res,
+                            'color': 'r' if i == 0 else 'C4',
+                            'setlabel': label if not labels_set else '',
+                        }
+                    if not labels_set:
+                        self.plot_dicts[
+                            f'ResidualZZ_fit_{outer_key}_{fit_type}'].update({
+                                'do_legend': True,
+                                'legend_bbox_to_anchor': (1.0, -0.15),
+                                'legend_pos': 'upper right',
+                            })
+                labels_set = True
 
 
 class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -7851,6 +8040,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                     for mu_j in means]).flatten().max()
 
             tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            tol = kw.pop("tol", tol)
             reg_covar = tol**2
 
             gm = GM(n_components=n_qb_states,

@@ -2,6 +2,7 @@ import logging
 log = logging.getLogger(__name__)
 import numpy as np
 from copy import deepcopy
+from collections import OrderedDict
 
 from qcodes.instrument.parameter import (
     ManualParameter, InstrumentRefParameter)
@@ -12,66 +13,19 @@ from pycqed.measurement import sweep_functions as swf
 
 
 class MeasurementObject(Instrument):
-    # TODO to be cleaned up once QuDev_transmon is refactored as a child class
-
-    # from Qubit object
-    def _get_operations(self):
-        return self._operations
-
-    # from Qubit object
-    def add_operation(self, operation_name):
-        self._operations[operation_name] = {}
-
-    # from Qubit object
-    def add_pulse_parameter(self,
-                            operation_name,
-                            parameter_name,
-                            argument_name,
-                            initial_value=None,
-                            vals=vals.Numbers(),
-                            **kwargs):
-        """
-        Add a pulse parameter to the qubit.
-
-        Args:
-            operation_name (str): The operation of which this parameter is an
-                argument. e.g. mw_control or CZ
-            parameter_name (str): Name of the parameter
-            argument_name  (str): Name of the arugment as used in the sequencer
-            **kwargs get passed to the add_parameter function
-        Raises:
-            KeyError: if this instrument already has a parameter with this
-                name.
-        """
-        if parameter_name in self.parameters:
-            raise KeyError(
-                'Duplicate parameter name {}'.format(parameter_name))
-
-        if operation_name in self.operations().keys():
-            self._operations[operation_name][argument_name] = parameter_name
-        else:
-            raise KeyError('Unknown operation {}, add '.format(operation_name) +
-                           'first using add operation')
-
-        self.add_parameter(parameter_name,
-                           initial_value=initial_value,
-                           vals=vals,
-                           parameter_class=ManualParameter, **kwargs)
-
-        # for use in RemoteInstruments to add parameters to the server
-        # we return the info they need to construct their proxy
-        return
+    _acq_weights_type_aliases = {}  # see self.get_acq_weights_type()
+    _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
+                           'GaussFilteredCosIQPulseMultiChromatic']
 
     def __init__(self, name, **kw):
         super().__init__(name, **kw)
 
-        # from Qubit object
         self.msmt_suffix = '_' + name  # used to append to measurement labels
 
-        # from Qubit object
         self._operations = {}
         self.add_parameter('operations',
-                           docstring='a list of all operations available on the qubit',
+                           docstring='a list of all operations available on '
+                                     'the measurement object',
                            get_cmd=self._get_operations)
 
         self.add_parameter('instr_mc',
@@ -113,8 +67,42 @@ class MeasurementObject(Instrument):
                            vals=vals.Numbers(min_value=1e-8,
                                              max_value=100e-6),
                            parameter_class=ManualParameter)
+        awt_docstring = 'Determines what type of integration weights to ' +\
+                        'use:\n\tSSB: Single sideband demodulation\n\tDSB: ' +\
+                        'Double sideband demodulation\n\tcustom: waveforms ' +\
+                        'specified in "acq_weights_I" and "acq_weights_Q"' +\
+                        '\n\tcustom_2D: waveforms specified in ' +\
+                        '"acq_weights_I/I2" and "acq_weights_Q/Q2"\n\t' +\
+                        'square_rot: uses a single integration channel with ' +\
+                        'boxcar weights\n\tmanual: keeps the weights ' +\
+                        'already set in the acquisition device' +\
+                        ''.join([f'\n\t{k}: alias for {v}' for k, v
+                                 in self._acq_weights_type_aliases.items()])
         self.add_parameter('acq_weights_type', parameter_class=ManualParameter,
-                           vals=vals.Enum('DSB', 'SSB'), initial_value='SSB')
+                           vals=vals.Enum(
+                               'DSB', 'SSB', 'DSB2', 'square_rot', 'manual',
+                               'custom', 'custom_2D',
+                               *list(self._acq_weights_type_aliases)),
+                           initial_value='SSB',
+                           docstring=awt_docstring)
+        self.add_parameter('acq_weights_I', vals=vals.Arrays(),
+                           label='Optimized weights for I channel',
+                           parameter_class=ManualParameter)
+        self.add_parameter('acq_weights_Q', vals=vals.Arrays(),
+                           label='Optimized weights for Q channel',
+                           parameter_class=ManualParameter)
+        self.add_parameter('acq_weights_I2', vals=vals.Arrays(),
+                           label='Optimized weights for second integration '
+                                 'channel I',
+                           docstring=("Used for double weighted integration "
+                                      "during qutrit readout"),
+                           parameter_class=ManualParameter)
+        self.add_parameter('acq_weights_Q2', vals=vals.Arrays(),
+                           label='Optimized weights for second integration '
+                                 'channel Q',
+                           docstring=("Used for double weighted integration "
+                                      "during qutrit readout"),
+                           parameter_class=ManualParameter)
         self.add_parameter('acq_IQ_angle', initial_value=0,
                            docstring='The phase of the integration weights '
                                      'when using SSB, DSB or square_rot '
@@ -146,9 +134,7 @@ class MeasurementObject(Instrument):
                            label='Readout pulse upconversion mixer LO power')
         self.add_operation('RO')
         self.add_pulse_parameter('RO', 'ro_pulse_type', 'pulse_type',
-                                 vals=vals.Enum('GaussFilteredCosIQPulse',
-                                                'GaussFilteredCosIQPulseMultiChromatic',
-                                                'GaussFilteredCosIQPulseWithFlux'),
+                                 vals=vals.Enum(*self._ro_pulse_type_vals),
                                  initial_value='GaussFilteredCosIQPulse')
         self.add_pulse_parameter('RO', 'ro_I_channel', 'I_channel',
                                  initial_value=None, vals=vals.Strings())
@@ -194,7 +180,7 @@ class MeasurementObject(Instrument):
             vals=vals.MultiType(vals.Enum(None), vals.Dict()))
 
         # switch parameters
-        DEFAULT_SWITCH_MODES = {'modulated': {}, 'spec': {}, 'calib': {}}
+        DEFAULT_SWITCH_MODES = OrderedDict({'default': {}})
         self.add_parameter(
             'switch_modes', parameter_class=ManualParameter,
             initial_value=DEFAULT_SWITCH_MODES, vals=vals.Dict(),
@@ -202,50 +188,94 @@ class MeasurementObject(Instrument):
             "A dictionary whose keys are identifiers of switch modes and "
             "whose values are dicts understood by the set_switch method of "
             "the SwitchControls instrument specified in the parameter "
-            "instr_switch. The keys must include 'modulated' (for routing "
-            "the upconverted IF signal to the experiment output of the "
-            "upconversion board, used for all experiments that do not "
-            "specify a different mode), 'spec' (for routing the LO input to "
-            "the experiment output of the upconversion board, used for "
-            "qubit spectroscopy), and 'calib' (for routing the upconverted "
-            "IF signal to the calibration output of upconversion board, "
-            "used for mixer calibration). The keys can include 'no_drive' "
-            "(to replace the 'modulated' setting in case of measurements "
-            "without drive signal, i.e., when calling qb.prepare with "
-            "drive=None) as well as additional custom modes (to be used in "
-            "manual calls to set_switch).")
+            "instr_switch.")
+
+    def _get_operations(self):
+        return self._operations
+
+    def add_operation(self, operation_name):
+        self._operations[operation_name] = {}
+
+    def add_pulse_parameter(self,
+                            operation_name,
+                            parameter_name,
+                            argument_name,
+                            initial_value=None,
+                            vals=vals.Numbers(),
+                            **kwargs):
+        """
+        Add a pulse parameter to the measurement object.
+
+        Args:
+            operation_name (str): The operation of which this parameter is an
+                argument. e.g. mw_control or CZ
+            parameter_name (str): Name of the parameter
+            argument_name  (str): Name of the arugment as used in the sequencer
+            **kwargs get passed to the add_parameter function
+        Raises:
+            KeyError: if this instrument already has a parameter with this
+                name.
+        """
+        if parameter_name in self.parameters:
+            raise KeyError(
+                'Duplicate parameter name {}'.format(parameter_name))
+
+        if operation_name in self.operations().keys():
+            self._operations[operation_name][argument_name] = parameter_name
+        else:
+            raise KeyError(
+                'Unknown operation {}, add '.format(operation_name) +
+                'first using add operation')
+
+        self.add_parameter(parameter_name,
+                           initial_value=initial_value,
+                           vals=vals,
+                           parameter_class=ManualParameter, **kwargs)
+
+        # for use in RemoteInstruments to add parameters to the server
+        # we return the info they need to construct their proxy
+        return
+
+    def get_acq_weights_type(self):
+        """Returns the value of acq_weights_type after resolving alias names
+
+        Alias names are specified in self._acq_weights_type_aliases.
+        """
+        wt = self.acq_weights_type()
+        return self._acq_weights_type_aliases.get(wt, wt)
 
     def get_acq_int_channels(self, n_channels=None):
-        """Get a list of tuples with the qubit's integration channels.
+        """Get a list of tuples with the integration channels.
 
         Args:
             n_channels (int): number of integration channels; if this is None,
-                it will be chosen as follows:
-                2 for ro_weights_type in ['SSB', 'DSB', 'DSB2',
-                    'optimal_qutrit', 'manual']
-                1 otherwise (in particular for ro_weights_type in
-                    ['optimal', 'square_rot'])
+                it will be chosen as follows (after resolving aliases according
+                to self._acq_weights_type_aliases):
+                - 2 for acq_weights_type in ['SSB', 'DSB', 'DSB2',
+                    'custom_2D', 'manual']
+                - 1 otherwise (in particular for acq_weights_type in
+                    ['custom', 'square_rot'])
 
         Returns
             list with n_channels tuples, where the first entry in each tuple is
             the acq_unit and the second is an integration channel index
         """
         if n_channels is None:
-            n_channels = 2 if (self.acq_weights_type() in [
-                'SSB', 'DSB', 'DSB2', 'optimal_qutrit', 'manual']
+            n_channels = 2 if (self.get_acq_weights_type() in [
+                'SSB', 'DSB', 'DSB2', 'custom_2D', 'manual']
                                and self.acq_Q_channel() is not None) else 1
         return [(self.acq_unit(), self.acq_I_channel()),
                 (self.acq_unit(), self.acq_Q_channel())][:n_channels]
 
     def get_acq_inp_channels(self):
-        """Get a list of tuples with the qubit's acquisition input channels.
+        """Get a list of tuples with the acquisition input channels.
 
         For now, this method assumes that all quadratures available on the
         acquisition unit should be recorded, i.e., two for devices that
         provide I&Q signals, and one otherwise.
 
-        TODO: In the future, a parameter could be added to the qubit object
-            to allow recording only one out of two available quadratures.
+        TODO: In the future, a parameter could be added to the measurement
+        object to allow recording only one out of two available quadratures.
 
         Returns
             list of tuples, where the first entry in each tuple is
@@ -257,8 +287,8 @@ class MeasurementObject(Instrument):
     def get_ro_lo_freq(self):
         """Returns the required local oscillator frequency for readout pulses
 
-        The RO LO freq is calculated from the ro_mod_freq (intermediate
-        frequency) and the ro_freq stored in the qubit object.
+        The RO LO freq is calculated from self.ro_mod_freq (intermediate
+        frequency) and self.ro_freq.
         """
         # in case of multichromatic readout, take first ro freq, else just
         # wrap the frequency in a list and take the first
@@ -272,30 +302,18 @@ class MeasurementObject(Instrument):
             ro_mod_freq = self.ro_mod_freq()
         return ro_freq[0] - ro_mod_freq[0]
 
-    def prepare(self, drive='timedomain', switch='default'):
-        """Prepare instruments for a measurement involving this qubit.
+    def prepare(self, switch='modulated'):
+        """Prepare instruments for a measurement involving this measurement
+        object.
 
         The preparation includes:
-        - call configure_offsets
         - configure readout local oscillators
-        - configure qubit drive local oscillator
-        - call update_detector_functions
         - call set_readout_weights
         - set switches to the mode required for the measurement
 
         Args:
-            drive (str, None): the kind of drive to be applied, which can be
-                None (no drive), 'continuous_spec' (continuous spectroscopy),
-                'continuous_spec_modulated' (continuous spectroscopy using
-                the modulated configuation of the switch),
-                'pulsed_spec' (pulsed spectroscopy), or the default
-                'timedomain' (AWG-generated signal upconverted by the mixer)
-            switch (str): the required switch mode. Can be a switch mode
-                understood by set_switch or the default value 'default', in
-                which case the switch mode is determined based on the kind
-                of drive ('spec' for continuous/pulsed spectroscopy w/o modulated;
-                'no_drive' if drive is None and a switch mode 'no_drive' is
-                configured for this qubit; 'modulated' in all other cases).
+            switch (str): the required switch mode, see the docstring of
+            switch_modes
         """
         self.configure_mod_freqs()
         ro_lo = self.instr_ro_lo
@@ -304,7 +322,11 @@ class MeasurementObject(Instrument):
         ro_lo_freq = self.get_ro_lo_freq()
 
         if ro_lo() is not None:  # configure external LO
-            ro_lo.get_instr().pulsemod_state('Off')
+            if self.ro_Q_channel() is not None:
+                # We are on a setup that generates RO pulses by upconverting
+                # IQ signals with a continuously running LO, so we switch off
+                # gating of the MWG.
+                ro_lo.get_instr().pulsemod_state('Off')
             ro_lo.get_instr().power(self.ro_lo_power())
             ro_lo.get_instr().frequency(ro_lo_freq)
             ro_lo.get_instr().on()
@@ -315,26 +337,17 @@ class MeasurementObject(Instrument):
         # other preparations
         self.set_readout_weights()
         # set switches to the mode required for the measurement
-        # See the docstring of switch_modes for an explanation of the
-        # following modes.
-        if switch == 'default':
-            if drive is None and 'no_drive' in self.switch_modes():
-                # use special mode for measurements without drive if that
-                # mode is defined
-                self.set_switch('no_drive')
-            else:
-                # use 'spec' for qubit spectroscopy measurements
-                # (continuous_spec and pulsed_spec) and 'modulated' otherwise
-                self.set_switch(
-                    'spec' if drive is not None and drive.endswith('_spec')
-                    else 'modulated')
-        else:
-            # switch mode was explicitly provided by the caller (e.g.,
-            # for mixer calib)
-            self.set_switch(switch)
+        self.set_switch(switch)
+
+    def _get_custom_readout_weights(self):
+        return dict(
+            weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
+            weights_Q=[self.acq_weights_Q(), self.acq_weights_Q2()],
+        )
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
-        """Set acquisition weights for this qubit in the acquisition device.
+        """Set acquisition weights for this measurement object in the
+        acquisition device.
 
         Depending on the weights type, some of the following qcodes
         parameters can have an influence on the programmed weigths (see the
@@ -356,34 +369,37 @@ class MeasurementObject(Instrument):
                 parameter ro_mod_freq is used.
         """
         if weights_type is None:
-            weights_type = self.acq_weights_type()
+            weights_type = self.get_acq_weights_type()
         if f_mod is None:
             f_mod = self.ro_mod_freq()
         self.instr_acq.get_instr().acquisition_set_weights(
             channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
-            # weights_I=[self.acq_weights_I(), self.acq_weights_I2()],
-            # weights_Q=[self.acq_weights_Q(), self.acq_weights_Q2()],
+            **self._get_custom_readout_weights()
         )
 
-    def set_switch(self, switch_mode='modulated'):
+    def set_switch(self, switch_mode=None):
         """
         Sets the switch control (given in the qcodes parameter instr_switch)
         to the given mode.
 
         :param switch_mode: (str) the name of a switch mode that is defined in
-            the qcodes parameter switch_modes of this qubit (default:
-            'modulated'). See the docstring of switch_modes for more details.
+            the qcodes parameter self.switch_modes. If None, uses the first
+            entry of self.switch_modes.
+            See the docstring of switch_modes for more details.
         """
         if self.instr_switch() is None:
             return
+        if switch_mode is None:
+            switch_mode = list(self.switch_modes())[0]
         switch = self.instr_switch.get_instr()
         mode = self.switch_modes().get(switch_mode, None)
         if mode is None:
             log.warning(f'Switch mode {switch_mode} not configured for '
                         f'{self.name}.')
-        switch.set_switch(mode)
+        else:
+            switch.set_switch(mode)
 
     def get_operation_dict(self, operation_dict=None):
         self.configure_mod_freqs()
@@ -410,7 +426,7 @@ class MeasurementObject(Instrument):
             op['op_code'] = code
         return operation_dict
 
-    def swf_ro_freq_lo(self):
+    def swf_ro_freq_lo(self, bare=False):
         """Create a sweep function for sweeping the readout frequency.
 
         The sweep is implemented as an LO sweep in case of an acquisition
@@ -419,17 +435,28 @@ class MeasurementObject(Instrument):
         internal LO (note that it might be an IF sweep or a combined LO and
         IF sweep in that case.)
 
+        Args:
+            bare (bool): return the bare LO freq swf without any automatic
+                offsets applied. Defaults to False.
+
         Returns: the Sweep_function object
         """
         if self.instr_ro_lo() is not None:  # external LO
-            return swf.Offset_Sweep(
-                self.instr_ro_lo.get_instr().frequency,
-                -self.ro_mod_freq(),
-                name='Readout frequency',
-                parameter_name='Readout frequency')
+            if bare:
+                return swf.mc_parameter_wrapper.wrap_par_to_swf(
+                    self.instr_ro_lo.get_instr().frequency)
+            else:
+                return swf.Offset_Sweep(
+                    self.instr_ro_lo.get_instr().frequency,
+                    -self.ro_mod_freq(),
+                    name='Readout frequency',
+                    parameter_name='Readout frequency')
         else:  # no external LO
             return self.instr_acq.get_instr().get_lo_sweep_function(
-                self.acq_unit(), self.ro_mod_freq())
+                self.acq_unit(),
+                0 if (self.ro_fixed_lo_freq() or bare) else self.ro_mod_freq(),
+                get_closest_lo_freq=(lambda f, s=self:
+                                     s.get_closest_lo_freq(f, operation='ro')))
 
     def swf_ro_mod_freq(self):
         return swf.Offset_Sweep(
@@ -448,8 +475,8 @@ class MeasurementObject(Instrument):
                 - None: no restrictions on the LO freq
                 - float: LO fixed to a single freq
                 - str: (operation must be provided in this case)
-                    - 'default' (default value): use the setting in the qubit
-                      object.
+                    - 'default' (default value): use the setting in the
+                        measurement object
                     - a qb name to indicated that the LO must be fixed to be
                       the same as for that qb.
                 - dict with (a subset of) the following keys:
@@ -572,21 +599,58 @@ class MeasurementObject(Instrument):
 
     def configure_pulsar(self):
         """
-        Configure qubit-specific settings in pulsar:
-        - Reset modulation frequency and amplitude scaling
-        - set AWG channel DC offsets and switch sigouts on,
-           see configure_offsets
-        - set flux distortion, see set_distortion_in_pulsar
+        Configure MeasurementObject-specific settings in pulsar:
+        - Set AWG channel DC offsets and switch sigouts on,
+        see configure_offsets
         """
-        pulsar = self.instr_pulsar.get_instr()
-        # make sure that some settings are reset to their default values
-        for quad in ['I', 'Q']:
-            ch = self.get(f'ge_{quad}_channel')
-            if f'{ch}_mod_freq' in pulsar.parameters:
-                pulsar.parameters[f'{ch}_mod_freq'](None)
-            if f'{ch}_amplitude_scaling' in pulsar.parameters:
-                pulsar.parameters[f'{ch}_amplitude_scaling'](1)
         # set offsets and turn on AWG outputs
         self.configure_offsets()
-        # set flux distortion
-        self.set_distortion_in_pulsar()
+
+    def configure_offsets(self, set_ro_offsets=True, offset_list=None):
+        """
+        Set AWG channel DC offsets and switch sigouts on.
+
+        :param set_ro_offsets: whether to set offsets for RO channels
+        :param offset_list: additional offsets to set
+        """
+        pulsar = self.instr_pulsar.get_instr()
+        if offset_list is None:
+            offset_list = []
+
+        if set_ro_offsets:
+            offset_list += [('ro_I_channel', 'ro_I_offset'),
+                            ('ro_Q_channel', 'ro_Q_offset')]
+
+        for channel_par, offset_par in offset_list:
+            ch = self.get(channel_par)
+            if ch is not None and ch + '_offset' in pulsar.parameters:
+                pulsar.set(ch + '_offset', self.get(offset_par))
+                pulsar.sigout_on(ch)
+
+    def link_param_to_operation(self, operation_name, parameter_name,
+                                argument_name):
+        """
+        Links an existing param to an operation for use in the operation dict.
+
+        An example of where to use this would be the flux_channel.
+        Only one parameter is specified but it is relevant for multiple flux
+        pulses. You don't want a different parameter that specifies the channel
+        for the iSWAP and the CZ gate. This can be solved by linking them to
+        your operation.
+
+        Args:
+            operation_name (str): The operation of which this parameter is an
+                argument. e.g. mw_control or CZ
+            parameter_name (str): Name of the parameter
+            argument_name  (str): Name of the arugment as used in the sequencer
+            **kwargs get passed to the add_parameter function
+        """
+        if parameter_name not in self.parameters:
+            raise KeyError('Parameter {} needs to be added first'.format(
+                parameter_name))
+
+        if operation_name in self.operations().keys():
+            self._operations[operation_name][argument_name] = parameter_name
+        else:
+            raise KeyError('Unknown operation {}, add '.format(operation_name) +
+                           'first using add operation')
