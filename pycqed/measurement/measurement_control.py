@@ -630,9 +630,9 @@ class MeasurementControl(Instrument):
                 x = np.atleast_2d(x)
                 sweep_function.set_parameter(x)
                 tmp_df_acq_data_len_scaling = self.detector_function.acq_data_len_scaling
-                self.detector_function.acq_data_len_scaling = 1
+                self.detector_function.set_attr_for_all('acq_data_len_scaling', 1)
                 self.detector_function.prepare(x)
-                self.detector_function.acq_data_len_scaling = tmp_df_acq_data_len_scaling
+                self.detector_function.set_attr_for_all('acq_data_len_scaling', tmp_df_acq_data_len_scaling)
                 break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function

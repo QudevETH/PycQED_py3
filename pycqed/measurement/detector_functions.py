@@ -1004,6 +1004,10 @@ class MultiPollDetector(PollDetector):
             return [self.AWG.master_awg] + self.AWG.awgs
         return [self.AWG]
 
+    def set_attr_for_all(self, attr_name, value):
+        for det in self.detectors:
+            setattr(det, attr_name, value)
+
     def get_values(self):
         """
         Get raw acquisition data from poll_data and process it by calling
