@@ -2067,6 +2067,9 @@ class ThermalPopulation(Rabi):
     amplitudes of the two Rabi oscillations, one can infer the thermal e
     state population.
 
+    Args:
+        amps (list): Amplitudes of the ef drive pulse
+
     TODO: extend to states other than the e state
     """
     default_experiment_name = 'Thermal Population'
@@ -2090,7 +2093,9 @@ class ThermalPopulation(Rabi):
                 param_name=f'{qbn}_amplitude_ge',
                 values=np.array([0.0, ge_amp]),
                 unit='V',
-                label='amplitude ge')
+                label='amplitude ge',
+                dimension=1,
+            )
         return super().update_sweep_points()
 
     def sweep_block(self, qb, sweep_points, **kw):
