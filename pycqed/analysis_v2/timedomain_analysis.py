@@ -1222,6 +1222,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             self.channel_map, self.cal_states_dict_for_rotation,
                             self.data_to_fit, data_mostly_g=data_mostly_g,
                             column_PCA=column_PCA))
+
+                # The 2D array returned by the rotation routines above is
+                # transposed with repect to the raw data array.
+                # Here we transpose the former to match the latter.
+                pdd = self.proc_data_dict['projected_data_dict'][qbn]
+                for k, v in pdd.items():
+                    if isinstance(v, dict):
+                        for kk, vv in v.items():
+                            pdd[k][kk] = vv.T
+                    else:
+                        pdd[k] = v.T
             else:
                 if self.rotation_type[qbn].lower() == 'cal_states' and \
                         len(cal_states_dict) == 3:
@@ -2543,7 +2554,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'fig_id': fig_name + '_' + pn,
                         'xvals': xvals,
                         'yvals': ssp,
-                        'zvals': yvals,
+                        'zvals': yvals.T,
                         'xlabel': xlabel,
                         'xunit': xunit,
                         'ylabel': ylabel,
