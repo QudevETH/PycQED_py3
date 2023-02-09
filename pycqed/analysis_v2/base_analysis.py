@@ -382,6 +382,10 @@ class BaseDataAnalysis(object):
         Returns an attribute "key" of the group "Experimental Data"
         in the hdf5 datafile.
         '''
+        # import numpy array to allow recreation of
+        # numpy arrays from strings in eval() below.
+        from numpy import array
+
         s = group.attrs[param_name]
         # converts byte type to string because of h5py datasaving
         if isinstance(s, bytes):
