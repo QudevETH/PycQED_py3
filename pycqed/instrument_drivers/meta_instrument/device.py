@@ -826,6 +826,34 @@ class Device(Instrument):
         else:
             return fig
 
+    def __getattr__(self, item):
+        try:
+            return super().__getattr__(item)
+        except AttributeError as e:
+            # If self does not have an attribute, try to fetch instead all
+            # parameters with the same name in the qubits
+            # Example:
+            # dev.ge_freq() ---> {'qb1': 6.02e9, ...}
+            qbs_with_attr = [qb for qb in self.qubits if hasattr(qb, item)]
+            if qbs_with_attr:
+                def func(p=None, whole_dict=False):
+                    if p is None:
+                        return {qb.name: qb.__getattr__(item)() for qb in
+                                qbs_with_attr}
+                    elif isinstance(p, dict):
+                        if whole_dict:
+                            [qb.__getattr__(item)(p)
+                             for qb in qbs_with_attr]
+                        else:
+                            [qb.__getattr__(item)(p[qb.name])
+                             for qb in qbs_with_attr if qb.name in p]
+                    else:
+                        [qb.__getattr__(item)(p)
+                            for qb in qbs_with_attr]
+                return func
+            else:
+                raise e
+
 
 class RelativeDelayGraph:
     """
