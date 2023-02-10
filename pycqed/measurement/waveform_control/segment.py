@@ -1405,7 +1405,7 @@ class Segment:
                         # marker channels have to be 1 or 0
                         elif self.pulsar.get('{}_type'.format(c)) == 'marker':
                             wfs[codeword][c] = (wfs[codeword][c] > 0)\
-                                .astype(np.int)
+                                .astype(int)
 
                 # save the waveforms in the dictionary
                 for codeword in wfs:

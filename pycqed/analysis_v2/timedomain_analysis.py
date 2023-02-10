@@ -3064,7 +3064,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
             Fs_corr.append(qtp.Qobj(np.diag(new_op)))
             assign_corr.append(np.diag(F.full()))
         pauli_Fs = tomo.rotated_measurement_operators(rotations, Fs_corr)
-        pauli_Fs = list(itertools.chain(*np.array(pauli_Fs, dtype=np.object).T))
+        pauli_Fs = list(itertools.chain(*np.array(pauli_Fs, dtype=object).T))
 
         mus = self.proc_data_dict['meas_results']
         pauli_mus = np.reshape(mus,[-1,2**nr_qubits])
@@ -3433,7 +3433,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
         pdd['data_reshaped_no_cp'] = data_reshaped_no_cp
 
-        pdd['mask'] = {qb: np.ones(nr_amps, dtype=np.bool)
+        pdd['mask'] = {qb: np.ones(nr_amps, dtype=bool)
                            for qb in self.qb_names}
 
     def prepare_fitting(self):
@@ -3592,7 +3592,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 pdd['data_to_fit'][qb][
                 len(pdd['data_to_fit'][qb])-nr_cp:]) for qb in self.qb_names}
 
-        pdd['mask'] = {qb: np.ones(nr_amps, dtype=np.bool)
+        pdd['mask'] = {qb: np.ones(nr_amps, dtype=bool)
                            for qb in self.qb_names}
 
     def prepare_fitting(self):
