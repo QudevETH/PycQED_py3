@@ -2068,7 +2068,9 @@ class ThermalPopulation(Rabi):
     state population.
 
     Args:
-        amps (list): Amplitudes of the ef drive pulse
+        amps (list): Amplitude sweep points, see docstring of the parent class.
+        In this QuantumExperiment they are used as amplitude of the X180_ef
+        pulse, while the amplitude of the X180_ge pulse is set by qb.ge_amp180.
 
     TODO: extend to states other than the e state
     """
