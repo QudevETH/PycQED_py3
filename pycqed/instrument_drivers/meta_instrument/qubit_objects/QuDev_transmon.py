@@ -669,7 +669,7 @@ class QuDev_transmon(MeasurementObject):
 
         if frequency is None:
             frequency = self.ge_freq()
-        if model == 'transmon_res' and transition not in ['ge']:
+        if model != 'transmon_res' and transition not in ['ge']:
             raise NotImplementedError(
                 'Currently, only ge transition is implemented.')
         elif transition not in ['ge', 'ef', 'gf']:
