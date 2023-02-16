@@ -205,10 +205,11 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         self.sweep_points = sp_mod.SweepPoints([{
             p: ([vs[i] for vs in vals], '', p)
             for i, p in enumerate(self.params)}])
-        self.sequence, _ = self.circuit_builder.sweep_n_dim(
+        seqs, _ = self.circuit_builder.sweep_n_dim(
             sweep_points=self.sweep_points, body_block=self.block,
             body_block_func=self.block_func,
             **(getattr(self, 'sweep_kwargs', {})))
+        self.sequence = seqs[0]
         self.upload_sequence()
 
     def configure_upload(self, upload=True, upload_first=False,
