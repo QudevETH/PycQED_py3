@@ -18,7 +18,6 @@ Welcome to PycQED's documentation!
    conventions/docstring
    conventions/git
    writing_documentation
-   gitlab_ci
    glossary
 
 
