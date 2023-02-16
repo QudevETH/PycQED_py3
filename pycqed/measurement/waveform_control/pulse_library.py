@@ -1006,7 +1006,6 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
-            'mirror_pattern': None,
         }
         return params
 
@@ -1052,6 +1051,7 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         return hashlist
 
 
+
 class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
     def __init__(self,
                  I_channel,
@@ -1078,7 +1078,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
                                       buffer_length_start=self.flux_buffer_length_start,
                                       buffer_length_end=self.flux_buffer_length_end,
                                       gaussian_filter_sigma=self.flux_gaussian_filter_sigma,
-                                      mirror_pattern=kw.get("mirror_pattern",
+                                      mirror_pattern=kw.get("flux_mirror_pattern",
                                                             None))
 
     @classmethod
@@ -1095,7 +1095,14 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             'flux_amplitude': 0,
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,
-            'flux_gaussian_filter_sigma': 0.5e-9
+            'flux_gaussian_filter_sigma': 0.5e-9,
+            # Note that the mirror pattern is included in the pulse parameters
+            # to ensure consistency (other flux_* parameters are also stored as
+            # attributes of the Pulse object). However, the value of
+            # self.fp.mirror_pattern (which should be identical to
+            # self.flux_mirror_pattern unless someone messes with it)
+            # is the one used by the code to retrieve the pattern to apply.
+            'flux_mirror_pattern': None,
         }
         return params
 
@@ -1116,6 +1123,16 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             return self.fp.hashables(tstart, channel)
         else:
             return []  # empty list if neither of the conditions is satisfied
+
+    def get_mirror_pulse_obj_and_pattern(self):
+        # For flux pulse assisted readout, we currently return the mirror pattern
+        # of the flux pulse.
+        # FIXME: note that this prevents the user to enable mirror pattern on
+        #  the readout drive pulse at the moment when using this pulse type.
+        #  A better long term solution consists in refactoring the Pulse
+        #  abstraction layer in which a clearer separation
+        #  is made between pulses and operations (which can contain several pulses).
+        return self.fp.get_mirror_pulse_obj_and_pattern()
 
 
 class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
