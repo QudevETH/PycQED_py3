@@ -203,9 +203,8 @@ def load_settings(instrument,
             print('Folder used: {}'.format(folder))
 
         try:
-            filepath = a_tools.measurement_filename(folder)
-            f = h5py.File(filepath, 'r')
-            sets_group = f['Instrument settings']
+            f = a_tools.open_config_file(folder)
+            sets_group = f
             ins_group = sets_group[instrument_name]
 
             if verbose:
@@ -232,7 +231,7 @@ def load_settings(instrument,
             if not update:
                 params_dict = {parameter : value for parameter, value in \
                         params_to_set}
-                f.close()
+                a_tools.close_files([f])
                 return params_dict
 
             for parameter, value in params_to_set:
@@ -280,12 +279,12 @@ def load_settings(instrument,
                                                   instrument_name))
 
             success = True
-            f.close()
+            a_tools.close_files([f])
         except Exception as e:
             logging.warning(e)
             success = False
             try:
-                f.close()
+                a_tools.close_files([f])
             except:
                 pass
             if timestamp is None and not folder_specified:

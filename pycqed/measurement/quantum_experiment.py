@@ -2,7 +2,7 @@ import traceback
 
 import time
 import numpy as np
-from pycqed.analysis_v3 import helper_functions
+from pycqed.analysis import analysis_toolbox as a_tools
 
 from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.utilities.general import temporary_value
@@ -802,8 +802,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     def save_timers(self, quantum_experiment=True, sequence=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
             return
-        data_file = helper_functions.open_hdf_file(self.timestamp,
-                                                   filepath=filepath, mode="r+")
+        data_file = a_tools.open_hdf_file(self.timestamp,
+                                          filepath=filepath, mode="r+")
         try:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:

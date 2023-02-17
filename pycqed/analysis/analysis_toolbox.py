@@ -298,85 +298,47 @@ def measurement_filename(directory=os.getcwd(), file_id=None, ext='hdf5', **kw):
         return None
 
 
-def get_instr_setting_value_from_file(file_path, instr_name, param_name,
-                                      h5mode='r'):
-    data_file = h5py.File(measurement_filename(file_path), h5mode)
-    try:
-        instr_settings = data_file['Instrument settings']
-        if instr_name in list(instr_settings.keys()):
-            if param_name in list(instr_settings[instr_name].attrs):
-                param_val = eval(instr_settings[instr_name].attrs[
-                                           param_name])
-            else:
-                raise KeyError(f'"{param_name}" does not exist for '
-                               f'instrument "{instr_name}"')
-        else:
-            raise KeyError(f'"{instr_name}" does not exist in '
-                           f'"Instrument settings."')
-        data_file.close()
-        return param_val
-    except Exception as e:
-        data_file.close()
-        raise e
-
-
-def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
+def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
+                  file_id=None, **kw):
     """
-    Construct the qubit channel map based on an HDF file.
+    Opens an HDF file.
 
     Args:
-        qb_names (list): list of qubit names
-        file_path (str): path to the HDF file
-        value_names (list): list of detector function value names
-        h5mode (str): HDF opening mode
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        folder (str): path to file location without the filename + extension
+        filepath (str): path to HDF file, including the filename + extension.
+            Overwrites timestamp and folder.
+        mode (str): mode in which to open the file ('r' for read,
+            'w' for write, 'r+' for read/write).
+        file_id (str): suffix of the file name
+        **kw: keyword arguments passed to measurement_filename,
+            see docstring there for acceptable input parameters
 
-    Returns
-        qubit channel map as a dict with qubit names as keys and the list of
-        value names corresponding to each qubit as values
+    Returns:
+        open HDF file
     """
-    data_file = h5py.File(measurement_filename(file_path), h5mode)
-    try:
-        instr_settings = data_file['Instrument settings']
-        channel_map = {}
+    if filepath is None:
+        if folder is None:
+            assert timestamp is not None
+            folder = get_folder(timestamp)
+        filepath = measurement_filename(folder, file_id=file_id, **kw)
+    return h5py.File(filepath, mode)
 
-        if 'raw' in value_names[0]:
-            ro_type = 'raw w'
-        elif 'digitized' in value_names[0]:
-            ro_type = 'digitized w'
-        elif 'lin_trans' in value_names[0]:
-            ro_type = 'lin_trans w'
-        else:
-            ro_type = 'w'
 
-        for qbn in qb_names:
-            try:
-                uhf = eval(instr_settings[qbn].attrs['instr_acq'])
-            except KeyError:
-                uhf = eval(instr_settings[qbn].attrs['instr_uhf'])
-            acq_unit = eval(instr_settings[qbn].attrs.get('acq_unit', 'None'))
-            qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
-            ro_acq_weight_type = eval(instr_settings[qbn].attrs[
-                                          'acq_weights_type'])
-            if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'custom_2D',
-                                      'optimal_qutrit']:
-                qbchs += [str(eval(instr_settings[qbn].attrs['acq_Q_channel']))]
-            if acq_unit is None:
-                vn_string = uhf+'_'+ro_type
-            else:
-                vn_string = uhf + '_' + str(acq_unit) + '_' + ro_type
-            channel_map[qbn] = [vn for vn in value_names for nr in qbchs
-                                if vn_string+nr in vn]
+def open_config_file(timestamp=None, folder=None, filepath=None, mode='r',
+                     file_id=None, **kw):
+    file = open_hdf_file(timestamp, folder, filepath, mode, file_id, **kw)
+    return file['Instrument settings']
 
-        all_values_empty = np.all([len(v) == 0 for v in channel_map.values()])
-        if len(channel_map) == 0 or all_values_empty:
-            raise ValueError('Did not find any channels. '
-                             'qb_channel_map is empty.')
-        data_file.close()
-        return channel_map
 
-    except Exception as e:
-        data_file.close()
-        raise e
+def close_files(files):
+    # currently only got HDFs
+    for file in files:
+        try:
+            file.close()
+        except AttributeError:
+            # file is an instance of h5py._hl.group.Group
+            file.file.close()
 
 
 def get_plot_title_from_folder(folder):
@@ -463,7 +425,7 @@ def _compare_instrument_settings_groups(sets_a, sets_b, name_a, name_b,
 
 def compare_instrument_settings(a, b, folder=None, instruments='all',
                                 output='print'):
-    """Compare instrument settings from two hdf files.
+    """Compare instrument settings from two config files.
 
     Args:
         a (str, obj): first hdf file identified by a timestamp or by giving an
@@ -483,33 +445,32 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
     Returns:
         None or the results as str or dict, see parameter of arg output
     """
-    h5mode = 'r'
     files_to_close = []
     try:
         if isinstance(a, str):
-            h5filepath = measurement_filename(get_folder(a, folder=folder))
-            file_a = h5py.File(h5filepath, h5mode)
+            file_a = open_config_file(folder=get_folder(a, folder=folder))
             files_to_close += [file_a]
         else:
-            file_a = a.data_file
+            file_a = a.config_file
             a = getattr(a, 'timestamp', 'file a').replace('/', '_')
         if isinstance(b, str):
-            h5filepath = measurement_filename(get_folder(b, folder=folder))
-            file_b = h5py.File(h5filepath, h5mode)
+            file_b = open_config_file(folder=get_folder(b, folder=folder))
             files_to_close += [file_b]
         else:
-            file_b = b.data_file
+            file_b = b.config_file
             b = getattr(b, 'timestamp', 'file b').replace('/', '_')
-        sets_a = file_a['Instrument settings']
-        sets_b = file_b['Instrument settings']
+
+        sets_a = file_a
+        sets_b = file_b
 
         msg, diff = _compare_instrument_settings_groups(
             sets_a, sets_b, a, b, instruments=instruments,
             verbose=(output == 'print'))
+        close_files(files_to_close)
     except Exception:
-        for f in files_to_close:
-            f.close()
+        close_files(files_to_close)
         raise
+
     if output == 'str':
         return msg
     elif output == 'dict':

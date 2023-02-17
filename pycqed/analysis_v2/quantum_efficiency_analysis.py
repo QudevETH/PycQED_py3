@@ -38,8 +38,8 @@ class QuantumEfficiencyAnalysisTWPA(ba.BaseDataAnalysis):
                  options_dict: dict = None,
                  extract_only: bool = False, auto: bool = True,
                  close_figs: bool = True, do_fitting: bool = True,
-                 twpa_pump_freq_key: str = 'Instrument settings.TWPA_Pump.frequency',
-                 twpa_pump_power_key: str = 'Instrument settings.TWPA_Pump.power',
+                 twpa_pump_freq_key: str = 'TWPA_Pump.frequency',
+                 twpa_pump_power_key: str = 'TWPA_Pump.power',
                  use_prefit: bool = False):
         '''
 
@@ -57,8 +57,8 @@ class QuantumEfficiencyAnalysisTWPA(ba.BaseDataAnalysis):
         :param label_ramsey: the label that was used to name the ramsey measurements
         :param label_ssro: the label that was used to name the SSRO measurements
         :param label: (Optional) common label that was used to name all measurements
-        :param twpa_pump_freq_key: key for the TWPA Pump Frequency, e.g. 'Instrument settings.TWPA_Pump.frequency'
-        :param twpa_pump_power_key: key for the TWPA Pump Power, e.g. 'Instrument settings.TWPA_Pump.power'
+        :param twpa_pump_freq_key: key for the TWPA Pump Frequency, e.g. 'TWPA_Pump.frequency'
+        :param twpa_pump_power_key: key for the TWPA Pump Power, e.g. 'TWPA_Pump.power'
         '''
         super().__init__(t_start=t_start, t_stop=t_stop,
                          label=label,
@@ -584,7 +584,7 @@ class RamseyAnalysisSingleScans(RamseyAnalysis):
                          close_figs=close_figs,
                          extract_only=extract_only
                          )
-        sa = self.options_dict.get('scaling_amp_key_ramsey', 'Instrument settings.RO_lutman.M_amp_R0')
+        sa = self.options_dict.get('scaling_amp_key_ramsey', 'RO_lutman.M_amp_R0')
         rak = self.options_dict.get('ramsey_amplitude_key', 'Analysis.Fitted Params lin_trans w0.amplitude.value')
         rap = self.options_dict.get('ramsey_phase_key', 'Analysis.Fitted Params lin_trans w0.phase.value')
         self.params_dict = {'scaling_amp': sa,
@@ -755,7 +755,7 @@ class SSROAnalysisSingleScans(SSROAnalysis):
                          extract_only=extract_only,
                          )
 
-        sa = self.options_dict.get('scaling_amp_key_ssro', 'Instrument settings.RO_lutman.M_amp_R0')
+        sa = self.options_dict.get('scaling_amp_key_ssro', 'RO_lutman.M_amp_R0')
 
         self.params_dict = {'scaling_amp': sa,
                             'SNR': 'Analysis.SSRO_Fidelity.SNR',

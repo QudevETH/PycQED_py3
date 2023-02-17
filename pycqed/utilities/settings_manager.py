@@ -4,6 +4,7 @@
 # for more details.
 from __future__ import annotations
 
+from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.gui.dict_viewer as dict_viewer
 from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
@@ -409,8 +410,8 @@ class Loader:
         """
         if self.filepath is not None:
             return self.filepath
-        folder_dir = a_tools.get_folder(self.timestamp, suppress_printing=False)
-        self.filepath = a_tools.measurement_filename(folder_dir,
+        self.folder = a_tools.get_folder(self.timestamp, suppress_printing=False)
+        self.filepath = a_tools.measurement_filename(self.folder,
                                                      ext=self.extension)
         return self.filepath
 
@@ -511,15 +512,14 @@ class HDF5Loader(Loader):
         inst = Instrument(inst_name)
         # load parameters
         for param_name in list(inst_group.attrs):
-            param_value = BaseDataAnalysis.get_hdf_datafile_param_value(
-                inst_group, param_name)
+            param_value = hlp_mod.decode_parameter_value(
+                inst_group.attrs[param_name])
             par = Parameter(param_name, param_value)
             inst.add_parameter(par)
         # load class name
         if '__class__' in inst_group:
             inst.add_classname(
-                BaseDataAnalysis.get_hdf_datafile_param_value(
-                    inst_group, '__class__'))
+                hlp_mod.decode_parameter_value(inst_group.attrs['__class__']))
         # load submodules
         for submod_name, submod_group in list(inst_group.items()):
             submod_inst = HDF5Loader.load_instrument(submod_name, submod_group)
@@ -532,17 +532,16 @@ class HDF5Loader(Loader):
 
     def get_station(self):
         """
-        Loads settings from an hdf5 file into a station.
+        Loads settings from a config file into a station.
+
         """
-        import h5py
+        config_file = a_tools.open_config_file(folder=self.folder)
+        station = Station(timestamp=self.timestamp)
+        for inst_name, inst_group in list(config_file.items()):
+            inst = self.load_instrument(inst_name, inst_group)
+            station.add_component(inst)
+        a_tools.close_files([config_file])
 
-        with h5py.File(self.filepath, self.h5mode) as data_file:
-            station = Station(timestamp=self.timestamp)
-            instr_settings = data_file['Instrument settings']
-
-            for inst_name, inst_group in list(instr_settings.items()):
-                inst = self.load_instrument(inst_name, inst_group)
-                station.add_component(inst)
         return station
 
 
