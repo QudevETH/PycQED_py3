@@ -1286,6 +1286,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # rotate_and_normalize_data_IQ and rotate_and_normalize_data_1ch
             # return the qubit population corresponding to the highest cal state
             # (f>e>g). So the main_cs must be higher than the other_cs.
+            # For example if the user passes g in data_to_fit main_cs=g
+            # (main_cs just gets copied from data_to_fit). The bit of code here
+            # swaps main_cs and other_cs only locally in this, so that main_cs
+            # becomes e (or f), while data_to_fit stays g. Like this, we respect
+            # the user's choice (by keeping data_to_fit) while handling the
+            # rotation correctly (by changing the main_cs).
             # Below, states will have the order f, e, g because
             # cal_idxs_dict[qb_name] was ordered as g, e, f in
             # get_cal_states_dict_for_rotation
@@ -1471,15 +1477,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
             # rotate_and_normalize_data_IQ and rotate_and_normalize_data_1ch
             # return the qubit population corresponding to the highest cal state
-            # (f>e>g). So the main_cs must be higher than the other_cs.
-            # Below, states will have the order f, e, g because
-            # cal_idxs_dict[qb_name] was ordered as g, e, f in
-            # get_cal_states_dict_for_rotation
+            # (f>e>g). So the main_cs must be higher than the other_cs. See
+            # the comment in rotate_data for a more detailed explanation of the
+            # lines of code below.
             states = list(cal_idxs_dict[qb_name])[::-1]
             probs = [main_cs, other_cs]
-            # sort probs by order pf, pe, pg
             probs.sort(key=lambda p: states.index(p[-1]))
-            # reassign to main_cs, other_cs such that main_cs > other_cs
             main_cs, other_cs = probs[0], probs[1]
 
         meas_res_dict = meas_results_per_qb[qb_name]
