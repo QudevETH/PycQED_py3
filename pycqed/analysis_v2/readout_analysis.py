@@ -1680,7 +1680,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
         for readout_n in range(n_readouts):
             # first result all ground
             for state_n, states_of_qubits in enumerate(observables):
-                mask = np.ones((n_shots//n_readouts), dtype=np.bool)
+                mask = np.ones((n_shots//n_readouts), dtype=bool)
                 # slow qubit is the first in channel_map list
                 for qubit, state in states_of_qubits.items():
                     if isinstance(qubit, tuple):

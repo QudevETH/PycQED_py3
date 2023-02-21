@@ -1104,7 +1104,7 @@ class Segment:
         decides which pulses within a category get mirrored. The mirroring
         is performed by multiplying all pulse parameters that contain
         'amplitude' in their name by -1 (and adding a mirror_correction if
-        it is provided).
+        it is provided), see Pulse.mirror_amplitudes().
 
         mirror_pattern:
         - 'none'/'all': no/all pulses are mirrored
@@ -1129,7 +1129,7 @@ class Segment:
             if pulse_category not in op_counts:
                 op_counts[pulse_category] = 0
             op_counts[pulse_category] += 1
-            pattern = getattr(p.pulse_obj, 'mirror_pattern', None)
+            p_obj, pattern = p.pulse_obj.get_mirror_pulse_obj_and_pattern()
             # interpret string pattern ('none'/'all'/'odd'/'even')
             if pattern is None or pattern == 'none':
                 continue  # do not mirror
@@ -1145,23 +1145,7 @@ class Segment:
                 continue  # do not mirror
             # mirror all parameters that have 'amplitude' in their name
             # (and apply mirror correction if applicable)
-            mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
-            if mirror_correction is None:
-                mirror_correction = {}
-            if "fp" in p.pulse_obj.__dict__:
-                for kk in p.pulse_obj.fp.__dict__:
-                    if 'amplitude' in kk:
-                        amp = - p.pulse_obj.flux_amplitude
-                        if kk in mirror_correction:
-                            amp += mirror_correction[kk]
-                        setattr(p.pulse_obj.fp, kk, amp)
-            else:
-                for k in p.pulse_obj.__dict__:
-                    if 'amplitude' in k:
-                        amp = -getattr(p.pulse_obj, k)
-                        if k in mirror_correction:
-                            amp += mirror_correction[k]
-                        setattr(p.pulse_obj, k, amp)
+            p_obj.mirror_amplitudes()
 
     def resolve_Z_gates(self):
         """
@@ -1405,7 +1389,7 @@ class Segment:
                         # marker channels have to be 1 or 0
                         elif self.pulsar.get('{}_type'.format(c)) == 'marker':
                             wfs[codeword][c] = (wfs[codeword][c] > 0)\
-                                .astype(np.int)
+                                .astype(int)
 
                 # save the waveforms in the dictionary
                 for codeword in wfs:

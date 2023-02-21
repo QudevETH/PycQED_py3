@@ -239,6 +239,39 @@ class Pulse:
         raise NotImplementedError('chan_wf() not implemented for {}'
                                   .format(str(type(self))[1:-1]))
 
+    def mirror_amplitudes(self):
+        """
+        Mirrors (i.e. multiplies by -1) all attributes of the pulse
+        which contain the substring 'amplitude'.
+
+        In case it exists, this function uses self.mirror_correction, a dictionary
+        where keys are pulse attributes (which contain 'amplitude') and
+        values are corrections to be added to all instances of this pulse attribute.
+
+        """
+        mirror_correction = getattr(self, 'mirror_correction', None) or {}
+        for k in self.__dict__:
+            if 'amplitude' in k:
+                amp = -getattr(self, k)
+                if k in mirror_correction:
+                    amp += mirror_correction[k]
+                setattr(self, k, amp)
+
+    def get_mirror_pulse_obj_and_pattern(self):
+        """
+        Returns the pulse object and the mirror pattern if it exist (and None
+        if it does not exist). The mirror pattern is used by
+        Segment.resolve_mirror() to alternate the amplitude of the pulse in
+        the successive occurrences of the pulse in the segment according to the
+        provided pattern.
+        This function may be overwritten by child pulse classes to handle
+        patterns in case several pulses exist in the Pulse object (e.g.  flux
+        pulse assisted readout).
+        Returns:
+            (self, self.mirror_pattern)
+        """
+        return self, getattr(self, 'mirror_pattern', None)
+
     @classmethod
     def pulse_params(cls):
         """

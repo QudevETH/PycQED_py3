@@ -136,7 +136,7 @@ class QuDev_transmon(MeasurementObject):
         self.add_pulse_parameter('RO', 'ro_flux_gaussian_filter_sigma', 'flux_gaussian_filter_sigma',
                                  initial_value=0.5e-9, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_flux_mirror_pattern',
-                                 'mirror_pattern',
+                                 'flux_mirror_pattern',
                                  initial_value=None, vals=vals.Enum(None,
                                                                     "none",
                                                                     "all",
@@ -1440,7 +1440,7 @@ class QuDev_transmon(MeasurementObject):
                                      trigger_sep=5e-6, align_frequencies=True):
         MC = self.instr_mc.get_instr()
         if align_frequencies:
-            if_freqs = (if_freqs*trigger_sep).astype(np.int)/trigger_sep
+            if_freqs = (if_freqs*trigger_sep).astype(int)/trigger_sep
         s = swf.Offset_Sweep(
             self.instr_ro_lo.get_instr().frequency,
             self.ge_freq() - self.ro_mod_freq() - self.ge_mod_freq(),

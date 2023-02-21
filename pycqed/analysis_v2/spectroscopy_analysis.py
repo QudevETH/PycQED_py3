@@ -1577,7 +1577,7 @@ class QubitTrackerSpectroscopy(Spectroscopy):
             raise ValueError(f"Can't fit {fit_pts} points to order {fit_order} "
                              "polynomial")
         idxs = np.round(
-            np.linspace(0, len(pdd['pcas']) - 1, fit_pts)).astype(np.int)
+            np.linspace(0, len(pdd['pcas']) - 1, fit_pts)).astype(int)
         pdd['fit_idxs'] = idxs
         model = fit_mods.GaussianModel
         model.guess = fit_mods.Gaussian_guess.__get__(model, model.__class__)

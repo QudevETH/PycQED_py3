@@ -735,7 +735,7 @@ class MeasurementAnalysis(object):
                 # hacky way to get the e level drawn on figure
                 # even if not given when doing 3-level readout with 6 calibration points
                 if l == 'f' and kw.get("no_cal_points", NoCalPoints) == 6:
-                    cal_points_e = np.array(cal_one_points, dtype=np.int) - 2
+                    cal_points_e = np.array(cal_one_points, dtype=int) - 2
                     ax.plot(x[cal_points_e], y[cal_points_e], '.k')
                     ax.text(np.mean(x[cal_points_e]),
                             np.mean(y[cal_points_e]) - 0.05,

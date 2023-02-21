@@ -489,11 +489,11 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
     for par_name in data_dict:
         if par_name in numeric_params:
             if hasattr(data_dict[par_name], '__iter__'):
-                data_dict[par_name] = [np.float(p) for p
+                data_dict[par_name] = [float(p) for p
                                        in data_dict[par_name]]
                 data_dict[par_name] = np.asarray(data_dict[par_name])
             else:
-                data_dict[par_name] = np.float(data_dict[par_name])
+                data_dict[par_name] = float(data_dict[par_name])
 
     if get_param('close_file', data_dict, default_value=True, **params):
         data_file.close()

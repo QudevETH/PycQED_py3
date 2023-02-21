@@ -1763,8 +1763,8 @@ class Chevron(CalibBuilder):
         d['kwargs'][MultiTaskingExperiment.__name__]['cal_states'] = (str, 'gef')
         d['task_list_fields'].update({
             Chevron.__name__: odict({
-                'qbc': ((Qubit, 'single_select'), None),
-                'qbt': ((Qubit, 'single_select'), None),
+                'qbc': ((qb_mod.QuDev_transmon, 'single_select'), None),
+                'qbt': ((qb_mod.QuDev_transmon, 'single_select'), None),
                 'num_cz_gates': (int, 1),
                 'init_state': (CircuitBuilder.STD_INIT, '11'),
                 'max_flux_length': (float, None),
