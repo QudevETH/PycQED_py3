@@ -1632,8 +1632,9 @@ class Segment:
                     break
             else:
                 continue
-            t_start = min(pulse.algorithm_time(), t_start)
-            t_end = max(pulse.algorithm_time() + pulse.length, t_end)
+            buffer = self.pulsar.min_element_buffer() or 0.
+            t_start = min(pulse.algorithm_time() - buffer, t_start)
+            t_end = max(pulse.algorithm_time() + pulse.length + buffer, t_end)
 
         # if element is not on the awg provided, the function
         # shall return None. This is useful for
@@ -1757,10 +1758,19 @@ class Segment:
                     pulse_wfs = pulse.waveforms(chan_tvals)
 
                     # insert the waveforms at the correct position in wfs
+                    # offset by the pulsar software channel delay
+                    buffer = self.pulsar.min_element_buffer() or 0.
                     for channel in pulse_channels:
-                        wfs[pulse.codeword][channel][
-                            pulse_start:pulse_end] += pulse_wfs[channel]
-
+                        extra_delay = self.pulsar.get(channel + '_delay') or 0.
+                        if abs(extra_delay) > buffer + 1e-12:
+                            raise Exception('Delay on channel {} exceeds the '
+                                    'available pulse buffer!'.format(channel))
+                        extra_delay_samples = self.time2sample(
+                            extra_delay, awg=awg)
+                        ps_mod = pulse_start + extra_delay_samples
+                        pe_mod = pulse_end + extra_delay_samples
+                        wfs[pulse.codeword][channel][ps_mod:pe_mod] += \
+                            pulse_wfs[channel]
 
                 # for codewords: add the pulses that do not have a codeword to
                 # all codewords
@@ -1927,7 +1937,7 @@ class Segment:
                 f'{channel}_distortion_dict')))
         else:
             hashlist.append(self.pulsar.clock(channel=channel))  # clock rate
-            for par in ['type', 'amp', 'internal_modulation']:
+            for par in ['type', 'amp', 'internal_modulation', 'delay']:
                 chpar = f'{channel}_{par}'
                 if chpar in self.pulsar.parameters:
                     hashlist.append(self.pulsar.get(chpar))

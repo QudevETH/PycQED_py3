@@ -255,6 +255,11 @@ class PulsarAWGInterface(ABC):
                                  get_cmd=partial(self.awg_getter, id, "centerfreq"),
                                  vals=vals.Numbers(
                                      *self.CHANNEL_CENTERFREQ_BOUNDS[ch_type]))
+        pulsar.add_parameter(f"{ch_name}_delay",
+                             label=f"{ch_name} delay", unit='s',
+                             vals=vals.MultiType(vals.Enum(None),
+                                                 vals.Numbers()),
+                             parameter_class=ManualParameter)
 
         if ch_type == "analog":
             pulsar.add_parameter(f"{ch_name}_distortion",
@@ -646,6 +651,13 @@ class Pulsar(Instrument):
                       "default), 'init_start' (first pulse in the init part "
                       "of the segment), or a search pattern as described in "
                       "the docstring of Block.build, param sweep_dicts_list.")
+        self.add_parameter("min_element_buffer",
+            initial_value=None, unit='s',
+            label="Minimum element buffer",
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
+            parameter_class=ManualParameter,
+            docstring="Enforces a minimum buffer length of zeros at the start "
+                      "and end of each element.")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names
