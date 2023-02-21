@@ -208,7 +208,7 @@ class VirtualAWG70002A(AWG70002A.AWG70002A):
                            vals=vals.Numbers(6.25e9, 12.5e9))
         self.add_parameter('sample_rate',
                            label='Clock sample rate',
-                           initial_value=20e9,
+                           initial_value=25e9,
                            parameter_class=ManualParameter,
                            unit='Sa/s',
                            get_parser=float,
@@ -224,9 +224,9 @@ class VirtualAWG70002A(AWG70002A.AWG70002A):
             'clock_freq',
             label='Clock frequency',
             unit='Hz',
-            vals=vals.Numbers(1e6, 1.2e9),
+            vals=vals.Numbers(1e6, 25e9),
             parameter_class=ManualParameter,
-            initial_value=1.2e9)
+            initial_value=25e9)
 
         self.add_parameter('trigger_interval',
                            label='Internal trigger interval',
