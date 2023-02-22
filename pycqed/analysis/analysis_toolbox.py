@@ -327,12 +327,24 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
 
 def open_config_file(timestamp=None, folder=None, filepath=None, mode='r',
                      file_id=None, **kw):
+    """
+    Opens a config file which contains instrument settings.
+
+    For now, this function just opens the 'Instrument settings' group of an
+    HDF file.
+    See docstring of open_hdf_file for more details.
+    """
     file = open_hdf_file(timestamp, folder, filepath, mode, file_id, **kw)
     return file['Instrument settings']
 
 
 def close_files(files):
-    # currently only got HDFs
+    """
+    Closes the open files.
+
+    Args:
+        files (list): of open files
+    """
     for file in files:
         try:
             file.close()

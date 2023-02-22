@@ -18,10 +18,14 @@ from pycqed.measurement import sweep_points as sp_mod
 
 def decode_parameter_value(param_value):
     """
-    Converts byte type to string because of h5py datasaving
-    :param param_value: the raw value of the parameter as retrieved from the HDF
-        file
-    :return: the converted attribute value
+    Converts byte type to the true type of a parameter loaded from a file.
+
+    Args:
+        param_value: the raw value of the parameter as retrieved from the HDF
+            file
+
+    Returns:
+        the converted parameter value
     """
     if isinstance(param_value, bytes):
         param_value = param_value.decode('utf-8')
@@ -65,29 +69,33 @@ def get_param_from_group(group_name, param_name=None, timestamp=None,
     """
     Extract the value of a parameter from any group in the data or config files.
 
-    This functions returns the value for the parameters whose paths in the
-    HDF file end with param_name, i.e. 'Analysis.group1.group2.param_name'.
+    This functions returns the value of the parameters whose paths in the
+    file end with param_name, i.e. 'Analysis.group1.group2.param_name'.
+
     If only one match is found, the function returns the value corresponding
     to that path.
-    If more than one match is found, this function returns a dict will all
-    matches.
+
+    If more than one match is found, this function returns a dict with all
+    matches if find_all_matches==True, or raises a ValueError otherwise.
 
     Args:
+        group_name (str): name of the group to search in, ex:
+            Analysis, Experimental Data, qb1
         param_name (str): name of the parameter to extract
         timestamp (str): timestamp (YYYYMMDD_hhmmss) of the measurement. Will
             be used to find the location of the HDF file
         folder (str): path to the HDF file
         file (open file): open file where to search
         find_all_matches (bool): whether to return the values of all the
-            parameters in the group that contain param_name. If this flag is
-            False and more than one parameter contains the string param_name,
-            a ValueError will be raised.
+            parameters in the group that contain the substring param_name in
+            their path. If this flag is False and more than one parameter
+            contains the string param_name, a ValueError will be raised.
         **params: keyword arguments: not used but are here to allow pass-through
 
     Returns:
         if only one match was found: the value corresponding to param_name
-        if more than one match found: dict with HDF paths as keys and values
-            corresponding to those paths as values
+        if more than one match found: dict with parameters paths as keys and
+            values corresponding to those paths as values
     """
     if file is None:
         if folder is None:
@@ -130,7 +138,9 @@ def get_param_from_group(group_name, param_name=None, timestamp=None,
 def get_param_from_metadata_group(timestamp=None, param_name=None,
                                   folder=None, **params):
     """
-    See docstring of get_param_from_group.
+    Returns the value of param_name from the group "Experimental Metadata."
+
+    See docstring of get_param_from_group for more details.
     """
     return get_param_from_group('Experimental Metadata', param_name, timestamp,
                                 folder, **params)
@@ -139,7 +149,9 @@ def get_param_from_metadata_group(timestamp=None, param_name=None,
 def get_param_from_analysis_group(timestamp=None, param_name=None,
                                   folder=None, **params):
     """
-    See docstring of get_param_from_group.
+    Returns the value of param_name from the group "Analysis."
+
+    See docstring of get_param_from_group for more details.
     """
     return get_param_from_group('Analysis', param_name, timestamp,
                                 folder, **params)
@@ -148,7 +160,12 @@ def get_param_from_analysis_group(timestamp=None, param_name=None,
 def get_instr_param_from_file(instr_name, param_name=None, timestamp=None,
                               folder=None, **params):
     """
-    See docstring of get_param_from_group.
+    Returns the value of an instrument parameter.
+
+    Args
+        instr_name (str): name of a instrument, ex: qb1, Pulsar, TWPA
+
+    See docstring of get_param_from_group for more details.
     """
     return get_param_from_group(instr_name, param_name, timestamp, folder,
                                 **params)
@@ -226,7 +243,7 @@ def get_dataset_from_hdf_file(timestamp=None, data_file=None, close_file=True,
 
 def get_qb_channel_map_from_file(qb_names, file_path, value_names, **kw):
     """
-    Construct the qubit channel map based on an HDF file.
+    Construct the qubit channel map based from a config file.
 
     Args:
         qb_names (list): list of qubit names
@@ -424,23 +441,37 @@ def get_state_prob_mtxs_from_hdf_file(timestamp, meas_obj_names,
 def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
                           add_param_method=None, folder=None, **params):
     """
-    Extracts the parameter provided in params_dict from an HDF file
-    and saves them in data_dict.
-    :param data_dict: OrderedDict where parameters and their values are saved
-    :param params_dict: OrderedDict with key being the parameter name that will
-        be used as key in data_dict for this parameter, and value being a
-        parameter name or a path + parameter name indie the HDF file.
-    :param numeric_params: list of parameter names from amount the keys of
-        params_dict. This specifies that those parameters are numbers and will
-        be converted to floats.
-    :param folder: path to file from which data will be read
-    :param params: keyword arguments:
-        append_value (bool, default: True): whether to append an
-            already-existing key
-        update_value (bool, default: False): whether to replace an
-            already-existing key
-        h5mode (str, default: 'r+'): reading mode of the HDF file
-        close_file (bool, default: True): whether to close the HDF file(s)
+    Extracts the parameters provided in params_dict.values() from the data and
+    config files corresponding to a measurement, and saves them in data_dict
+    under the keys of params_dict.
+
+    The values of params_dict correspond to the paths leading to the desired
+    parameters inside the files:
+    params_dict = {storing key for param: path to param}, where the path to
+    param is the key hierarchy inside a nested dict, separated by "."
+    Example:
+        params_dict = {
+            'qb1_amp180': 'qb1.amp180',
+            'awg': 'Pulsar.AWG1_ch1_awg',
+            'uhf_idn': 'UHF.IDN',
+            'qscale': 'Analysis.Processed data.analysis_params_dict.qb3.qscale',
+            'data_to_fit': 'Experimental Data.Experimental Metadata.data_to_fit'
+            }
+
+    Args
+        data_dict (dict): where the parameter values are saved under the keys
+            of params_dict.
+        params_dict (dict): with keys being the keys under which the parameter
+            values will be stored in data_dict, and the values being
+            parameter names or path + parameter name inside a file.
+        numeric_params: list of parameter names from among the keys of
+            params_dict. This specifies that those parameters are numbers and
+            will be converted to floats.
+        add_param_method: passed to add_param; see docstring there
+        folder: path to files
+        params: keyword arguments:
+            passed to get_param, add_param, open_hdf_file, open_config_file
+            close_file (bool; default: True): whether to close the files
     """
     if params_dict is None:
         params_dict = get_param('params_dict', data_dict, raise_error=True,
@@ -450,7 +481,6 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
                                    default_value=[], **params)
 
     # if folder is not specified, will take the last folder in the list from
-    # data_dict['folders']
     if folder is None:
         folder = get_param('folders', data_dict, raise_error=True, **params)
         if len(folder) > 0:
@@ -495,17 +525,25 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
             else:
                 data_dict[par_name] = float(data_dict[par_name])
 
-    if get_param('close_file', data_dict, default_value=True, **params):
-        data_file.close()
-    else:
-        if 'data_files' in data_dict:
-            data_dict['data_files'] += [data_file]
-        else:
-            data_dict['data_files'] = [data_file]
     return data_dict
 
 
 def extract_from_hdf_file(file, path_to_param):
+    """
+    Extracts the value of a parameter from an open HDF file.
+
+    Args:
+        file (h5py._hl.files.File, h5py._hl.group.Group): an open HDF file or
+            a group within an open HDF file
+        path_to_param (str): key hierarchy inside a nested dict, separated by "."
+            pointing to the parameter to be extracted
+            Ex: 'Analysis.Processed data.analysis_params_dict.qb3.qscale'
+                In this example, the qscale parameter will be returned.
+
+    Returns:
+        the value of the parameter
+        If the parameter is not found, the string 'not found' is returned.
+    """
     param_value = 'not found'
     group_name = '/'.join(path_to_param.split('.')[:-1])
     par_name = path_to_param.split('.')[-1]
@@ -560,6 +598,21 @@ def extract_from_hdf_file(file, path_to_param):
 
 
 def extract_from_files(files, path_to_param):
+    """
+    Extracts the value of a parameter from the open files.
+
+    Args:
+        files (list): of open files in which to search for the parameter
+        path_to_param (str): key hierarchy inside a nested dict, separated by "."
+            pointing to the parameter to be extracted
+            Ex: 'Analysis.Processed data.analysis_params_dict.qb3.qscale'
+                In this example, the qscale parameter will be returned.
+
+    Returns:
+        the value of the parameter
+        If the parameter is not found, the string 'not found' is returned.
+    """
+    param_value = 'not found'
     for file in files:
         if isinstance(file, (h5py._hl.files.File, h5py._hl.group.Group)):
             # HDF file
