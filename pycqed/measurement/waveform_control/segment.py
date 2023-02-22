@@ -2014,7 +2014,7 @@ class Segment:
         """
         Converts time to a number of samples for a channel or AWG.
         """
-        return int(t * self.pulsar.clock(**kw) + 0.5)
+        return int(np.floor(t * self.pulsar.clock(**kw) + 0.5))
 
     def sample2time(self, samples, **kw):
         """
