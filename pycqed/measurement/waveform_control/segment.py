@@ -1670,10 +1670,13 @@ class Segment:
             t_start = math.floor((t_start + 0.5*sample_time) / start_gran) \
                       * start_gran
 
-        # make sure that element length is multiple of
-        # sample granularity
+        # make sure that the element length exceeds min length for the AWG,
+        # and is a multiple of sample granularity
         gran = self.pulsar.get('{}_granularity'.format(awg))
         samples = self.time2sample(t_end - t_start, awg=awg)
+        min_length_samples = self.time2sample(
+            self.pulsar.get('{}_min_length'.format(awg)), awg=awg)
+        samples = max(samples, min_length_samples)
         if samples % gran != 0:
             samples += gran - samples % gran
 
