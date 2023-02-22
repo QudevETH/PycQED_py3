@@ -1221,7 +1221,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             amp_range = pulsar.get(f'{ch}_amp')
             func = lambda power, a=amp_range: dbm_to_vp(power) / a
             sf = swf.Transformed_Sweep(
-                param, func, 'Spectrocopy power', unit='dBm')
+                param, func, 'Spectroscopy power', unit='dBm')
         if get_swf:
             return sf
         else:

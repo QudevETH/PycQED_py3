@@ -16,7 +16,6 @@ from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
-import time
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -2068,6 +2067,11 @@ class ThermalPopulation(Rabi):
     amplitudes of the two Rabi oscillations, one can infer the thermal e
     state population.
 
+    Args:
+        amps (list): Amplitude sweep points, see docstring of the parent class.
+        In this QuantumExperiment they are used as amplitude of the X180_ef
+        pulse, while the amplitude of the X180_ge pulse is set by qb.ge_amp180.
+
     TODO: extend to states other than the e state
     """
     default_experiment_name = 'Thermal Population'
@@ -2091,7 +2095,9 @@ class ThermalPopulation(Rabi):
                 param_name=f'{qbn}_amplitude_ge',
                 values=np.array([0.0, ge_amp]),
                 unit='V',
-                label='amplitude ge')
+                label='amplitude ge',
+                dimension=1,
+            )
         return super().update_sweep_points()
 
     def sweep_block(self, qb, sweep_points, **kw):
