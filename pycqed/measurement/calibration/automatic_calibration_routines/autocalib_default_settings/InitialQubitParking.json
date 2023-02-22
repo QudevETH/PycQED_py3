@@ -1,5 +1,6 @@
 {
   "ResonatorSpectroscopyFluxSweep": {
-    "freq_range": "{adaptive}"
+    "freq_range": "{adaptive}",
+    "fallback_freq_range": 250e6
   }
 }

@@ -218,7 +218,6 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
 
         Step.__init__(self, routine=routine, **kwargs)
 
-        self.DEFAULT_FREQ_RANGE = 150e6
         self.experiment_settings = self.parse_settings(
             self.get_requested_settings())
         spec.ResonatorSpectroscopyFluxSweep.__init__(self,
@@ -386,9 +385,9 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
 
         except (AttributeError, KeyError, TypeError) as err:
             log.warning(f'Error in `get_adaptive_freq_range`: {err}. '
-                        f'Using default value {self.DEFAULT_FREQ_RANGE/1e6:.0f}'
-                        f' MHz instead.')
-            return self.DEFAULT_FREQ_RANGE
+                        f'Using fallback_freq_range instead.')
+            freq_range = self.get_param_value('fallback_freq_range')
+            return freq_range
 
     def run(self):
         """
