@@ -658,6 +658,15 @@ class Pulsar(Instrument):
             parameter_class=ManualParameter,
             docstring="Enforces a minimum buffer length of zeros at the start "
                       "and end of each element.")
+        self.add_parameter("max_element_start_time",
+            initial_value=None, unit='s',
+            label="Maximum element start time",
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
+            parameter_class=ManualParameter,
+            docstring="Enforces the latest t_start of each element in each "
+                      "sequence, i.e. an element would start at most then. "
+                      "Intended usage is for fixing the instrument triggers "
+                      "at some (relatively early) algorithm time.")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names

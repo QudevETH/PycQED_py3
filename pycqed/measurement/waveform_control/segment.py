@@ -1648,6 +1648,12 @@ class Segment:
                       f'trigger group {trigger_group}, but element not '
                       f'on AWG.')
             return
+
+        # Enforces the latest t_start of the element if the corresponding
+        # pulsar parameter is specified, and does nothing otherwise.
+        t_start = min(t_start,
+                      self.pulsar.max_element_start_time() or np.inf)
+
         # make sure that element start is a multiple of element
         # start granularity
         # we allow rounding up of the start time by half a sample, otherwise
