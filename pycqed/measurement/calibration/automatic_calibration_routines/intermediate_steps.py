@@ -24,6 +24,7 @@ class UpdateFrequency(IntermediateStep):
                  frequencies: List[float] = None,
                  voltages: List[float] = None,
                  fluxes: List[float] = None,
+                 use_model: bool = True,
                  **kw):
         """
         Initialize the UpdateFrequency step.
@@ -41,6 +42,11 @@ class UpdateFrequency(IntermediateStep):
                 frequencies should correspond. Useful if the frequency is not
                 known a priori and there is a Hamiltonian model or a
                 flux-frequency relationship is known.
+            use_model (bool): Applies to ef transition only. If True, it uses
+                the calculate_frequency() method, relying on the current values
+                of the qubit.fit_ge_freq_from_dc_offset() dict. Otherwise, is
+                uses qubit.ge_freq() and qubit.anharmonicity() (or
+                qubit.ge_freq() and qubit.fit_ge_freq_from_dc_offset()['E_c'] ).
 
         Keyword args:
             routine (Step): the routine to which this step belongs to.
@@ -60,6 +66,7 @@ class UpdateFrequency(IntermediateStep):
         self.frequencies = frequencies or [None]
         self.voltages = voltages or [None]
         self.fluxes = fluxes or [None]
+        self.use_model = use_model
 
     def run(self):
         """
@@ -76,13 +83,14 @@ class UpdateFrequency(IntermediateStep):
                 if self.transition == "ge" or "ef":
                     freq_model = routines_utils.get_transmon_freq_model(qb)
                     try:
+                        assert self.use_model
                         frequency = qb.calculate_frequency(
                             model=freq_model,
                             flux=self.fluxes[i],
                             bias=self.voltages[i],
                             transition=self.transition,
                         )
-                    except NotImplementedError:
+                    except (NotImplementedError, AssertionError) as e:
                         assert (self.transition == "ef")
                         frequency = (
                                 qb.ge_freq() +

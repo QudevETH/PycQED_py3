@@ -362,10 +362,12 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     self.add_step(RabiStep, step_label, step_settings)
 
                     # Updating ef-frequency at this voltage to guess value
+
                     step_label = f'update_frequency_{transition}'
                     step_settings = {"qubits": [qubit],
                                      "fluxes": [flux],
-                                     "transition": transition}
+                                     "transition": transition,
+                                     "use_model": False}
                     self.add_step(UpdateFrequency, step_label, step_settings)
 
                     # Finding the ef-frequency
