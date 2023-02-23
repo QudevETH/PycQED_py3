@@ -10779,7 +10779,8 @@ class DriveAmpNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
 
     def __init__(self, t_start, t_stop, qb_names=None, do_fitting=True,
                  auto=True, **kwargs):
-        super().__init__(t_start=t_start, t_stop=t_stop, do_fitting=do_fitting,
+        super().__init__(t_start=t_start, t_stop=t_stop,
+                         label='Drive_amp_calib', do_fitting=do_fitting,
                          **kwargs)
         self.qb_names = qb_names
         self.auto = auto
