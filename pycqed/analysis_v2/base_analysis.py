@@ -444,14 +444,15 @@ class BaseDataAnalysis(object):
         if timestamps is None:
             timestamps = self.timestamps
         raw_data_dict = []
-        for idx, timestamp in enumerate(timestamps):
+        for timestamp in timestamps:
+            file_idx = self.timestamps.index(timestamp)
             raw_data_dict_ts = OrderedDict([(param, '') for param in
                                             params_dict])
 
             folder = a_tools.get_folder(timestamp)
             self.open_files()
-            data_file = self.data_files[idx]
-            config_file = self.config_files[idx]
+            data_file = self.data_files[file_idx]
+            config_file = self.config_files[file_idx]
             files = [data_file, config_file]
             try:
                 for save_par, file_par in params_dict.items():
@@ -468,6 +469,10 @@ class BaseDataAnalysis(object):
                     else:
                         raw_data_dict_ts[save_par] = hlp_mod.extract_from_files(
                             files, file_par)
+                for par_name in raw_data_dict_ts:
+                    if par_name in numeric_params:
+                        raw_data_dict_ts[par_name] = \
+                            np.double(raw_data_dict_ts[par_name])
             except Exception as e:
                 # data_file.close()
                 self.close_files()
