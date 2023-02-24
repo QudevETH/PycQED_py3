@@ -5,14 +5,17 @@ This file contains the Spectroscopy class that forms the basis analysis of all
 the spectroscopy measurement analyses.
 """
 
-from copy import copy
+from copy import deepcopy
 import logging
 import re
+from typing import Union
 import numpy as np
 import lmfit
 import pycqed.analysis_v2.base_analysis as ba
 import pycqed.analysis_v2.timedomain_analysis as tda
 import pycqed.analysis.fitting_models as fit_mods
+from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.analysis.tools.plotting import SI_prefix_and_scale_factor
 from itertools import combinations
 
 import pandas as pd
@@ -20,6 +23,9 @@ import matplotlib.pyplot as plt
 import pycqed.analysis.fit_toolbox.geometry as geo
 from collections import OrderedDict
 from scipy import integrate
+from scipy import interpolate
+from scipy.signal import find_peaks, peak_widths, peak_prominences
+from scipy.signal import savgol_filter
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +51,7 @@ class SpectroscopyOld(ba.BaseDataAnalysis):
                             'freq': 'sweep_points',
                             'amp': 'amp',
                             'phase': 'phase'}
-        
+
         self.options_dict.get('xwidth', None)
         # {'xlabel': 'sweep_name',
         # 'xunit': 'sweep_unit',
@@ -144,7 +150,6 @@ class SpectroscopyOld(ba.BaseDataAnalysis):
                                                     for i in
                                                     range(len(self.raw_data_dict))]
 
-
     def prepare_plots(self):
         proc_data_dict = self.proc_data_dict
         plotsize = self.options_dict.get('plotsize')
@@ -224,10 +229,8 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                              ' simultan resonator spectroscopy in ground '
                              'and excited state as: t_start = [t_on, t_off]')
 
-
         if auto is True:
             self.run_analysis()
-
 
     def process_data(self):
         super(ResonatorSpectroscopy, self).process_data()
@@ -299,7 +302,6 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                 self.kappa = self.sim_fit[0].params['kappa_pf'].value
                 self.J_ = self.sim_fit[0].params['J'].value
 
-               
             else:
                 fit_fn = fit_mods.hanger_with_pf
                 fit_temp = fit_mods.fit_hanger_with_pf(
@@ -351,7 +353,7 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                 fmin = f0 - df
                 fmax = f0 + df
                 indices = np.logical_or(x < fmin * 1e9, x > fmax * 1e9)
-                
+
                 x_filtered.append(x[indices])
                 y_filtered.append(y[indices])
             self.background = pd.concat([pd.Series(y_filtered[tt], index=x_filtered[tt])
@@ -445,7 +447,6 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                                         'yrange': proc_data_dict['phase_range'],
                                         'plotsize': plotsize
                                         }
-
 
     def plot_fitting(self):
         if self.do_fitting:
@@ -1683,9 +1684,9 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         super().process_data()
 
         mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
-        self.proc_data_dict['projected_data_dict'] = {
-            qb: self._transform(raw_data, True) for qb, raw_data in mdata_per_qb.items()
-        }
+        for qb, raw_data in mdata_per_qb.items():
+            self.proc_data_dict['projected_data_dict'][qb].update(
+                self._transform(raw_data, True))
 
     def _transform(self, data, transpose=True):
         polar_data = dict()
@@ -1854,6 +1855,1420 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
         self.plot(key_list=plt_key_list, **kw)
         self.save_figures(key_list=fig_key_list, **kw)
         return res
+
+
+class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
+    """
+    Analysis script for a regular (ge peak/dip only) or a high power
+    (ge and gf/2 peaks/dips) Qubit Spectroscopy:
+        1. The I and Q data are combined using PCA in
+            MultiQubit_TimeDomain_Analysis
+        2. The peaks/dips of the data are found using a_tools.peak_finder.
+        3. If analyze_ef == False: the data is then fitted to a Lorentzian;
+            else: to a double Lorentzian.
+        4. The data, the best fit, and peak points are then plotted.
+
+    Note:
+    analyze_ef==True tells this routine to look for the gf/2 peak/dip.
+    Even though the parameters for this second peak/dip use the termination
+    "_ef," they refer to the parameters for the gf/2 transition NOT for the ef
+    transition. It was easier to write x_ef than x_gf_over_2 or x_gf_half.
+
+    This class adapts the code of Qubit_Spectroscopy_Analysis from
+    analysis.measurement_analysis to the QuantumExperiment framework.
+    """
+
+    def __init__(self, analyze_ef=False, **kw):
+        """Initialize the analysis for QubitSpectroscopy1D.
+
+        Args:
+            analyze_ef (bool, optional):  whether to look for a second peak/dip,
+                which would be the at f_gf/2. Defaults to False.
+
+        Kwargs:
+            percentile (int):  percentile of the  data that is considered
+                background noise when looking for peaks/dips. Defaults to 20.
+            num_sigma_threshold (float): used to define the threshold above
+                (below) which to look for peaks (dips):
+                threshold = background_mean + num_sigma_threshold
+                            * background_std.
+                Defaults to 5.
+            window_len_filter (int): filtering window length when looking for
+                peaks/dips. Used with a_tools.smooth. Defaults to 3.
+            optimize (bool): re-run look_for_peak_dips until tallest (for peaks)
+                data point/lowest (for dip) data point has been found. Defaults
+                to True.
+            print_fit_results (bool): print the fit report. Defaults to False.
+            print_frequency (bool): print f_ge and f_gf/2. Defaults to False.
+            show_guess (bool): plot with initial guess values. Defaults to F
+                False.
+        """
+        self.analyze_ef = analyze_ef
+        self.percentile = kw.pop('percentile', 20)
+        self.num_sigma_threshold = kw.pop('num_sigma_threshold', 5)
+        self.window_len_filter = kw.pop('window_len_filter', 3)
+        self.optimize = kw.pop('optimize', True)
+        self.print_fit_results = kw.pop('print_fit_results', False)
+        self.print_frequency = kw.pop('print_frequency', False)
+        self.show_guess = kw.pop('show_guess', False)
+        options_dict = kw.get('options_dict', {})
+        if options_dict == {}:
+            options_dict = {'rotation_type': 'PCA', 'rotate': True}
+            kw['options_dict'] = options_dict
+        else:
+            options_dict.update({'rotation_type': 'PCA', 'rotate': True})
+        super().__init__(**kw)
+
+    def prepare_fitting(self):
+        """
+        Prepares the dictionaries where the analysis results are going to be
+        stored.
+        """
+        self.fit_res = OrderedDict()
+        for qb_name in self.qb_names:
+            self.fit_res[qb_name] = {}
+
+    def run_fitting(self):
+        """
+        Fit the data with Lorentzian model to extract f_ge and f_gf/2 (if
+        requested).
+        """
+        for qb_name in self.qb_names:
+            data_dist = self.proc_data_dict['projected_data_dict'][qb_name][
+                'PCA'][0]
+            sweep_points = self.proc_data_dict['sweep_points_dict'][qb_name][
+                'sweep_points']
+
+            # Smooth the data by "filtering"
+            data_dist_smooth = a_tools.smooth(data_dist,
+                                              window_len=self.window_len_filter)
+
+            # Find peaks
+            self.peaks = a_tools.peak_finder(
+                sweep_points,
+                data_dist_smooth,
+                percentile=self.percentile,
+                num_sigma_threshold=self.num_sigma_threshold,
+                optimize=self.optimize,
+                window_len=0)
+
+            # extract highest peak -> ge transition
+            if self.peaks['dip'] is None:
+                f0 = self.peaks['peak']
+                kappa_guess = self.peaks['peak_width'] / 4
+                key = 'peak'
+            elif self.peaks['peak'] is None:
+                f0 = self.peaks['dip']
+                kappa_guess = self.peaks['dip_width'] / 4
+                key = 'dip'
+            # elif self.peaks['dip'] < self.peaks['peak']:
+            elif np.abs(data_dist_smooth[self.peaks['dip_idx']]) < \
+                    np.abs(data_dist_smooth[self.peaks['peak_idx']]):
+                f0 = self.peaks['peak']
+                kappa_guess = self.peaks['peak_width'] / 4
+                key = 'peak'
+            # elif self.peaks['peak'] < self.peaks['dip']:
+            elif np.abs(data_dist_smooth[self.peaks['dip_idx']]) > \
+                    np.abs(data_dist_smooth[self.peaks['peak_idx']]):
+                f0 = self.peaks['dip']
+                kappa_guess = self.peaks['dip_width'] / 4
+                key = 'dip'
+            else:  # Otherwise take center of range and raise warning
+                f0 = np.median(self.sweep_points)
+                kappa_guess = 0.005 * 1e9
+                log.warning('No peaks or dips have been found. Initial '
+                            'frequency guess taken '
+                            'as median of sweep points (f_guess={}), '
+                            'initial linewidth '
+                            'guess was taken as kappa_guess={}'.format(
+                                f0, kappa_guess))
+                key = 'peak'
+
+            tallest_peak = f0  # the ge freq
+            if self.verbose:
+                print('Largest ' + key + ' is at ', tallest_peak)
+            if f0 == self.peaks[key]:
+                tallest_peak_idx = self.peaks[key + '_idx']
+                if self.verbose:
+                    print('Largest ' + key + ' idx is ', tallest_peak_idx)
+
+            amplitude_guess = np.pi * kappa_guess * \
+                            abs(max(data_dist) - min(data_dist))
+            if key == 'dip':
+                amplitude_guess = -amplitude_guess
+
+            if self.analyze_ef is False:  # fit to a regular Lorentzian
+
+                LorentzianModel = fit_mods.LorentzianModel
+
+                LorentzianModel.set_param_hint('f0',
+                                               min=min(sweep_points),
+                                               max=max(sweep_points),
+                                               value=f0)
+                LorentzianModel.set_param_hint('A', value=amplitude_guess)  # ,
+                # min=4*np.var(self.data_dist))
+                LorentzianModel.set_param_hint('offset', value=0, vary=True)
+                LorentzianModel.set_param_hint('kappa',
+                                               value=kappa_guess,
+                                               min=1,
+                                               vary=True)
+                LorentzianModel.set_param_hint('Q', expr='f0/kappa', vary=False)
+                self.params = LorentzianModel.make_params()
+
+                fit_results = LorentzianModel.fit(data=data_dist,
+                                                  f=sweep_points,
+                                                  params=self.params)
+
+            else:  # fit a double Lorentzian and extract the 2nd peak as well
+                # extract second-highest peak -> ef transition
+
+                f0, f0_gf_over_2, \
+                kappa_guess, kappa_guess_ef = a_tools.find_second_peak(
+                    sweep_pts=sweep_points,
+                    data_dist_smooth=data_dist_smooth,
+                    key=key,
+                    peaks=self.peaks,
+                    percentile=self.percentile,
+                    verbose=self.verbose)
+
+                if f0 == 0:
+                    f0 = tallest_peak
+                if f0_gf_over_2 == 0:
+                    f0_gf_over_2 = tallest_peak
+                if kappa_guess == 0:
+                    kappa_guess = 5e6
+                if kappa_guess_ef == 0:
+                    kappa_guess_ef = 2.5e6
+
+                amplitude_guess = np.pi * kappa_guess * \
+                                abs(max(data_dist) - min(data_dist))
+
+                amplitude_guess_ef = 0.5 * np.pi * kappa_guess_ef * \
+                                    abs(max(data_dist) -
+                                        min(data_dist))
+
+                if key == 'dip':
+                    amplitude_guess = -amplitude_guess
+                    amplitude_guess_ef = -amplitude_guess_ef
+
+                if kappa_guess_ef > kappa_guess:
+                    temp = deepcopy(kappa_guess)
+                    kappa_guess = deepcopy(kappa_guess_ef)
+                    kappa_guess_ef = temp
+
+                DoubleLorentzianModel = fit_mods.TwinLorentzModel
+
+                DoubleLorentzianModel.set_param_hint('f0',
+                                                     min=min(sweep_points),
+                                                     max=max(sweep_points),
+                                                     value=f0)
+                DoubleLorentzianModel.set_param_hint('f0_gf_over_2',
+                                                     min=min(sweep_points),
+                                                     max=max(sweep_points),
+                                                     value=f0_gf_over_2)
+                DoubleLorentzianModel.set_param_hint('A',
+                                                     value=amplitude_guess)  # ,
+                # min=4*np.var(self.data_dist))
+                DoubleLorentzianModel.set_param_hint(
+                    'A_gf_over_2', value=amplitude_guess_ef)  # ,
+                # min=4*np.var(self.data_dist))
+                DoubleLorentzianModel.set_param_hint('kappa',
+                                                     value=kappa_guess,
+                                                     min=0,
+                                                     vary=True)
+                DoubleLorentzianModel.set_param_hint('kappa_gf_over_2',
+                                                     value=kappa_guess_ef,
+                                                     min=0,
+                                                     vary=True)
+                DoubleLorentzianModel.set_param_hint('Q',
+                                                     expr='f0/kappa',
+                                                     vary=False)
+                DoubleLorentzianModel.set_param_hint('Q_ef',
+                                                     expr='f0_gf_over_2/kappa'
+                                                     '_gf_over_2',
+                                                     vary=False)
+                self.params = DoubleLorentzianModel.make_params()
+
+                fit_results = DoubleLorentzianModel.fit(data=data_dist,
+                                                        f=sweep_points,
+                                                        params=self.params)
+
+            self.fit_res[qb_name] = fit_results
+
+    def prepare_plots(self):
+        """
+        Plot the results of the fit.
+        """
+        super().prepare_plots()
+        for qb_name in self.qb_names:
+            sweep_points = self.proc_data_dict['sweep_points_dict'][qb_name][
+                'sweep_points']
+
+            fig_id_original = f"projected_plot_{qb_name}_PCA_"
+            fig_id_analyzed = f"QubitSpectroscopy1D_{fig_id_original}"
+
+            self.plot_dicts[fig_id_analyzed] = deepcopy(
+                self.plot_dicts[fig_id_original])
+
+            self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
+            self.plot_dicts[fig_id_analyzed]['linestyle'] = 'solid'
+
+            # Plot Lorentzian fit
+            self.plot_dicts[f"{fig_id_analyzed}_lorentzian"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': sweep_points,
+                'yvals': self.fit_res[qb_name].best_fit,
+                'ylabel': 'S21 distance (arb.units)',
+                'marker': None,
+                'linestyle': 'solid',
+                'color': 'C3',
+                'setlabel': 'Fit',
+                'do_legend': True,
+            }
+
+            # Plot peak
+            f0 = self.fit_res[qb_name].params['f0'].value
+            f0_idx = a_tools.nearest_idx(sweep_points, f0)
+            f0_dist = self.fit_res[qb_name].best_fit[f0_idx]
+            self.plot_dicts[f"{fig_id_analyzed}_lorentzian_peak"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': [f0],
+                'yvals': [f0_dist],
+                'marker': 'o',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 2
+                },
+                'color': 'C1',
+                'setlabel': r'$f_{ge,fit}$',
+                'do_legend': True,
+            }
+
+            if self.analyze_ef:
+                # Plot the gf/2 point as well
+                f0_gf_over_2 = self.fit_res[qb_name].params[
+                    'f0_gf_over_2'].value
+                f0_gf_over_2_idx = a_tools.nearest_idx(sweep_points,
+                                                       f0_gf_over_2)
+                f0_gf_over_2_dist = self.fit_res[qb_name].best_fit[
+                    f0_gf_over_2_idx]
+
+                self.plot_dicts[
+                    f"{fig_id_analyzed}_lorentzian_peak_gf_over_2"] = {
+                        'fig_id': fig_id_analyzed,
+                        'plotfn': self.plot_line,
+                        'xvals': [f0_gf_over_2],
+                        'yvals': [f0_gf_over_2_dist],
+                        'marker': 'o',
+                        'line_kws': {
+                            'ms':
+                                self.get_default_plot_params()
+                                ['lines.markersize'] * 2
+                        },
+                        'color': 'C4',
+                        'setlabel': r'$f_{gf/2,fit}$',
+                        'do_legend': True,
+                    }
+            if self.show_guess:
+                # plot Lorentzian with initial guess
+                self.plot_dicts[f"{fig_id_analyzed}_lorentzian_init_guess"] = {
+                    'fig_id': fig_id_analyzed,
+                    'plotfn': self.plot_line,
+                    'xvals': sweep_points,
+                    'yvals': self.fit_res[qb_name].init_fit,
+                    'marker': None,
+                    'linestyle': 'dotted',
+                    'color': 'C2',
+                    'setlabel': "Initial guess",
+                    'do_legend': True,
+                }
+
+            scale = SI_prefix_and_scale_factor(val=sweep_points[-1],
+                                               unit='Hz')[0]
+
+            if self.analyze_ef:
+                try:
+                    old_freq = self.get_hdf_param_value(
+                        f"Instrument settings/{qb_name}", 'ge_freq')
+                    old_freq_ef = self.get_hdf_param_value(
+                        f"Instrument settings/{qb_name}", 'ef_freq')
+                    label = 'f0={:.5f} GHz ' \
+                            '\nold f0={:.5f} GHz' \
+                            '\nkappa0={:.4f} MHz' \
+                            '\nf0_gf/2={:.5f} GHz ' \
+                            '\nold f0_gf/2={:.5f} GHz' \
+                            '\nguess f0_gf/2={:.5f} GHz' \
+                            '\nkappa_gf={:.4f} MHz'.format(
+                        self.fit_res[qb_name].params['f0'].value * scale,
+                        old_freq * scale,
+                        self.fit_res[qb_name].params['kappa'].value / 1e6,
+                        self.fit_res[qb_name].params['f0_gf_over_2'].value * scale,
+                        old_freq_ef * scale,
+                        self.fit_res[qb_name].init_values['f0_gf_over_2']*scale,
+                        self.fit_res[qb_name].params['kappa_gf_over_2'].value / 1e6)
+                except (TypeError, KeyError, ValueError):
+                    log.warning('qb_name is None. Old parameter values will '
+                                'not be retrieved.')
+                    label = 'f0={:.5f} GHz ' \
+                            '\nkappa0={:.4f} MHz \n' \
+                            'f0_gf/2={:.5f} GHz  ' \
+                            '\nkappa_gf={:.4f} MHz '.format(
+                        self.fit_res[qb_name].params['f0'].value * scale,
+                        self.fit_res[qb_name].params['kappa'].value / 1e6,
+                        self.fit_res[qb_name].params['f0_gf_over_2'].value * scale,
+                        self.fit_res[qb_name].params['kappa_gf_over_2'].value / 1e6)
+            else:
+                label = 'f0={:.5f} GHz '.format(
+                    self.fit_res[qb_name].params['f0'].value * scale)
+                try:
+                    old_freq = self.get_hdf_param_value(
+                        f"Instrument settings/{qb_name}", 'ge_freq')
+                    label += '\nold f0={:.5f} GHz'.format(old_freq * scale)
+                except (TypeError, KeyError, ValueError):
+                    log.warning('qb_name is None. Old parameter values will '
+                                'not be retrieved.')
+                label += '\nkappa0={:.4f} MHz'.format(
+                    self.fit_res[qb_name].params['kappa'].value / 1e6)
+
+            self.plot_dicts[f'{fig_id_analyzed}_text_msg'] = {
+                'fig_id': fig_id_analyzed,
+                'ypos': -0.15,
+                'xpos': 0.5,
+                'horizontalalignment': 'center',
+                'verticalalignment': 'top',
+                'plotfn': self.plot_text,
+                'text_string': label
+            }
+
+            if self.print_fit_results:
+                print(self.fit_res[qb_name].fit_report())
+
+            if self.print_frequency:
+                if self.analyze_ef:
+                    print(
+                        'f_ge = {:.5} (GHz) \t f_ge Stderr = {:.5} (MHz) \n'
+                        'f_gf/2 = {:.5} (GHz) \t f_gf/2 Stderr = {:.5} '
+                        '(MHz)'.format(
+                            self.fit_res[qb_name].params['f0'].value * scale,
+                            self.fit_res[qb_name].params['f0'].stderr * 1e-6,
+                            self.fit_res[qb_name].params['f0_gf_over_2'].value *
+                            scale,
+                            self.fit_res[qb_name].params['f0_gf_over_2'].stderr
+                            * 1e-6))
+                else:
+                    print('f_ge = {:.5} (GHz) \t '
+                          'f_ge Stderr = {:.5} (MHz)'.format(
+                              self.fit_res[qb_name].params['f0'].value * scale,
+                              self.fit_res[qb_name].params['f0'].stderr * 1e-6))
+
+
+class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
+    """
+    Finds a specified number of dips in a 1D resonator spectroscopy and their
+    widths. The most prominent dips are selected.
+    The dip-finding algorithm is based on SciPy's find_peaks().
+    """
+
+    def __init__(self,
+                 ndips: Union[int, list[int]] = 1,
+                 expected_dips_width: float = 25e6,
+                 height: float = None,
+                 threshold: float = None,
+                 distance: int = None,
+                 width: int = None,
+                 wlen: int = None,
+                 rel_height: float = 0.25,
+                 plateau_size: int = None,
+                 **kwargs):
+        """Initialize the analysis class by storing the keywords necessary to
+        run the dip-finding algorithm. By default, only the prominence is used
+        to select the dips.
+
+        Args:
+            ndips (int or list[int]): number of dips that will be searched.
+                A list can be specified instead when multiple qubits are measured
+                in a MultiTaskingExperiment. In this case, each entry will be
+                used to analyze one experiment.
+            expected_dips_width (float): expected width (in Hz) of the dips.
+                This parameter is used to calculate wlen, i.e., the window
+                length to calculate the prominence of each dip.
+                NOTE: In order to select the dips based on their widths,
+                the parameter 'width' should be used instead.
+
+            The following parameters are passed directly to SciPy's find
+            peaks function. Their documentation is taken from the official
+            find_peaks documentation with minor modifications. Consult it for
+            more information: https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html.
+
+            height (float, optional): Required depth of the dips. Due to the
+                implementation, it should be negative. E.g., to select only the
+                dips with height below 1e-5 AU, set height = -1e-5. To select the
+                dips with height between 1e-5 AU and 2e-5 AU, set
+                height = (-2e-5,-1e-5). Defaults to None.
+            threshold (float, optional): Required threshold of peaks, i.e. the
+                vertical distance to its neighboring samples. Should be negative
+                like height. Defaults to None.
+            distance (int, optional): Required horizontal distance (in units of
+                samples) between neighboring peaks. Defaults to None.
+            width (int, optional): Required width of the peaks (in units of
+                samples). Defaults to None.
+            wlen (int, optional): Used for calculation of the peaks prominences.
+                Defaults to None.
+            rel_height (float, optional): Used for the calculation of the dips
+                width. Defaults to 0.25.
+            plateau_size (int, optional): Required size of the flat top of the
+                dips in samples. Defaults to None.
+        """
+        self.ndips = ndips
+        self.expected_dips_width = expected_dips_width
+        self.dip_finder_kwargs = {
+            'height': height,
+            'threshold': threshold,
+            'distance': distance,
+            'width': width,
+            'wlen': wlen,
+            'rel_height': rel_height,
+            'plateau_size': plateau_size,
+        }
+        super().__init__(**kwargs)
+
+    def process_data(self):
+        super().process_data()
+
+        # Collect all the relevant data of a measurement in this dict. Each
+        # entry of the dictionary corresponds to a measurement on a qubit
+        # and it contains the sweep points for the frequency, the sweep points
+        # for the voltage bias, and the projected data for the magnitude
+
+        # {
+        #  'qb1': {'freqs': [...],
+        #           'magnitude': [[...]]
+        #         },
+        #  'qb2': {'freqs': ...
+        #         ...
+        #         }
+        # }
+
+        self.analysis_data = OrderedDict()
+        for qb_name in self.qb_names:
+            self.analysis_data[qb_name] = OrderedDict({
+                'freqs':
+                    np.array(self.sp[0][f"{qb_name}_freq"][0]),
+                # Note that the magnitude is a 2D array even for 1D spectroscopy
+                'magnitude':
+                    np.array(self.proc_data_dict['projected_data_dict'][qb_name]
+                             ['Magnitude'])
+            })
+
+    def prepare_fitting(self):
+        """
+        Prepares the dictionaries where the analysis results are going to be
+        stored
+        """
+        self.fit_res = OrderedDict()
+        for qb_name in self.qb_names:
+            self.fit_res[qb_name] = {}
+
+    def run_fitting(self):
+        """
+        Finds the dips the 1D resonator spectroscopy and assigns them to the
+        corresponding qubit. The dips are paired up (starting from the one
+        at the lowest frequency) and the sharpest dip of the pair is chosen
+        as the readout frequency for the corresponding qubit.
+        If the number of pairs is different from the number of qubits belonging
+        to the feedline, priority is given arbitrarily to the qubits with lower
+        frequency.
+        """
+        try:
+            if len(self.ndips) != len(self.qb_names):
+                log.warning(
+                    (f"The length of the ndips list is different from the "
+                    f"number of measured qubits. Using ndips = {self.ndips[0]} "
+                    f"for all qubits.")
+                )
+                self.ndips = self.ndips[0]
+        except TypeError:
+            pass
+
+        # Find the dips for each measured qubit
+        for i,qb_name in enumerate(self.qb_names):
+            if isinstance(self.ndips, int):
+                ndips = self.ndips
+            else:
+                ndips = self.ndips[i]
+
+            # Find the indices of the dips and their widths
+            dips_indices, dips_widths = self.find_dips(
+                frequency_data=self.analysis_data[qb_name]['freqs'],
+                magnitude_data=self.analysis_data[qb_name]['magnitude'][0],
+                ndips=ndips,
+                expected_dips_width=self.expected_dips_width,
+                **self.dip_finder_kwargs)
+
+            # Find the frequency and magnitude corresponding to these indices
+            dips_freqs = self.analysis_data[qb_name]['freqs'][dips_indices]
+            dips_magnitude = self.analysis_data[qb_name]['magnitude'][0][
+                dips_indices]
+
+            # Store the frequency of the peaks in the analysis_data dict
+            # together with their width
+            self.analysis_data[qb_name]['dips_frequency'] = dips_freqs
+            self.analysis_data[qb_name]['dips_magnitude'] = dips_magnitude
+            self.analysis_data[qb_name]['dips_widths'] = dips_widths
+
+            # Store data in the fit_res dict (which is then saved to the hdf
+            # file)
+            for i, (dip_freq,
+                    dip_width) in enumerate(zip(dips_freqs, dips_widths)):
+                self.fit_res[qb_name][f'dip{i}_frequency'] = dip_freq
+                self.fit_res[qb_name][f'dip{i}_width'] = dip_width
+
+            # Check whether the number of dips is different than expected.
+            if len(dips_freqs) != ndips:
+                warning_msg = (f"Found {len(dips_freqs)} dips instead "
+                               f"of {self.ndips} for {qb_name}.")
+                log.warning(warning_msg)
+
+    def find_dips(self, frequency_data: np.array, magnitude_data: np.array,
+                  ndips: Union[int, list[int]], expected_dips_width: float,
+                  **kw: dict) -> tuple[list[int], list[float]]:
+        """
+        Finds the 'ndips' most prominent dips in a 1D resonator spectroscopy,
+        using 'expected_dips_width' to compute the window length for the
+        calculation of the dips prominence.
+        See SciPy's find_peaks() documentation for more information about
+        prominence calculation.
+
+        Args:
+            frequency_data (np.array, 1D): frequency sweep points.
+            magnitude_data (np.array, 1D): projection of the raw data, magnitude
+                as a function of frequency.
+            ndips (int): number of dips that will be searched.
+            expected_dips_width (float): expected width (in Hz) of the dips.
+                This parameter is used to calculate wlen, i.e., the window
+                length to calculate the prominence of each dip.
+                NOTE: In order to select the dips based on their widths,
+                the parameter 'width' should be used instead.
+            kw: additional parametrs for the dip-finding algorithm. See SciPy
+                documentation of find_peaks or this class __init__ for more
+                details.
+
+        Returns:
+            dips_indices (list[int]): list of frequency indices for the
+                left dips.
+            dips_widths (list[float]): width of the dips (in Hz).
+        """
+        wlen = kw.get("wlen")
+        # Frequency width of one sweep point
+        df = frequency_data[1] - frequency_data[0]
+        if wlen is None and expected_dips_width is not None:
+            wlen = round(expected_dips_width / df)
+            kw["wlen"] = wlen
+
+        # To find dips, we use scipy's peak finder and change the sign
+        # of the data so that dips become peaks
+        dips_indices = find_peaks(-magnitude_data, **kw)[0]
+
+        # Check how many dips were found
+        if len(dips_indices) > ndips:
+            # If more than 'ndips' dips are found, choose the 'ndips' ones with
+            # the highest prominence
+            prominences_dips = peak_prominences(-magnitude_data, dips_indices,
+                                                kw.get("wlen"))[0]
+            indices_max_dip = np.argpartition(prominences_dips, -ndips)[-ndips:]
+            dips_indices = np.array(dips_indices)[indices_max_dip]
+            # Sort the indices again since their order after argpartition is
+            # undefined (see argpartition documentation for more information)
+            dips_indices = np.sort(dips_indices)
+        elif len(dips_indices) < ndips:
+            # If less than 'ndips' dips are found, just print a warning.
+            # This case is very unlikely.
+            log.warning(f"Found {len(dips_indices)} peaks instead of ndips")
+
+        # Calculate the width of the dips. This can be used to determine which
+        # dip corresponds to the resonator and which to the Purcell filter
+        dips_widths = peak_widths(-magnitude_data,
+                                  dips_indices,
+                                  rel_height=kw.get("rel_height"),
+                                  wlen=kw.get("wlen"))[0]
+        dips_widths = dips_widths * df
+        return dips_indices, dips_widths
+
+    def prepare_plots(self):
+        """
+        Plots the projected data with the additional information found with
+        the analysis.
+        """
+        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
+
+        for qb_name in self.qb_names:
+            # Copy the original plots in order to have both the analyzed and the
+            # non-analyzed plots
+            fig_id_original = f"projected_plot_{qb_name}_Magnitude"
+            fig_id_analyzed = f"ResonatorSpectroscopy_{fig_id_original}"
+            self.plot_dicts[fig_id_analyzed] = deepcopy(
+                self.plot_dicts[f"projected_plot_{qb_name}_Magnitude_Magnitude"]
+            )
+
+            # Change the fig_id of the copied plot in order to distinguish it
+            # from the original
+            self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
+            self.plot_dicts[fig_id_analyzed]['linestyle'] = 'solid'
+
+            # Plot the dips
+            self.plot_dicts[f"{fig_id_analyzed}_dips"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': self.analysis_data[qb_name]['dips_frequency'],
+                'yvals': self.analysis_data[qb_name]['dips_magnitude'],
+                'marker': 'x',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'linestyle': 'none',
+                'color': 'C1',
+                'setlabel': 'Dips',
+                'do_legend': True,
+                'legend_bbox_to_anchor': (0.5, -0.2),
+                'legend_pos': 'center'
+            }
+
+            # Plot textbox containing relevant information
+            textstr = ""
+            for i, dip_freq in enumerate(
+                    self.analysis_data[qb_name]['dips_frequency']):
+                textstr = textstr + f"Dip {i}: f = {dip_freq/1e9:.3f} GHz\n"
+            textstr = textstr.rstrip('\n')
+
+            self.plot_dicts[f'{fig_id_analyzed}_text_msg'] = {
+                'fig_id': fig_id_analyzed,
+                'ypos': -0.3,
+                'xpos': 0.5,
+                'horizontalalignment': 'center',
+                'verticalalignment': 'top',
+                'plotfn': self.plot_text,
+                'text_string': textstr
+            }
+
+
+class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
+    """
+    Find the dips of a 1D feedline spectroscopy and their widths. A pair of dips
+    is searched for each qubit according to the previous RO frequency order
+    of the qubits. The sharpest dip is then assigned to each qubit.
+    """
+
+    def __init__(self,
+                 feedlines_qubits: list,
+                 **kwargs):
+        """Initialize the analysis class by storing the keywords necessary to
+        run the dip-finding algorithm. By default, only the prominence is used
+        to select the dips.
+
+        Args:
+            feedlines_qubits (list[list[QuDev_transmon]]): list of all the
+                feedlines that were measured, where each feedline is a list of
+                QuDev_transmon objects. The number of dips that will be
+                searched for each feedline spectroscopy is twice the number
+                of qubits in each feedline.
+        """
+        self.feedlines = feedlines_qubits
+        # Sort the qubits in each feedline with respect to their current ro_freq
+        self.sorted_feedlines = []
+        for feedline in self.feedlines:
+            feedline_res_freqs = [qb.ro_freq() for qb in feedline]
+            sorted_feedline = [
+                qb for freq, qb in sorted(zip(feedline_res_freqs, feedline))
+            ]
+            self.sorted_feedlines.append(sorted_feedline)
+
+        # By default, look for 2*<number of qubits in the feedline>, but allow
+        # the user to specify another value for ndips
+        if kwargs.get("ndips") is None:
+            self.ndips = [2*len(feedline) for feedline in self.feedlines]
+        else:
+            self.ndips = kwargs.pop("ndips")
+        super().__init__(ndips = self.ndips, **kwargs)
+
+    def run_fitting(self):
+        """
+        Finds the dips the 1D resonator spectroscopy and assigns them to the
+        corresponding qubit. The dips are paired up (starting from the one
+        at the lowest frequency) and the sharpest dip of the pair is chosen
+        as the readout frequency for the corresponding qubit.
+        If the number of pairs is different from the number of qubits belonging
+        to the feedline, priority is given arbitrarily to the qubits with lower
+        frequency.
+        """
+        # Find the dips for each measured feedline
+        for qb_name,feedline,ndips in zip(self.qb_names,self.sorted_feedlines,self.ndips):
+            # Find the indices of the dips and their widths
+            dips_indices, dips_widths = self.find_dips(
+                frequency_data=self.analysis_data[qb_name]['freqs'],
+                magnitude_data=self.analysis_data[qb_name]['magnitude'][0],
+                ndips=ndips,
+                expected_dips_width=self.expected_dips_width,
+                **self.dip_finder_kwargs)
+
+            # Find the frequency and magnitude corresponding to these indices
+            dips_freqs = self.analysis_data[qb_name]['freqs'][dips_indices]
+            dips_magnitude = self.analysis_data[qb_name]['magnitude'][0][
+                dips_indices]
+
+            # Store the frequency of the peaks in the analysis_data dict
+            # together with their width
+            self.analysis_data[qb_name]['dips_frequency'] = dips_freqs
+            self.analysis_data[qb_name]['dips_magnitude'] = self.analysis_data[
+                qb_name]['magnitude'][0][dips_indices]
+            self.analysis_data[qb_name]['dips_widths'] = dips_widths
+
+            # Store data in the fit_res dict (which is then saved to the hdf
+            # file)
+            for i, (dip_freq,
+                    dip_width) in enumerate(zip(dips_freqs, dips_widths)):
+                self.fit_res[qb_name][f'dip{i}_frequency'] = dip_freq
+                self.fit_res[qb_name][f'dip{i}_width'] = dip_width
+
+            # Check whether the number of dips is different than expected.
+            # Note that the dip-finding algorithm by design will never find
+            # more than the expected number of dips. Only the case where some
+            # dips are missing needs to be dealt with
+            if len(dips_freqs) < 2 * len(feedline):
+                warning_msg = (f"Found {len(dips_freqs)} dips instead "
+                               f"of {2*len(feedline)}.")
+                if len(dips_freqs) % 2 == 1:
+                    warning_msg += (
+                        "\nOdd number of dips found, the last one "
+                        "will be considered unpaired and assigned to the last "
+                        "qubit.")
+                if len(dips_freqs) < 2 * len(feedline) - 1:
+                    # If two or more dips are missing, it will still try to
+                    # assign the ro frequency to the maximal amount of qubits
+                    # (e.g., 3 qubits if 5 or 6 dips are found)
+                    n_updatable_qbs = len(dips_freqs) // 2 + len(dips_freqs) % 2
+                    qubits_to_be_updated = feedline[:n_updatable_qbs]
+                    warning_msg += (
+                        f"\nOnly the {n_updatable_qbs} qubits with the lowest "
+                        "readout frequency will have a frequency assigned, "
+                        f"namely {[qb.name for qb in qubits_to_be_updated]}.")
+
+                log.warning(warning_msg)
+
+            # Loop over pairs of dips (i = 0, 2, 4, ...)
+            for i in range(0, len(dips_freqs), 2):
+                qb_dip = feedline[i // 2]
+                try:
+                    # Check which of two subsequent dips is sharper
+                    if dips_widths[i] < dips_widths[i + 1]:
+                        # Pick the leftmost dip
+                        self.fit_res[qb_name][
+                            f'{qb_dip.name}_RO_frequency'] = dips_freqs[i]
+                        self.fit_res[qb_name][
+                            f'{qb_dip.name}_mode2_frequency'] = dips_freqs[i +
+                                                                             1]
+                        self.fit_res[qb_name][
+                            f'{qb_dip.name}_RO_magnitude'] = dips_magnitude[i]
+                        self.fit_res[qb_name][
+                            f'{qb_dip.name}_mode2_magnitude'] = dips_magnitude[
+                                i + 1]
+                    else:
+                        # Pick the rightmost dip
+                        self.fit_res[qb_name][
+                            f'{qb_dip.name}_RO_frequency'] = dips_freqs[i + 1]
+                        self.fit_res[qb_name][
+                            f'{qb_dip.name}_mode2_frequency'] = dips_freqs[i]
+                        self.fit_res[qb_name][
+                            f'{qb_dip.name}_RO_magnitude'] = dips_magnitude[i +
+                                                                            1]
+                        self.fit_res[qb_name][
+                            f'{qb_dip.name}_mode2_magnitude'] = dips_magnitude[
+                                i]
+                except IndexError:
+                    # If an odd number of dip was found, consider the last one
+                    # to be unpaired and assign it to the last qubit
+                    log.warning((
+                        f"Odd number of dips found, picked {dips_freqs[i]} for "
+                        f"qubit {qb_dip.name} frequency"))
+                    self.fit_res[qb_name][
+                        f'{qb_dip.name}_RO_frequency'] = dips_freqs[i]
+                    self.fit_res[qb_name][
+                        f'{qb_dip.name}_RO_magnitude'] = dips_magnitude[i]
+
+    def prepare_plots(self):
+        """
+        Plots the projected data with the additional information found with
+        the analysis.
+        """
+        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
+
+        for qb_name, feedline in zip(self.qb_names, self.sorted_feedlines):
+            # Copy the original plots in order to have both the analyzed and the
+            # non-analyzed plots
+            fig_id_original = f"projected_plot_{qb_name}_Magnitude"
+            fig_id_analyzed = f"FeedlineSpectroscopy_{fig_id_original}"
+
+            # If self contains some Qudev_transmon object it is not possible
+            # to deep copy a plot_dict. Need to temporarily empty self.feedlines
+            # and self.sorted_feedlines
+            feedlines = self.feedlines
+            sorted_feedlines = self.sorted_feedlines
+            self.feedlines = []
+            self.sorted_feedlines = []
+            self.plot_dicts[fig_id_analyzed] = deepcopy(
+                self.plot_dicts[f"projected_plot_{qb_name}_Magnitude_Magnitude"]
+            )
+            self.feedlines = feedlines
+            self.sorted_feedlines = sorted_feedlines
+
+            # Change the fig_id of the copied plot in order to distinguish it
+            # from the original
+            self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
+            self.plot_dicts[fig_id_analyzed]['linestyle'] = 'solid'
+
+            for i,qb in enumerate(feedline):
+                # Plot the dips
+                dip1_freq = self.fit_res[qb_name][f'{qb.name}_RO_frequency']
+                dip2_freq = self.fit_res[qb_name][f'{qb.name}_mode2_frequency']
+                dip1_magn = self.fit_res[qb_name][f'{qb.name}_RO_magnitude']
+                dip2_magn = self.fit_res[qb_name][f'{qb.name}_mode2_magnitude']
+
+                self.plot_dicts[f"{fig_id_analyzed}_dips_{qb.name}"] = {
+                    'fig_id': fig_id_analyzed,
+                    'plotfn': self.plot_line,
+                    'xvals': [dip1_freq,dip2_freq],
+                    'yvals': [dip1_magn,dip2_magn],
+                    'marker': 'x',
+                    'line_kws': {
+                        'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                    },
+                    'linestyle': 'none',
+                    'color': f'C{i+1}',
+                    'setlabel': f'Dips {qb.name}',
+                    'do_legend': True,
+                    'legend_bbox_to_anchor': (0.5, -0.2),
+                    'legend_pos': 'center',
+                    'legend_ncol': 4,
+                }
+
+            # Plot the labels of the qubits next to their assigned dip
+            yvals = self.plot_dicts[
+                f"projected_plot_{qb_name}_Magnitude_Magnitude"]['yvals']
+            miny = np.min(yvals)
+            maxy = np.max(yvals)
+            yrange = maxy - miny
+            for i,qb in enumerate(feedline):
+                    self.plot_dicts[f"{fig_id_analyzed}_{qb.name}_RO"] = {
+                    'fig_id': fig_id_analyzed,
+                    'plotfn': self.plot_line,
+                    'xvals': [self.fit_res[qb_name][f'{qb.name}_RO_frequency']],
+                    'yvals': [
+                        self.fit_res[qb_name][f'{qb.name}_RO_magnitude'] -
+                        0.075 * yrange
+                    ],
+                    'marker': f'${qb.name}$',
+                    'line_kws': {
+                        'ms':
+                            self.get_default_plot_params()['lines.markersize'] *
+                            5
+                    },
+                    'linestyle': 'none',
+                    'color': f'C{i+1}'
+                }
+
+            # Plot textbox containing relevant information
+            textstr = ""
+            for qb in feedline:
+                f_ro = self.fit_res[qb_name][f'{qb.name}_RO_frequency']
+                f_purcell = self.fit_res[qb_name][
+                    f'{qb.name}_mode2_frequency']
+                try:
+                    textstr = textstr + f"{qb.name}: " + r"$f_{RO}$ = "  + \
+                        f"{f_ro/1e9:.3f} GHz, "
+                except KeyError:
+                    log.warning(f"RO frequency not found for {qb.name}")
+                try:
+                    textstr = textstr + r"$f_{mode,2}$ = " + \
+                        f"{f_purcell/1e9:.3f} GHz\n"
+                except KeyError:
+                    log.warning(f"Second mode frequency not found for {qb.name}")
+            textstr = textstr.rstrip('\n')
+
+            self.plot_dicts[f'{fig_id_analyzed}_text_msg'] = {
+                'fig_id': fig_id_analyzed,
+                'ypos': -0.3,
+                'xpos': 0.5,
+                'horizontalalignment': 'center',
+                'verticalalignment': 'top',
+                'plotfn': self.plot_text,
+                'text_string': textstr
+            }
+
+
+class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
+    """
+    Find the dips of a 2D resonator spectroscopy flux sweep and extracts the
+    USS and LSS.
+    The dips are found using the parent class ResonatorSpectroscopy1DAnalysis
+    method find_dips(), see it for more information. Only two dips are searched
+    at each voltage bias.
+    After finding the left and the right dips, the numerical derivative of the
+    frequency of the dips with respect to the bias voltage is calculated using
+    a Savitzky-Golay filter to smoothen the curve. The zeros (i.e. the extrema)
+    are found interpolating the numerical derivative. Maximum and minimum are
+    distinguished by checking the sign of the second derivative.
+    The output values of the analysis (saved in the HDF file) are:
+    - Voltage and frequency of the left LSS and USS,
+    - Voltage and frequency of the right LSS and USS,
+    - Average of the left and right voltage for both the LSS and USS,
+    - Average widths of the left and the dips.
+    """
+
+    def __init__(self, ndips: int = 2, **kwargs):
+        """ Initializes the class by calling the parent class constructor.
+        Args:
+            ndips: The number of dips that will be fitted. Default is
+                two since usually a Purcell filter is being used.
+
+        Kwargs:
+            see ResonatorSpectropscopyAnalysis
+            kwargs: see ResonatorSpectroscopyAnalysis.
+        """
+        super().__init__(ndips=ndips,**kwargs)
+
+    def process_data(self):
+        super().process_data()
+
+        # Collect all the relevants data of a measurement in this dict. Each
+        # entry of the dictionary corresponds to a measurement on a qubit
+        # and it contains the sweep points for the frequency, the sweep points
+        # for the voltage bias, and the projected data for the magnitude
+
+        # {
+        #  'qb1': {'freqs': [...],
+        #           'magnitude': [[...], ...],
+        #           'volts': [...],
+        #         },
+        #  'qb2': {'freqs': ...
+        #         ...
+        #         }
+        # }
+
+        for qb_name in self.qb_names:
+            self.analysis_data[qb_name]['volts'] = np.array(
+                self.sp[1][f"{qb_name}_volt"][0])
+
+    def run_fitting(self):
+        """
+        Finds the dips the 2D resonator spectroscopy and extracts the LSS and
+        the USS. The sharpest dip is chosen to designate a candidate sweet spot
+        for the given qubit bias voltage and RO frequency.
+        """
+        # Find the dips for each measured qubit
+        for qb_name in self.qb_names:
+            flux_parking = self.get_hdf_param_value(
+                f"Instrument settings/{qb_name}", "flux_parking")
+
+            left_dips_indices = []
+            right_dips_indices = []
+            left_dips_widths = []
+            right_dips_widths = []
+            # Find the indices of the dips at each voltage bias and their width
+            for linecut_magnitude in self.analysis_data[qb_name]['magnitude'][:,]:
+                dips_indices, dips_widths = self.find_dips(
+                    frequency_data=self.analysis_data[qb_name]['freqs'],
+                    magnitude_data=linecut_magnitude,
+                    ndips=self.ndips,
+                    expected_dips_width=self.expected_dips_width,
+                    **self.dip_finder_kwargs)
+
+                # Pick the first dip as the left one and the last one as the
+                # right one
+                left_dips_indices.append(dips_indices[0])
+                right_dips_indices.append(dips_indices[-1])
+                left_dips_widths.append(dips_widths[0])
+                right_dips_widths.append(dips_widths[-1])
+
+            # Calculate the average width of the left and the right dips
+            left_avg_width = np.average(left_dips_widths)
+            right_avg_width = np.average(right_dips_widths)
+
+            # Find the frequency corresponding to these indices and store it
+            # in the analysis_data dict
+            self.analysis_data[qb_name][
+                'left_dips_frequency'] = self.analysis_data[qb_name]['freqs'][
+                    left_dips_indices]
+            self.analysis_data[qb_name][
+                'right_dips_frequency'] = self.analysis_data[qb_name]['freqs'][
+                    right_dips_indices]
+
+            # Extracts the LSS and USS from the dips previously found
+            # LSS and USS for the dips on the left
+            left_lss, left_uss = self.find_lss_uss(
+                self.analysis_data[qb_name]['left_dips_frequency'],
+                self.analysis_data[qb_name]['volts'])
+            # LSS and USS for the dips on the right
+            right_lss, right_uss = self.find_lss_uss(
+                self.analysis_data[qb_name]['right_dips_frequency'],
+                self.analysis_data[qb_name]['volts'])
+
+            # Interpolate the found dips in order to find where the frequencies
+            # corresponding to the left and right LSS and USS
+            left_dips_interpolation = interpolate.interp1d(
+                self.analysis_data[qb_name]['volts'],
+                self.analysis_data[qb_name]['left_dips_frequency'], 'cubic')
+            right_dips_interpolation = interpolate.interp1d(
+                self.analysis_data[qb_name]['volts'],
+                self.analysis_data[qb_name]['right_dips_frequency'], 'cubic')
+
+            # Find the frequencies corresponding to the left and right LSS
+            # and USS (need to convert to float because the interpolating
+            # function returns a numpy array)
+            left_lss_freq = float(left_dips_interpolation(left_lss))
+            left_uss_freq = float(left_dips_interpolation(left_uss))
+            right_lss_freq = float(right_dips_interpolation(right_lss))
+            right_uss_freq = float(right_dips_interpolation(right_uss))
+
+            # Store data in the fit_res dict (which is then saved to the hdf
+            # file)
+            self.fit_res[qb_name]['left_lss'] = left_lss
+            self.fit_res[qb_name]['left_lss_freq'] = left_lss_freq
+            self.fit_res[qb_name]['left_uss'] = left_uss
+            self.fit_res[qb_name]['left_uss_freq'] = left_uss_freq
+            self.fit_res[qb_name]['left_avg_width'] = left_avg_width
+            self.fit_res[qb_name]['right_lss'] = right_lss
+            self.fit_res[qb_name]['right_lss_freq'] = right_lss_freq
+            self.fit_res[qb_name]['right_uss'] = right_uss
+            self.fit_res[qb_name]['right_uss_freq'] = right_uss_freq
+            self.fit_res[qb_name]['right_avg_width'] = right_avg_width
+
+            # Pick the designated sweet spot for the given qubit
+            if left_avg_width < right_avg_width:
+                # Pick left dip
+                uss = left_uss
+                lss = left_lss
+                if flux_parking == 0:
+                    # Pick left USS
+                    self.fit_res[qb_name][f'{qb_name}_sweet_spot'] = uss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_opposite_sweet_spot'] = lss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_sweet_spot_RO_frequency'] = left_uss_freq
+                elif np.abs(flux_parking) == 0.5:
+                    # Pick left LSS
+                    self.fit_res[qb_name][f'{qb_name}_sweet_spot'] = lss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_opposite_sweet_spot'] = uss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_sweet_spot_RO_frequency'] = left_lss_freq
+                else:
+                    log.warning((f"{qb_name}.flux_parking() is not 0, 0.5"
+                                 "nor -0.5. No sweet spot was chosen."))
+            else:
+                # Pick right dip
+                uss = right_uss
+                lss = right_lss
+                if flux_parking == 0:
+                    # Pick right USS
+                    self.fit_res[qb_name][f'{qb_name}_sweet_spot'] = uss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_opposite_sweet_spot'] = lss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_sweet_spot_RO_frequency'] = right_uss_freq
+                elif np.abs(flux_parking) == 0.5:
+                    # Pick right LSS
+                    self.fit_res[qb_name][f'{qb_name}_sweet_spot'] = lss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_opposite_sweet_spot'] = uss
+                    self.fit_res[qb_name][
+                        f'{qb_name}_sweet_spot_RO_frequency'] = right_lss_freq
+                else:
+                    log.warning((f"{qb_name}.flux_parking() is not 0, 0.5"
+                                 "nor -0.5. No sweet spot was chosen."))
+
+    def find_lss_uss(self,
+                     frequency_dips: np.ndarray,
+                     biases: np.ndarray,
+                     window_length: int = 7,
+                     polyorder: int = 2) -> tuple[float, float]:
+        """
+        Finds the LSS and USS given the frequency of the dips (previously
+        found in find_dips) and the corresponding voltage biases of a resonator
+        spectroscopy.
+        The algorithm works in the following way. First, the numerical
+        derivative of the frequency of the dips with respect to the voltage bias
+        is calculated. Then the extrema are found by interpolating
+        the numerical derivative with a CubicSpline and finding its root.
+        Afterwards, minima and maxima are distinguished by checking the sign
+        of the second derivative.
+        All the numerical derivative are calculated using a Savitzky-Golay
+        filter to smoothen the data. This prevents the derivative from crossing
+        zero just because of noisy data.
+
+        Args:
+            frequency_dips (np.ndarray): frequency of the dips previously found,
+                either the left ones or the right ones.
+            biases (np.ndarray): voltage bias values corresponding to the values
+                in frequency_dips.
+            window_length (int, optional): length of the filter window to
+                calculate the numerical derivatives with Savitzky-Golay filter.
+                See SciPy documentation of savgol_filter. Defaults to 7.
+            polyorder (int, optional): order of the polynomial to calculate the
+                numerical derivatives with Savitzky-Golay filter.
+                See SciPy documentation of savgol_filter Defaults to 2.
+
+        Returns:
+            tuple[float,float]: _description_
+        """
+
+        # The window length should be equal or less than the number of bias
+        # points. Check that this condition is satisfied, otherwise decrease
+        # the window length to satisfy it and print a warning.
+        if len(biases) < window_length:
+            # Ensure that the chosen window_length is odd (required for the
+            # Savitzky-Golay filter)
+            if len(biases) % 2 == 0:
+                window_length = len(biases) - 1
+            else:
+                window_length = len(biases)
+            log.warning(
+                f"The number of bias points is smaller than the default "
+                f"filter window length (= 7) to find the LSS and USS. Using "
+                f"window length of {window_length} instead.")
+
+        # Lists where the local extrema will be stored
+        local_maxima = []
+        local_minima = []
+
+        # Check whether the biases are in ascending order. If not, flip the
+        # arrays. This is needed when interpolating the data
+        if biases[1]-biases[0] < 0:
+            biases = np.flip(biases)
+            frequency_dips = np.flip(frequency_dips)
+
+        # Separation between voltage bias sweep points
+        dv = biases[1] - biases[0]
+
+        # Calculate the numerical first derivative of frequency of the dips
+        # with respect to the voltage bias
+        dfdv = savgol_filter(frequency_dips,
+                             delta=dv,
+                             window_length=window_length,
+                             deriv=1,
+                             polyorder=polyorder)
+
+        # Calculate the numerical second derivative of frequency of the dips
+        # with respect to the voltage bias
+        dfdv2 = savgol_filter(frequency_dips,
+                              delta=dv,
+                              window_length=window_length,
+                              deriv=2,
+                              polyorder=polyorder)
+
+        # Interpolate the derivatives previously calculated with a CubicSpline
+        dfdv_interp = interpolate.CubicSpline(biases, dfdv)
+        dfdv2_interp = interpolate.CubicSpline(biases, dfdv2)
+
+        # Find the roots of the df/dv: these are the local extrema
+        extrema = dfdv_interp.roots(extrapolate=False)
+
+        # Use the second derivative to distinguish between minima and maxima
+        for extremum in extrema:
+            if dfdv2_interp(extremum) > 0:
+                local_minima.append(extremum)
+            else:
+                local_maxima.append(extremum)
+
+        # Pick the minima and maxima closest to zero voltage bias for the LSS
+        # and the USS. If no local minima/maxima were found, set the LSS/USS
+        # to zero.
+
+        if len(local_minima) == 0:
+            log.warning("Failed to find local minima. Setting LSS = 0 V")
+            lss = 0
+        else:
+            lss = local_minima[np.argmin(np.abs(local_minima))]
+
+        if len(local_maxima) == 0:
+            log.warning("Failed to find local maxima. Setting USS = 0 V")
+            uss = 0
+        else:
+            uss = local_maxima[np.argmin(np.abs(local_maxima))]
+
+        return lss, uss
+
+    def prepare_plots(self):
+        """
+        Plots the projected data with the additional information found with
+        the analysis.
+        """
+        MultiQubit_Spectroscopy_Analysis.prepare_plots(self)
+
+        for qb_name in self.qb_names:
+
+            # Copy the original plots in order to have both the analyzed and the
+            # non-analyzed plots
+            fig_id_original = f"projected_plot_{qb_name}_Magnitude_{qb_name}_volt"
+            fig_id_analyzed = f"ResonatorSpectroscopyFluxSweep_{fig_id_original}"
+            self.plot_dicts[fig_id_analyzed] = deepcopy(self.plot_dicts[
+                f"projected_plot_{qb_name}_Magnitude_Magnitude_{qb_name}_volt"])
+
+            # Change the fig_id of the copied plot in order to distinguish it
+            # from the original
+            self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
+
+            # Plot the left dips
+            self.plot_dicts[f"{fig_id_analyzed}_left_dips"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': self.analysis_data[qb_name]['left_dips_frequency'],
+                'yvals': self.analysis_data[qb_name]['volts'],
+                'marker': 'o',
+                'linestyle': 'none',
+                'color': 'C4',
+                'setlabel': 'Left dips',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot the right dips
+            self.plot_dicts[f"{fig_id_analyzed}_right_dips"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': self.analysis_data[qb_name]['right_dips_frequency'],
+                'yvals': self.analysis_data[qb_name]['volts'],
+                'marker': 'o',
+                'linestyle': 'none',
+                'color': 'C1',
+                'setlabel': 'Right dips',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot the left LSS
+            self.plot_dicts[f"{fig_id_analyzed}_left_lss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array([self.fit_res[qb_name]['left_lss_freq']]),
+                'yvals': np.array([
+                    self.fit_res[qb_name]['left_lss'],
+                ]),
+                'marker': '<',
+                'linestyle': 'none',
+                'color': 'C4',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': 'Left LSS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot the left USS
+            self.plot_dicts[f"{fig_id_analyzed}_left_uss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array([self.fit_res[qb_name]['left_uss_freq']]),
+                'yvals': np.array([self.fit_res[qb_name]['left_uss']]),
+                'marker': '>',
+                'linestyle': 'none',
+                'color': 'C4',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': 'Left USS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot the right LSS
+            self.plot_dicts[f"{fig_id_analyzed}_right_lss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array([self.fit_res[qb_name]['right_lss_freq']]),
+                'yvals': np.array([self.fit_res[qb_name]['right_lss']]),
+                'marker': '<',
+                'linestyle': 'none',
+                'color': 'C1',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': 'Right LSS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot the right USS
+            self.plot_dicts[f"{fig_id_analyzed}_right_uss"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array([self.fit_res[qb_name]['right_uss_freq']]),
+                'yvals': np.array([self.fit_res[qb_name]['right_uss']]),
+                'marker': '>',
+                'linestyle': 'none',
+                'color': 'C1',
+                'line_kws': {
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': 'Right USS',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Mark the designated sweet spot
+            self.plot_dicts[f"{fig_id_analyzed}_designated_sweet_spot"] = {
+                'fig_id': fig_id_analyzed,
+                'plotfn': self.plot_line,
+                'xvals': np.array(
+                        [self.fit_res[qb_name]
+                        [f'{qb_name}_sweet_spot_RO_frequency']]
+                    ),
+                'yvals': np.array(
+                        [self.fit_res[qb_name]
+                        [f'{qb_name}_sweet_spot']]
+                    ),
+                'marker': 'x',
+                'linestyle': 'none',
+                'color': 'C3',
+                'line_kws': {
+                    'fillstyle': 'none',
+                    'ms': self.get_default_plot_params()['lines.markersize'] * 3
+                },
+                'setlabel': f'{qb_name} sweet spot',
+                'do_legend': True,
+                'legend_ncol': 2,
+                'legend_bbox_to_anchor': (1.2, -0.2),
+                'legend_pos': 'upper right'
+            }
+
+            # Plot textbox containing relevant information
+            textstr = (
+                f"Left LSS = {self.fit_res[qb_name]['left_lss']:.3f} V"
+                f"\nLeft USS = {self.fit_res[qb_name]['left_uss']:.3f} V"
+                f"\nRight LSS = {self.fit_res[qb_name]['right_lss']:.3f} V"
+                f"\nRight USS = {self.fit_res[qb_name]['right_uss']:.3f} V")
+
+            self.plot_dicts[f'{fig_id_analyzed}_text_msg'] = {
+                'fig_id': fig_id_analyzed,
+                'ypos': -0.3,
+                'xpos': -0.2,
+                'horizontalalignment': 'left',
+                'verticalalignment': 'top',
+                'plotfn': self.plot_text,
+                'text_string': textstr
+            }
 
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):

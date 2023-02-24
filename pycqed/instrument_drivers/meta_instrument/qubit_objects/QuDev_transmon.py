@@ -915,15 +915,16 @@ class QuDev_transmon(MeasurementObject):
             drive (str, None): the kind of drive to be applied, which can be
                 None (no drive), 'continuous_spec' (continuous spectroscopy),
                 'continuous_spec_modulated' (continuous spectroscopy using
-                the modulated configuation of the switch),
+                the modulated configuration of the switch),
                 'pulsed_spec' (pulsed spectroscopy), or the default
                 'timedomain' (AWG-generated signal upconverted by the mixer)
             switch (str): the required switch mode. Can be a switch mode
                 understood by set_switch or the default value 'default', in
                 which case the switch mode is determined based on the kind
-                of drive ('spec' for continuous/pulsed spectroscopy w/o modulated;
-                'no_drive' if drive is None and a switch mode 'no_drive' is
-                configured for this qubit; 'modulated' in all other cases).
+                of drive ('spec' for continuous/pulsed spectroscopy w/o
+                modulated; 'no_drive' if drive is None and a switch mode
+                'no_drive' is configured for this qubit; 'modulated' in all
+                other cases).
         """
 
         if switch == 'default':
@@ -949,7 +950,7 @@ class QuDev_transmon(MeasurementObject):
         if ge_lo() is not None:
             if drive is None:
                 ge_lo.get_instr().off()
-            elif 'continuous_spec' in drive :
+            elif 'continuous_spec' in drive:
                 ge_lo.get_instr().pulsemod_state('Off')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())

@@ -1,0 +1,6 @@
+{
+    "feedlines": ["feedline1", "feedline2", "feedline3","feedline4"],
+    "freq_start": 6.5e9,
+    "freq_stop": 7.7e9,
+    "pts": 800
+}
