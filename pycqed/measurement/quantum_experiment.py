@@ -989,7 +989,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                     'upload': (bool, True),
                     'measure': (bool, True),
                     'analyze': (bool, True),
-                    'analysis_kwargs': (dict, None),
                     'delegate_plotting': (bool, False),
                     'compression_seg_lim': (int, None),
                     'cz_pulse_name': (
