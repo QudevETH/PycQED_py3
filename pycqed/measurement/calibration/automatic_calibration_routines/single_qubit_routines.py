@@ -1214,9 +1214,10 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                            self.get_param_value('acq_averages')))
                 qb.acq_weights_type(self.get_param_value('acq_weights_type'))
 
-            trigger_device = self.qubits[0].instr_trigger.get_instr()
             trigger_pulse_period = self.get_param_value('trigger_pulse_period')
-            if trigger_device is not None and trigger_pulse_period is not None:
+            if self.qubits[0].instr_trigger() is not None and \
+                    trigger_pulse_period is not None:
+                trigger_device = self.qubits[0].instr_trigger.get_instr()
                 trigger_device.pulse_period(trigger_pulse_period)
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
