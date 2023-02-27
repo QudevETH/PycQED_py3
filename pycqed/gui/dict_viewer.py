@@ -54,12 +54,11 @@ class DictView(qt.QtWidgets.QWidget):
             0, int(.5 * .4 * screen_size.width()))
         self.tree_widget.setExpandsOnDoubleClick(True)
 
-        root_item = qt.QtWidgets.QTreeWidgetItem(["Root"])
+        root_item = self.tree_widget.invisibleRootItem()
         # build up the tree recursively from a dictionary
         self.dict_to_titem(snap, root_item)
         self.tree_widget.addTopLevelItem(root_item)
 
-        root_item.setExpanded(True)  # expand root item
         # expand all parameter branches by default
         self.expand_parameters(root_item)
 
@@ -367,10 +366,10 @@ class DictView(qt.QtWidgets.QWidget):
             titem = titem.parent()
         key_list.reverse()
 
-        if len(key_list) > 3:
-            return key_list[1]+'.'+key_list[3]
+        if len(key_list) > 2:
+            return key_list[0]+'.'+key_list[2]
         elif len(key_list) > 1:
-            return key_list[1]
+            return key_list[0]
         else:
             return ''
 
