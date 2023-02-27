@@ -303,7 +303,7 @@ class ZIPulsarMixin:
                 #   in earlier experiment (after the last reset of the
                 #   sequence cache)
                 continue
-            fmt = "%.18e" if wf.dtype == np.float else "%d"
+            fmt = "%.18e" if wf.dtype == float else "%d"
             np.savetxt(filename, wf, delimiter=",", fmt=fmt)
 
     def zi_playback_string(self, name, device, wave, acq=False, codeword=False,

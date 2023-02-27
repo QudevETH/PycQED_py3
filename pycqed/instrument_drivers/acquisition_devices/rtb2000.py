@@ -21,7 +21,7 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
                                  ],
                      # 'scope': [],
                      }
-    allowed_weights_types = ['optimal', 'DSB']
+    allowed_weights_types = ['custom', 'DSB']
     _MODEL_IDENTIFIER = '::0x01D6::'
 
     def __init__(self, name, address=None, *args, **kwargs):
