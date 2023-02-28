@@ -659,13 +659,9 @@ class Loader:
 
         folder_dir = a_tools.get_folder(timestamp)
         dirname = os.path.split(folder_dir)[1]
-        if dirname[6:9] == '_X_':
-            fn = dirname[0:7]+dirname[9:]
-        else:
-            fn = dirname
         path = Path(folder_dir)
 
-        file_path = sorted(path.glob(fn+".*"))
+        file_path = sorted(path.glob(dirname+".*"))
         if len(file_path) > 1:
             raise KeyError(f"More than one file found for "
                            f"timestamp '{timestamp}'")
