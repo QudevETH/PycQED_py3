@@ -57,11 +57,4 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
         """
         pass
 
-    def clock_freq(self):
-        dev_id = self.get_idn()['serial']
-        return self.daq.getDouble(f'/{dev_id}/system/clocks/sampleclock/freq')
-
-    def set_clock_freq(self, f):
-        dev_id = self.get_idn()['serial']
-        self.daq.setDouble(f'/{dev_id}/system/clocks/sampleclock/freq', f)
 
