@@ -332,6 +332,7 @@ class MockDAQServer():
             self.nodes[f'/{self.device}/raw/error/blinkseverity'] = {'type': 'Integer', 'value': 0}
             self.nodes[f'/{self.device}/raw/error/blinkforever'] = {'type': 'Integer', 'value': 0}
             self.nodes[f'/{self.device}/dios/0/extclk'] = {'type': 'Integer', 'value': 0}
+            self.nodes[f'/{self.device}/system/clocks/sampleclock/freq'] = {'type': 'Float', 'value': 2.4e9}
             for awg_nr in range(4):
                 # 1 line different from Delft version: more waves
                 for i in range(2048):
