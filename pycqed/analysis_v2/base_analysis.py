@@ -2276,9 +2276,13 @@ class BaseDataAnalysis(object):
 
         awg_dd = self.get_data_from_timestamp_list({
             'clock_freq': f'Instrument settings.{awg}.clock_freq',
-            'IDN': f'Instrument settings.{awg}.IDN'})
+            'IDN': f'Instrument settings.{awg}.IDN',
+            'system_clocks_sampleclock_freq':
+                f'Instrument settings.{awg}.system_clocks_sampleclock_freq'})
         if awg_dd['clock_freq']:
             return awg_dd['clock_freq']
+        elif awg_dd['system_clocks_sampleclock_freq']:
+            return awg_dd['system_clocks_sampleclock_freq']
         model = awg_dd['IDN'].get('model', None)
         if model == 'HDAWG8':
             return 2.4e9

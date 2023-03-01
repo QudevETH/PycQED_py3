@@ -33,10 +33,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
     AWG_CLASSES = [ZI_HDAWG_core]
     GRANULARITY = 16
-    ELEMENT_START_GRANULARITY = 8 / 2.4e9
-    MIN_LENGTH = 16 / 2.4e9
-    # TODO: Check if other values commented out should be removed
-    INTER_ELEMENT_DEADTIME = 8 / 2.4e9 # 80 / 2.4e9 # 0 / 2.4e9
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.01, 5.0),
         "marker": (0.01, 5.0),
@@ -56,6 +52,31 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         "  {playback_string}\n"
         "}}\n"
     )
+
+    @property
+    def ELEMENT_START_GRANULARITY(self):
+        """
+        Return element start granularity for the HDAWG based on current
+        sample clock rate.
+        """
+        return 8 / self.clock()
+
+    @property
+    def MIN_LENGTH(self):
+        """
+        Return element minimal length for the HDAWG based on current
+        sample clock rate.
+        """
+        return 16 / self.clock()
+
+    @property
+    def INTER_ELEMENT_DEADTIME(self):
+        """
+        Return inter element dead time for the HDAWG based on current
+        sample clock rate.
+        """
+        # TODO: Check if other values commented out should be removed
+        return 8 / self.clock()  # 80 / self.clock() # 0 / self.clock()
 
     def __init__(self, pulsar, awg):
         super().__init__(pulsar, awg)

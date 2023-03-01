@@ -35,7 +35,8 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
             'clockbase',
             'system_clocks_referenceclock_source',
             'system_clocks_referenceclock_status',
-            'system_clocks_referenceclock_freq'}
+            'system_clocks_referenceclock_freq',
+            'system_clocks_sampleclock_freq'}
         for i in range(4):
             self._snapshot_whitelist.update({
                 'awgs_{}_enable'.format(i),
@@ -57,4 +58,10 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
         pass
 
     def clock_freq(self):
-        return 2.4e9
+        dev_id = self.get_idn()['serial']
+        self.daq.getDouble(f'/{dev_id}/system/clocks/sampleclock/freq')
+
+    def set_clock_freq(self, f):
+        dev_id = self.get_idn()['serial']
+        self.daq.setDouble(f'/{dev_id}/system/clocks/sampleclock/freq', f)
+
