@@ -265,6 +265,7 @@ class Segment:
         :param store_segment_length_timer: (bool, default: True) whether
             the segment length should be stored in the segment's Timer object
         """
+        self._check_acquisition_elements()
         self.join_or_split_elements()
         self.resolve_timing()
         self.resolve_mirror()
@@ -288,6 +289,14 @@ class Segment:
             except Exception as e:
                 # storing segment length is not crucial for the measurement
                 log.warning(f"Could not store segment length timer: {e}")
+
+    def _check_acquisition_elements(self):
+        mobjs = [set(m) for m in self.acquisition_elements.values()]
+        if len(mobjs) and any([m != mobjs[0] for m in mobjs]):
+            log.warning(
+                'Inconsistent acquisition elements can lead to unexpected '
+                'behavior. Usually, all acquisition elements should contain '
+                'pulses for the same set of measurement objects.')
 
     def join_or_split_elements(self):
         self.resolved_pulses = []
