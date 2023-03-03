@@ -104,7 +104,8 @@ class DateTimeGenerator:
 
 class Data(h5py.File):
 
-    def __init__(self, name: str, datadir: str):
+    def __init__(self, name: str, datadir: str,
+                 timestamp: str = None):
         """
         Creates an empty data set including the file, for which the currently
         set file name generator is used.
@@ -116,7 +117,11 @@ class Data(h5py.File):
         """
         self._name = name
 
-        self._localtime = time.localtime()
+        if timestamp is None:
+            self._localtime = time.localtime()
+        else:
+            self._localtime = time.strptime(timestamp, '%Y%m%d_%H%M%S')
+
         self._timestamp = time.asctime(self._localtime)
         self._timemark = time.strftime('%H%M%S', self._localtime)
         self._datemark = time.strftime('%Y%m%d', self._localtime)
