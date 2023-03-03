@@ -15,12 +15,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# constant file extensions
-file_extensions = {'pickle': '.pickle',
-                   'pickle_comp': '.picklec',
-                   'msgpack': '.msg',
-                   'msgpack_comp': '.msgc',
-                   'hdf5': '.hdf5'}
+# constant file extensions, ordered in most desired file type
+file_extensions = {
+    'msgpack': '.msg', 'msgpack_comp': '.msgc', 'pickle': '.pickle',
+    'pickle_comp': '.picklec', 'hdf5': '.hdf5'}
 
 
 class DelegateAttributes:
@@ -647,12 +645,11 @@ class Loader:
     @staticmethod
     def get_file_format(timestamp: str):
         """
-        Returns the file format and the compression (bool) of a given timestamp.
+        Returns the file format of a given timestamp.
         Args:
             timestamp (str): timestamp of the file
 
-        Returns (str and bool): file format as a string ('hdf5', 'pickle',
-            'msgpack') and if the file is compressed
+        Returns str: file format as a string (see file_extensions)
 
         """
         from pycqed.analysis import analysis_toolbox as a_tools
@@ -663,8 +660,18 @@ class Loader:
 
         file_path = sorted(path.glob(dirname+".*"))
         if len(file_path) > 1:
+            for format, extension in file_extensions.items():
+                for path in file_path:
+                    file_name, file_extension = os.path.splitext(path)
+                    if extension == file_extension:
+                        logger.warning(
+                            f"More than one file found for timestamp "
+                            f"'{timestamp}'. File in format '{format}' will be "
+                            f"considered.")
+                        return format
             raise KeyError(f"More than one file found for "
-                           f"timestamp '{timestamp}'")
+                           f"timestamp '{timestamp}' and none matches the "
+                           f"standard file extensions '{file_extensions}'.")
         elif len(file_path) == 0:
             raise KeyError(f"No file found for timestamp '{timestamp}'")
         else:
