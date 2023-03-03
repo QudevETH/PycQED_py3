@@ -188,6 +188,11 @@ class MeasurementControl(Instrument):
             parameter_class=ManualParameter
         )
 
+        self.add_parameter('last_timestamp',
+                           initial_value=None,
+                           docstring='Timestamp of MC.',
+                           parameter_class=ManualParameter)
+
         # pyqtgraph plotting process is reused for different measurements.
         if self.live_plot_enabled():
             self.open_plotmon_windows()
@@ -227,9 +232,11 @@ class MeasurementControl(Instrument):
         '''
         label = '' if label is None else '_' + label
         self.set_measurement_name('Instrument_settings' + label)
+        self.last_timestamp(time.strftime('%Y%m%d_%H%M%S', time.localtime()))
         if self.settings_file_format() == 'hdf5':
             with h5d.Data(name=self.get_measurement_name(),
-                          datadir=self.datadir()) as self.data_object:
+                          datadir=self.datadir(),
+                          timestamp=self.last_timestamp()) as self.data_object:
                 self.save_instrument_settings(self.data_object)
         else:
             self.save_instrument_settings()
@@ -315,8 +322,11 @@ class MeasurementControl(Instrument):
         if self.skip_measurement():
             return return_dict
 
+        self.last_timestamp(time.strftime('%Y%m%d_%H%M%S', time.localtime()))
         with h5d.Data(name=self.get_measurement_name(),
-                      datadir=self.datadir()) as self.data_object:
+                      datadir=self.datadir(),
+                      timestamp=self.last_timestamp()) \
+                as self.data_object:
             if exp_metadata is not None:
                 self.exp_metadata = deepcopy(exp_metadata)
             else:
@@ -1956,7 +1966,8 @@ class MeasurementControl(Instrument):
             dumper = Dumper(name=self.get_measurement_name(),
                             datadir=self.datadir(),
                             data=self.station.snapshot(),
-                            compression=self.settings_file_compression())
+                            compression=self.settings_file_compression(),
+                            timestamp=self.last_timestamp())
             dumper.dump()
 
 
