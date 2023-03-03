@@ -906,7 +906,7 @@ class Dumper:
     """
 
     def __init__(self, name: str, data: dict, datadir: str = None,
-                 compression=False):
+                 compression=False, timestamp: str = None):
         """
         Creates a folder for the file.
         Args:
@@ -915,19 +915,24 @@ class Dumper:
             datadir (str): root directory
             compression (bool): True if the file should be compressed with
                 blosc2
+            timestamp (str): timestamp which is used to create the folder and
+                filename. It has to be in the format '%Y%m%d_%H%M%S'
         """
         self._name = name
         self.data = data
         self.compression = compression
 
-        self._localtime = time.localtime()
+        if timestamp == None:
+            self._localtime = time.localtime()
+        else:
+            self._localtime = time.strptime(timestamp, '%Y%m%d_%H%M%S')
         self._timestamp = time.asctime(self._localtime)
         self._timemark = time.strftime('%H%M%S', self._localtime)
         self._datemark = time.strftime('%Y%m%d', self._localtime)
 
         # sets the file path
         self.filepath = DateTimeGenerator().new_filename(
-            self, folder=datadir)
+            self, folder=datadir, auto_increase=False)
 
         self.filepath = self.filepath.replace("%timemark", self._timemark)
 
@@ -961,8 +966,9 @@ class MsgDumper(Dumper):
     Class to dump dictionaries into msg files.
     """
     def __init__(self, name: str, data: dict, datadir: str = None,
-                 compression=False):
-        super().__init__(name, data, datadir=datadir, compression=compression)
+                 compression=False, timestamp: str = None):
+        super().__init__(name, data, datadir=datadir, compression=compression,
+                         timestamp=timestamp)
         if self.compression:
             self.filepath = self.filepath.replace(
                 ".hdf5", file_extensions['msgpack_comp'])
@@ -988,8 +994,9 @@ class MsgDumper(Dumper):
 class PickleDumper(Dumper):
 
     def __init__(self, name: str, data: dict, datadir: str = None,
-                 compression=False):
-        super().__init__(name, data, datadir=datadir, compression=compression)
+                 compression=False, timestamp:str=None):
+        super().__init__(name, data, datadir=datadir, compression=compression,
+                         timestamp=timestamp)
         if self.compression:
             self.filepath = self.filepath.replace(
                 ".hdf5", file_extensions['pickle_comp'])
