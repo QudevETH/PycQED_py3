@@ -35,7 +35,8 @@ class DateTimeGenerator:
         pass
 
     def create_data_dir(self, datadir: str, name: str=None, ts=None,
-                        datesubdir: bool=True, timesubdir: bool=True):
+                        datesubdir: bool=True, timesubdir: bool=True,
+                        auto_increase: bool = True):
         """
         Create and return a new data directory.
 
@@ -46,6 +47,8 @@ class DateTimeGenerator:
                 if timesubdir=True
             datesubdir (bool): whether to create a subdirectory for the date
             timesubdir (bool): whether to create a subdirectory for the time
+            auto_increase (bool): ensures that timestamp is unique and if not
+                increases by 1s until it is.
 
         Output:
             The directory to place the new file in
@@ -61,7 +64,7 @@ class DateTimeGenerator:
             timestamp_verified = False
             counter = 0
             # Verify if timestamp is unique by seeing if the folder exists
-            while not timestamp_verified:
+            while not timestamp_verified and auto_increase:
                 counter += 1
                 try:
                     measdirs = [d for d in os.listdir(path)
@@ -89,11 +92,12 @@ class DateTimeGenerator:
 
         return path, tsd
 
-    def new_filename(self, data_obj, folder):
+    def new_filename(self, data_obj, folder, auto_increase: bool = True):
         """Return a new filename, based on name and timestamp."""
         path, tstr = self.create_data_dir(folder,
                                           name=data_obj._name,
-                                          ts=data_obj._localtime)
+                                          ts=data_obj._localtime,
+                                          auto_increase=auto_increase)
         filename = '%s_%s.hdf5' % (tstr, data_obj._name)
         return os.path.join(path, filename)
 
