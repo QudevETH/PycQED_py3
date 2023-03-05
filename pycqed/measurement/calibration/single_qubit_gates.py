@@ -14,7 +14,8 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -1884,7 +1885,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
             })
         d['task_list_fields'].update({
             SingleQubitGateCalibExperiment.__name__: odict({
-                'qb': ((Qubit, 'single_select'), None),
+                'qb': ((QuDev_transmon, 'single_select'), None),
                 'transition_name': (['ge', 'ef', 'fh'], 'ge'),
             })
         })
@@ -2066,6 +2067,11 @@ class ThermalPopulation(Rabi):
     amplitudes of the two Rabi oscillations, one can infer the thermal e
     state population.
 
+    Args:
+        amps (list): Amplitude sweep points, see docstring of the parent class.
+        In this QuantumExperiment they are used as amplitude of the X180_ef
+        pulse, while the amplitude of the X180_ge pulse is set by qb.ge_amp180.
+
     TODO: extend to states other than the e state
     """
     default_experiment_name = 'Thermal Population'
@@ -2089,7 +2095,9 @@ class ThermalPopulation(Rabi):
                 param_name=f'{qbn}_amplitude_ge',
                 values=np.array([0.0, ge_amp]),
                 unit='V',
-                label='amplitude ge')
+                label='amplitude ge',
+                dimension=1,
+            )
         return super().update_sweep_points()
 
     def sweep_block(self, qb, sweep_points, **kw):
@@ -2531,7 +2539,6 @@ class ReparkingRamsey(Ramsey):
             Passed to parent method.
         """
 
-        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
         options_dict = analysis_kwargs.pop('options_dict', {})
@@ -3824,12 +3831,8 @@ class ActiveReset(CalibBuilder):
             # perpare correspondance between integration unit (key)
             # and uhf channel; check if only one channel is asked for
             # (not asked for all qb channels and weight type uses only 1)
-            if not all_qb_channels and qb.acq_weights_type() \
-                    in ('square_root', 'optimal'):
-                chs = {0: qb.acq_I_channel()}
-            else:
-                # other weight types have 2 channels
-                chs = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+            chs = {i: ch for i, ch in enumerate([
+                qb.get_acq_int_channels(2 if all_qb_channels else None)])}
 
             #get clf thresholds
             if from_clf_params:

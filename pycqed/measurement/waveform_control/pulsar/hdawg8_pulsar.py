@@ -3,6 +3,7 @@ import logging
 import numpy as np
 from copy import deepcopy
 from functools import partial
+import json
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
@@ -16,6 +17,9 @@ try:
         ZI_base_instrument import merge_waveforms
 except Exception:
     pass
+
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
+    .ZI_base_instrument import MockDAQServer
 
 from .pulsar import PulsarAWGInterface
 from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
@@ -78,14 +82,18 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             self._awg_mcc = None
         self._init_mcc()
 
-        self._awg_modules = []
+        # dict for storing previously-uploaded waveforms
+        self.waveform_cache = dict()
+
+        # Each AWG module corresponds to an HDAWG channel pair.
+        self.awg_modules = []
         for awg_nr in self._hdawg_active_awgs():
             channel_pair = HDAWGGeneratorModule(
                 awg=self.awg,
                 awg_interface=self,
                 awg_nr=awg_nr
             )
-            self._awg_modules.append(channel_pair)
+            self.awg_modules.append(channel_pair)
 
     def _get_awgs_mcc(self) -> list:
         if self._awg_mcc is not None:
@@ -110,7 +118,17 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="Configures whether to use placeholder "
+                                       "waves and binary "
+                                       "waveform upload on this device. If set "
+                                       "to True, placeholder waves "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and enable placeholder waves on a "
+                                       "per-AWG-module basis."
+                             )
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1", "DIO", "ZSync"),
@@ -124,6 +142,45 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                              vals=vals.MultiType(vals.Enum(None), vals.Ints(),
                                                  vals.Lists(vals.Ints())),
                              parameter_class=ManualParameter)
+        pulsar.add_parameter(f"{name}_use_command_table", initial_value=False,
+                             vals=vals.Bool(), parameter_class=ManualParameter,
+                             docstring="Configures whether to use command table"
+                                       "for waveform sequencing on this "
+                                       "device. If set to True, command table "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and program command table on a "
+                                       "per-AWG-module basis.")
+        pulsar.add_parameter(f"{name}_harmonize_amplitude",
+                             initial_value=False,
+                             vals=vals.Bool(), parameter_class=ManualParameter,
+                             docstring="Configures whether to rescale "
+                                       "waveform amplitudes before uploading "
+                                       "and retrieve the original values with "
+                                       "hardware playback commands. This "
+                                       "allows reusing waveforms and "
+                                       "reduces the number of waveforms "
+                                       "to be uploaded. "
+                                       "If set to True, this feature "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and executes on a "
+                                       "per-AWG-module basis. Note that "
+                                       "this feature has to be used in "
+                                       "combination with command table.")
+        pulsar.add_parameter(f"{name}_internal_modulation", initial_value=False,
+                             vals=vals.Bool(), parameter_class=ManualParameter,
+                             docstring="Configures whether to use internal "
+                                       "modulation for waveform generation on "
+                                       "this device. If set to True, internal "
+                                       "modulation will be enabled on all AWG "
+                                       "modules on this device. If set to "
+                                       "False, pulsar will check "
+                                       "channel-specific settings and "
+                                       "configures modulation on a "
+                                       "per-AWG-module basis.")
 
         group = []
         for ch_nr in range(8):
@@ -159,9 +216,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                 initial_value=1.0,
                 docstring=f"Scales the AWG output of channel by a given factor."
             )
-            pulsar.add_parameter(f"{ch_name}_internal_modulation",
-                                 initial_value=False, vals=vals.Bool(),
-                                 parameter_class=ManualParameter)
 
             awg_nr = (int(id[2:]) - 1) // 2
             output_nr = (int(id[2:]) - 1) % 2
@@ -224,8 +278,68 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                             f"direct output mode."
                 )
 
+                pulsar.add_parameter(
+                    f"{ch_name}_use_placeholder_waves",
+                    initial_value=False,
+                    vals=vals.Bool(),
+                    parameter_class=ManualParameter,
+                    docstring="Configures whether to use placeholder waves"
+                              "on this AWG module. Note that this "
+                              "parameter will be ignored if the device-level "
+                              "{dev_name}_use_placeholder_waves is set to "
+                              "True. In that case, all AWG modules on the "
+                              "device will use placeholder waves irrespective "
+                              "of the channel-specific setting."
+                )
 
-        else: # ch_type == "marker"
+                pulsar.add_parameter(
+                    f"{ch_name}_use_command_table",
+                    initial_value=False,
+                    vals=vals.Bool(),
+                    parameter_class=ManualParameter,
+                    docstring="Configures whether to use command table for "
+                              "wave sequencing on this AWG module. Note that "
+                              "this parameter will be ignored if the "
+                              "device-level {dev_name}_use_command_table is "
+                              "set to True. In that case, all AWG modules on "
+                              "the device will use command table irrespective "
+                              "of the channel-specific setting."
+                )
+
+                param_name = f"{ch_name}_harmonize_amplitude"
+                self.pulsar.add_parameter(
+                    param_name,
+                    initial_value=False,
+                    vals=vals.Bool(),
+                    parameter_class=ManualParameter,
+                    docstring="Configures whether to rescale waveform "
+                              "amplitudes before uploading and retrieve the "
+                              "original values with hardware playback "
+                              "commands. This allows reusing waveforms and "
+                              "reduces the number of waveforms to be uploaded. "
+                              "Note that this "
+                              "parameter will be ignored if the device-level "
+                              "{dev_name}_harmonize_amplitude is set to "
+                              "True. In that case, all AWG modules on the "
+                              "device will use command table irrespective "
+                              "of the channel-specific setting."
+                )
+
+                pulsar.add_parameter(
+                    f"{ch_name}_internal_modulation",
+                    initial_value=False,
+                    vals=vals.Bool(),
+                    parameter_class=ManualParameter,
+                    docstring="Configures whether to use internal modulation "
+                              "on this AWG module. Note that this "
+                              "parameter will be ignored if the device-level "
+                              "{dev_name}_internal_modulation is set to "
+                              "True. In that case, all AWG modules on the "
+                              "device will use internal modulation irrespective"
+                              "of the channel-specific setting."
+                )
+
+        else:  # ch_type == "marker"
             # So far no additional parameters specific to marker channels
             pass
 
@@ -248,7 +362,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             else:
                 pass # raise NotImplementedError("Cannot set amp on marker channels.")
         elif param == "amplitude_scaling" and channel_type == "analog":
-            # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
+            # ch1/ch2 are on AWG module 0, ch3/ch4 are on AWG module 1, etc.
             awg = (int(id[2:]) - 1) // 2
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
@@ -276,7 +390,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             else:
                 return 1
         elif param == "amplitude_scaling" and channel_type == "analog":
-            # ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1, etc.
+            # ch1/ch2 are on AWG module 0, ch3/ch4 are on AWG module 1, etc.
             awg = (int(id[2:]) - 1) // 2
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
@@ -342,9 +456,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                 # see pycqed\instrument_drivers\physical_instruments\
                 #   ZurichInstruments\zi_parameter_files\node_doc_HDAWG8.json
                 # for description of the nodes used below.
-                # awg_nr: ch1/ch2 are on sub-awg 0, ch3/ch4 are on sub-awg 1,
-                # etc. Mode 1 (2) means that the AWG Output is multiplied with
-                # Sine Generator signal 0 (1) of this sub-awg
+                # awg_nr: ch1/ch2 are on AWG module 0, ch3/ch4 are on AWG
+                # module 1, etc. Mode 1 (2) means that the AWG Output is
+                # multiplied with Sine Generator signal 0 (1) of this AWG
+                # module.
                 if direct:
                     self.awg.set(f'sines_{awg_nr * 2}_enables_0', 1)
                     self.awg.set(f'sines_{awg_nr * 2}_enables_1', 0)
@@ -422,11 +537,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
     def get_divisor(self, chid, awg):
         """Divisor is 2 for modulated non-marker channels, 1 for other cases."""
 
-        name = self.pulsar._id_channel(chid, awg)
-        if chid[-1]!='m' and self.pulsar.get(f"{name}_internal_modulation"):
-            return 2
-        else:
-            return 1
+        return 1
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                     channels_to_upload="all", channels_to_program="all"):
@@ -464,11 +575,65 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         # This wrapper method is needed because 'finalize_upload_after_mcc'
         # method in 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms'
         # method from device interfaces instead of from channel interfaces.
-        self._awg_modules[awg_nr].upload_waveforms(
+        self.awg_modules[awg_nr].upload_waveforms(
             wave_idx=wave_idx,
             waveforms=waveforms,
             wave_hashes=wave_hashes
         )
+
+    def is_channel_pair(
+            self,
+            cname1: str,
+            cname2: str,
+            require_ordered: bool,
+    ):
+        """Returns if the two input channels belongs to the same channel pair.
+
+        Args:
+            cname1 (str): name of an analog channel.
+            cname2 (str): name of another analog channel.
+            require_ordered (bool): whether ch1 is required to have a smaller
+                index than ch2
+
+        Returns:
+            is_channel_pair (str): whether these two AWG channels belongs to
+                the same channel pair.
+        """
+        ch1id = self.pulsar.get(f"{cname1}_id")
+        ch2id = self.pulsar.get(f"{cname2}_id")
+
+        ch_idx_1 = int(ch1id[-1])
+        ch_idx_2 = int(ch2id[-1])
+
+        if require_ordered and ch_idx_1 > ch_idx_2:
+            return False
+
+        ch_idx_smaller = min(ch_idx_1, ch_idx_2)
+        ch_idx_larger = max(ch_idx_1, ch_idx_2)
+
+        if ch_idx_smaller % 2 != 1:
+            return False
+        elif ch_idx_larger == ch_idx_smaller + 1:
+            return True
+        else:
+            return False
+
+    def is_i_channel(self, cname: str):
+        """Returns if this channel has the smaller number in its analog channel
+        pair.
+
+        Args:
+            cname: channel of an HDAWG.
+
+        Returns:
+            is_i_channel (str): whether this channel has the smaller number
+            in its analog channel pair.
+        """
+        chid = self.pulsar.get(f"{cname}_id")
+        if chid[-1] == 'm':
+            return False
+        ch_idx = int(chid[-1])
+        return ch_idx <= 8 and ch_idx % 2 == 1
 
 
 class HDAWGGeneratorModule(ZIGeneratorModule):
@@ -513,29 +678,65 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                 awg=self._awg.name,
             )
 
-    def _update_internal_mod_config(
+    def _generate_oscillator_seq_code(self):
+        mod_config = self._mod_config.get(self.i_channel_name, {})
+        if mod_config.get('internal_mod', False):
+            # Reset the starting phase of all oscillators at the beginning
+            # of a sequence using the resetOscPhase instruction. This
+            # ensures that the carrier-envelope offset, and thus the final
+            # output signal, is identical from one repetition to the next.
+            self._playback_strings.append(f'resetOscPhase();\n')
+
+    def _upload_modulation_config(
             self,
-            awg_sequence,
+            mod_config,
     ):
-        """Updates self._hdawg_internal_modulation flag according to the
-        setting specified in pulsar.
+        awg_nr = self._awg_nr
 
-        Args:
-            awg_sequence: A list of elements. Each element consists of a
-            waveform-hash for each codeword and each channel.
-        """
-        channels = [self.pulsar._id_channel(chid, self._awg.name)
-                    for chid in self.analog_channel_ids]
+        if not mod_config:
+            # Modulation configuration is empty
+            self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 0)
+            self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 0)
+            self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", 1)
+            self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", 0)
+            self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_0", 0)
+            self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", 1)
+            return
 
-        if all([self.pulsar.get(f"{chan}_internal_modulation")
-                for chan in channels]):
-            self._hdawg_internal_mod = True
-        elif not any([self.pulsar.get(f"{chan}_internal_modulation")
-                      for chan in channels]):
-            self._hdawg_internal_mod = False
-        else:
-            raise NotImplementedError('Internal modulation can only be'
-                                      'specified per sub AWG!')
+        # Set digital modulation to "mixer" mode.
+        self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 6)
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 6)
+
+        # Configure gain matrix for mixer calibration.
+        alpha = mod_config.get("alpha", 1.0)
+        phi_skew = mod_config.get("phi_skew", 0.0) / 180 * np.pi
+
+        # Because ZI devices does not accept gain matrix elements that are
+        # larger than 1, we will need to rescale the gain matrix if alpha is
+        # smaller than 1.
+        r = alpha if alpha < 1.0 else 1.0
+        self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_0", np.cos(phi_skew) * r)
+        self.awg.set(f"awgs_{awg_nr}_outputs_0_gains_1", np.sin(phi_skew) * r)
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_0", 0)
+        self.awg.set(f"awgs_{awg_nr}_outputs_1_gains_1", r / alpha)
+
+        # Choose oscillators, set phases and modulation frequencies.
+        mod_frequency = mod_config.get("mod_frequency", 0.0)
+        osc_nr = mod_config.get("osc_nr", awg_nr * 4)
+        self.awg.set(f'oscs_{osc_nr}_freq', mod_frequency)
+        self.awg.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)
+        self.awg.set(f'sines_{awg_nr * 2}_phaseshift', 0)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_phaseshift', -90)
+
+        # Disable direct output of sine waves.
+        self.awg.set(f'sines_{awg_nr * 2}_enables_0', 0)
+        self.awg.set(f'sines_{awg_nr * 2}_enables_1', 0)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_enables_0', 0)
+        self.awg.set(f'sines_{awg_nr * 2 + 1}_enables_1', 0)
+
+        # Enable Oscillator control from the sequencer code
+        self.awg.set(f'awgs_{awg_nr}_enable', 1)
 
     def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
         awg_nr = self._awg_nr
@@ -608,10 +809,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
     def _update_awg_instrument_status(self):
         # tell ZI_base_instrument that it should not compile a program on
-        # this sub AWG (because we already do it here)
+        # this AWG module (because we already do it here)
         self._awg._awg_needs_configuration[self._awg_nr] = False
-        # tell ZI_base_instrument.start() to start this sub AWG (The base
-        # class will start sub AWGs for which _awg_program is not None. Since
+        # tell ZI_base_instrument.start() to start this AWG module (The base
+        # class will start AWG modules for which _awg_program is not None. Since
         # we set _awg_needs_configuration to False, we do not need to put the
         # actual program here, but anything different from None is sufficient.)
         self._awg._awg_program[self._awg_nr] = True
@@ -621,44 +822,30 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             wave,
             codeword,
             use_placeholder_waves,
+            command_table_index,
             metadata,
             first_element_of_segment
     ):
-        if not self._hdawg_internal_mod:
-            if first_element_of_segment:
-                prepend_zeros = self.pulsar.parameters[
-                    f"{self._awg.name}_prepend_zeros"]()
-                if prepend_zeros is None:
-                    prepend_zeros = self.pulsar.prepend_zeros()
-                elif isinstance(prepend_zeros, list):
-                    prepend_zeros = prepend_zeros[self._awg_nr]
-            else:
-                prepend_zeros = 0
-            self._playback_strings += self._awg_interface.zi_playback_string(
-                name=self._awg.name,
-                device='hdawg',
-                wave=wave,
-                codeword=codeword,
-                prepend_zeros=prepend_zeros,
-                placeholder_wave=use_placeholder_waves,
-                allow_filter=metadata.get('allow_filter', False)
-            )
-        elif not use_placeholder_waves:
-            pb_string, interleave_string = \
-                self._awg_interface._zi_interleaved_playback_string(
-                    name=self._awg.name,
-                    device='hdawg',
-                    counter=self._counter,
-                    wave=wave,
-                    codeword=codeword
-                )
-            self._counter += 1
-            self._playback_strings += pb_string
-            self._interleaves += interleave_string
+        if first_element_of_segment:
+            prepend_zeros = self.pulsar.parameters[
+                f"{self._awg.name}_prepend_zeros"]()
+            if prepend_zeros is None:
+                prepend_zeros = self.pulsar.prepend_zeros()
+            elif isinstance(prepend_zeros, list):
+                prepend_zeros = prepend_zeros[self._awg_nr]
         else:
-            raise NotImplementedError("Placeholder waves in "
-                                      "combination with internal "
-                                      "modulation not implemented.")
+            prepend_zeros = 0
+        self._playback_strings += self._awg_interface.zi_playback_string(
+            name=self._awg.name,
+            device='hdawg',
+            wave=wave,
+            codeword=codeword,
+            prepend_zeros=prepend_zeros,
+            placeholder_wave=use_placeholder_waves,
+            command_table_index=command_table_index,
+            internal_mod=self._use_internal_mod,
+            allow_filter=metadata.get('allow_filter', False),
+        )
 
     def _configure_awg_str(
             self,
@@ -669,6 +856,106 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             program_string=awg_str,
             timeout=600
         )
+
+    def _generate_command_table_entry(
+            self,
+            entry_index: int,
+            wave_index: int,
+            amplitude: float = 1.0,
+            phase: float = 0.0,
+    ):
+        """Generates a command table entry in the format specified
+        by ZI. Details of the command table can be found in
+        https://docs.zhinst.com/shfqc_user_manual/tutorials/tutorial_command_table.html
+
+        Args:
+            entry_index (int): index of the command table entry.
+            wave_index(int): index of the waveform to play.
+            amplitude (float or ndarray): output amplitude with respect to the
+                specified waveform. If a scalar is provided, amplitudes of both
+                analog  channels are scaled to this value. If an array of
+                length 2 is provided, amplitudes of two analog channels are
+                specified explicitly. Accepts input range [-1,1].
+            phase (float or ndarray): initial phase of the carrier wave. If a
+                scalar is provided, phases of both analog channels are
+                scaled to this value. If an array of length 2 is provided,
+                phases of two analog channels are specified explicitly.
+
+        Returns:
+            command_table_entry (dict): A command table entry for HDAWG
+            channel pairs.
+        """
+
+        if isinstance(amplitude, float) or isinstance(amplitude, int):
+            amplitude = [float(amplitude)] * 2
+        elif not ((isinstance(amplitude, np.ndarray) or
+                   isinstance(amplitude, list)) and len(amplitude) == 2):
+            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+                             f"receives inappropriate command table amplitude "
+                             f"value, accepts float or array-like object with "
+                             f"length 2.")
+
+        if isinstance(phase, float) or isinstance(phase, int):
+            phase = [float(phase), float(phase)]
+        elif not ((isinstance(phase, np.ndarray) or
+                   isinstance(phase, list)) and len(phase) == 2):
+            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+                             f"receives inappropriate command table phase "
+                             f"value, accepts float or array-like object with "
+                             f"length 2.")
+
+        hdawg_command_table_entry = {
+            "index": entry_index,
+            "waveform": {"index": wave_index},
+            "amplitude0": {"value": amplitude[0]},
+            "amplitude1": {"value": amplitude[1]},
+            "phase0": {"value": phase[0]},
+            "phase1": {"value": phase[1] - 90},
+        }
+
+        if self._use_internal_mod:
+            hdawg_command_table_entry["waveform"]["awgChannel0"] = \
+                ["sigout0", "sigout1"]
+            hdawg_command_table_entry["waveform"]["awgChannel1"] = \
+                ["sigout0", "sigout1"]
+        else:
+            hdawg_command_table_entry["waveform"]["awgChannel0"] = ["sigout0"]
+            hdawg_command_table_entry["waveform"]["awgChannel1"] = ["sigout1"]
+
+        return hdawg_command_table_entry
+
+    def _upload_command_table(self):
+        # ZI data acquisition server
+        daq = self._awg.daq
+        device_id = self._awg.get_idn()['serial']
+
+        # add a wrapper outside the command table list
+        command_table_list_upload = {
+            "$schema": "https://json-schema.org/draft-04/schema#",
+            "header": {"version": "1.0.0"},
+            "table": self._command_table
+        }
+
+        data_node = f"/{device_id}/awgs" \
+                    f"/{self._awg_nr}/commandtable/data"
+        daq.setVector(data_node, json.dumps(command_table_list_upload))
+
+        if not isinstance(daq, MockDAQServer):
+            # This is a DAQ server for actual devices. We request upload
+            # status from the device and check if it is successful.
+            status_node = f"/{device_id}/awgs" \
+                          f"/{self._awg_nr}/commandtable/status"
+            status = daq.getInt(status_node)
+
+            if status != 1:
+                log.warning(f"Failed to upload the command table to "
+                            f"{self._awg.name}, error index {status}")
+        else:
+            # This is a DAQ server for virtual devices. We assume that upload
+            # is successful.
+            status = 1
+
+        return status
 
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():

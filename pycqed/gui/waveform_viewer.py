@@ -658,7 +658,8 @@ class PulseInformationWindow(qt.QtWidgets.QWidget):
         while self.table.rowCount() > 0:
             self.table.removeRow(0)
         if len(self._data) != 0:
-            self.table.setRowCount(len(self._data)*len(self._data[0]))
+            self.table.setRowCount(sum([len(d) for d in self._data])  # data
+                                   + (len(self._data) - 1))  # spacers
             self.setWindowTitle(
                 'Pulse Information '
                 + ', '.join([pulse_dict['pulse_obj.element_name']
@@ -667,12 +668,21 @@ class PulseInformationWindow(qt.QtWidgets.QWidget):
         else:
             self.table.setRowCount(0)
             self.setWindowTitle('Pulse Information')
+
+        def fill_next_row(key, value):
+            nonlocal i_row
+            col1 = qt.QtWidgets.QTableWidgetItem(key)
+            col2 = qt.QtWidgets.QTableWidgetItem(value)
+            self.table.setItem(i_row, 0, col1)
+            self.table.setItem(i_row, 1, col2)
+            i_row += 1
+
+        i_row = 0
         for i, pulse_dict in enumerate(self._data):
-            for j, key in enumerate(pulse_dict):
-                col1 = qt.QtWidgets.QTableWidgetItem(key)
-                col2 = qt.QtWidgets.QTableWidgetItem(repr(pulse_dict[key]))
-                self.table.setItem(i*len(pulse_dict)+j, 0, col1)
-                self.table.setItem(i*len(pulse_dict)+j, 1, col2)
+            if i > 0:
+                fill_next_row(*(['-' * 20] * 2))  # add spacer
+            for key in pulse_dict:
+                fill_next_row(key, repr(pulse_dict[key]))
 
     def keyPressEvent(self, event):
         """

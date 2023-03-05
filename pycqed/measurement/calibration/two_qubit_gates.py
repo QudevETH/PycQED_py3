@@ -13,10 +13,12 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.instrument_drivers.meta_instrument.qubit_objects import qubit_object
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
+import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
+    as qb_mod
+
 log = logging.getLogger(__name__)
 
 # TODO: docstrings (list all kw at the highest level with reference to where
@@ -498,7 +500,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         # helper function that checks candidates and calls itself recursively
         # if a candidate is a list
         def append_qbs(found_qubits, candidate):
-            if isinstance(candidate, qubit_object.Qubit):
+            if isinstance(candidate, qb_mod.QuDev_transmon):
                 if candidate.name in qbs_dict:
                     # avoid duplicates by adding it exactly in the form
                     # contained in the qbs_dict
@@ -632,8 +634,8 @@ class MultiTaskingExperiment(QuantumExperiment):
         d['kwargs'].update({
             MultiTaskingExperiment.__name__: odict({
                 'n_cal_points_per_state': (int, 1),
-                'cal_states': (str, 'auto'),
-                'ro_qubits': ((qubit_object.Qubit, 'multi_select'), None),
+                'cal_states': (str, None),
+                'ro_qubits': ((qb_mod.QuDev_transmon, 'multi_select'), None),
             })
         })
         d['task_list_fields'].update({
@@ -1761,8 +1763,8 @@ class Chevron(CalibBuilder):
         d['kwargs'][MultiTaskingExperiment.__name__]['cal_states'] = (str, 'gef')
         d['task_list_fields'].update({
             Chevron.__name__: odict({
-                'qbc': ((Qubit, 'single_select'), None),
-                'qbt': ((Qubit, 'single_select'), None),
+                'qbc': ((qb_mod.QuDev_transmon, 'single_select'), None),
+                'qbt': ((qb_mod.QuDev_transmon, 'single_select'), None),
                 'num_cz_gates': (int, 1),
                 'init_state': (CircuitBuilder.STD_INIT, '11'),
                 'max_flux_length': (float, None),

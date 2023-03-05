@@ -44,6 +44,9 @@ class SSB_DRAG_pulse(pulse.Pulse):
             addition to the nominal 90 degrees. Defaults to 0.
     """
 
+    SUPPORT_INTERNAL_MOD = True
+    SUPPORT_HARMONIZING_AMPLITUDE = True
+
     def __init__(self, element_name, I_channel, Q_channel,
                  name='SSB Drag pulse', **kw):
         super().__init__(name, element_name, **kw)
@@ -1006,7 +1009,6 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
-            'mirror_pattern': None,
         }
         return params
 
@@ -1052,6 +1054,7 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         return hashlist
 
 
+
 class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
     def __init__(self,
                  I_channel,
@@ -1078,7 +1081,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
                                       buffer_length_start=self.flux_buffer_length_start,
                                       buffer_length_end=self.flux_buffer_length_end,
                                       gaussian_filter_sigma=self.flux_gaussian_filter_sigma,
-                                      mirror_pattern=kw.get("mirror_pattern",
+                                      mirror_pattern=kw.get("flux_mirror_pattern",
                                                             None))
 
     @classmethod
@@ -1095,7 +1098,14 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             'flux_amplitude': 0,
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,
-            'flux_gaussian_filter_sigma': 0.5e-9
+            'flux_gaussian_filter_sigma': 0.5e-9,
+            # Note that the mirror pattern is included in the pulse parameters
+            # to ensure consistency (other flux_* parameters are also stored as
+            # attributes of the Pulse object). However, the value of
+            # self.fp.mirror_pattern (which should be identical to
+            # self.flux_mirror_pattern unless someone messes with it)
+            # is the one used by the code to retrieve the pattern to apply.
+            'flux_mirror_pattern': None,
         }
         return params
 
@@ -1116,6 +1126,16 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             return self.fp.hashables(tstart, channel)
         else:
             return []  # empty list if neither of the conditions is satisfied
+
+    def get_mirror_pulse_obj_and_pattern(self):
+        # For flux pulse assisted readout, we currently return the mirror pattern
+        # of the flux pulse.
+        # FIXME: note that this prevents the user to enable mirror pattern on
+        #  the readout drive pulse at the moment when using this pulse type.
+        #  A better long term solution consists in refactoring the Pulse
+        #  abstraction layer in which a clearer separation
+        #  is made between pulses and operations (which can contain several pulses).
+        return self.fp.get_mirror_pulse_obj_and_pattern()
 
 
 class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
@@ -1332,13 +1352,15 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     Applies single sideband modulation, requires tvals to make sure the
     phases are correct.
 
-    The modulation and predistortion is calculated as
+    If alpha >= 1.0: The modulation and predistortion is calculated as
     [I_mod] = [cos(phi_skew)  sin(phi_skew)] [ cos(wt)  sin(wt)] [I_env]
     [Q_mod]   [0              1/alpha      ] [-sin(wt)  cos(wt)] [Q_env],
     where wt = 360 * mod_frequency * (tvals - tval_phaseref) + phase
 
-    The output is normalized such that the determinatnt of the transformation
-    matrix is +-1.
+    If alpha < 1.0: I_mod and Q_mod will be multiplied with alpha on top of
+    the expression above. This is to make sure that all elements of the
+    predistortion matrix is not larger than 1, in order to be compatible with
+    mixer_calib modulation mode of ZI HDAWG.
 
     Args:
         ienv (np.ndarray): In-phase envelope waveform.
@@ -1360,12 +1382,10 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     phii = phi + phi_skew
     phiq = phi + 90
 
-    # k = 1 / np.cos(np.pi * phi_skew / 180) #  old normalization
-    k = np.sqrt(np.abs(alpha / np.cos(np.deg2rad(phi_skew))))
-
-    imod = k * (ienv * np.cos(np.deg2rad(phii)) +
+    r = alpha if alpha < 1.0 else 1.0
+    imod = r * (ienv * np.cos(np.deg2rad(phii)) +
                 qenv * np.sin(np.deg2rad(phii)))
-    qmod = k * (ienv * np.cos(np.deg2rad(phiq)) +
+    qmod = r * (ienv * np.cos(np.deg2rad(phiq)) +
                 qenv * np.sin(np.deg2rad(phiq))) / alpha
 
     return imod, qmod
