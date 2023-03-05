@@ -1035,8 +1035,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                     f"selection.")
                         continue
                 for d in ['projected_data_dict', 'data_to_fit',
-                          'sweep_points_dict', 'sweep_points_2D_dict']:
+                          'sweep_points_2D_dict']:
                     pdd[d][qbn] = pdd['split_data_dict'][qbn][p][ind][d]
+                for d in ['sweep_points_dict']:
+                    # use update to preserve additional information in
+                    # sweep_points_dict (in particular: param_names)
+                    pdd[d][qbn].update(pdd['split_data_dict'][qbn][p][ind][d])
                 self.measurement_strings[qbn] += f' ({p}: {v})'
 
     def get_num_cal_points(self):
