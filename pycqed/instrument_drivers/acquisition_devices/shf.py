@@ -61,9 +61,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         super().__init__(*args, **kwargs)
         chs = kwargs.get('valid_qachs', range(len(self.qachannels)))
         self._all_qachs = self.qachannels
-        self.valid_qachs = {i: self._all_qachs[i] for i in chs}
+        self._valid_qachs = {i: self._all_qachs[i] for i in chs}
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
-        self.n_acq_units = len(self.valid_qachs)
+        self.n_acq_units = len(self.qachannels)
         self.lo_freqs = [None] * self.n_acq_units  # re-create with correct length
         self.n_acq_int_channels = self.max_qubits_per_channel
         self._reset_acq_poll_inds()
@@ -116,7 +116,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             'allow_scope',
             unit='s',
             initial_value=(
-                    len(self.valid_qachs) == len(self._all_qachs)),
+                    len(self.qachannels) == len(self._all_qachs)),
             parameter_class=ManualParameter,
             docstring='Whether access to the scope module is allowed. When '
                       'sharing an SHF device between two setup, this should '
@@ -124,8 +124,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             vals=validators.Bool())
 
     def __getattribute__(self, item):
-        if item == 'qachannels' and hasattr(self, 'valid_qachs'):
-            return self.valid_qachs
+        if item == 'qachannels' and hasattr(self, '_valid_qachs'):
+            return self._valid_qachs
         return super().__getattribute__(item)
 
     def _reset_acq_poll_inds(self):
@@ -145,8 +145,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         super().set_lo_freq(acq_unit, lo_freq)
         # Deep set (synchronous set that returns the value acknowledged by the
         # device)
-        self.valid_qachs[acq_unit].centerfreq(lo_freq, deep=True)
-        new_lo_freq = self.valid_qachs[acq_unit].centerfreq()
+        self.qachannels[acq_unit].centerfreq(lo_freq, deep=True)
+        new_lo_freq = self.qachannels[acq_unit].centerfreq()
         if np.abs(new_lo_freq - lo_freq) > 1:
             log.warning(f'{self.name}: center frequency {lo_freq/1e6:.6f} '
                         f'MHz not supported. Setting center frequency to '
@@ -158,10 +158,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         for i in self._acq_units_used:
             if self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'readout':
-                self.valid_qachs[i].readout.run()
+                self.qachannels[i].readout.run()
             elif self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'spectroscopy':
-                self.valid_qachs[i].spectroscopy.run()
+                self.qachannels[i].spectroscopy.run()
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'fft_power':
                 pass  # FIXME currently done in poll
@@ -250,46 +250,46 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             mode, acquisition_length, data_type)
 
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
-        self._acq_units_modes = {i: self.valid_qachs[i].mode().name  # Caching
+        self._acq_units_modes = {i: self.qachannels[i].mode().name  # Caching
                                  for i in self._acq_units_used}
 
         # Set the scope trigger delay with respect to pulse generation
         self.scopes[0].trigger.delay(self.acq_trigger_delay())
 
-        for i, qach in self.valid_qachs.items():
+        for i in self.qachannels:
             # Set trigger delay to the same value for all modes. This is
             # necessary e.g. to get consistent acquisition weights.
-            qach.readout.integration.delay(
+            self.qachannels[i].readout.integration.delay(
                 self.acq_trigger_delay())
-            qach.spectroscopy.delay(
+            self.qachannels[i].spectroscopy.delay(
                 self.acq_trigger_delay())
             # Make sure the readout is stopped. It will be started in
             # prepare_poll
-            qach.readout.stop()  # readout mode
+            self.qachannels[i].readout.stop()  # readout mode
             if i not in self._acq_units_used:
                 # In spectroscopy mode there seems to be no stop() functionality
                 # meaning that the output generator must be always running.
                 # Here it is effectively disabled by oscillator_gain(0)
-                qach.oscs[0].gain(0)  # spectroscopy mode
+                self.qachannels[i].oscs[0].gain(0)  # spectroscopy mode
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
         for i in self._acq_units_used:
-            self.valid_qachs[i].generator.userregs[0].value(
+            self.qachannels[i].generator.userregs[0].value(
                 self._acq_loop_cnt)  # Used in seqc code
             # TODO: should probably decide actions based on the data type, not
             #  also on the acq unit physical mode
             if self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 'readout':
                 if data_type is not None:
-                    self.valid_qachs[i].readout.result.source(
+                    self.qachannels[i].readout.result.source(
                         self.res_logging_indices[data_type])
                 if self._acq_length is not None:
-                    self.valid_qachs[i].readout.integration.length(
+                    self.qachannels[i].readout.integration.length(
                         self.convert_time_to_n_samples(self._acq_length))
                 # Readout mode outputs programmed waveforms, and integrates the
                 # input with different custom weights for each integration
                 # channel
-                self.valid_qachs[i].readout.configure_result_logger(
+                self.qachannels[i].readout.configure_result_logger(
                     result_length=self._acq_n_results,
                     num_averages=self._acq_averages,
                     result_source="result_of_integration",
@@ -297,31 +297,31 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 )
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 'spectroscopy':
-                self.valid_qachs[i].oscs[0].gain(1.0)
-                self.valid_qachs[i].spectroscopy.length(
+                self.qachannels[i].oscs[0].gain(1.0)
+                self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
                 if self._awg_program[i]:
                     # assume that this sequencer program includes triggering
                     # for the spectroscopy
-                    self.valid_qachs[i].spectroscopy.trigger.channel(
+                    self.qachannels[i].spectroscopy.trigger.channel(
                         f'channel{i}_sequencer_trigger0')
                 else:
                     # no sequencer will be running. Use the trigger that
                     # would otherwise trigger the sequencer as a trigger for
                     # the spectroscopy.
-                    self.valid_qachs[i].spectroscopy.trigger.channel(
-                        self.valid_qachs[i].generator.auxtriggers[0].channel())
+                    self.qachannels[i].spectroscopy.trigger.channel(
+                        self.qachannels[i].generator.auxtriggers[0].channel())
                 # Spectroscopy mode outputs a modulated pulse, whose envelope
                 # is programmed by pulsar and whose modulation frequency is
                 # given by the sum of the configured center frequency and
                 # intermediate frequency, and integrates the input by weighting
                 # with the same waveform (without the envelope)
-                self.valid_qachs[i].spectroscopy.configure_result_logger(
+                self.qachannels[i].spectroscopy.configure_result_logger(
                     result_length=self._acq_n_results,
                     num_averages=self._acq_averages,
                     averaging_mode=AveragingMode.CYCLIC,
                 )
-                self.valid_qachs[i].generator.userregs[1].value(
+                self.qachannels[i].generator.userregs[1].value(
                     # Used in seqc code
                     self.convert_time_to_n_samples(self._acq_length)
                 )
@@ -355,7 +355,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         num_segments = 1  # for segmented averaging (several triggers per time
         # trace) compensation for the delay between generator output and input
         # of the integration unit
-        self.valid_qachs[acq_unit].mode("readout")
+        self.qachannels[acq_unit].mode("readout")
         if len(self._acq_units_used)>1:
             log.warning("Parallel measurements might lead to timing "
                         "discrepancies, since the whole scope is triggered by "
@@ -377,7 +377,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # Could use the ZI toolkit instead:
         # self._tk_object.qachannels["*"].oscs[0].gain(0)
         with self.set_transaction():
-            for ch in self.valid_qachs.values():
+            for ch in self.qachannels.values():
                 ch.oscs[0].gain(0)
 
     def acquisition_progress(self):
@@ -385,10 +385,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         for i in self._acq_units_used:
             if self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'readout':
-                n_acq[i] = self.valid_qachs[i].readout.result.acquired()
+                n_acq[i] = self.qachannels[i].readout.result.acquired()
             elif self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'spectroscopy':
-                n_acq[i] = self.valid_qachs[i].spectroscopy.result.acquired()
+                n_acq[i] = self.qachannels[i].spectroscopy.result.acquired()
             elif self._acq_mode == 'scope' \
                     and self._acq_data_type == 'fft_power':
                 return None  # intermediate progress not implemented
@@ -403,13 +403,13 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         """
         Program the internal AWGs
         """
-        qach = self.valid_qachs[acq_unit]
+        qachannel = self.qachannels[acq_unit]
         self._awg_program[acq_unit] = awg_program
-        self.store_awg_source_string(qach, awg_program)
-        qach.generator.load_sequencer_program(awg_program)
+        self.store_awg_source_string(qachannel, awg_program)
+        qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
-            qach.generator.write_to_waveform_memory(waves_to_upload)
+            qachannel.generator.write_to_waveform_memory(waves_to_upload)
 
     def store_awg_source_string(self, channel, awg_str):
         """
@@ -475,7 +475,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 # Alternatively use qcodes in a loop
                 res = []
                 for channel in channels:
-                    res.append(self.valid_qachs[i].readout.result.data[
+                    res.append(self.qachannels[i].readout.result.data[
                                    channel].wave())
 
                 # In readout mode the data isn't rescaled yet in the SHF
@@ -489,9 +489,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                     channels))]
             elif self._acq_mode == 'int_avg'\
                     and self._acq_units_modes[i] == 'spectroscopy':
-                progress = self.valid_qachs[i].spectroscopy.result.acquired()
+                progress = self.qachannels[i].spectroscopy.result.acquired()
                 if progress >= self._acq_loop_cnt * self._acq_n_results:
-                    data = self.valid_qachs[i].spectroscopy.result.data.wave()
+                    data = self.qachannels[i].spectroscopy.result.data.wave()
                     data = [[np.real(a), np.imag(a)] for a in data]
                     scaling_factor = 1
                     dataset.update({(i, ch): [[a[n % 2] * scaling_factor
@@ -564,9 +564,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         else:
             name_offset = 'Readout frequency with offset'
             sf = swf.Offset_Sweep(swf.MajorMinorSweep(
-                self.valid_qachs[acq_unit].centerfreq,
+                self.qachannels[acq_unit].centerfreq,
                 swf.Offset_Sweep(
-                    self.valid_qachs[acq_unit].oscs[0].freq,
+                    self.qachannels[acq_unit].oscs[0].freq,
                     ro_mod_freq),
                 np.unique([get_closest_lo_freq(f)
                            for f in self.allowed_lo_freqs()]),
@@ -579,11 +579,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # Use a transaction since qcodes does not support wildcards
         # Or in toolkit: self._tk_object.qachannels["*"].generator.enable(False)
         with self.set_transaction():
-            for ch in self.valid_qachs.values():
+            for ch in self.qachannels.values():
                 ch.generator.enable(False)
 
     def start(self, **kwargs):
-        for i, ch in self.valid_qachs.items():
+        for i, ch in self.qachannels.items():
             if self.awg_active[i]:  # Outputs a waveform
                 if self._awg_program[i]:  # Using the sequencer
                     # These 2 lines replace ...enable_sequencer(single=True)
@@ -629,7 +629,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             super().acquisition_set_weights(channels, **kw)
 
     def _acquisition_set_weight(self, channel, weight):
-        self.valid_qachs[channel[0]].readout.integration.weights[channel[1]]\
+        self.qachannels[channel[0]].readout.integration.weights[channel[1]]\
             .wave(weight[0].copy() + 1j * weight[1].copy())
 
     def get_value_properties(self, data_type='raw', acquisition_length=None):

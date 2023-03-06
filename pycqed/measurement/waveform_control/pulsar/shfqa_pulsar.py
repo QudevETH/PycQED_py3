@@ -53,7 +53,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
-        for ch_nr in self.awg.valid_qachs:
+        for ch_nr in self.awg.qachannels:
             group = []
             for q in ["i", "q"]:
                 id = f"qa{ch_nr + 1}{q}"
@@ -84,7 +84,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         ch = int(id[2]) - 1
 
         if param == "amp":
-            self.awg.valid_qachs[ch].output.range(vp_to_dbm(value))
+            self.awg.qachannels[ch].output.range(vp_to_dbm(value))
         if param == "centerfreq":
             self.awg.synthesizers[ch].centerfreq(value)
 
@@ -97,15 +97,15 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if param == "amp":
             if self.pulsar.awgs_prequeried:
-                dbm = self.awg.valid_qachs[ch].output.range.get_latest()
+                dbm = self.awg.qachannels[ch].output.range.get_latest()
             else:
-                dbm = self.awg.valid_qachs[ch].output.range()
+                dbm = self.awg.qachannels[ch].output.range()
             return dbm_to_vp(dbm)
         if param == "centerfreq":
             if self.pulsar.awgs_prequeried:
-                freq = self.awg.valid_qachs[ch].centerfreq.get_latest()
+                freq = self.awg.qachannels[ch].centerfreq.get_latest()
             else:
-                freq = self.awg.valid_qachs[ch].centerfreq()
+                freq = self.awg.qachannels[ch].centerfreq()
             return freq
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
@@ -117,7 +117,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         # re-upload in spectroscopy mode. This could be optimized in the future.
 
         grp_has_waveforms = {}
-        for i, qach in self.awg.valid_qachs.items():
+        for i, qachannel in self.awg.qachannels.items():
             grp = f'qa{i+1}'
             chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
@@ -257,7 +257,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 #  the SHFQA class in the next cleanup
                 w = list(waves_to_upload.values())
                 w = w[0] if len(w) > 0 else None
-                qach.mode('spectroscopy')
+                qachannel.mode('spectroscopy')
                 daq = self.awg.daq
                 path = f"/{self.awg.get_idn()['serial']}/qachannels/{i}/" \
                        f"spectroscopy/envelope"
@@ -319,7 +319,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 playback_strings += self.zi_playback_string_loop_end(metadata)
                 return playback_strings
 
-            qach.mode('readout')
+            qachannel.mode('readout')
             self._filter_segment_functions = None
 
             if repeat_pattern is not None:
@@ -339,12 +339,12 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def is_awg_running(self):
         is_running = []
-        for awg_nr, qach in self.awg.valid_qachs.items():
+        for awg_nr, qachannel in self.awg.qachannels.items():
             if not self.awg.awg_active[awg_nr]:
                 continue  # no check needed
             if self.awg._awg_program[awg_nr]:
                 # hardware spec or 'readout' mode
-                is_running.append(qach.generator.enable())
+                is_running.append(qachannel.generator.enable())
             else:
                 # software spectroscopy
                 # No awg needs to be started, so we can pretend that it's always
@@ -357,7 +357,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def sigout_on(self, ch, on=True):
         chid = self.pulsar.get(ch + '_id')
-        self.awg.valid_qachs[int(chid[2]) - 1].output.on(on)
+        self.awg.qachannels[int(chid[2]) - 1].output.on(on)
 
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
         return self.awg.get_params_for_spectrum(requested_freqs)
@@ -373,7 +373,7 @@ class SHFQAPulsar(SHFAcquisitionModulesPulsar):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.awg._awg_program = [None] * len(self.awg.valid_qachs)
+        self.awg._awg_program = [None] * len(self.awg.qachannels)
 
 
     def create_awg_parameters(self, channel_name_map: dict):

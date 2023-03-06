@@ -250,7 +250,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
 
     def is_awg_running(self):
         is_running = []
-        first_sg_awg = len(getattr(self.awg, 'valid_qachs', []))
+        first_sg_awg = len(getattr(self.awg, 'qachannels', []))
         for awg_nr, sgchannel in enumerate(self.awg.sgchannels):
             if self.awg._awg_program[awg_nr + first_sg_awg] is not None:
                 is_running.append(sgchannel.awg.enable())
@@ -552,7 +552,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
         ch2id = f'sg{awg_nr+1}q'
         chmid = 'ch{}m'.format(awg_nr * 2 + 1)
 
-        first_sg_awg = len(getattr(self._awg, 'valid_qachs', []))
+        first_sg_awg = len(getattr(self._awg, 'qachannels', []))
         self.channel_ids = [ch1id, chmid, ch2id]
         self.analog_channel_ids = [ch1id, ch2id]
         self.marker_channel_ids = [chmid]
