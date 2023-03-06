@@ -159,7 +159,7 @@ class ZHInstSGMixin:
             sine_generator_index=sine_generator_index)
 
     def start(self):
-        first_sg_awg = len(getattr(self, 'qachannels', []))
+        first_sg_awg = len(getattr(self, 'valid_qachs', []))
         for awg_nr, sgchannel in enumerate(self.sgchannels):
             if self._awg_program[awg_nr + first_sg_awg] is not None:
                 sgchannel.awg.enable(1)
