@@ -18,6 +18,10 @@ cache:
 # This is necessary to be able to copy the doc via SSH
 before_script:
   # ============================================================================
+  # Dependencies for GUI
+  # ============================================================================
+  - apt-get update && apt-get install libgl1 -y
+  # ============================================================================
   # Python virtual env
   # ============================================================================
   - python -m pip install --upgrade pip
