@@ -21,7 +21,7 @@ before_script:
   # Python virtual env
   # ============================================================================
   - python -m pip install --upgrade pip
-  - pip install -r requirements.txt
+  - pip install -r docs/source/autodocumenter_requirements.txt
   - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ethz.ch/qudev/control_software/qcodes.git
   - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@github.com/pyGSTio/pyGSTi.git
   # ============================================================================
