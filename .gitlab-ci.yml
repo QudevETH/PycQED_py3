@@ -27,6 +27,9 @@ before_script:
   - python -m pip install --upgrade pip
   - pip install -r docs/source/autodocumenter_requirements.txt
   - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ethz.ch/qudev/control_software/qcodes.git
+  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ethz.ch/qudev/control_software/qcodes_contrib_drivers.git
+  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ethz.ch/qudev/control_software/vc707_python_interface.git
+  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ethz.ch/qudev/websites/device_db_client.git
   - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@github.com/pyGSTio/pyGSTi.git
   # ============================================================================
   # Configure SSH agent to be able to copy the doc via SSH
