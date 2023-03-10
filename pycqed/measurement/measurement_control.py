@@ -794,7 +794,7 @@ class MeasurementControl(Instrument):
 
         # to check if vals is an array with multiple values
         if hasattr(vals, '__iter__'):
-            if len(vals) > 1:
+            if len(vals) > 1 and self.par_idx is not None:
                 vals = vals[self.par_idx]
 
         return vals
