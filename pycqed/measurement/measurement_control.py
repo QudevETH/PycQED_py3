@@ -471,6 +471,7 @@ class MeasurementControl(Instrument):
             for i, sweep_point in enumerate(self.sweep_points):
                 self.measurement_function(sweep_point, index=i)
 
+    @Timer()
     def measure_soft_adaptive(self, method=None):
         '''
         Uses the adaptive function and keywords for that function as
@@ -483,8 +484,12 @@ class MeasurementControl(Instrument):
         if self._live_plot_enabled():
             self.initialize_plot_monitor()
             self.initialize_plot_monitor_adaptive()
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.prepare.start")
         for sweep_function in self.sweep_functions:
             sweep_function.prepare()
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.prepare.end")
         if self.detector_function.detector_control != 'hard':
             # A hard detector requires sweep points, these will only be
             # generated later in optimization_function, which then takes care of
@@ -494,6 +499,8 @@ class MeasurementControl(Instrument):
 
         if self.adaptive_function == 'Powell':
             self.adaptive_function = fmin_powell
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.adaptive_function.start")
         if callable(self.adaptive_function):
             try:
                 # exists so it is possible to extract the result
@@ -506,6 +513,8 @@ class MeasurementControl(Instrument):
         else:
             raise Exception('optimization function: "%s" not recognized'
                             % self.adaptive_function)
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.adaptive_function.end")
         self.save_optimization_results(self.adaptive_function,
                                        result=self.adaptive_result)
 
@@ -613,6 +622,7 @@ class MeasurementControl(Instrument):
         self.print_progress()
         return new_data
 
+    @Timer()
     def measurement_function(self, x, index=None):
         '''
         Core measurement function used for soft sweeps
@@ -628,7 +638,13 @@ class MeasurementControl(Instrument):
                     isinstance(sweep_function, awg_swf.BlockSoftHardSweep):
                 # TODO comment
                 x = np.atleast_2d(x)
+                self.timer.checkpoint(
+                    "MeasurementControl.measure_soft_adaptive"
+                    ".adaptive_function.swf.set_parameter.start")
                 sweep_function.set_parameter(x)
+                self.timer.checkpoint(
+                    "MeasurementControl.measure_soft_adaptive"
+                    ".adaptive_function.swf.set_parameter.end")
                 tmp_df_acq_data_len_scaling = self.detector_function.acq_data_len_scaling
                 self.detector_function.set_attr_for_all('acq_data_len_scaling', 1)
                 self.detector_function.prepare(x)
@@ -737,6 +753,7 @@ class MeasurementControl(Instrument):
             vals = np.array(vals)[:, 0]
         return vals
 
+    @Timer()
     def optimization_function(self, x):
         '''
         A wrapper around the measurement function.
@@ -755,7 +772,11 @@ class MeasurementControl(Instrument):
                 x[i] = float(x[i])/float(self.x_scale[i])
 
         vals = self.measurement_function(x)
+        self.timer.checkpoint(
+            "MeasurementControl.data_processing_function.start")
         vals = self.data_processing_function(vals, self.dset)
+        self.timer.checkpoint(
+            "MeasurementControl.data_processing_function.end")
         if self.minimize_optimization:
             if (self.f_termination is not None):
                 if (vals < self.f_termination):
