@@ -724,7 +724,12 @@ class MeasurementControl(Instrument):
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        new_data = np.concatenate((x, vals), axis=1)
+        x = np.atleast_2d(x)
+        vals = vals.reshape((-1, len(self.detector_function.value_names)))
+        new_data = np.concatenate(
+            (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
+            axis=-1
+        )
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
