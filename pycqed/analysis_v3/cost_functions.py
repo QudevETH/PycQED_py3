@@ -40,6 +40,7 @@ def mean_squared_error(data_dict, keys_in, keys_out, labels,
         data_array = np.reshape(data_to_proc_dict[keys_in[0]],
                                 (-1, len(labels)))
     hlp_mod.add_param(
-            keys_out[0], [np.mean((data - labels)**2) for data in data_array],
+            keys_out[0],
+            np.array([np.mean((data - labels)**2) for data in data_array]),
             data_dict, **params)
     return data_dict
