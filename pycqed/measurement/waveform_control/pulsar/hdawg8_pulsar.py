@@ -128,15 +128,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         pulsar = self.pulsar
         name = self.awg.name
 
-        # Override _min_length parameter created in base class
-        # TODO: Check if this makes sense, it is a constant for the other AWGs
-        # Furthermore, it does not really make sense to manually set the minimum
-        # length which is a property of the instrument...
-        del pulsar.parameters[f"{name}_min_length"]
-        pulsar.add_parameter(f"{name}_min_length",
-                             initial_value=self.MIN_LENGTH,
-                            parameter_class=ManualParameter)
-
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
                              parameter_class=ManualParameter,
