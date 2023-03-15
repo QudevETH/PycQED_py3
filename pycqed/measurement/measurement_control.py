@@ -190,7 +190,8 @@ class MeasurementControl(Instrument):
 
         self.add_parameter('last_timestamp',
                            initial_value=None,
-                           docstring='Timestamp of MC.',
+                           docstring='Timestamp of MC in the format '
+                                     '%Y%m%d_%H%M%S.',
                            parameter_class=ManualParameter)
 
         # pyqtgraph plotting process is reused for different measurements.
