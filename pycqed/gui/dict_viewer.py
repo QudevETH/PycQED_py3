@@ -54,13 +54,13 @@ class DictView(qt.QtWidgets.QWidget):
             0, int(.5 * .4 * screen_size.width()))
         self.tree_widget.setExpandsOnDoubleClick(True)
 
-        root_item = self.tree_widget.invisibleRootItem()
+        self.root_item = self.tree_widget.invisibleRootItem()
         # build up the tree recursively from a dictionary
-        self.dict_to_titem(snap, root_item)
-        self.tree_widget.addTopLevelItem(root_item)
+        self.dict_to_titem(snap, self.root_item)
+        self.tree_widget.addTopLevelItem(self.root_item)
 
         # expand all parameter branches by default
-        self.expand_parameters(root_item)
+        self.expand_parameters(self.root_item)
 
         # sorting needs to be set after initialization of tree elements
         # lets user choose which column is used to sort
@@ -144,21 +144,20 @@ class DictView(qt.QtWidgets.QWidget):
         events (functions). lambda function is needed for functions with
         arguments.
         """
-        root_item = self.tree_widget.topLevelItem(0)
         self.copyKeyAction.triggered.connect(lambda: self.copy_content(0))
         self.copyValueAction.triggered.connect(lambda: self.copy_content(1))
         self.hideAction.triggered.connect(self.hide_item)
         self.hideAllAction.triggered.connect(
-            lambda: self.hide_all_empty(root_item))
+            lambda: self.hide_all_empty(self.root_item))
         self.showAllAction.triggered.connect(
-            lambda: self.show_all(root_item))
+            lambda: self.show_all(self.root_item))
         self.tree_widget.itemClicked.connect(self.set_dirtext)
         self.tree_widget.itemActivated.connect(self.set_dirtext)
         self.tree_widget.itemClicked.connect(self.set_nr_attributes)
         self.tree_widget.itemActivated.connect(self.set_nr_attributes)
 
         self.collapseAction.triggered.connect(
-            lambda: self.expand_branch(root_item, expand=False))
+            lambda: self.expand_branch(self.root_item, expand=False))
         self.expandBranchAction.triggered.connect(
             lambda: self.expand_branch(self.tree_widget.currentItem(),
                                        expand=True, display_vals=False))
@@ -168,7 +167,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.closeAction.triggered.connect(self.close)
         self.resetWindowAction.triggered.connect(self.reset_window)
         self.expandParametersAction.triggered.connect(
-            lambda: self.expand_parameters(root_item))
+            lambda: self.expand_parameters(self.root_item))
         self.copyStationPathAction.triggered.connect(self.copy_station_path)
 
     def _set_menu_bar(self):
@@ -224,11 +223,9 @@ class DictView(qt.QtWidgets.QWidget):
         - no QTreeWidgetItem is hidden
         - only root item and parameters are expanded
         """
-        root_item = self.tree_widget.topLevelItem(0)
-        self.show_all(root_item)
-        self.expand_branch(root_item, expand=False)
-        root_item.setExpanded(True)
-        self.expand_parameters(root_item)
+        self.show_all(self.root_item)
+        self.expand_branch(self.root_item, expand=False)
+        self.expand_parameters(self.root_item)
 
     def expand_parameters(self, tree_item: qt.QtWidgets.QTreeWidgetItem):
         """
@@ -809,8 +806,10 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
         self.screen = screen
         if timestamps is None:
             widget = DictView(dic, title, screen, timestamps=timestamps)
+            self.setWindowTitle("Snapshot Viewer")
         else:
             widget = ComparisonDictView(dic, title, screen, timestamps)
+            self.setWindowTitle("Comparison Viewer")
 
 
 
@@ -822,7 +821,7 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
             lambda: self.open_new_window(widget))
 
         self.setCentralWidget(widget)
-        self.setWindowTitle("Snapshot Viewer")
+
         screen_geom = screen.size()
         # layout options (x-coordinate, y-coordinate, width, height) in px
         self.setGeometry(int(0.1 * screen_geom.width()),
