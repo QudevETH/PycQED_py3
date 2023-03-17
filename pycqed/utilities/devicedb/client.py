@@ -87,7 +87,24 @@ class Client:
                     # header is not used anymore!
             )
         else:
-            self.api_config = device_db_client.get_configuration_obj(use_test_db=self.config.use_test_db, host=self.config.host)
+            if "get_configuration_obj" in dir(device_db_client):
+                self.api_config = device_db_client.get_configuration_obj(
+                    use_test_db=self.config.use_test_db,
+                    host=self.config.host,
+                )
+            else:
+                raise RuntimeError(
+                    'The device_db_client library is deprecated! You '
+                    'cannot connect to the device database with the old '
+                    'library anymore. Please run `git pull` in the '
+                    'device_db_client library, restart your Python kernel and '
+                    'rerun your code. Then a file will automatically open with '
+                    'instructions on how to generate tokens which are required '
+                    'from now on. Go to the Device Database documentation if '
+                    'any errors should occur: '
+                    'https://documentation.qudev.phys.ethz.ch/websites/device_db/dev/index.html'
+                )
+
 
         self.api_client = device_db_client.ApiClient(self.api_config)
         self.setup_name = self.config.setup
