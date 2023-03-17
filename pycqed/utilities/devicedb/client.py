@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 import device_db_client
 from device_db_client import model
 from device_db_client.api import api_api
-# from device_db_client.apis.tags import api_api # With new version of OpenAPI generator
+# from device_db_client.apis.tags import api_api # TODO: Needs to be used when upgrading to new version of OpenAPI generator
 from pycqed.utilities.devicedb import decorators, utils
 
 class Config:
@@ -136,6 +136,7 @@ class Client:
         """Checks if a setup exists in the database for the given name and stores it in a property of the client object"""
         if self.setup_name is not None:
             setups = self.get_api_instance().list_setups(name=self.setup_name)
+            # TODO
             # In the future, with the new version of the OpenAPI generator,
             # the following has to be used:
             # query_params = {
