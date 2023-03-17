@@ -567,7 +567,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                     if self.awg._awg_program[awg_nr] is not None])
 
     def clock(self):
-        return self.awg.system_clocks_sampleclock_freq()
+        return self.awg.clock_freq()
 
     def _hdawg_active_awgs(self):
         return [0,1,2,3]

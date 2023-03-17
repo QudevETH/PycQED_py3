@@ -57,4 +57,5 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
         """
         pass
 
-
+    def clock_freq(self):
+        return self.system_clocks_sampleclock_freq()
