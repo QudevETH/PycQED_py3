@@ -83,8 +83,6 @@ class Client:
                 api_key={'sessionAuth': self.config.token}, # Used for tracking
                     # which person/setup uses the API since for all API calls,
                     # the same username from the specific D PHYS user is used
-                # access_token=self.config.token, # Token authentication via the
-                    # header is not used anymore!
             )
         else:
             if "get_configuration_obj" in dir(device_db_client):
