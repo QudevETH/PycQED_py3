@@ -87,7 +87,7 @@ class Client:
                     # header is not used anymore!
             )
         else:
-            self.api_config = device_db_client.get_configuration_obj(use_test_db=self.config.use_test_db)
+            self.api_config = device_db_client.get_configuration_obj(use_test_db=self.config.use_test_db, host=self.config.host)
 
         self.api_client = device_db_client.ApiClient(self.api_config)
         self.setup_name = self.config.setup
