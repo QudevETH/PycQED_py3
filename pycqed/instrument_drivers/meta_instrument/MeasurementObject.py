@@ -380,9 +380,9 @@ class MeasurementObject(Instrument):
         frequency) and the acq_freq stored in the qubit object. If any of them
         is None, it is replaced by ro_mod_freq or ro_freq, respectively.
         """
-        if acq_freq := self.acq_freq() is None:
+        if (acq_freq := self.acq_freq()) is None:
             acq_freq = self.ro_freq()
-        if acq_mod_freq := self.acq_mod_freq() is None:
+        if (acq_mod_freq := self.acq_mod_freq()) is None:
             acq_mod_freq = self.ro_mod_freq()
         return acq_mod_freq, acq_freq - acq_mod_freq
 
