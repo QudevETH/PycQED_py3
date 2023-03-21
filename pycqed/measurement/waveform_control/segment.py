@@ -1037,10 +1037,15 @@ class Segment:
 
             self.elements[last_element].append(pulse)
 
+        # Here we update the length of the modified elements manually because
+        # calling self.element_start_length for an automatic calculation might
+        # overwrite modifications that were potentially done in
+        # self.gen_trigger_el.
         for (el, group) in longest_pulse:
             length_comp = longest_pulse[(el, group)]
             el_start = self.get_element_start(el, group)
-            new_end = t_end + length_comp
+            buffer = self.pulsar.min_element_buffer() or 0.
+            new_end = t_end + length_comp + buffer
             awg = self.pulsar.get_awg_from_trigger_group(group)
             new_samples = self.time2sample(new_end - el_start, awg=awg)
             # make sure that element length is multiple of
