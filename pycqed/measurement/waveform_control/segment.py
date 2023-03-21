@@ -20,6 +20,20 @@ import pycqed.measurement.waveform_control.pulsar as ps
 import pycqed.measurement.waveform_control.block as block_mod
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as flux_dist
 from collections import OrderedDict as odict
+from pycqed.utilities.general import temporary_value
+import functools
+
+
+def _with_pulsar_tmp_vals(f):
+    """Decorate methods of Segment to use tmp vals from self.pulsar_tmp_vals"""
+    @functools.wraps(f)
+    def wrapped_func(self, *args, **kwargs):
+        tmp_vals = [(self.pulsar.parameters[p], v)
+                    for p, v in self.pulsar_tmp_vals]
+        with temporary_value(*tmp_vals):
+            return f(self, *args, **kwargs)
+    wrapped_func.__name__ = f.__name__
+    return wrapped_func
 
 
 class Segment:
@@ -115,6 +129,12 @@ class Segment:
         self.elements_on_channel = {}
         self.element_metadata = {}
         self.distortion_dicts = {}
+        self.pulsar_tmp_vals = []
+        """temporary values for pulsar, specific to this segment, in the
+        format [('param_name', val), ...]. This should only be used for
+        virtual parameters that influence waveform generation (e.g., channel
+        delay) and not for physical device parameters."""
+        self._channel_amps = {}
         # The sweep_params dict is processed by generate_waveforms_sequences
         # and allows to sweep values of nodes of ZI HDAWGs in a hard sweep.
         # Keys are of the form awgname_chid_nodename (with _ instead of / in
@@ -254,6 +274,7 @@ class Segment:
             self.add(p)
 
     @Timer()
+    @_with_pulsar_tmp_vals
     def resolve_segment(self, allow_overlap=False,
                         store_segment_length_timer=True):
         """
@@ -1684,6 +1705,7 @@ class Segment:
 
         return [t_start, samples]
 
+    @_with_pulsar_tmp_vals
     def waveforms(self, awgs=None, elements=None, channels=None,
                   codewords=None, trigger_groups=None):
         """
@@ -1843,6 +1865,7 @@ class Segment:
                         # truncate all values that are out of bounds and
                         # normalize the waveforms
                         amp = self.pulsar.get('{}_amp'.format(c))
+                        self._channel_amps[c] = amp
                         if self.pulsar.get('{}_type'.format(c)) == 'analog':
                             if np.max(wfs[codeword][c], initial=0) > amp:
                                 logging.warning(
@@ -1930,6 +1953,7 @@ class Segment:
                 trigger_group))
         return channels
 
+    @_with_pulsar_tmp_vals
     def calculate_hash(self, elname, codeword, channel):
         if not self.pulsar.reuse_waveforms():
             # these hash entries avoid that the waveform is reused on another
@@ -2138,7 +2162,7 @@ class Segment:
                         for n_wf, ch in enumerate(sorted_chans):
                             wf = wf_per_ch[ch]
                             if not normalized_amplitudes:
-                                wf = wf * self.pulsar.get(f'{instr}_{ch}_amp')
+                                wf = wf * self._channel_amps[f'{instr}_{ch}']
                             if channels is None or \
                                     ch in channels.get(instr, []):
                                 tvals = \
