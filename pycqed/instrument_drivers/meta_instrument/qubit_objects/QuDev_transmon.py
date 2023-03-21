@@ -136,7 +136,7 @@ class QuDev_transmon(MeasurementObject):
         self.add_pulse_parameter('RO', 'ro_flux_gaussian_filter_sigma', 'flux_gaussian_filter_sigma',
                                  initial_value=0.5e-9, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_flux_mirror_pattern',
-                                 'mirror_pattern',
+                                 'flux_mirror_pattern',
                                  initial_value=None, vals=vals.Enum(None,
                                                                     "none",
                                                                     "all",
@@ -915,15 +915,16 @@ class QuDev_transmon(MeasurementObject):
             drive (str, None): the kind of drive to be applied, which can be
                 None (no drive), 'continuous_spec' (continuous spectroscopy),
                 'continuous_spec_modulated' (continuous spectroscopy using
-                the modulated configuation of the switch),
+                the modulated configuration of the switch),
                 'pulsed_spec' (pulsed spectroscopy), or the default
                 'timedomain' (AWG-generated signal upconverted by the mixer)
             switch (str): the required switch mode. Can be a switch mode
                 understood by set_switch or the default value 'default', in
                 which case the switch mode is determined based on the kind
-                of drive ('spec' for continuous/pulsed spectroscopy w/o modulated;
-                'no_drive' if drive is None and a switch mode 'no_drive' is
-                configured for this qubit; 'modulated' in all other cases).
+                of drive ('spec' for continuous/pulsed spectroscopy w/o
+                modulated; 'no_drive' if drive is None and a switch mode
+                'no_drive' is configured for this qubit; 'modulated' in all
+                other cases).
         """
 
         if switch == 'default':
@@ -949,7 +950,7 @@ class QuDev_transmon(MeasurementObject):
         if ge_lo() is not None:
             if drive is None:
                 ge_lo.get_instr().off()
-            elif 'continuous_spec' in drive :
+            elif 'continuous_spec' in drive:
                 ge_lo.get_instr().pulsemod_state('Off')
                 ge_lo.get_instr().power(self.spec_power())
                 ge_lo.get_instr().frequency(self.ge_freq())
@@ -1063,7 +1064,7 @@ class QuDev_transmon(MeasurementObject):
                     operation_dict[f'X180{tn} ' + self.name][
                         'mod_frequency'] = None
                 else:
-                    operation_dict['X180_ef ' + self.name][
+                    operation_dict[f'X180{tn} ' + self.name][
                         'mod_frequency'] = self.get(f'{tr_name}_freq') - \
                                            self.ge_freq() + self.ge_mod_freq()
             operation_dict.update(add_suffix_to_dict_keys(
@@ -1440,7 +1441,7 @@ class QuDev_transmon(MeasurementObject):
                                      trigger_sep=5e-6, align_frequencies=True):
         MC = self.instr_mc.get_instr()
         if align_frequencies:
-            if_freqs = (if_freqs*trigger_sep).astype(np.int)/trigger_sep
+            if_freqs = (if_freqs*trigger_sep).astype(int)/trigger_sep
         s = swf.Offset_Sweep(
             self.instr_ro_lo.get_instr().frequency,
             self.ge_freq() - self.ro_mod_freq() - self.ge_mod_freq(),
@@ -2576,18 +2577,37 @@ class QuDev_transmon(MeasurementObject):
             except Exception:
                 ma.MeasurementAnalysis(TwoD=False)
 
-    def configure_offsets(self, set_ro_offsets=True, set_ge_offsets=True):
+    def configure_pulsar(self):
+        """
+        In addition to the super call:
+        - Reset modulation frequency and amplitude scaling
+        - Set flux distortion, see set_distortion_in_pulsar
+        """
+        super().configure_pulsar()
+        pulsar = self.instr_pulsar.get_instr()
+        # make sure that some settings are reset to their default values
+        for quad in ['I', 'Q']:
+            ch = self.get(f'ge_{quad}_channel')
+            if f'{ch}_mod_freq' in pulsar.parameters:
+                pulsar.parameters[f'{ch}_mod_freq'](None)
+            if f'{ch}_amplitude_scaling' in pulsar.parameters:
+                pulsar.parameters[f'{ch}_amplitude_scaling'](1)
+        # set flux distortion
+        self.set_distortion_in_pulsar()
+
+    def configure_offsets(self, set_ro_offsets=True, set_ge_offsets=True,
+                          offset_list=None):
         """
         Set AWG channel DC offsets and switch sigouts on.
 
         :param set_ro_offsets: whether to set offsets for RO channels
         :param set_ge_offsets: whether to set offsets for drive channels
+        :param offset_list: additional offsets to set
         """
         pulsar = self.instr_pulsar.get_instr()
-        offset_list = []
-        if set_ro_offsets:
-            offset_list += [('ro_I_channel', 'ro_I_offset'),
-                            ('ro_Q_channel', 'ro_Q_offset')]
+        if offset_list is None:
+            offset_list = []
+
         if set_ge_offsets:
             ge_lo = self.instr_ge_lo
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
@@ -2608,11 +2628,8 @@ class QuDev_transmon(MeasurementObject):
                 lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],
                                             qb_lo_cal['Q_offsets'])
 
-        for channel_par, offset_par in offset_list:
-            ch = self.get(channel_par)
-            if ch is not None and ch + '_offset' in pulsar.parameters:
-                pulsar.set(ch + '_offset', self.get(offset_par))
-                pulsar.sigout_on(ch)
+        super().configure_offsets(set_ro_offsets=set_ro_offsets,
+                                  offset_list=offset_list)
 
     def set_distortion_in_pulsar(self, datadir=None):
         """

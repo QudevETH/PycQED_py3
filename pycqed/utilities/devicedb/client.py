@@ -9,11 +9,11 @@ log = logging.getLogger(__name__)
 import device_db_client
 from device_db_client import model
 from device_db_client.api import api_api
+# from device_db_client.apis.tags import api_api # TODO: Needs to be used when upgrading to new version of OpenAPI generator
 from pycqed.utilities.devicedb import decorators, utils
 
 class Config:
-    @decorators.at_least_one_not_none(['username', 'token'])
-    @decorators.all_or_none(['username', 'password'])
+    @decorators.all_or_none(['username', 'password', 'token'])
     def __init__(
         self,
         username=None,
@@ -37,21 +37,15 @@ class Config:
             device_name (str, optional): the name of the device to retrieve from the database, if needed. Defaults to None.
             setup (str, optional): the name of the setup one which measurements are performed. Defaults to None.
             host (str, optional): the url for the server hosting the device database. Defaults to "https://device-db.qudev.phys.ethz.ch".
+            use_test_db (bool, optional): Boolean, specifying if the test database should be used or not. Defaults to False.
         """
         self.username = username
         self.password = password
         self.token = token
         self.device_name = device_name
         self.setup = setup
-
-        if host != None:
-            self.host = host
-        else:
-            if use_test_db == False: # Use the actual server
-                self.host = "https://device-db.qudev.phys.ethz.ch"
-            else: # Use the test server
-                self.host = "https://test-device-db.qudev.phys.ethz.ch"
-                log.info(f"Use the test server {self.host} instead of the actual live server.")
+        self.host = host
+        self.use_test_db = use_test_db
 
 
 class Client:
@@ -74,13 +68,42 @@ class Client:
         Args:
             config (Config): contains the configuration parameters for the client
         """
+
         self.config = config
-        self.api_config = device_db_client.Configuration(
-            host=self.config.host,
-            username=self.config.username,
-            password=self.config.password,
-            access_token=self.config.token,
-        )
+
+        # If username, password and token are provided, use those.
+        # Otherwise use the configuration loader `get_configuration_obj()`
+        # from device_db_client which automatically loads the credentials from
+        # the corresponding file.
+        if self.config.username != None and self.config.password != None and self.config.token != None:
+            self.api_config = device_db_client.Configuration(
+                host=self.config.host,
+                username=self.config.username,
+                password=self.config.password,
+                api_key={'sessionAuth': self.config.token}, # Used for tracking
+                    # which person/setup uses the API since for all API calls,
+                    # the same username from the specific D PHYS user is used
+            )
+        else:
+            if "get_configuration_obj" in dir(device_db_client):
+                self.api_config = device_db_client.get_configuration_obj(
+                    use_test_db=self.config.use_test_db,
+                    host=self.config.host,
+                )
+            else:
+                raise RuntimeError(
+                    'The device_db_client library is deprecated! You '
+                    'cannot connect to the device database with the old '
+                    'library anymore. Please run `git pull` in the '
+                    'device_db_client library, restart your Python kernel and '
+                    'rerun your code. Then a file will automatically open with '
+                    'instructions on how to generate tokens which are required '
+                    'from now on. Go to the Device Database documentation if '
+                    'any errors should occur: '
+                    'https://documentation.qudev.phys.ethz.ch/websites/device_db/dev/index.html'
+                )
+
+
         self.api_client = device_db_client.ApiClient(self.api_config)
         self.setup_name = self.config.setup
         self.setup = None
@@ -113,6 +136,13 @@ class Client:
         """Checks if a setup exists in the database for the given name and stores it in a property of the client object"""
         if self.setup_name is not None:
             setups = self.get_api_instance().list_setups(name=self.setup_name)
+            # TODO
+            # In the future, with the new version of the OpenAPI generator,
+            # the following has to be used:
+            # query_params = {
+            #     'name': self.setup_name,
+            # }
+            # setups = self.get_api_instance().list_setups(query_params=query_params)
 
             if len(setups) == 0:
                 raise ValueError(f"No setup found for the provided name '{self.setup_name}'.")

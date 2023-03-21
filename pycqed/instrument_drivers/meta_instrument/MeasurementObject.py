@@ -651,23 +651,32 @@ class MeasurementObject(Instrument):
     def configure_pulsar(self):
         """
         Configure MeasurementObject-specific settings in pulsar:
-        - Reset modulation frequency and amplitude scaling
-        - set AWG channel DC offsets and switch sigouts on,
-           see configure_offsets
-        - set flux distortion, see set_distortion_in_pulsar
+        - Set AWG channel DC offsets and switch sigouts on,
+        see configure_offsets
         """
-        pulsar = self.instr_pulsar.get_instr()
-        # make sure that some settings are reset to their default values
-        for quad in ['I', 'Q']:
-            ch = self.get(f'ge_{quad}_channel')
-            if f'{ch}_mod_freq' in pulsar.parameters:
-                pulsar.parameters[f'{ch}_mod_freq'](None)
-            if f'{ch}_amplitude_scaling' in pulsar.parameters:
-                pulsar.parameters[f'{ch}_amplitude_scaling'](1)
         # set offsets and turn on AWG outputs
         self.configure_offsets()
-        # set flux distortion
-        self.set_distortion_in_pulsar()
+
+    def configure_offsets(self, set_ro_offsets=True, offset_list=None):
+        """
+        Set AWG channel DC offsets and switch sigouts on.
+
+        :param set_ro_offsets: whether to set offsets for RO channels
+        :param offset_list: additional offsets to set
+        """
+        pulsar = self.instr_pulsar.get_instr()
+        if offset_list is None:
+            offset_list = []
+
+        if set_ro_offsets:
+            offset_list += [('ro_I_channel', 'ro_I_offset'),
+                            ('ro_Q_channel', 'ro_Q_offset')]
+
+        for channel_par, offset_par in offset_list:
+            ch = self.get(channel_par)
+            if ch is not None and ch + '_offset' in pulsar.parameters:
+                pulsar.set(ch + '_offset', self.get(offset_par))
+                pulsar.sigout_on(ch)
 
     def link_param_to_operation(self, operation_name, parameter_name,
                                 argument_name):
