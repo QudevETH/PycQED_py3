@@ -1228,7 +1228,7 @@ class Pulsar(Instrument):
                 sequence_cache['metadata'][awg] = metadata[awg]
             # Check for which channels some relevant setting or some hash has
             # changed, in which case the group of channels should be uploaded.
-            settings_to_check = ['{}_internal_modulation']
+            settings_to_check = ['{}_internal_modulation', '{}_delay']
             awgs_with_channels_to_upload = []
             channels_to_upload = []
             channels_to_program = []
