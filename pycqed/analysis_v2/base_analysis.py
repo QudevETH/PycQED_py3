@@ -12,6 +12,7 @@ import numbers
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
+from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
     write_warning_message_to_text_file)
@@ -225,6 +226,18 @@ class BaseDataAnalysis(object):
                 log.error("Unhandled error during init of analysis!")
                 log.error(traceback.format_exc())
 
+    def open_files(self):
+        # open data and config files
+        h5mode = self.options_dict.get('h5mode', 'r')
+        self.data_files, self.config_files = [], []
+        for ts in self.timestamps:
+            self.data_files += [a_tools.open_hdf_file(ts, mode=h5mode)]
+            self.config_files += [a_tools.open_config_file(ts)]
+
+    def close_files(self):
+        # close data and config files
+        a_tools.close_files(self.data_files + self.config_files)
+
     def run_analysis(self):
         """
         This function is at the core of all analysis and defines the flow.
@@ -376,50 +389,6 @@ class BaseDataAnalysis(object):
         with open(filepath, "w") as f:
             f.write(job)
 
-    @staticmethod
-    def get_hdf_datafile_param_value(group, param_name):
-        '''
-        Returns an attribute "key" of the group "Experimental Data"
-        in the hdf5 datafile.
-        '''
-        s = group.attrs[param_name]
-        # converts byte type to string because of h5py datasaving
-        if isinstance(s, bytes):
-            s = s.decode('utf-8')
-        # If it is an array of value decodes individual entries
-        if isinstance(s, np.ndarray) or isinstance(s, list):
-            s = [s.decode('utf-8') if isinstance(s, bytes) else s for s in s]
-        try:
-            return eval(s)
-        except Exception:
-            return s
-
-    def get_hdf_param_value(self, path_to_group, attribute, hdf_file_index=0):
-        """
-        Gets the attribute (i.e. parameter) of a given group in the hdf file.
-        Args:
-            path_to_group (str): path to group. e.g. "Instrument settings/qb1"
-            attribute: attribute name. e.g. "T1"
-            hdf_file_index: index of the file to use in case of
-                multiple timestamps.
-
-        Returns:
-
-        """
-        h5mode = self.options_dict.get('h5mode', 'r')
-        folder = a_tools.get_folder(self.timestamps[hdf_file_index])
-        h5filepath = a_tools.measurement_filename(folder)
-        data_file = h5py.File(h5filepath, h5mode)
-
-        try:
-            value = self.get_hdf_datafile_param_value(data_file[path_to_group],
-                                                      attribute)
-            data_file.close()
-            return value
-        except Exception as e:
-            data_file.close()
-            raise e
-
     def _get_param_value(self, param_name, default_value=None, metadata_index=0):
         log.warning('Deprecation warning: please use new function '
                     'self.get_param_value(). This function is intended to be '
@@ -476,65 +445,45 @@ class BaseDataAnalysis(object):
             timestamps = self.timestamps
         raw_data_dict = []
         for timestamp in timestamps:
-            raw_data_dict_ts = OrderedDict([(param, []) for param in
+            file_idx = self.timestamps.index(timestamp)
+            raw_data_dict_ts = OrderedDict([(param, '') for param in
                                             params_dict])
 
             folder = a_tools.get_folder(timestamp)
-            h5mode = self.options_dict.get('h5mode', 'r')
-            h5filepath = a_tools.measurement_filename(folder)
-            data_file = h5py.File(h5filepath, h5mode)
+            self.open_files()
+            data_file = self.data_files[file_idx]
+            config_file = self.config_files[file_idx]
+            files = [data_file, config_file]
             try:
-                if 'timestamp' in raw_data_dict_ts:
-                    raw_data_dict_ts['timestamp'] = timestamp
-                if 'folder' in raw_data_dict_ts:
-                    raw_data_dict_ts['folder'] = folder
-                if 'measurementstring' in raw_data_dict_ts:
-                    raw_data_dict_ts['measurementstring'] = \
-                        os.path.split(folder)[1][7:]
-                if 'measured_data' in raw_data_dict_ts:
-                    raw_data_dict_ts['measured_data'] = \
-                        np.array(data_file['Experimental Data']['Data']).T
-
                 for save_par, file_par in params_dict.items():
-                    if len(file_par.split('.')) == 1:
-                        par_name = file_par.split('.')[0]
-                        for group_name in data_file.keys():
-                            if par_name in list(data_file[group_name].attrs):
-                                raw_data_dict_ts[save_par] = \
-                                    self.get_hdf_datafile_param_value(
-                                        data_file[group_name], par_name)
-                            elif par_name in list(data_file[group_name].keys()) or\
-                                    (par_name == "Timers" and group_name == "Timers"):
-                                raw_data_dict_ts[save_par] = \
-                                    read_dict_from_hdf5({}, data_file[
-                                        group_name])
+                    if save_par == 'timestamp':
+                        raw_data_dict_ts['timestamp'] = timestamp
+                    elif save_par == 'folder':
+                        raw_data_dict_ts['folder'] = folder
+                    elif save_par == 'measurementstring':
+                        raw_data_dict_ts['measurementstring'] = \
+                            os.path.split(folder)[1][7:]
+                    elif save_par == 'measured_data':
+                        raw_data_dict_ts['measured_data'] = \
+                            np.array(data_file['Experimental Data']['Data']).T
                     else:
-                        group_name = '/'.join(file_par.split('.')[:-1])
-                        par_name = file_par.split('.')[-1]
-                        if group_name in data_file:
-                            if par_name in list(data_file[group_name].attrs):
-                                raw_data_dict_ts[save_par] = \
-                                    self.get_hdf_datafile_param_value(
-                                        data_file[group_name], par_name)
-                            elif par_name in list(data_file[group_name].keys()):
-                                raw_data_dict_ts[save_par] = \
-                                    read_dict_from_hdf5({}, data_file[
-                                        group_name][par_name])
-                    if isinstance(raw_data_dict_ts[save_par], list) and \
-                            len(raw_data_dict_ts[save_par]) == 1:
-                        raw_data_dict_ts[save_par] = \
-                            raw_data_dict_ts[save_par][0]
+                        raw_data_dict_ts[save_par] = hlp_mod.extract_from_files(
+                            files, file_par)
                 for par_name in raw_data_dict_ts:
                     if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
             except Exception as e:
-                data_file.close()
+                # data_file.close()
+                self.close_files()
                 raise e
             raw_data_dict.append(raw_data_dict_ts)
 
         if len(raw_data_dict) == 1:
             raw_data_dict = raw_data_dict[0]
+
+        self.close_files()
+
         return raw_data_dict
 
     @staticmethod
@@ -2257,7 +2206,7 @@ class BaseDataAnalysis(object):
 
     def clock(self, awg=None, channel=None, pulsar=None):
         """
-        Returns the clock frequency of an AWG from the instrument settings,
+        Returns the clock frequency of an AWG from the config file,
         or tries to determine it based on the instrument type if it is not
         stored in the settings.
         :param awg: (str) AWG name (can be None if channel and pulsar are
@@ -2271,13 +2220,13 @@ class BaseDataAnalysis(object):
             assert pulsar is not None and channel is not None, \
                 'If awg is not provided, channel and pulsar must be provided.'
             pulsar_dd = self.get_data_from_timestamp_list({
-                'awg': f'Instrument settings.{pulsar}.{channel}_awg'})
+                'awg': f'{pulsar}.{channel}_awg'})
             awg = pulsar_dd['awg']
 
         awg_dd = self.get_data_from_timestamp_list({
-            'clock_freq': f'Instrument settings.{awg}.clock_freq',
-            'IDN': f'Instrument settings.{awg}.IDN'})
-        if awg_dd['clock_freq']:
+            'clock_freq': f'{awg}.clock_freq',
+            'IDN': f'{awg}.IDN'})
+        if awg_dd['clock_freq'] != 'not found':
             return awg_dd['clock_freq']
         model = awg_dd['IDN'].get('model', None)
         if model == 'HDAWG8':
@@ -2289,33 +2238,18 @@ class BaseDataAnalysis(object):
         else:
             raise NotImplementedError(f"Unknown AWG type: {model}.")
 
-    def get_hdf_attr_names(self, path='Instrument settings',  hdf_file_index=0):
-        """
-        Returns all attributes in a path. Path could also be e.g. a particular qubit
-        """
-        h5mode = 'r'
-        folder = a_tools.get_folder(self.timestamps[hdf_file_index])
-        h5filepath = a_tools.measurement_filename(folder)
-        data_file = h5py.File(h5filepath, h5mode)
-
-        try:
-            attr_names = list(data_file[path]) + list(data_file[path].attrs)
-            data_file.close()
-            return attr_names
-        except Exception as e:
-            data_file.close()
-            raise e
-
-    def get_instruments_by_class(self, instr_class, hdf_file_index=0):
+    def get_instruments_by_class(self, instr_class, file_index=0):
         """
         Returns all instruments of a given class
         """
-        instruments = self.get_hdf_attr_names(hdf_file_index= hdf_file_index)
+        if not hasattr(self, 'config_files'):
+            self.open_files()
+        instruments = list(self.config_files[file_index].keys())
         dev_names = []
         for instrument in instruments:
-            instrument_class = self.get_hdf_param_value(path_to_group='Instrument settings/'+instrument,
-                                                        attribute='__class__', hdf_file_index=hdf_file_index)
-            if  instrument_class == instr_class:
+            instrument_class = hlp_mod.get_instr_param_from_file(
+                instrument, '__class__', file=self.config_files[file_index])
+            if instrument_class == instr_class:
                 dev_names.append(instrument)
         return dev_names
 
@@ -2395,7 +2329,7 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
         }
         return measurement_groups
 
-    def tile_data_ndim(self, ana_ids, post_proc_func, on_qb=False):
+    def tile_data_ndim(self, ana_ids, post_proc_func):
         """
         Creates an N-dimensional dataset from separate timestamps each
         containing 2-dimensional data, and returns the corresponding
@@ -2407,26 +2341,17 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
                 used
             post_proc_func (function): specifies how to convert the raw data
                 per channel
-            on_qb (bool): whether the measurement was run on a qubit instead
-                of a MeasurementObject (to be removed, see FIXME below)
         into a value in the N-dim dataset (by default: sqrt(I**2+Q**2) )
 
         """
 
-        # FIXME: this function is specific to MultiTWPA_SNR_Analysis.
-        #  Once spectroscopies can be done without a qb, this can be cleaned
-        #  up since we can remove on_qb and replace the interleaved list of
-        #  mobjs and qb to a proper list of mobj
-
         data_ndim = {}
         sweep_points_ndim = {}
 
-        for mobj_id in range(len(self.mobj_names) // 2):
-            mobjn = self.mobj_names[2 * mobj_id]  # FIXME see main FIXME
+        for mobjn in self.mobj_names:
             data_ndim[mobjn] = {}
             sweep_points_ndim[mobjn] =\
-                self.get_ndim_sweep_points_from_mobj_name(
-                    ana_ids, self.mobj_names[2 * mobj_id + on_qb])
+                self.get_ndim_sweep_points_from_mobj_name(ana_ids, mobjn)
             sweep_lengths = sweep_points_ndim[mobjn].length()
             data_ndim[mobjn] = np.nan * np.ones(sweep_lengths)
             for ana_id in ana_ids:
@@ -2437,13 +2362,12 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
                 self.raw_data_dict[ana_id]['exp_metadata']['task_list'][0][
                     'ndim_current_idxs']
                 ch_map = self.raw_data_dict[ana_id]['exp_metadata'][
-                    'meas_obj_value_names_map'][
-                    self.mobj_names[2 * mobj_id + on_qb]]
+                    'meas_obj_value_names_map'][mobjn]
                 ana_data_dict = self.raw_data_dict[ana_id]['measured_data']
-                spectrum = post_proc_func(ana_data_dict, ch_map)
+                data_2D = post_proc_func(ana_data_dict, ch_map)
                 for i in range(sweep_lengths[0]):
                     for j in range(sweep_lengths[1]):
-                        data_ndim[mobjn][(i, j, *idxs)] = spectrum[i, j]
+                        data_ndim[mobjn][(i, j, *idxs)] = data_2D[i, j]
         return data_ndim, sweep_points_ndim
 
     def get_meas_objs_from_task(self, task):

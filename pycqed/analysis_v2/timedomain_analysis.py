@@ -25,6 +25,7 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
+from pycqed.analysis_v3.helper_functions import get_qb_channel_map_from_file
 import logging
 
 from pycqed.utilities import math
@@ -384,7 +385,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if np.ndim(value_names) > 0:
                     value_names = value_names
                 if 'w' in value_names[0]:
-                    self.channel_map = a_tools.get_qb_channel_map_from_hdf(
+                    self.channel_map = get_qb_channel_map_from_file(
                         self.qb_names, value_names=value_names,
                         file_path=self.raw_data_dict['folder'])
                 else:
@@ -1152,11 +1153,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             do_PCA = 'pca' in self.rotation_type[qbn].lower()
             self.cal_states_dict_for_rotation[qbn] = OrderedDict()
             cal_states_rot_qb = cal_states_rotations.get(qbn, {})
-            for i in list(cal_states_rot_qb.values()):
-                # cal state corresponding to transmon level i
-                cal_state = \
-                    [k for k, idx in cal_states_rot_qb.items()
-                     if idx == i][0]
+            cal_states = list(cal_states_rot_qb)
+            # sort cal_states
+            cal_states.sort(key=lambda s: cal_states_rot_qb[s])
+            for cal_state in cal_states:
                 if do_PCA or not len(self.cal_states_dict[qbn]):
                     # rotation_type is some form of pca or no cal points
                     # information was given --> do pca
@@ -1239,12 +1239,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     @staticmethod
     def rotate_data_3_cal_states(qb_name, meas_results_per_qb, channel_map,
-                                 cal_states_dict):
+                                 cal_idxs_dict):
         # FOR 3 CAL STATES
         rotated_data_dict = OrderedDict()
         meas_res_dict = meas_results_per_qb[qb_name]
         rotated_data_dict[qb_name] = OrderedDict()
-        cal_pts_idxs = list(cal_states_dict[qb_name].values())
+        cal_pts_idxs = list(cal_idxs_dict[qb_name].values())
         cal_points_data = np.zeros((len(cal_pts_idxs), 2))
         if list(meas_res_dict) == channel_map[qb_name]:
             raw_data = np.array([v for v in meas_res_dict.values()]).T
@@ -1252,7 +1252,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 cal_points_data[i, :] = np.mean(raw_data[cal_idx, :],
                                                 axis=0)
             rotated_data = predict_proba_avg_ro(raw_data, cal_points_data)
-            for i, state in enumerate(list(cal_states_dict[qb_name])):
+            for i, state in enumerate(list(cal_idxs_dict[qb_name])):
                 rotated_data_dict[qb_name][f'p{state}'] = rotated_data[:, i]
         else:
             raise NotImplementedError('Calibration states rotation with 3 '
@@ -1262,35 +1262,55 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     @staticmethod
     def rotate_data(qb_name, meas_results_per_qb, channel_map,
-                    cal_states_dict, storing_keys, data_mostly_g=True):
+                    cal_idxs_dict, storing_keys, data_mostly_g=True):
         # ONLY WORKS FOR 2 CAL STATES
-        if 'pca' not in storing_keys[qb_name].lower():
+        # We assign to main_cs the cal state that is found in storing_keys,
+        # which is typically that passed by the user in data_to_fit
+        main_cs = storing_keys[qb_name]
+        if 'pca' not in main_cs.lower():
             # Add the other state probability
-            # ex if storing_keys[qb_name] == 'pe' add data for 'pg' as 1-pe
-            qb_cal_states = cal_states_dict[qb_name].keys()
+            # ex if main_cs == 'pe' add data for 'pg' as 1-pe
+            qb_cal_states = cal_idxs_dict[qb_name].keys()
             if len(qb_cal_states) != 2:
                 raise ValueError(f'Expected two cal states for {qb_name} but '
                                  f'found {len(qb_cal_states)}: {qb_cal_states}')
-            other_cs = [cs for cs in qb_cal_states
-                        if cs != storing_keys[qb_name][-1]]
+            other_cs = [cs for cs in qb_cal_states if cs != main_cs[-1]]
             if len(other_cs) == 0:
                 raise ValueError(f'There are no other cal states except for '
-                                 f'{storing_keys[qb_name][-1]} from '
-                                 f'storing_keys.')
+                                 f'{main_cs[-1]} from storing_keys.')
             elif len(other_cs) > 1:
                 raise ValueError(f'There is more than one other cal state in '
-                                 f'addition to {storing_keys[qb_name][-1]} from'
+                                 f'addition to {main_cs[-1]} from'
                                  f' storing_keys. Not clear which one to use.')
             other_cs = f'p{other_cs[0]}'
 
+            # rotate_and_normalize_data_IQ and rotate_and_normalize_data_1ch
+            # return the qubit population corresponding to the highest cal state
+            # (f>e>g). So the main_cs must be higher than the other_cs.
+            # For example if the user passes g in data_to_fit main_cs=g
+            # (main_cs just gets copied from data_to_fit). The bit of code here
+            # swaps main_cs and other_cs only locally in this, so that main_cs
+            # becomes e (or f), while data_to_fit stays g. Like this, we respect
+            # the user's choice (by keeping data_to_fit) while handling the
+            # rotation correctly (by changing the main_cs).
+            # Below, states will have the order f, e, g because
+            # cal_idxs_dict[qb_name] was ordered as g, e, f in
+            # get_cal_states_dict_for_rotation
+            states = list(cal_idxs_dict[qb_name])[::-1]
+            probs = [main_cs, other_cs]
+            # sort probs by order pf, pe, pg
+            probs.sort(key=lambda p: states.index(p[-1]))
+            # reassign to main_cs, other_cs such that main_cs > other_cs
+            main_cs, other_cs = probs[0], probs[1]
+
         meas_res_dict = meas_results_per_qb[qb_name]
         rotated_data_dict = OrderedDict()
-        vals = list(cal_states_dict[qb_name].values())
-        if len(cal_states_dict[qb_name]) == 0 or any([v is None for v in vals]):
+        vals = list(cal_idxs_dict[qb_name].values())
+        if len(cal_idxs_dict[qb_name]) == 0 or any([v is None for v in vals]):
             cal_zero_points = None
             cal_one_points = None
         else:
-            cal_pts_idxs = list(cal_states_dict[qb_name].values())
+            cal_pts_idxs = list(cal_idxs_dict[qb_name].values())
             cal_pts_idxs.sort()
             cal_zero_points = cal_pts_idxs[0]
             cal_one_points = cal_pts_idxs[1]
@@ -1302,16 +1322,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 data = (data - np.min(data))/(np.max(data) - np.min(data))
                 data = a_tools.set_majority_sign(
                     data, -1 if data_mostly_g else 1)
-                rotated_data_dict[qb_name][storing_keys[qb_name]] = data
+                rotated_data_dict[qb_name][main_cs] = data
             else:
-                rotated_data_dict[qb_name][storing_keys[qb_name]] = \
+                rotated_data_dict[qb_name][main_cs] = \
                     a_tools.rotate_and_normalize_data_1ch(
                         data=meas_res_dict[list(meas_res_dict)[0]],
                         cal_zero_points=cal_zero_points,
                         cal_one_points=cal_one_points)
-            if 'pca' not in storing_keys[qb_name].lower():
+            if 'pca' not in main_cs.lower():
                 rotated_data_dict[qb_name][other_cs] = \
-                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+                    1 - rotated_data_dict[qb_name][main_cs]
         elif list(meas_res_dict) == channel_map[qb_name]:
             # two RO channels per qubit
             data, _, _ = a_tools.rotate_and_normalize_data_IQ(
@@ -1321,10 +1341,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             if cal_zero_points is None:
                 data = a_tools.set_majority_sign(
                     data, -1 if data_mostly_g else 1)
-            rotated_data_dict[qb_name][storing_keys[qb_name]] = data
-            if 'pca' not in storing_keys[qb_name].lower():
+            rotated_data_dict[qb_name][main_cs] = data
+            if 'pca' not in main_cs.lower():
                 rotated_data_dict[qb_name][other_cs] = \
-                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+                    1 - rotated_data_dict[qb_name][main_cs]
         else:
             # multiple readouts per qubit per channel
             if isinstance(channel_map[qb_name], str):
@@ -1342,11 +1362,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         data = (data - np.min(data))/(np.max(data) - np.min(data))
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
-                        rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]] = data
+                        rotated_data_dict[qb_name][ro_suf][main_cs] = data
                     else:
-                        rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]] = \
+                        rotated_data_dict[qb_name][ro_suf][main_cs] = \
                             a_tools.rotate_and_normalize_data_1ch(
                                 data=meas_res_dict[list(meas_res_dict)[i]],
                                 cal_zero_points=cal_zero_points,
@@ -1365,27 +1383,25 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     if cal_zero_points is None:
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][ro_suf][
-                        storing_keys[qb_name]] = data
-                if 'pca' not in storing_keys[qb_name].lower():
+                    rotated_data_dict[qb_name][ro_suf][main_cs] = data
+                if 'pca' not in main_cs.lower():
                     rotated_data_dict[qb_name][ro_suf][other_cs] = \
-                        1 - rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]]
+                        1 - rotated_data_dict[qb_name][ro_suf][main_cs]
         return rotated_data_dict
 
     @staticmethod
     def rotate_data_3_cal_states_TwoD(qb_name, meas_results_per_qb,
-                                      channel_map, cal_states_dict):
+                                      channel_map, cal_idxs_dict):
         # FOR 3 CAL STATES
         meas_res_dict = meas_results_per_qb[qb_name]
         rotated_data_dict = OrderedDict()
         rotated_data_dict[qb_name] = OrderedDict()
-        cal_pts_idxs = list(cal_states_dict[qb_name].values())
+        cal_pts_idxs = list(cal_idxs_dict[qb_name].values())
         cal_points_data = np.zeros((len(cal_pts_idxs), 2))
         if list(meas_res_dict) == channel_map[qb_name]:
             # two RO channels per qubit
             raw_data_arr = meas_res_dict[list(meas_res_dict)[0]]
-            for i, state in enumerate(list(cal_states_dict[qb_name])):
+            for i, state in enumerate(list(cal_idxs_dict[qb_name])):
                 rotated_data_dict[qb_name][f'p{state}'] = np.zeros(
                     raw_data_arr.shape)
             for col in range(raw_data_arr.shape[1]):
@@ -1399,7 +1415,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 rotated_data = predict_proba_avg_ro(
                     raw_data, cal_points_data)
 
-                for i, state in enumerate(list(cal_states_dict[qb_name])):
+                for i, state in enumerate(list(cal_idxs_dict[qb_name])):
                     rotated_data_dict[qb_name][f'p{state}'][:, col] = \
                         rotated_data[:, i]
         else:
@@ -1407,7 +1423,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                       'cal states only implemented for '
                                       '2 readout channels per qubit.')
         # transpose data
-        for i, state in enumerate(list(cal_states_dict[qb_name])):
+        for i, state in enumerate(list(cal_idxs_dict[qb_name])):
             rotated_data_dict[qb_name][f'p{state}'] = \
                 rotated_data_dict[qb_name][f'p{state}'].T
         return rotated_data_dict
@@ -1436,36 +1452,48 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     @staticmethod
     def rotate_data_TwoD(qb_name, meas_results_per_qb, channel_map,
-                         cal_states_dict, storing_keys,
+                         cal_idxs_dict, storing_keys,
                          column_PCA=False, data_mostly_g=True):
         # ONLY WORKS FOR 2 CAL STATES
-        if 'pca' not in storing_keys[qb_name].lower():
+        # We assign to main_cs the cal state that is found in storing_keys,
+        # which is typically that passed by the user in data_to_fit
+        main_cs = storing_keys[qb_name]
+        if 'pca' not in main_cs.lower():
             # Add the other state probability
-            # ex if storing_keys[qb_name] == 'pe' add data for 'pg' as 1-pe
-            qb_cal_states = cal_states_dict[qb_name].keys()
+            # ex if main_cs == 'pe' add data for 'pg' as 1-pe
+            qb_cal_states = cal_idxs_dict[qb_name].keys()
             if len(qb_cal_states) != 2:
                 raise ValueError(f'Expected two cal states for {qb_name} but '
                                  f'found {len(qb_cal_states)}: {qb_cal_states}')
-            other_cs = [cs for cs in qb_cal_states
-                        if cs != storing_keys[qb_name][-1]]
+            other_cs = [cs for cs in qb_cal_states if cs != main_cs[-1]]
             if len(other_cs) == 0:
                 raise ValueError(f'There are no other cal states except for '
-                                 f'{storing_keys[qb_name][-1]} from '
+                                 f'{main_cs[-1]} from '
                                  f'storing_keys.')
             elif len(other_cs) > 1:
                 raise ValueError(f'There is more than one other cal state in '
-                                 f'addition to {storing_keys[qb_name][-1]} from'
+                                 f'addition to {main_cs[-1]} from'
                                  f' storing_keys. Not clear which one to use.')
             other_cs = f'p{other_cs[0]}'
 
+            # rotate_and_normalize_data_IQ and rotate_and_normalize_data_1ch
+            # return the qubit population corresponding to the highest cal state
+            # (f>e>g). So the main_cs must be higher than the other_cs. See
+            # the comment in rotate_data for a more detailed explanation of the
+            # lines of code below.
+            states = list(cal_idxs_dict[qb_name])[::-1]
+            probs = [main_cs, other_cs]
+            probs.sort(key=lambda p: states.index(p[-1]))
+            main_cs, other_cs = probs[0], probs[1]
+
         meas_res_dict = meas_results_per_qb[qb_name]
         rotated_data_dict = OrderedDict()
-        vals = list(cal_states_dict[qb_name].values())
-        if len(cal_states_dict[qb_name]) == 0 or any([v is None for v in vals]):
+        vals = list(cal_idxs_dict[qb_name].values())
+        if len(cal_idxs_dict[qb_name]) == 0 or any([v is None for v in vals]):
             cal_zero_points = None
             cal_one_points = None
         else:
-            cal_pts_idxs = list(cal_states_dict[qb_name].values())
+            cal_pts_idxs = list(cal_idxs_dict[qb_name].values())
             cal_pts_idxs.sort()
             cal_zero_points = cal_pts_idxs[0]
             cal_one_points = cal_pts_idxs[1]
@@ -1473,7 +1501,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if len(meas_res_dict) == 1:
             # one RO channel per qubit
             raw_data_arr = meas_res_dict[list(meas_res_dict)[0]]
-            rotated_data_dict[qb_name][storing_keys[qb_name]] = \
+            rotated_data_dict[qb_name][main_cs] = \
                 deepcopy(raw_data_arr.transpose())
             if column_PCA:
                 for row in range(raw_data_arr.shape[0]):
@@ -1483,7 +1511,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         cal_one_points=cal_one_points)
                     data = a_tools.set_majority_sign(
                         data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][storing_keys[qb_name]][
+                    rotated_data_dict[qb_name][main_cs][
                         :, row] = data
             else:
                 for col in range(raw_data_arr.shape[1]):
@@ -1494,14 +1522,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     if cal_zero_points is None:
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][storing_keys[qb_name]][col] = data
-            if 'pca' not in storing_keys[qb_name].lower():
+                    rotated_data_dict[qb_name][main_cs][col] = data
+            if 'pca' not in main_cs.lower():
                 rotated_data_dict[qb_name][other_cs] = \
-                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+                    1 - rotated_data_dict[qb_name][main_cs]
         elif list(meas_res_dict) == channel_map[qb_name]:
             # two RO channels per qubit
             raw_data_arr = meas_res_dict[list(meas_res_dict)[0]]
-            rotated_data_dict[qb_name][storing_keys[qb_name]] = \
+            rotated_data_dict[qb_name][main_cs] = \
                 deepcopy(raw_data_arr.transpose())
             if column_PCA:
                 for row in range(raw_data_arr.shape[0]):
@@ -1514,8 +1542,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             cal_one_points=cal_one_points)
                     data = a_tools.set_majority_sign(
                         data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][storing_keys[qb_name]][
-                        :, row] = data
+                    rotated_data_dict[qb_name][main_cs][:, row] = data
             else:
                 for col in range(raw_data_arr.shape[1]):
                     data_array = np.array(
@@ -1527,11 +1554,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     if cal_zero_points is None:
                         data = a_tools.set_majority_sign(
                             data, -1 if data_mostly_g else 1)
-                    rotated_data_dict[qb_name][
-                        storing_keys[qb_name]][col] = data
-            if 'pca' not in storing_keys[qb_name].lower():
+                    rotated_data_dict[qb_name][main_cs][col] = data
+            if 'pca' not in main_cs.lower():
                 rotated_data_dict[qb_name][other_cs] = \
-                    1 - rotated_data_dict[qb_name][storing_keys[qb_name]]
+                    1 - rotated_data_dict[qb_name][main_cs]
         else:
             # multiple readouts per qubit per channel
             if isinstance(channel_map[qb_name], str):
@@ -1547,7 +1573,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if len(ro_suffixes) == len(meas_res_dict):
                     # one RO ch per qubit
                     raw_data_arr = meas_res_dict[list(meas_res_dict)[i]]
-                    rotated_data_dict[qb_name][ro_suf][storing_keys[qb_name]] = \
+                    rotated_data_dict[qb_name][ro_suf][main_cs] = \
                         deepcopy(raw_data_arr.transpose())
                     for col in range(raw_data_arr.shape[1]):
                         data = a_tools.rotate_and_normalize_data_1ch(
@@ -1557,12 +1583,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         if cal_zero_points is None:
                             data = a_tools.set_majority_sign(
                                 data, -1 if data_mostly_g else 1)
-                        rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]][col] = data
+                        rotated_data_dict[qb_name][ro_suf][main_cs][col] = data
                 else:
                     # two RO ch per qubit
                     raw_data_arr = meas_res_dict[list(meas_res_dict)[i]]
-                    rotated_data_dict[qb_name][ro_suf][storing_keys[qb_name]] = \
+                    rotated_data_dict[qb_name][ro_suf][main_cs] = \
                         deepcopy(raw_data_arr.transpose())
                     for col in range(raw_data_arr.shape[1]):
                         data_array = np.array(
@@ -1575,29 +1600,27 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         if cal_zero_points is None:
                             data = a_tools.set_majority_sign(
                                 data, -1 if data_mostly_g else 1)
-                        rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]][col] = data
-                if 'pca' not in storing_keys[qb_name].lower():
+                        rotated_data_dict[qb_name][ro_suf][main_cs][col] = data
+                if 'pca' not in main_cs.lower():
                     rotated_data_dict[qb_name][ro_suf][other_cs] = \
-                        1 - rotated_data_dict[qb_name][ro_suf][
-                            storing_keys[qb_name]]
+                        1 - rotated_data_dict[qb_name][ro_suf][main_cs]
         return rotated_data_dict
 
     @staticmethod
     def rotate_data_TwoD_same_fixed_cal_idxs(qb_name, meas_results_per_qb,
-                                             channel_map, cal_states_dict,
+                                             channel_map, cal_idxs_dict,
                                              storing_keys):
         meas_res_dict = meas_results_per_qb[qb_name]
         if list(meas_res_dict) != channel_map[qb_name]:
             raise NotImplementedError('rotate_data_TwoD_same_fixed_cal_idxs '
                                       'only implemented for two-channel RO!')
 
-        vals = list(cal_states_dict[qb_name].values())
-        if len(cal_states_dict[qb_name]) == 0 or any([v is None for v in vals]):
+        vals = list(cal_idxs_dict[qb_name].values())
+        if len(cal_idxs_dict[qb_name]) == 0 or any([v is None for v in vals]):
             cal_zero_points = None
             cal_one_points = None
         else:
-            cal_pts_idxs = list(cal_states_dict[qb_name].values())
+            cal_pts_idxs = list(cal_idxs_dict[qb_name].values())
             cal_pts_idxs.sort()
             cal_zero_points = cal_pts_idxs[0]
             cal_one_points = cal_pts_idxs[1]
@@ -1959,8 +1982,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if n_shots is None:
             # FIXME: this extraction of number of shots won't work with soft repetitions.
             n_shots_from_hdf = [
-                int(self.get_hdf_param_value(f"Instrument settings/{qbn}",
-                                             "acq_shots")) for qbn in self.qb_names]
+                int(self.get_data_from_timestamp_list({
+                    f'sh': f"{qbn}.acq_shots"})['sh']) for qbn in self.qb_names]
             if len(np.unique(n_shots_from_hdf)) > 1:
                 log.warning("Number of shots extracted from hdf are not all the same:"
                             "assuming n_shots=max(qb.acq_shots() for qb in qb_names)")
@@ -1977,11 +2000,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         # get classification parameters
         if classifier_params is None:
-            classifier_params = {}
-            from numpy import array  # for eval
-            for qbn in self.qb_names:
-                classifier_params[qbn] = eval(self.get_hdf_param_value(
-                f'Instrument settings/{qbn}', "acq_classifier_params"))
+            classifier_params = self.get_data_from_timestamp_list({
+                f'{qbn}': f"{qbn}.acq_classifier_params"
+                for qbn in self.qb_names})
 
         # prepare preselection mask
         if preselection:
@@ -3064,7 +3085,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
             Fs_corr.append(qtp.Qobj(np.diag(new_op)))
             assign_corr.append(np.diag(F.full()))
         pauli_Fs = tomo.rotated_measurement_operators(rotations, Fs_corr)
-        pauli_Fs = list(itertools.chain(*np.array(pauli_Fs, dtype=np.object).T))
+        pauli_Fs = list(itertools.chain(*np.array(pauli_Fs, dtype=object).T))
 
         mus = self.proc_data_dict['meas_results']
         pauli_mus = np.reshape(mus,[-1,2**nr_qubits])
@@ -3433,7 +3454,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
         pdd['data_reshaped_no_cp'] = data_reshaped_no_cp
 
-        pdd['mask'] = {qb: np.ones(nr_amps, dtype=np.bool)
+        pdd['mask'] = {qb: np.ones(nr_amps, dtype=bool)
                            for qb in self.qb_names}
 
     def prepare_fitting(self):
@@ -3592,7 +3613,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 pdd['data_to_fit'][qb][
                 len(pdd['data_to_fit'][qb])-nr_cp:]) for qb in self.qb_names}
 
-        pdd['mask'] = {qb: np.ones(nr_amps, dtype=np.bool)
+        pdd['mask'] = {qb: np.ones(nr_amps, dtype=bool)
                            for qb in self.qb_names}
 
     def prepare_fitting(self):
@@ -3780,14 +3801,33 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
         rdd = self.raw_data_dict
         pdd = self.proc_data_dict
 
-        pdd['data_reshaped'] = {qb: [] for qb in pdd['data_to_fit']}
-        pdd['amps_reshaped'] = np.unique(self.metadata['hard_sweep_params']['ro_amp_scale']['values'])
-        pdd['phases_reshaped'] = []
-        for amp in pdd['amps_reshaped']:
-            mask = self.metadata['hard_sweep_params']['ro_amp_scale']['values'] == amp
-            pdd['phases_reshaped'].append(self.metadata['hard_sweep_params']['phase']['values'][mask])
-            for qb in self.qb_names:
-                pdd['data_reshaped'][qb].append(pdd['data_to_fit'][qb][:len(mask)][mask])
+        try: # Extract data
+            pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
+                'amplitude'] for qbn in self.qb_names}
+            pdd['phases_reshaped'] = [pdd['sweep_points_dict'][
+                self.qb_names[0]]['msmt_sweep_points']] * len(pdd[
+                    'amps_reshaped'][self.qb_names[0]])
+            pdd['data_reshaped'] = {
+                qbn: np.array(pdd['data_to_fit'][qbn])[:, :-2]
+                for qbn in self.qb_names}
+        except Exception:
+            # If a problem occurred, this might come from old data
+            # incompatible with the QuantumExperiment framework, for instance
+            # missing SweepPoints per qubit. In this case, try to extract
+            # data the old way:
+            pdd['data_reshaped'] = {qb: [] for qb in pdd['data_to_fit']}
+            pdd['amps_reshaped'] = {qb: np.unique(
+                self.metadata['hard_sweep_params']['ro_amp_scale']['values'])
+                                    for qb in pdd['data_to_fit']}
+            pdd['phases_reshaped'] = []
+            for amp in pdd['amps_reshaped'][self.qb_names[0]]:
+                mask = self.metadata['hard_sweep_params']['ro_amp_scale'][
+                           'values'] == amp
+                pdd['phases_reshaped'].append(
+                    self.metadata['hard_sweep_params']['phase']['values'][mask])
+                for qb in self.qb_names:
+                    pdd['data_reshaped'][qb].append(
+                        pdd['data_to_fit'][qb][:len(mask)][mask])
 
     def prepare_fitting(self):
         pdd = self.proc_data_dict
@@ -3835,14 +3875,14 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
             self.fit_dicts[f'phase_contrast_fit_{qb}'] = {
                 'model': gauss_mod,
                 'guess_dict': {'center': {'value': 0, 'vary': False}},
-                'fit_xvals': {'x': pdd['amps_reshaped']},
+                'fit_xvals': {'x': pdd['amps_reshaped'][qb]},
                 'fit_yvals': {'data': pdd['phase_contrast'][qb]}}
 
             quadratic_mod = lmfit.models.QuadraticModel()
             self.fit_dicts[f'phase_offset_fit_{qb}'] = {
                 'model': quadratic_mod,
                 'guess_dict': {'b': {'value': 0, 'vary': False}},
-                'fit_xvals': {'x': pdd['amps_reshaped']},
+                'fit_xvals': {'x': pdd['amps_reshaped'][qb]},
                 'fit_yvals': {'data': pdd['phase_offset'][qb]}}
 
             self.run_fitting()
@@ -3878,7 +3918,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'plotfn': self.plot_colorxy,
                     'xvals': pdd['phases_reshaped'][0],
-                    'yvals': pdd['amps_reshaped'],
+                    'yvals': pdd['amps_reshaped'][qb],
                     'zvals': pdd['data_reshaped'][qb],
                     'xlabel': r'Pulse phase, $\phi$',
                     'xunit': 'deg',
@@ -3888,8 +3928,8 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 }
 
             colormap = self.get_param_value('colormap', mpl.cm.Blues)
-            for i, amp in enumerate(pdd['amps_reshaped']):
-                color = colormap(i/(len(pdd['amps_reshaped'])-1))
+            for i, amp in enumerate(pdd['amps_reshaped'][qb]):
+                color = colormap(i/(len(pdd['amps_reshaped'][qb])-1))
                 label = f'cos_data_{qb}_{i}'
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
@@ -3909,8 +3949,8 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_pos': 'upper left',
                 }
             if self.do_fitting:
-                for i, amp in enumerate(pdd['amps_reshaped']):
-                    color = colormap(i/(len(pdd['amps_reshaped'])-1))
+                for i, amp in enumerate(pdd['amps_reshaped'][qb]):
+                    color = colormap(i/(len(pdd['amps_reshaped'][qb])-1))
                     label = f'cos_fit_{qb}_{i}'
                     self.plot_dicts[label] = {
                         'ax_id': f'amplitude_crossections_{qb}',
@@ -3927,7 +3967,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*pdd['phase_contrast'][qb],
                     'xlabel': r'Readout pulse amplitude scale, $V_{RO}/V_{ref}$',
                     'xunit': '',
@@ -3941,7 +3981,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_contrast_fit_{qb}'] = {
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*self.fit_res[f'phase_contrast_fit_{qb}'].best_fit,
                     'color': 'r',
                     'marker': '',
@@ -3951,7 +3991,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_contrast_labels_{qb}'] = {
                     'ax_id': f'phase_contrast_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': 200*pdd['phase_contrast'][qb],
                     'marker': '',
                     'linestyle': '',
@@ -3968,7 +4008,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                              '\n' + rdd['timestamp'],
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': pdd['phase_offset'][qb],
                     'xlabel': r'Readout pulse amplitude scale, $V_{RO}/V_{ref}$',
                     'xunit': '',
@@ -3982,7 +4022,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_offset_fit_{qb}'] = {
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': self.fit_res[f'phase_offset_fit_{qb}'].best_fit,
                     'color': 'r',
                     'marker': '',
@@ -3992,7 +4032,7 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'phase_offset_labels_{qb}'] = {
                     'ax_id': f'phase_offset_{qb}',
                     'plotfn': self.plot_line,
-                    'xvals': pdd['amps_reshaped'],
+                    'xvals': pdd['amps_reshaped'][qb],
                     'yvals': pdd['phase_offset'][qb],
                     'marker': '',
                     'linestyle': '',
@@ -4227,8 +4267,7 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                       'flux_amplitude_bias_ratio',
                       'flux_parking']:
             params_dict.update({
-                f'{qbn}.{param}': f'Instrument settings.{qbn}.{param}'
-                for qbn in qb_names})
+                f'{qbn}.{param}': f'{qbn}.{param}' for qbn in qb_names})
         kwargs['params_dict'] = kwargs.get('params_dict', {})
         kwargs['params_dict'].update(params_dict)
         super().__init__(qb_names, *args, **kwargs)
@@ -4514,11 +4553,10 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
-            s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_'+qbn] = \
-                s+f'.{trans_name}_amp180'
+                f'{qbn}.{trans_name}_amp180'
             params_dict[f'{trans_name}_amp90scale_'+qbn] = \
-                s+f'.{trans_name}_amp90_scale'
+                f'{qbn}.{trans_name}_amp90_scale'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -4839,10 +4877,8 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         # Extract additional parameters from the HDF file.
         params_dict = {}
         for qbn in self.qb_names:
-            params_dict[f'drive_ch_{qbn}'] = \
-                f'Instrument settings.{qbn}.ge_I_channel'
-            params_dict[f'ge_freq_{qbn}'] = \
-                f'Instrument settings.{qbn}.ge_freq'
+            params_dict[f'drive_ch_{qbn}'] = f'{qbn}.ge_I_channel'
+            params_dict[f'ge_freq_{qbn}'] = f'{qbn}.ge_freq'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -4867,7 +4903,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         for qbn in self.qb_names:
             drive_ch = self.raw_data_dict[f'drive_ch_{qbn}']
             pd = self.get_data_from_timestamp_list({
-                f'ch_amp': f'Instrument settings.Pulsar.{drive_ch}_amp'})
+                f'ch_amp': f'Pulsar.{drive_ch}_amp'})
             fit_res_L = self.fit_dicts[f'amplitude_fit_left_{qbn}']['fit_res']
             fit_res_R = self.fit_dicts[f'amplitude_fit_right_{qbn}']['fit_res']
             rabi_model_lo = \
@@ -5019,7 +5055,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                 # max ch amp line
                 drive_ch = self.raw_data_dict[f'drive_ch_{qbn}']
                 pd = self.get_data_from_timestamp_list({
-                    f'ch_amp': f'Instrument settings.Pulsar.{drive_ch}_amp'})
+                    f'ch_amp': f'Pulsar.{drive_ch}_amp'})
                 self.plot_dicts[f'ch_amp_line_{qbn}'] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_hlines,
@@ -5035,9 +5071,7 @@ class ThermalPopulationAnalysis(RabiAnalysis):
         super().extract_data()
         params_dict = {}
         for qbn in self.qb_names:
-            s = 'Instrument settings.'+qbn
-            params_dict[f'ge_freq_'+qbn] = \
-                s + '.ge_freq'
+            params_dict[f'ge_freq_'+qbn] = f'{qbn}.ge_freq'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -5148,9 +5182,8 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
-            s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_T1_'+qbn] = \
-                s + ('.T1' if trans_name == 'ge' else f'.T1_{trans_name}')
+                qbn + ('.T1' if trans_name == 'ge' else f'.T1_{trans_name}')
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -5258,8 +5291,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
-            s = 'Instrument settings.'+qbn
-            params_dict[f'{trans_name}_freq_'+qbn] = s+f'.{trans_name}_freq'
+            params_dict[f'{trans_name}_freq_'+qbn] = f'{qbn}.{trans_name}_freq'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -5866,9 +5898,8 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
-            s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_qscale_'+qbn] = \
-                s+f'.{trans_name}_motzoi'
+                f'{qbn}.{trans_name}_motzoi'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -6178,6 +6209,13 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         """Skip for this class. Take raw_data_dict from self.echo_analysis
         which is needed for a check in the BaseDataAnalsis.save_fit_results."""
         self.raw_data_dict = self.echo_analysis.raw_data_dict
+        params_dict = {}
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
+            params_dict[f'{trans_name}_T2_{qbn}'] = \
+                qbn + ('.T2' if trans_name == 'ge' else f'.T2_{trans_name}')
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def process_data(self):
         """Skip for this class. All relevant processing is done in
@@ -6233,11 +6271,8 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                             self.echo_analysis.plot_dicts[
                                 plot_label]['fig_id'] = figure_name
 
-                old_T2e_val = a_tools.get_instr_setting_value_from_file(
-                    file_path=self.echo_analysis.raw_data_dict['folder'],
-                    instr_name=qbn, param_name='T2{}'.format(
-                        '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
-                        else ''))
+                trans_name = self.get_transition_name(qbn)
+                old_T2e_val = self.raw_data_dict[f'{trans_name}_T2_{qbn}']
                 T2_dict = self.proc_data_dict['analysis_params_dict']
                 textstr = 'Echo Measurement with'
                 art_det = self.artificial_detuning_dict[qbn]*1e-6
@@ -6471,9 +6506,8 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
-            s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_'+qbn] = \
-                s+f'.{trans_name}_amp180'
+                f'{qbn}.{trans_name}_amp180'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -7267,8 +7301,7 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
         kwargs['options_dict'] = options_dict
         params_dict = {}
         for qbn in qb_names:
-            s = f'Instrument settings.{qbn}'
-            params_dict[f'ge_freq_{qbn}'] = s+f'.ge_freq'
+            params_dict[f'ge_freq_{qbn}'] = f'{qbn}.ge_freq'
         kwargs['params_dict'] = params_dict
         kwargs['numeric_params'] = list(params_dict)
         super().__init__(qb_names, *args, **kwargs)
@@ -7422,38 +7455,26 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
         # Flux pulse parameters
         # Needs to be changed when support for other pulses is added.
         op_dict = {
-            'pulse_type': f'Instrument settings.{qbn}.flux_pulse_type',
-            'channel': f'Instrument settings.{qbn}.flux_pulse_channel',
-            'aux_channels_dict': f'Instrument settings.{qbn}.'
-                                 f'flux_pulse_aux_channels_dict',
-            'amplitude': f'Instrument settings.{qbn}.flux_pulse_amplitude',
-            'frequency': f'Instrument settings.{qbn}.flux_pulse_frequency',
-            'phase': f'Instrument settings.{qbn}.flux_pulse_phase',
-            'pulse_length': f'Instrument settings.{qbn}.'
-                            f'flux_pulse_pulse_length',
-            'truncation_length': f'Instrument settings.{qbn}.'
-                                 f'flux_pulse_truncation_length',
-            'buffer_length_start': f'Instrument settings.{qbn}.'
-                                   f'flux_pulse_buffer_length_start',
-            'buffer_length_end': f'Instrument settings.{qbn}.'
-                                 f'flux_pulse_buffer_length_end',
-            'extra_buffer_aux_pulse': f'Instrument settings.{qbn}.'
-                                      f'flux_pulse_extra_buffer_aux_pulse',
-            'pulse_delay': f'Instrument settings.{qbn}.'
-                           f'flux_pulse_pulse_delay',
-            'basis_rotation': f'Instrument settings.{qbn}.'
-                              f'flux_pulse_basis_rotation',
-            'gaussian_filter_sigma': f'Instrument settings.{qbn}.'
-                                     f'flux_pulse_gaussian_filter_sigma',
+            'pulse_type': f'{qbn}.flux_pulse_type',
+            'channel': f'{qbn}.flux_pulse_channel',
+            'aux_channels_dict': f'{qbn}.flux_pulse_aux_channels_dict',
+            'amplitude': f'{qbn}.flux_pulse_amplitude',
+            'frequency': f'{qbn}.flux_pulse_frequency',
+            'phase': f'{qbn}.flux_pulse_phase',
+            'pulse_length': f'{qbn}.flux_pulse_pulse_length',
+            'truncation_length': f'{qbn}.flux_pulse_truncation_length',
+            'buffer_length_start': f'{qbn}.flux_pulse_buffer_length_start',
+            'buffer_length_end': f'{qbn}.flux_pulse_buffer_length_end',
+            'extra_buffer_aux_pulse': f'{qbn}.flux_pulse_extra_buffer_aux_pulse',
+            'pulse_delay': f'{qbn}.flux_pulse_pulse_delay',
+            'basis_rotation': f'{qbn}.flux_pulse_basis_rotation',
+            'gaussian_filter_sigma': f'{qbn}.flux_pulse_gaussian_filter_sigma',
         }
 
         params_dict = {
-            'volt_freq_conv': f'Instrument settings.{qbn}.'
-                              f'fit_ge_freq_from_flux_pulse_amp',
-            'flux_channel': f'Instrument settings.{qbn}.'
-                            f'flux_pulse_channel',
-            'instr_pulsar': f'Instrument settings.{qbn}.'
-                            f'instr_pulsar',
+            'volt_freq_conv': f'{qbn}.fit_ge_freq_from_flux_pulse_amp',
+            'flux_channel': f'{qbn}.flux_pulse_channel',
+            'instr_pulsar': f'{qbn}.instr_pulsar',
             **op_dict
         }
 
@@ -7509,10 +7530,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         if qb_names is not None:
             self.params_dict = {}
             for qbn in qb_names:
-                s = 'Instrument settings.' + qbn
-                for trans_name in ['ge', 'ef']:
-                    self.params_dict[f'ro_mod_freq_' + qbn] = \
-                        s + f'.ro_mod_freq'
+                self.params_dict[f'ro_mod_freq_' + qbn] = f'{qbn}.ro_mod_freq'
             self.numeric_params = list(self.params_dict)
 
         self.qb_names = qb_names
@@ -7539,7 +7557,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             if np.ndim(value_names) > 0:
                 value_names = value_names
             if 'w' in value_names[0]:
-                self.channel_map = a_tools.get_qb_channel_map_from_hdf(
+                self.channel_map = get_qb_channel_map_from_file(
                     self.qb_names, value_names=value_names,
                     file_path=self.raw_data_dict['folder'])
             else:
@@ -7629,10 +7647,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         rdd = self.raw_data_dict
         ana_params = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
-            mod_freq = float(
-                rdd[0].get(f'ro_mod_freq_{qbn}',
-                           self.get_hdf_param_value(f"Instrument settings/{qbn}",
-                                                    'ro_mod_freq')))
+            mod_freq = float(rdd[0].get(f'ro_mod_freq_{qbn}'))
             tbase = rdd[0]['hard_sweep_points']
             basis_labels = pdd["analysis_params_dict"][
                 'optimal_weights_basis_labels'][qbn]
@@ -8021,6 +8036,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                     for mu_j in means]).flatten().max()
 
             tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+            tol = kw.pop("tol", tol)
             reg_covar = tol**2
 
             gm = GM(n_components=n_qb_states,
@@ -8669,6 +8685,14 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
 
+    def extract_data(self):
+        super().extract_data()
+        params_dict = {}
+        for qbn in self.qb_names:
+            params_dict[f'fp_length_{qbn}'] = f'{qbn}.flux_pulse_pulse_length'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
+
     def process_data(self):
         super().process_data()
 
@@ -8701,7 +8725,6 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_yvals': {'data': data},
                 'guess_pars': guess_pars}
 
-
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for qbn in self.qb_names:
@@ -8709,10 +8732,7 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_res'].best_values['mu_A']
             mu_B = self.fit_dicts['two_error_func_' + qbn][
                 'fit_res'].best_values['mu_B']
-            fp_length = a_tools.get_instr_setting_value_from_file(
-                file_path=self.raw_data_dict['folder'],
-                instr_name=qbn, param_name='flux_pulse_pulse_length')
-
+            fp_length = self.raw_data_dict[f'fp_length_{qbn}']
 
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn]['delay'] = \
@@ -8776,9 +8796,7 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
                            ' $\pm$ {:.2f} ns'.format(
                     apd[qbn]['fp_length_stderr'] * 1e9)
                 textstr += '\n  set = {:.2f} ns'.format(
-                    1e9 * a_tools.get_instr_setting_value_from_file(
-                        file_path=self.raw_data_dict['folder'],
-                        instr_name=qbn, param_name='flux_pulse_pulse_length'))
+                    1e9 * self.raw_data_dict[f'fp_length_{qbn}'])
 
                 self.plot_dicts['text_msg_' + qbn] = {
                     'fig_id': base_plot_name,
@@ -9378,10 +9396,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                             numeric_params=numeric_params, **kwargs)
         self.params_dict = {f"{tm_mod.Timer.HDF_GRP_NAME}":
                                 f"{tm_mod.Timer.HDF_GRP_NAME}",
-                            "repetition_rate":
-                                "Instrument settings/TriggerDevice.pulse_period",
+                            "repetition_rate": "TriggerDevice.pulse_period",
                             }
-
 
         if auto:
             self.run_analysis()
@@ -9500,12 +9516,13 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
     def _extract_nr_averages(self):
         try:
-            sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
+            sa = self.get_data_from_timestamp_list({'sa': 'MC.soft_avg'})['sa']
             if sa is not None and sa != 1:
                 log.warning('Currently, soft averages are not taken into account'
                           'when extracting the number of averages. This might lead'
                           'to unexpected timings.')
-            sr = self.get_hdf_param_value('Instrument settings/MC', "soft_repetitions")
+            sr = self.get_data_from_timestamp_list(
+                {'sr': 'MC.soft_repetitions'})['sr']
             if sr is not None and sr != 1:
                 log.warning('Currently, soft repetitions are not taken into account'
                           'when extracting the number of shots. This might lead'
@@ -10240,15 +10257,14 @@ class DriveAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
-            s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_{qbn}'] = \
-                s+f'.{trans_name}_amp180'
+                f'{qbn}.{trans_name}_amp180'
             params_dict[f'{trans_name}_sigma_{qbn}'] = \
-                s+f'.{trans_name}_sigma'
+                f'{qbn}.{trans_name}_sigma'
             params_dict[f'{trans_name}_nr_sigma_{qbn}'] = \
-                s+f'.{trans_name}_nr_sigma'
-            params_dict[f'T1_{qbn}'] = s+f'.T1'
-            params_dict[f'T2_{qbn}'] = s+f'.T2'
+                f'{qbn}.{trans_name}_nr_sigma'
+            params_dict[f'T1_{qbn}'] = f'{qbn}.T1'
+            params_dict[f'T2_{qbn}'] = f'{qbn}.T2'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -10425,13 +10441,13 @@ class DriveAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
         if t_gate is None:
             from pycqed.analysis_v3 import helper_functions as hlp_mod
             t_gate = \
-                hlp_mod.get_instr_param_from_hdf_file(mobjn, 'ge_sigma', ts) * \
-                hlp_mod.get_instr_param_from_hdf_file(mobjn, 'ge_nr_sigma', ts)
+                hlp_mod.get_instr_param_from_file(mobjn, 'ge_sigma', ts) * \
+                hlp_mod.get_instr_param_from_file(mobjn, 'ge_nr_sigma', ts)
         if t_gate == 0:
             raise ValueError('Please specify t_gate.')
         if T1 is None:
             from pycqed.analysis_v3 import helper_functions as hlp_mod
-            T1 = hlp_mod.get_instr_param_from_hdf_file(mobjn, 'T1', ts)
+            T1 = hlp_mod.get_instr_param_from_file(mobjn, 'T1', ts)
         if T1 == 0:
             raise ValueError('Please specify T1.')
 
@@ -10763,7 +10779,8 @@ class DriveAmpNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
 
     def __init__(self, t_start, t_stop, qb_names=None, do_fitting=True,
                  auto=True, **kwargs):
-        super().__init__(t_start=t_start, t_stop=t_stop, do_fitting=do_fitting,
+        super().__init__(t_start=t_start, t_stop=t_stop,
+                         label='Drive_amp_calib', do_fitting=do_fitting,
                          **kwargs)
         self.qb_names = qb_names
         self.auto = auto
@@ -10864,8 +10881,7 @@ class DriveAmpNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
                 # take the qubit amp180 from the data file
                 task = [t for t in task_list if t['qb'] == qbn][0]
                 trans_name = task.get('transition_name_input', trans_name)
-                s = 'Instrument settings.' + qbn
-                params_dict = {'amp180': s + f'.{trans_name}_amp180'}
+                params_dict = {'amp180': f'{qbn}.{trans_name}_amp180'}
                 amp180 = self.get_data_from_timestamp_list(
                     params_dict, timestamps=[ts])['amp180']
                 # ideal scaling
@@ -11065,9 +11081,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp',
                   'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
         for qbn in self.qb_names:
-            self.raw_data_dict.update({f"{p}_{qbn}":
-                                           self.get_hdf_param_value(f'Instrument settings/{qbn}', p)
-                                       for p in params})
+            params_dict = {f"{p}_{qbn}": f'{qbn}.{p}' for p in params}
+            self.raw_data_dict.update(
+                self.get_data_from_timestamp_list(params_dict))
 
 
     def prepare_fitting(self):
@@ -11206,8 +11222,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 except KeyError:
                     raise KeyError('For old data, the device name has to be given as an input "device_name" ')
 
-            amp = self.get_hdf_param_value("Instrument settings/" + device_name,
-                                           f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
+            path = f"{device_name}.{cz_name}_{qbH_name}_{qbL_name}_amplitude"
+            amp = self.get_data_from_timestamp_list({'amp': path})['amp']
 
             qbL_tuned_freq_arr = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,

@@ -14,7 +14,8 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -59,6 +60,8 @@ class T1FrequencySweep(CalibBuilder):
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
          - the entry "qb" in each task should contain one qubit name.
+         - if force_2D_sweep is False and the first sweep dim is empty or has
+           only 1 point, the flux pulse amplitude will be swept as a 1D sweep.
 
         """
         try:
@@ -83,6 +86,9 @@ class T1FrequencySweep(CalibBuilder):
                 [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
+                self.sweep_points.reduce_dim(1, inplace=True)
+                self._num_sweep_dims = 1
             self.sequences, self.mc_points = \
                 self.parallel_sweep(self.preprocessed_task_list,
                                     self.t1_flux_pulse_block, **kw)
@@ -213,6 +219,9 @@ class T1FrequencySweep(CalibBuilder):
             all_fits (bool, default: True): whether to do all fits
         """
 
+        if len(self.sweep_points) == 1:
+            self.analysis = tda.MultiQubit_TimeDomain_Analysis()
+            return
         self.all_fits = kw.get('all_fits', True)
         self.do_fitting = kw.get('do_fitting', True)
         self.analysis = tda.T1FrequencySweepAnalysis(
@@ -1876,7 +1885,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
             })
         d['task_list_fields'].update({
             SingleQubitGateCalibExperiment.__name__: odict({
-                'qb': ((Qubit, 'single_select'), None),
+                'qb': ((QuDev_transmon, 'single_select'), None),
                 'transition_name': (['ge', 'ef', 'fh'], 'ge'),
             })
         })
@@ -2058,6 +2067,11 @@ class ThermalPopulation(Rabi):
     amplitudes of the two Rabi oscillations, one can infer the thermal e
     state population.
 
+    Args:
+        amps (list): Amplitude sweep points, see docstring of the parent class.
+        In this QuantumExperiment they are used as amplitude of the X180_ef
+        pulse, while the amplitude of the X180_ge pulse is set by qb.ge_amp180.
+
     TODO: extend to states other than the e state
     """
     default_experiment_name = 'Thermal Population'
@@ -2081,7 +2095,9 @@ class ThermalPopulation(Rabi):
                 param_name=f'{qbn}_amplitude_ge',
                 values=np.array([0.0, ge_amp]),
                 unit='V',
-                label='amplitude ge')
+                label='amplitude ge',
+                dimension=1,
+            )
         return super().update_sweep_points()
 
     def sweep_block(self, qb, sweep_points, **kw):
@@ -2331,6 +2347,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
                     'exp_decay']['T2_star']
                 qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                 qubit.set(f'T2_star{task["transition_name"]}', T2_star)
+                if task["transition_name_input"] == 'ef':
+                    qubit.set('anharmonicity', qb_freq - qubit.get('ge_freq'))
 
     @classmethod
     def gui_kwargs(cls, device):
@@ -3814,12 +3832,8 @@ class ActiveReset(CalibBuilder):
             # perpare correspondance between integration unit (key)
             # and uhf channel; check if only one channel is asked for
             # (not asked for all qb channels and weight type uses only 1)
-            if not all_qb_channels and qb.acq_weights_type() \
-                    in ('square_root', 'optimal'):
-                chs = {0: qb.acq_I_channel()}
-            else:
-                # other weight types have 2 channels
-                chs = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+            chs = {i: ch for i, ch in enumerate([
+                qb.get_acq_int_channels(2 if all_qb_channels else None)])}
 
             #get clf thresholds
             if from_clf_params:

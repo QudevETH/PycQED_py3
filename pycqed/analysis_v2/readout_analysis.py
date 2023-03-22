@@ -34,6 +34,7 @@ gauss_2D_guess, \
     gaussianCDF, ro_double_gauss_guess
 from pycqed.analysis.tools.plotting import SI_val_to_msg_str
 from pycqed.analysis.tools.plotting import set_xlabel
+from pycqed.analysis_v3.helper_functions import get_qb_channel_map_from_file
 
 odict = OrderedDict
 
@@ -1561,7 +1562,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
                 "if the channel map is not specified"
             value_names = self.raw_data_dict['value_names']
             if 'w' in value_names[0]:
-                self.channel_map = a_tools.get_qb_channel_map_from_hdf(
+                self.channel_map = get_qb_channel_map_from_file(
                     self.get_param_value('qb_names'), value_names=value_names,
                     file_path=self.raw_data_dict['folder'])
             else:
@@ -1679,7 +1680,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
         for readout_n in range(n_readouts):
             # first result all ground
             for state_n, states_of_qubits in enumerate(observables):
-                mask = np.ones((n_shots//n_readouts), dtype=np.bool)
+                mask = np.ones((n_shots//n_readouts), dtype=bool)
                 # slow qubit is the first in channel_map list
                 for qubit, state in states_of_qubits.items():
                     if isinstance(qubit, tuple):

@@ -999,13 +999,13 @@ class HamiltonianFittingAnalysis:
             fluxlines_dict: dictionary containing the fluxline ids (necessary
                 to determine voltage)
         """
-        path = a_tools.data_from_time(timestamp)
-        filepath = a_tools.measurement_filename(path)
-        data = h5py.File(filepath, "r")
+        path = a_tools.get_folder(timestamp)
+        data = a_tools.open_hdf_file(folder=path)
+        config_file = a_tools.open_config_file(folder=path)
 
-        if "_ge_" in filepath:
+        if "_ge_" in path:
             transition = "ge"
-        elif "_ef_" in filepath:
+        elif "_ef_" in path:
             transition = "ef"
         else:
             raise ValueError(
@@ -1017,7 +1017,7 @@ class HamiltonianFittingAnalysis:
             qubit_name = qubit
         else:
             qubit_name = qubit.name
-        if not qubit_name in filepath:
+        if not qubit_name in path:
             return
 
         try:
@@ -1029,15 +1029,17 @@ class HamiltonianFittingAnalysis:
             ][qubit_name]["exp_decay"].attrs["new_qb_freq_stderr"]
             dc_source_key = fluxlines_dict[qubit_name].instrument.name
             voltage = float(
-                data["Instrument settings"][dc_source_key].attrs[
+                config_file[dc_source_key].attrs[
                     fluxlines_dict[qubit_name].name
                 ]
             )
             HamiltonianFittingAnalysis._fill_experimental_values(
                 experimental_values, voltage, transition, freq
             )
+            a_tools.close_files([data, config_file])
         except KeyError:
-            log.warning(f"Could not get ramsey data from file {filepath}")
+            a_tools.close_files([data, config_file])
+            log.warning(f"Could not get ramsey data from file {path}")
 
     @staticmethod
     def _fill_experimental_values_with_ReparkingRamsey(

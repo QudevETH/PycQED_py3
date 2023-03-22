@@ -179,6 +179,7 @@ def load_settings(instrument,
             that should be set for the instrument
     '''
     from numpy import array  # DO not remove. Used in eval(array(...))
+    from collections import OrderedDict  # DO NOT remove. Used in eval()
     if folder is None:
         folder_specified = False
     else:
@@ -202,9 +203,8 @@ def load_settings(instrument,
             print('Folder used: {}'.format(folder))
 
         try:
-            filepath = a_tools.measurement_filename(folder)
-            f = h5py.File(filepath, 'r')
-            sets_group = f['Instrument settings']
+            f = a_tools.open_config_file(folder)
+            sets_group = f
             ins_group = sets_group[instrument_name]
 
             if verbose:
@@ -231,7 +231,7 @@ def load_settings(instrument,
             if not update:
                 params_dict = {parameter : value for parameter, value in \
                         params_to_set}
-                f.close()
+                a_tools.close_files([f])
                 return params_dict
 
             for parameter, value in params_to_set:
@@ -279,12 +279,12 @@ def load_settings(instrument,
                                                   instrument_name))
 
             success = True
-            f.close()
+            a_tools.close_files([f])
         except Exception as e:
             logging.warning(e)
             success = False
             try:
-                f.close()
+                a_tools.close_files([f])
             except:
                 pass
             if timestamp is None and not folder_specified:
@@ -842,7 +842,7 @@ def find_symmetry_index(data):
     corr = []
     for iflip in np.arange(0, len(data)-0.5, 0.5):
         span = min(iflip, len(data)-1-iflip)
-        data_filtered = data[np.int(iflip-span):np.int(iflip+span+1)]
+        data_filtered = data[int(iflip-span):int(iflip+span+1)]
         corr.append((data_filtered*data_filtered[::-1]).sum())
     return np.argmax(corr), corr
 

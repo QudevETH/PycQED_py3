@@ -1302,24 +1302,23 @@ def get_meas_obj_coh_times(data_dict, extract_T2s=True, **params):
     # Get from the hdf5 file any parameters specified in
     # params_dict and numeric_params.
     params_dict = {}
-    s = 'Instrument settings.' + mobjn
     for trans_name in ['', '_ef']:
         if hlp_mod.get_param(f'{mobjn}.T1{trans_name}', data_dict) is None:
-            params_dict[f'{mobjn}.T1{trans_name}'] = s + f'.T1{trans_name}'
+            params_dict[f'{mobjn}.T1{trans_name}'] = f'{mobjn}.T1{trans_name}'
         if hlp_mod.get_param(f'{mobjn}.T2{trans_name}', data_dict) is None:
-            params_dict[f'{mobjn}.T2{trans_name}'] = s + (
+            params_dict[f'{mobjn}.T2{trans_name}'] = mobjn + (
                 f'.T2_star{trans_name}' if extract_T2s else f'.T2{trans_name}')
     for trans_name in ['ge', 'ef']:
         if hlp_mod.get_param(f'{mobjn}.T1{trans_name}', data_dict) is None and \
                 hlp_mod.get_param(f'{mobjn}.T1{trans_name}', data_dict) is None:
             params_dict[f'{mobjn}.{trans_name}_sigma'] = \
-                s + f'.{trans_name}_sigma'
+                f'{mobjn}.{trans_name}_sigma'
             params_dict[f'{mobjn}.{trans_name}_nr_sigma'] = \
-                s + f'.{trans_name}_nr_sigma'
+                f'{mobjn}.{trans_name}_nr_sigma'
     if len(params_dict) > 0:
-        hlp_mod.get_params_from_hdf_file(data_dict, params_dict=params_dict,
-                                         numeric_params=list(params_dict),
-                                         **params)
+        hlp_mod.get_params_from_files(data_dict, params_dict=params_dict,
+                                      numeric_params=list(params_dict),
+                                      **params)
 
 
 def calculate_rb_confidence_intervals(

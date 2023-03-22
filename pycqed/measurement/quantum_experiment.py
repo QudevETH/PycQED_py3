@@ -2,7 +2,7 @@ import traceback
 
 import time
 import numpy as np
-from pycqed.analysis_v3 import helper_functions
+from pycqed.analysis import analysis_toolbox as a_tools
 
 from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.utilities.general import temporary_value
@@ -802,8 +802,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     def save_timers(self, quantum_experiment=True, sequence=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
             return
-        data_file = helper_functions.open_hdf_file(self.timestamp,
-                                                   filepath=filepath, mode="r+")
+        data_file = a_tools.open_hdf_file(self.timestamp,
+                                          filepath=filepath, mode="r+")
         try:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
@@ -1041,7 +1041,7 @@ class NDimQuantumExperiment():
 
     Args:
         sweep_points (SweepPoints): SweepPoints to be used by the experiment
-        clear_experiments (bool): whether to keep or clear previously
+        forget_experiments (bool): whether to keep or clear previously
             instantiated experiments from memory during runtime
         QuantumExperiment (class): experiment class to be instantiated and
         run several times as a sub-experiment
@@ -1052,12 +1052,12 @@ class NDimQuantumExperiment():
     QuantumExperiment = QuantumExperiment
     DUMMY_DIM = 1
 
-    def __init__(self, *args, sweep_points=None, clear_experiments=False,
+    def __init__(self, *args, sweep_points=None, forget_experiments=False,
                  QuantumExperiment=None, **kwargs):
         self.experiments = {}
         if QuantumExperiment is not None:
             self.QuantumExperiment = QuantumExperiment
-        self.clear_experiments = clear_experiments
+        self.forget_experiments = forget_experiments
         self.sweep_points = SweepPoints(sweep_points)
         self._generate_sweep_lengths()
         self.args = args
@@ -1134,7 +1134,7 @@ class NDimQuantumExperiment():
         self.experiments[idxs] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp, exp_metadata=exp_metadata,
             **self.kwargs)
-        if self.clear_experiments:
+        if self.forget_experiments:
             del self.experiments[idxs]
 
     def run_measurement(self, **kw):
@@ -1197,6 +1197,6 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         self.experiments[idxs] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp,
             task_list=current_tl, **self.kwargs)
-        if self.clear_experiments:
+        if self.forget_experiments:
             del self.experiments[idxs]
 

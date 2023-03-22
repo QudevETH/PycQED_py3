@@ -1350,8 +1350,7 @@ class Spectroscopy(ba.BaseDataAnalysis):
         self.params_dict = {'measurementstring': 'measurementstring'}
         self.param_2d = options_dict.get('param_2d', None)
         if self.param_2d is not None:
-            pname = 'Instrument settings.' + self.param_2d
-            self.params_dict.update({'param_2d': pname})
+            self.params_dict.update({'param_2d': self.param_2d})
             self.numeric_params = ['param_2d']
 
         if auto:
@@ -1578,7 +1577,7 @@ class QubitTrackerSpectroscopy(Spectroscopy):
             raise ValueError(f"Can't fit {fit_pts} points to order {fit_order} "
                              "polynomial")
         idxs = np.round(
-            np.linspace(0, len(pdd['pcas']) - 1, fit_pts)).astype(np.int)
+            np.linspace(0, len(pdd['pcas']) - 1, fit_pts)).astype(int)
         pdd['fit_idxs'] = idxs
         model = fit_mods.GaussianModel
         model.guess = fit_mods.Gaussian_guess.__get__(model, model.__class__)
@@ -1707,6 +1706,153 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             #  in tda.MultiQubit_TimeDomain_Analysis.prepare_projected_data_plot
             return 'Magnitude (Vpeak)'
         return data_key
+
+    def fit_and_plot_ro_params(self, guess_vals=None, qb_names=None, **kw):
+        """Fit spectroscopy data of a qubit, readout res. and a Purcell filter.
+
+        The fitting model is the one derived in [1] with the following
+        modifications:
+            * We allow an empirical slope on the background amplitude
+            * To more generally account for the phase of the signal reflected
+              from the input capacitor, we write the complex interference
+              amplitude complex amplitude of the signal emitted from the Purcell
+              filter into the feedline as (1 + Γ) = r exp(i φ). The modulus r
+              of this term is absorbed into the total amplitude of the spectrum.
+              For constructive interference of the signals directly emitted and
+              reflected from the input side, we target φ = 0, in which case also
+              the coupling between the Purcell filter and the feedline is
+              maximized.
+        [1] J. Heinsoo et al., Phys. Rev. Applied 10, 034040 (2018)
+
+        All parameters with frequency units are in standard (not angular) MHz
+
+        Parameters of the fitting model:
+            A and k (unitless, 1/MHz): amplitude and slope of the spectrum
+            phi (rad): interference phase of signal reflected from input cap.
+            kP (MHz): effective coupling rate between Purc. filter and feedline
+            wP (MHz): frequency of the Purcell filter
+            gP (MHz): internal loss rate of the Purcell filter
+            J (MHz): coupling rate between Purc. filter and readotu resonator
+            wRg (MHz): frequency of readout res. when qubit is in ground state
+            gR: (MHz): internal loss rate of the readout resonator
+            chige (MHz): dispersive shift of the readout resonator. Equal to
+                half the frequency shift of the readout res. when changing qubit
+                from |g⟩ to |e⟩ state.
+            chigf (MHz): dispersive shift of the readout resonator for second
+                excited state of the qubit. Equal to half the frequency shift of
+                the readout res. when changing qubit from |g⟩ to |f⟩ state.
+
+        Args:
+            guess_vals (dict[str, float], optional):
+                guess values for the fit. It is usually necessary to pass good
+                guesses for the frequencies wRg and wP.
+            qb_names (list[str], optional):
+                qubits whose readout parameters should be fitted
+            **kw: Other keyword arguments are passed to `self.plot` and to
+                `self.save_figures`
+        """
+
+        def purcell_readout_qb_transmission_model(f, A, k, phi, kP, wP, gP,
+                J, wRg, gR, chige=None, chigf=None):
+            ys = []
+            for chi in (0, chige, chigf):
+                if chi is None:
+                    continue
+                wR = wRg + 2 * chi
+                detR = gR - 2j * (f - wR)
+                detP = kP + gP - 2j * (f - wP)
+                amp = A + k * (f - np.mean(f))
+                y = amp * np.abs(np.cos(phi) -
+                                 np.exp(1j * phi) * kP * detR / (
+                                         4 * J * J + detP * detR))
+                ys.append(y)
+            return np.concatenate(ys)
+
+        if qb_names is None:
+            qb_names = self.qb_names
+        fig_key_list = []
+        plt_key_list = []
+        res = {}
+        for qbn in qb_names:
+            s21s = self.proc_data_dict['projected_data_dict'][qbn][
+                       'Magnitude'] * np.exp(
+                1j * self.proc_data_dict['projected_data_dict'][qbn]['Phase'])
+            freq = self.proc_data_dict['sweep_points_dict'][qbn][
+                       'sweep_points'] / 1e6
+            s21s = s21s / np.max(np.abs(s21s))
+
+            model = lmfit.Model(purcell_readout_qb_transmission_model)
+            def_guessvals = {
+                'A': 1,
+                'J': 20,
+                'chige': -5,
+                'chigf': -5,
+                'gR': 1,
+                'gP': 1,
+                'k': 0,
+                'kP': 30,
+                'phi': 1,
+                'wRg': np.mean(freq),
+                'wP': np.mean(freq) + 40,
+            }
+            def_guessvals.update(guess_vals)
+            if len(s21s) != 3:
+                def_guessvals.pop('chigf')
+                if len(s21s) != 2:
+                    def_guessvals.pop('chige')
+                    assert len(s21s) == 1
+            pars = model.make_params(**def_guessvals)
+            pars['kP'].min = 0
+            pars['gR'].min = 0
+            pars['J'].min = 0
+            pars['wP'].min = freq.min()
+            pars['wRg'].min = freq.min()
+            pars['wP'].max = freq.max()
+            pars['wRg'].max = freq.max()
+            fit = model.fit(
+                np.concatenate([np.abs(s21) for s21 in s21s]),
+                f=freq, params=pars)
+            res[qbn] = fit.best_values
+
+            fig_key_list.append(f'ro_params_fit_{qbn}')
+            for i, (state, _), in enumerate(zip('gef', s21s)):
+                plt_key_list.append(f'ro_params_fit_data_{state}_{qbn}')
+                self.plot_dicts[plt_key_list[-1]] = {
+                    'fig_id': fig_key_list[-1],
+                    'plotfn': self.plot_line,
+                    'xvals': freq,
+                    'xlabel': 'RO frequency',
+                    'xunit': 'Hz',
+                    'yvals': np.abs(s21s[i]),
+                    'ylabel': 'Magnitude',
+                    'yunit': 'Vpeak',
+                    'marker': 'o',
+                    'linestyle': '',
+                    'color': f'C{i}',
+                    'setlabel': '',
+                    'title': ' '.join(self.timestamps) + ' Readout params '
+                                                         'fit ' + qbn,
+                }
+                plt_key_list.append(f'ro_params_fit_{state}_{qbn}')
+                self.plot_dicts[plt_key_list[-1]] = {
+                    'fig_id': fig_key_list[-1],
+                    'plotfn': self.plot_line,
+                    'xvals': freq,
+                    'xlabel': 'RO frequency',
+                    'xunit': 'Hz',
+                    'yvals': np.abs(
+                        fit.best_fit[i * len(freq):(i + 1) * len(freq)]),
+                    'ylabel': 'Magnitude',
+                    'yunit': 'Vpeak',
+                    'marker': '',
+                    'linestyle': '-',
+                    'color': f'C{i}',
+                    'setlabel': f'|{state}>',
+                    'do_legend': True,
+                }
+        self.plot(key_list=plt_key_list, **kw)
+        self.save_figures(key_list=fig_key_list, **kw)
+        return res
 
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
