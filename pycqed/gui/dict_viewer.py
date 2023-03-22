@@ -961,7 +961,7 @@ def get_snapshot_from_filepath(filepath):
 if __name__ == "__main__":
     """
     The next lines are needed to open a the dict viewer via the command line.
-    E.g. "paython dict_viewer --filepath %filepath%"
+    E.g. "python dict_viewer --filepath %filepath%"
     This feature is used to open files via the context menu 
     (see pycqedscripts/scripts/open_instrument_settings)
     """
@@ -982,4 +982,3 @@ if __name__ == "__main__":
         snapshot=snap,
         timestamp=filepath)
     snapshot_viewer.spawn_viewer()
-    # snapshot_viewer.spawn_snapshot_viewer()
