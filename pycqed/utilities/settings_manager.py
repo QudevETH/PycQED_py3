@@ -983,15 +983,17 @@ class MsgDumper(Dumper):
             self.filepath = self.filepath.replace(".hdf5",
                                                   file_extensions['msgpack'])
 
-    def dump(self):
+    def dump(self, mode='xb'):
         """
         Dumps the data as a binary into a msg file with optional compression
+        mode: define which mode you want to open the file in.
+            Default 'xb' creates the file and returns error if file exist
         """
         import msgpack
         import msgpack_numpy as msg_np
         msg_np.patch()
 
-        with open(self.filepath, 'wb') as file:
+        with open(self.filepath, mode=mode) as file:
             packed = msgpack.packb(self.rdg_to_dict(self.data))
             if self.compression:
                 packed = Dumper.compress_file(packed)
@@ -1011,12 +1013,14 @@ class PickleDumper(Dumper):
             self.filepath = self.filepath.replace(".hdf5",
                                                   file_extensions['pickle'])
 
-    def dump(self):
+    def dump(self, mode='xb'):
         """
         Dumps the data as a binary into a pickle file with optional compression
+        mode: define which mode you want to open the file in.
+            Default 'xb' creates the file and returns error if file exist
         """
         import pickle
-        with open(self.filepath, 'wb') as file:
+        with open(self.filepath, mode=mode) as file:
             packed = pickle.dumps(self.rdg_to_dict(self.data))
             if self.compression:
                 packed = Dumper.compress_file(packed)

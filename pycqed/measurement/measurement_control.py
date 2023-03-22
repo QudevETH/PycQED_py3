@@ -1914,13 +1914,16 @@ class MeasurementControl(Instrument):
             res_dict = {'opt':  result}
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
-    def save_instrument_settings(self, data_object=None, *args):
+    def save_instrument_settings(self, data_object=None, mode='xb', *args):
         '''
         uses QCodes station snapshot to save the last known value of any
         parameter. Only saves the value and not the update time (which is
         known in the snapshot)
         File format in which the snapshot is saved is specified in parameter
         'settings_file_format'.
+        mode: define which mode you want to open the file in.
+            Default 'xb' creates the file and returns error if file exist
+            'wb' to overwrite existing file
         '''
 
         if self.settings_file_format() == 'hdf5':
@@ -1969,7 +1972,7 @@ class MeasurementControl(Instrument):
                             data=self.station.snapshot(),
                             compression=self.settings_file_compression(),
                             timestamp=self.last_timestamp())
-            dumper.dump()
+            dumper.dump(mode=mode)
 
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,
