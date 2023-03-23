@@ -812,7 +812,7 @@ class HDF5Loader(Loader):
 
         """
         from pycqed.analysis import analysis_toolbox as a_tools
-        config_file = a_tools.open_config_file(folder=self.folder)
+        config_file = a_tools.open_config_file(filepath=self.filepath)
         station = Station(timestamp=self.timestamp)
         for inst_name, inst_group in list(config_file.items()):
             inst = self.load_instrument(inst_name, inst_group)
