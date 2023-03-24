@@ -360,48 +360,25 @@ class SettingsManager:
                             'station is not a QCode or Mock station class '
                             'or is not snapshotable.')
 
-    def load_from_file(self, timestamp: str, file_format=None,
-                       compression=False, extension=None,
-                       filepath=None):
+    def load_from_file(self, timestamp: str, folder=None, filepath=None,
+                       file_id=None):
         """
         Loads station into the settings manager from saved files.
         Files contain dictionary of the snapshot (pickle, msgpack) or a hdf5
         representation of the snapshot.
         Args:
             timestamp (str): Supports all formats from a_tools.get_folder
-            file_format (str): 'hdf5', 'pickle' or 'msgpack'
-            compression (bool): Set True if files are compressed by blosc2
-                (only for pickle and msgpack)
-            extension (str): possibility to specify the extension of the file
-                if is not matching the default extension (see respective loader
-                class for default extensions)
-            filepath (str): optionally a filepath can be passed of the file
-                which should be loaded.
+            folder (str): Optional, folder of the file if distinct from
+                a_tools.datadir
+            file_id (str): suffix of the file
+            filepath (str): filepath of the file, overwrites timestamp and
+                folder
 
         Returns: Station which was created by the saved data.
-
         """
-        if file_format is None:
-            # if no file format is given, the loader tries to get the file
-            # format by the extension of the file
-            file_format = Loader.get_file_format(timestamp)
-            if 'comp' in file_format:
-                compression=True
+        station = get_station_from_file(timestamp=timestamp, folder=folder,
+                                        filepath=filepath, file_id=file_id)
 
-        if 'hdf5' in file_format:
-            loader = HDF5Loader(timestamp=timestamp, h5mode='r',
-                                extension=extension, filepath=filepath)
-        elif 'pickle' in file_format:
-            loader = PickleLoader(timestamp=timestamp, compression=compression,
-                                  extension=extension, filepath=filepath)
-        elif 'msgpack' in file_format:
-            loader = MsgLoader(timestamp=timestamp, compression=compression,
-                               extension=extension, filepath=filepath)
-        else:
-            raise NotImplementedError(f"File format '{file_format}' "
-                                      f"not supported!")
-
-        station = loader.get_station()
         self.add_station(station, timestamp)
         return station
 
@@ -620,13 +597,27 @@ class Loader:
     Generic class to load instruments and parameters from a file.
     """
 
-    def __init__(self, timestamp: str = None, filepath: str = None,
-                 extension=None):
+    def __init__(self, timestamp: str = None, filepath: str = None, **kwargs):
+        """
+        Initialization of generic loader. Should not be initialized but rather
+        its heritages.
+        Args:
+            timestamp (str): timestamp of the file in the format. Supports all
+                formats from a_tools.get_folder
+            filepath (str): filepath of the file, overwrites timestamp and
+                folder (in kwargs)
+            **kwargs: folder (str): Optional, folder of the file if distinct from
+                a_tools.datadir
+                file_id (str): suffix of the file
+                extension (str): custom extension of the file
+                compression (bool): True if file is compressed with blosc2,
+                    usually extracted from file extension
+        """
         self.filepath = filepath
         self.timestamp = timestamp
-        self.extension = extension
+        self.extension = kwargs.get('extension', None)
 
-    def get_filepath(self):
+    def get_filepath(self, **kwargs):
         """
         If no explicit filepath is given, a_tools.get_folder tries to get the
         directory based on the timestamp and the directory defined by
@@ -638,45 +629,56 @@ class Loader:
         if self.filepath is not None:
             return self.filepath
         from pycqed.analysis import analysis_toolbox as a_tools
-        self.folder = a_tools.get_folder(self.timestamp, suppress_printing=False)
+        self.folder = a_tools.get_folder(self.timestamp,
+                                         suppress_printing=False,
+                                         **kwargs)
         self.filepath = a_tools.measurement_filename(self.folder,
-                                                     ext=self.extension)
+                                                     ext=self.extension[1:],
+                                                     **kwargs)
         return self.filepath
 
     @staticmethod
-    def get_file_format(timestamp: str):
+    def get_file_format(timestamp=None, folder=None, filepath=None,
+                        file_id=None):
         """
         Returns the file format of a given timestamp.
         Args:
             timestamp (str): timestamp of the file
+            folder (str): folder of the file if different from a_tools.datadir
+            filepath (str): Optional filepath, overwrites timestamp
+            file_id (str): suffix of the file name
 
-        Returns str: file format as a string (see file_extensions)
+        Returns (str): file format as a string (see file_extensions)
 
         """
-        from pycqed.analysis import analysis_toolbox as a_tools
+        if filepath is None:
+            from pycqed.analysis import analysis_toolbox as a_tools
+            folder_dir = a_tools.get_folder(timestamp, folder=folder)
+            dirname = os.path.split(folder_dir)[1]
+            path = Path(folder_dir)
 
-        folder_dir = a_tools.get_folder(timestamp)
-        dirname = os.path.split(folder_dir)[1]
-        path = Path(folder_dir)
+            if file_id is not None:
+                dirname = dirname + file_id
+            filepath = sorted(path.glob(dirname + ".*"))
 
-        file_path = sorted(path.glob(dirname+".*"))
-        if len(file_path) > 1:
-            for format, extension in file_extensions.items():
-                for path in file_path:
-                    file_name, file_extension = os.path.splitext(path)
-                    if extension == file_extension:
-                        logger.warning(
-                            f"More than one file found for timestamp "
-                            f"'{timestamp}'. File in format '{format}' will be "
-                            f"considered.")
-                        return format
-            raise KeyError(f"More than one file found for "
-                           f"timestamp '{timestamp}' and none matches the "
-                           f"standard file extensions '{file_extensions}'.")
-        elif len(file_path) == 0:
-            raise KeyError(f"No file found for timestamp '{timestamp}'")
-        else:
-            file_name, file_extension = os.path.splitext(file_path[0])
+            if len(filepath) > 1:
+                for format, extension in file_extensions.items():
+                    for path in filepath:
+                        file_name, file_extension = os.path.splitext(path)
+                        if extension == file_extension:
+                            logger.warning(
+                                f"More than one file found for timestamp "
+                                f"'{timestamp}'. File in format '{format}' will"
+                                f" be considered.")
+                            return format
+                raise KeyError(f"More than one file found for "
+                               f"timestamp '{timestamp}' and none matches the "
+                               f"standard file extensions '{file_extensions}'.")
+            elif len(filepath) == 0:
+                raise KeyError(f"No file found for timestamp '{timestamp}'")
+            else:
+                filepath = filepath[0]
+        file_name, file_extension = os.path.splitext(filepath)
 
         for format, extension in file_extensions.items():
             if file_extension == extension:
@@ -763,15 +765,14 @@ class Loader:
 
 class HDF5Loader(Loader):
 
-    def __init__(self, timestamp=None, filepath=None, h5mode='r',
-                 extension=None):
+    def __init__(self, timestamp=None, filepath=None, extension=None, **kwargs):
         super().__init__(timestamp=timestamp, filepath=filepath,
                          extension=extension)
 
         if self.extension is None:
-            self.extension = 'hdf5'
-        self.filepath = self.get_filepath()
-        self.h5mode = h5mode
+            self.extension = file_extensions['hdf5']
+        self.filepath = self.get_filepath(**kwargs)
+        self.h5mode = kwargs.get('h5mode', 'r')
 
     @staticmethod
     def load_instrument(inst_name, inst_group):
@@ -824,32 +825,27 @@ class HDF5Loader(Loader):
 
 class PickleLoader(Loader):
 
-    def __init__(self, timestamp=None, filepath=None, compression=False,
-                 extension=None):
+    def __init__(self, timestamp=None, filepath=None, **kwargs):
         super().__init__(timestamp=timestamp, filepath=filepath,
-                         extension=extension)
+                         **kwargs)
 
-        self.compression = compression
+        self.compression = kwargs.get('compression', False)
         if self.extension is None:
             if self.compression:
-                self.extension = 'picklec'
+                self.extension = file_extensions['pickle_comp']
             else:
-                self.extension = 'pickle'
-        self.filepath = self.get_filepath()
+                self.extension = file_extensions['pickle']
+        self.filepath = self.get_filepath(**kwargs)
 
     def get_snapshot(self):
-        return self._get_snapshot(self.filepath, self.compression)
-
-    @staticmethod
-    def _get_snapshot(filepath, compression):
         """
         Opens the pickle file and returns the saved snapshot as a dictionary.
         Returns: snapshot as a dictionary.
         """
         import pickle
 
-        with open(filepath, 'rb') as f:
-            if compression:
+        with open(self.filepath, 'rb') as f:
+            if self.compression:
                 byte_data = Loader.decompress_file(f.read())
                 snap = pickle.loads(byte_data)
             else:
@@ -859,26 +855,21 @@ class PickleLoader(Loader):
 
 class MsgLoader(Loader):
 
-    def __init__(self, timestamp=None, filepath=None, compression=False,
-                 extension=None):
+    def __init__(self, timestamp=None, filepath=None, **kwargs):
         super().__init__(timestamp=timestamp, filepath=filepath,
-                         extension=extension)
+                         **kwargs)
 
-        self.compression = compression
+        self.compression = kwargs.get('compression', False)
         if self.extension is None:
             if self.compression:
-                self.extension = 'msgc'
+                self.extension = file_extensions['msgpack_comp']
             else:
-                self.extension = 'msg'
-        self.filepath = self.get_filepath()
+                self.extension = file_extensions['msgpack']
+        self.filepath = self.get_filepath(**kwargs)
 
     def get_snapshot(self):
-        return self._get_snapshot(self.filepath, self.compression)
-
-    @staticmethod
-    def _get_snapshot(filepath, compression):
         """
-        Opens the pickle file and returns the saved snapshot as a dictionary.
+        Opens the msg file and returns the saved snapshot as a dictionary.
         Returns: snapshot as a dictionary.
         """
         import msgpack
@@ -888,8 +879,8 @@ class MsgLoader(Loader):
         # and must be copied if they are to be modified
         msgpack_numpy.patch()
 
-        with open(filepath, 'rb') as f:
-            if compression:
+        with open(self.filepath, 'rb') as f:
+            if self.compression:
                 import blosc2
                 byte_data = Loader.decompress_file(f.read())
             else:
@@ -1025,3 +1016,37 @@ class PickleDumper(Dumper):
             if self.compression:
                 packed = Dumper.compress_file(packed)
             file.write(packed)
+
+
+def get_loader_from_format(file_format, **kwargs):
+    if 'hdf5' in file_format:
+        return HDF5Loader(**kwargs)
+    elif 'pickle' in file_format:
+        return PickleLoader(**kwargs)
+    elif 'msgpack' in file_format:
+        return MsgLoader(**kwargs)
+    else:
+        raise NotImplementedError(f"File format '{file_format}' "
+                                  f"not supported!")
+
+
+def get_loader_from_file(timestamp=None, folder=None, filepath=None,
+                          file_id=None):
+    file_format = Loader.get_file_format(timestamp=timestamp, folder=folder,
+                                         filepath=filepath, file_id=file_id)
+    if 'comp' in file_format:
+        compression = True
+    else:
+        compression= False
+    kwargs = dict(timestamp=timestamp, filepath=filepath,
+                  compression=compression, folder=folder,
+                  file_id=file_id)
+    return get_loader_from_format(file_format, **kwargs)
+
+
+def get_station_from_file(timestamp=None, folder=None, filepath=None,
+                          file_id=None):
+
+    return get_loader_from_file(timestamp=timestamp, folder=folder,
+                                filepath=filepath, file_id=file_id)\
+        .get_station()
