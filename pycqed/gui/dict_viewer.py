@@ -913,49 +913,17 @@ def get_snapshot_from_filepath(filepath):
     Returns the snapshot of the instrument settings of a given file.
     Args:
         filepath (str): OS path of the instrument settings file. File extension
-            needs to be '.hdf5', '.pickle', '.picklec', '.msg', '.msgc'
-            The 'c' stands for compressed files (compressed with blosc2).
+            must be in pycqed.utilities.settings_manager.file_extensions.
 
     Returns: Snapshot as a dictionary
     """
-    file_name, file_extension = os.path.splitext(filepath)
-    from pycqed.utilities.settings_manager import file_extensions
-    file_format = None
-    for format, extension in file_extensions.items():
-        if file_extension == extension:
-            file_format = format
-    if file_format is None:
-        raise NotImplementedError("Extension name is not known. "
-                                  f"Known extensions: '{file_extensions}'")
-
-    compression = False
-    if 'comp' in file_format:
-        compression = True
-
-    if 'pickle' in file_format:
-        from pycqed.utilities.settings_manager import PickleLoader
-        snap = PickleLoader._get_snapshot(filepath, compression=compression)
-
-    elif 'msg' in file_format:
-        from pycqed.utilities.settings_manager import MsgLoader
-        snap = MsgLoader._get_snapshot(filepath, compression=compression)
-
-    elif 'hdf5' in file_extension:
-        from pycqed.utilities.settings_manager import SettingsManager
-        sm_tmp = SettingsManager()
-        # timestamp needs to be set to some default value
-        # this default value is needed because a station is added as an entry
-        # in the dictionary sm.stations and the timestamp is the respective key
-        tsp = '19980128_000000'
-        sm_tmp.load_from_file(timestamp=tsp, file_format='hdf5',
-                              filepath=filepath)
-        snap = sm_tmp.stations[tsp].snapshot()
-
+    from pycqed.utilities.settings_manager import get_loader_from_file
+    loader = get_loader_from_file(filepath=filepath)
+    if hasattr(loader, 'get_snapshot'):
+        return loader.get_snapshot()
     else:
-        raise NotImplementedError("Extension name is not known. "
-                                  f"Known extensions: '{file_extensions}'")
-
-    return snap
+        station = loader.get_station()
+        return station.snapshot()
 
 
 if __name__ == "__main__":
