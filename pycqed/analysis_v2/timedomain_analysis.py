@@ -8055,6 +8055,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 'threshold': finds optimal vertical and horizontal thresholds.
             'classif_kw': kw to pass to the classifier
             see BaseDataAnalysis for more.
+            'plot_all_matrices' : output all plots for every slice of
+            a sweep as it is in the case where there's no sweep.
         '''
         super().__init__(options_dict=options_dict, auto=False,
                          **kw)
@@ -8096,131 +8098,177 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         ######################################################
         #  Separating data into shots for each level         #
         ######################################################
+
+        # remove 'data_type' from metadata before calling super, as this is
+        # required to circumvent the postprocessing to get the ssro data.
+        self.metadata.pop('data_type', None)
+
         super().process_data()
         del self.proc_data_dict['data_to_fit'] # not used in this analysis
-        n_states = len(self.cp.states)
 
         # prepare data in convenient format, i.e. arrays per qubit and per state
         # e.g. {'qb1': {'g': np.array of shape (n_shots, n_ro_ch}, ...}, ...}
         shots_per_qb = dict()        # store shots per qb and per state
         presel_shots_per_qb = dict() # store preselection ro
-        means = defaultdict(OrderedDict)    # store mean per qb for each ro_ch
+        # means = defaultdict(OrderedDict)    # store mean per qb for each ro_ch
         pdd = self.proc_data_dict    # for convenience of notation
 
         for qbn in self.qb_names:
-            # shape is (n_shots, n_ro_ch) i.e. one column for each ro_ch
-            shots_per_qb[qbn] = \
-                np.asarray(list(
-                    pdd['meas_results_per_qb'][qbn].values())).T
-            # make 2D array in case only one channel (1D array)
-            if len(shots_per_qb[qbn].shape) == 1:
-                shots_per_qb[qbn] = np.expand_dims(shots_per_qb[qbn],
-                                                   axis=-1)
-            for i, qb_state in enumerate(self.cp.get_states(qbn)[qbn]):
-                means[qbn][qb_state] = np.mean(shots_per_qb[qbn][i::n_states],
-                                               axis=0)
+            # shape is (2d_sweep_indx, n_shots, n_ro_ch) i.e. one column for
+            # each ro_ch
+            shots_per_qb[qbn] = np.array(
+                [vals for ch, vals in
+                 pdd['meas_results_per_qb'][qbn].items()]).T
+            # make 3D array in case mqm.measure_ssro is used
+            if len(shots_per_qb[qbn].shape) == 2:
+                shots_per_qb[qbn] = np.expand_dims(shots_per_qb[qbn], axis=0)
             if self.preselection:
                 # preselection shots were removed so look at raw data
                 # and look at only the first out of every two readouts
-                presel_shots_per_qb[qbn] = \
-                    np.asarray(list(
-                        pdd['meas_results_per_qb_raw'][qbn].values())).T[::2]
-                # make 2D array in case only one channel (1D array)
-                if len(presel_shots_per_qb[qbn].shape) == 1:
+                presel_shots_per_qb[qbn] = np.array(
+                [vals[::2] for ch, vals in
+                 pdd['meas_results_per_qb_raw'][qbn].items()]).T
+                # make 3D array in case mqm.measure_ssro is used
+                if len(presel_shots_per_qb[qbn].shape) == 2:
                     presel_shots_per_qb[qbn] = \
-                        np.expand_dims(presel_shots_per_qb[qbn], axis=-1)
+                        np.expand_dims(presel_shots_per_qb[qbn], axis=0)
+
+        n_sweep_pts_dim1 = len(self.cp.states)
+        n_sweep_pts_dim2 = np.shape(shots_per_qb[qbn])[0]
+        n_shots = np.shape(shots_per_qb[qbn])[1] // n_sweep_pts_dim1
+
+        # entry for every measured qubit and sweep point
+        qb_dict = {qbn: [None]*n_sweep_pts_dim2 for qbn in self.qb_names}
 
         # create placeholders for analysis data
-        pdd['analysis_params'] = dict()
-        pdd['data'] = defaultdict(dict)
-        pdd['analysis_params']['state_prob_mtx'] = defaultdict(dict)
-        pdd['analysis_params']['classifier_params'] = defaultdict(dict)
-        pdd['analysis_params']['means'] = defaultdict(dict)
-        pdd['analysis_params']['snr'] = defaultdict(dict)
-        pdd['analysis_params']["n_shots"] = len(shots_per_qb[qbn])
-        pdd['analysis_params']['slopes'] = defaultdict(dict)
-        self.clf_ = defaultdict(dict)
+        pdd['data'] = {'X': deepcopy(qb_dict), 'prep_states': deepcopy(qb_dict)}
+        pdd['n_dim_2_sweep_points'] = n_sweep_pts_dim2
+        pdd['avg_fidelities'] = deepcopy(qb_dict)
+        pdd['best_fidelity'] = {}
+
+        pdd['analysis_params'] = {
+            'state_prob_mtx': deepcopy(qb_dict),
+            'classifier_params': deepcopy(qb_dict),
+            'means': deepcopy(qb_dict),
+            'snr': deepcopy(qb_dict),
+            'n_shots': np.shape(shots_per_qb[qbn])[1],
+            'slopes': deepcopy(qb_dict),
+        }
+        pdd_ap = pdd['analysis_params']
+        self.clf_ = deepcopy(qb_dict) # classifier
+
         # create placeholders for analysis with preselection
         if self.preselection:
-            pdd['data_masked'] = defaultdict(dict)
-            pdd['analysis_params']['state_prob_mtx_masked'] = defaultdict(dict)
-            pdd['analysis_params']['n_shots_masked'] = defaultdict(dict)
-
-        n_shots = len(shots_per_qb[qbn]) // n_states
+            pdd['data_masked'] = {'X': deepcopy(qb_dict),
+                                  'prep_states': deepcopy(qb_dict)}
+            pdd['avg_fidelities_masked'] = deepcopy(qb_dict)
+            pdd_ap['state_prob_mtx_masked'] = deepcopy(qb_dict)
+            pdd_ap['n_shots_masked'] = deepcopy(qb_dict)
 
         for qbn, qb_shots in shots_per_qb.items():
-            # create mapping to integer following ordering in cal_points.
-            # Notes:
-            # 1) the state_integer should to the order of pdd[qbn]['means'] so that
-            # when passing the init_means to the GMM model, it is ensured that each
-            # gaussian component will predict the state_integer associated to that state
-            # 2) the mapping cannot be preestablished because the GMM predicts labels
-            # in range(n_components). For instance, if a qubit has states "g", "f"
-            # then the model will predicts 0's and 1's, so the typical g=0, e=1, f=2
-            # mapping would fail. The number of different states can be different
-            # for each qubit and therefore the mapping should also be done per qubit.
-            state_integer = 0
-            for state in means[qbn].keys():
-                self.states_info[qbn][state]["int"] = state_integer
-                state_integer += 1
+            # iteration over 2nd sweep dim
+            for dim2_sp_idx in range(n_sweep_pts_dim2):
+                # create mapping to integer following ordering in cal_points.
+                # Notes:
+                # 1) the state_integer should to the order of pdd[qbn]['means']
+                # so that when passing the init_means to the GMM model, it is
+                # ensured that each gaussian component will predict the
+                # state_integer associated to that state
+                # 2) the mapping cannot be preestablished because the GMM
+                # predicts labels in range(n_components). For instance, if a
+                # qubit has states "g", "f" then the model will predicts 0's
+                # and 1's, so the typical g=0, e=1, f=2 mapping would fail.
+                # The number of different states can be different for each
+                # qubit and therefore the mapping should also be done per qubit
 
-            # note that if some states are repeated, they are assigned the same label
-            qb_states_integer_repr = \
-                [self.states_info[qbn][s]["int"]
-                 for s in self.cp.get_states(qbn)[qbn]]
-            prep_states = np.tile(qb_states_integer_repr, n_shots)
+                qb_means = dict()
 
-            pdd['analysis_params']['means'][qbn] = deepcopy(means[qbn])
-            pdd['data'][qbn] = dict(X=deepcopy(qb_shots),
-                                    prep_states=prep_states)
-            # self.proc_data_dict['keyed_data'] = deepcopy(data)
+                for state in self.states_info[qbn]:
+                    mask = np.array(self.cp.get_states(qbn)[qbn]) == state
+                    if sum(mask) == 0:  # state is not being used
+                        continue
+                    qb_means[state] = np.mean(
+                        shots_per_qb[qbn][dim2_sp_idx, np.tile(mask, n_shots)],
+                        axis=0)
+                # print(f'dim_2_indx={dim2_sp_idx}, qbn={qbn}')
+                # print(f'qb_means={qb_means}')
 
-            assert np.ndim(qb_shots) == 2, "Data must be a two D array. " \
-                                    "Received shape {}, ndim {}"\
-                                    .format(qb_shots.shape, np.ndim(qb_shots))
-            pred_states, clf_params, clf = \
-                self._classify(qb_shots, prep_states,
-                               method=self.classif_method, qb_name=qbn,
-                               **self.options_dict.get("classif_kw", dict()))
-            # order "unique" states to have in usual order "gef" etc.
-            state_labels_ordered = self._order_state_labels(
-                list(means[qbn].keys()))
-            # translate to corresponding integers
-            state_labels_ordered_int = [self.states_info[qbn][s]['int'] for s in
-                                        state_labels_ordered]
-            fm = self.fidelity_matrix(prep_states, pred_states,
-                                      labels=state_labels_ordered_int)
+                state_integer = 0
+                for state in qb_means.keys():
+                    self.states_info[qbn][state]["int"] = state_integer
+                    state_integer += 1
 
-            # save fidelity matrix and classifier
-            pdd['analysis_params']['state_prob_mtx'][qbn] = fm
-            pdd['analysis_params']['classifier_params'][qbn] = clf_params
-            if 'means_' in clf_params:
-                pdd['analysis_params']['snr'][qbn] = \
-                    self._extract_snr(clf, state_labels_ordered)
-                pdd['analysis_params']['slopes'][qbn] = self._extract_slopes(
-                    clf, state_labels_ordered)
+                # note that if some states are repeated, they are assigned the
+                # same label
+                qb_states_integer_repr = \
+                    [self.states_info[qbn][s]["int"]
+                     for s in self.cp.get_states(qbn)[qbn]]
+                prep_states = np.tile(qb_states_integer_repr, n_shots)
 
-            self.clf_[qbn] = clf
-            if self.preselection:
-                #re do with classification first of preselection and masking
-                pred_presel = self.clf_[qbn].predict(presel_shots_per_qb[qbn])
-                presel_filter = \
-                    pred_presel == self.states_info[qbn]['g']['int']
-                if np.sum(presel_filter) == 0:
-                    log.warning(f"{qbn}: No data left after preselection! "
-                                f"Skipping preselection data & figures.")
-                    continue
-                qb_shots_masked = qb_shots[presel_filter]
-                prep_states = prep_states[presel_filter]
-                pred_states = self.clf_[qbn].predict(qb_shots_masked)
+                pdd_ap['means'][qbn][dim2_sp_idx] = deepcopy(qb_means)
+                pdd['data']['X'][qbn][dim2_sp_idx] = deepcopy(qb_shots[dim2_sp_idx])
+                pdd['data']['prep_states'][qbn][dim2_sp_idx] = prep_states
+
+                # self.proc_data_dict['keyed_data'] = deepcopy(data)
+                assert np.ndim(qb_shots) == 3, \
+                    f"Data must be a 3D array. Received shape " \
+                    f"{qb_shots.shape}, ndim {np.ndim(qb_shots)}"\
+
+                pred_states, clf_params, clf = \
+                    self._classify(qb_shots[dim2_sp_idx], prep_states,
+                                   method=self.classif_method, qb_name=qbn,
+                                   dim2_sweep_indx=dim2_sp_idx,
+                                   **self.options_dict.get("classif_kw", dict()))
+                # order "unique" states to have in usual order "gef" etc.
+                state_labels_ordered = self._order_state_labels(
+                    list(qb_means.keys()))
+                # translate to corresponding integers
+                state_labels_ordered_int = [self.states_info[qbn][s]['int'] for s in
+                                            state_labels_ordered]
                 fm = self.fidelity_matrix(prep_states, pred_states,
                                           labels=state_labels_ordered_int)
+                pdd['avg_fidelities'][qbn][dim2_sp_idx] = np.trace(fm) / float(np.sum(fm))
 
-                pdd['data_masked'][qbn] = dict(X=deepcopy(qb_shots_masked),
-                                          prep_states=deepcopy(prep_states))
-                pdd['analysis_params']['state_prob_mtx_masked'][qbn] = fm
-                pdd['analysis_params']['n_shots_masked'][qbn] = \
-                    qb_shots_masked.shape[0]
+                # save fidelity matrix and classifier
+                pdd_ap['state_prob_mtx'][qbn][dim2_sp_idx] = fm
+                pdd_ap['classifier_params'][qbn][dim2_sp_idx] = clf_params
+                if 'means_' in clf_params:
+                    pdd_ap['snr'][qbn][dim2_sp_idx] = \
+                        self._extract_snr(clf, state_labels_ordered)
+                    pdd_ap['slopes'][qbn][dim2_sp_idx] = \
+                        self._extract_slopes(clf, state_labels_ordered)
+
+                self.clf_[qbn][dim2_sp_idx] = clf
+                if self.preselection:
+                    #re do with classification first of preselection and masking
+                    pred_presel = self.clf_[qbn][dim2_sp_idx].predict(
+                        presel_shots_per_qb[qbn][dim2_sp_idx])
+                    presel_filter = \
+                        pred_presel == self.states_info[qbn]['g']['int']
+                    if np.sum(presel_filter) == 0:
+                        log.warning(f"{qbn}: No data left after preselection! "
+                                    f"Skipping preselection data & figures.")
+                        continue
+                    qb_shots_masked = qb_shots[dim2_sp_idx][presel_filter]
+                    prep_states = prep_states[presel_filter]
+                    pred_states = self.clf_[qbn][dim2_sp_idx].predict(
+                        qb_shots_masked)
+                    fm_masked = self.fidelity_matrix(prep_states, pred_states,
+                                              labels=state_labels_ordered_int)
+                    pdd['avg_fidelities_masked'][qbn][dim2_sp_idx] = \
+                        np.trace(fm_masked) / float(np.sum(fm_masked))
+                    pdd['data_masked']['X'][qbn][dim2_sp_idx] = \
+                        deepcopy(qb_shots_masked)
+                    pdd['data_masked']['prep_states'][qbn][dim2_sp_idx] = \
+                        deepcopy(prep_states)
+                    pdd_ap['state_prob_mtx_masked'][qbn][dim2_sp_idx] = fm_masked
+                    pdd_ap['n_shots_masked'][qbn][dim2_sp_idx] = qb_shots_masked.shape[0]
+
+            fids = pdd['avg_fidelities_masked'][qbn] if \
+                    self.preselection else pdd['avg_fidelities'][qbn]
+            pdd['best_fidelity'][qbn] = {
+                'fidelity': np.nanmax(fids),
+                'sweep_index': np.nanargmax(fids)}
 
         self.save_processed_data()
 
@@ -8312,7 +8360,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 slopes.update({label: math.slope(m0 - m1)})
         return slopes
 
-    def _classify(self, X, prep_state, method, qb_name, **kw):
+    def _classify(self, X, prep_state, method, qb_name, dim2_sweep_indx=None,
+                  **kw):
         """
 
         Args:
@@ -8320,6 +8369,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             prep_state: prepared states (true values)
             type: classification method
             qb_name: name of the qubit to classify
+            dim2_sweep_indx: specifies which slice of self.proc_data_dict is to
+            be used.
 
         Returns:
 
@@ -8346,10 +8397,14 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             # give same weight to each class by default
             weights_init = kw.pop("weights_init",
                                   np.ones(n_qb_states)/n_qb_states)
-
-            means = [mu for _, mu in
-                                self.proc_data_dict['analysis_params']
-                                    ['means'][qb_name].items()]
+            if dim2_sweep_indx is None:
+                means = [mu for _, mu in
+                         self.proc_data_dict['analysis_params']
+                         ['means'][qb_name].items()]
+            else:
+                means = [mu for _, mu in
+                         self.proc_data_dict['analysis_params']
+                         ['means'][qb_name][dim2_sweep_indx].items()]
 
             # calculate delta of means and set tol and cov based on this
             delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
@@ -8486,133 +8541,340 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                       f" Returning same as input order")
             return states_labels
 
-
     def plot(self, **kwargs):
+        # prepares the processed data before plotting
+        n_sweep_points = self.proc_data_dict['n_dim_2_sweep_points']
+        for qbn in self.qb_names:
+            # iterates over slices if 2nd dimension was swept
+            if self.get_param_value('TwoD', False):
+                if n_sweep_points == 1:  # no sweep
+                    self.plot_matrices(qbn=qbn, **kwargs)
+                elif self.get_param_value('plot_all_matrices', False):
+                    sp_dict = self.proc_data_dict['sweep_points_2D_dict'][qbn]
+                    # use only first sweep parameter to indicate slice
+                    sp_name, sp_vals = next(iter(sp_dict.items()))
+                    _, sp_unit, sp_hrs = self.sp.get_sweep_params_description(sp_name)
+                    for i in range(n_sweep_points):
+                        slice_title = f"\nSweep Point {i}: {sp_hrs} = {sp_vals[i]}{sp_unit}"
+                        self.plot_matrices(qbn=qbn,
+                                           slice_title=slice_title,
+                                           sweep_indx=i,
+                                           **kwargs)
+
+            else:
+                # plots fidelity plot if there was a 1D sweep
+                for qbn in self.qb_names:
+                    self.plot_matrices(qbn=qbn, **kwargs)
+
+        # plots fidelity trend plot
+        super().plot(**kwargs)
+
+    def plot_matrices(self, qbn, slice_title=None, sweep_indx=0, **kwargs):
+        clf_ = self.clf_
+        pdd = self.proc_data_dict
+        pdd_ap = pdd['analysis_params']
+
+        data_keys = [k for k in list(pdd.keys()) if k.startswith("data")]
+        data_dict = {dk: pdd[dk] for dk in data_keys}
+
         if not self.get_param_value("plot", True):
-            return # no plotting if "plot" is False
+            return  # no plotting if "plot" is False
         cmap = plt.get_cmap('tab10')
         show = self.options_dict.get("show", False)
-        pdd = self.proc_data_dict
-        for qbn in self.qb_names:
-            n_qb_states = len(np.unique(self.cp.get_states(qbn)[qbn]))
-            tab_x = a_tools.truncate_colormap(cmap, 0,
-                                              n_qb_states/10)
 
-            kwargs = {
-                "states": list(pdd["analysis_params"]['means'][qbn].keys()),
-                "xlabel": "Integration Unit 1, $u_1$",
-                "ylabel": "Integration Unit 2, $u_2$",
-                "scale": self.options_dict.get("hist_scale", "log"),
-                "cmap":tab_x}
-            data_keys = [k for k in list(pdd.keys()) if
-                            k.startswith("data") and qbn in pdd[k]]
+        n_qb_states = len(np.unique(self.cp.get_states(qbn)[qbn]))
+        tab_x = a_tools.truncate_colormap(cmap, 0,
+                                          n_qb_states/10)
 
-            for dk in data_keys:
-                data = pdd[dk][qbn]
-                title =  self.raw_data_dict['timestamp'] + f" {qbn} " + dk + \
-                    "\n{} classifier".format(self.classif_method)
-                kwargs.update(dict(title=title))
+        kwargs = {
+            "states": list(pdd_ap['means'][qbn][sweep_indx].keys()),
+            "xlabel": "Integration Unit 1, $u_1$",
+            "ylabel": "Integration Unit 2, $u_2$",
+            "scale": self.options_dict.get("hist_scale", "log"),
+            "cmap":tab_x}
 
-                # plot data and histograms
-                n_shots_to_plot = self.get_param_value('n_shots_to_plot', None)
-                if n_shots_to_plot is not None:
-                    n_shots_to_plot *= n_qb_states
-                if data['X'].shape[1] == 1:
-                    if self.classif_method == "gmm":
-                        kwargs['means'] = self._get_means(self.clf_[qbn])
-                        kwargs['std'] = np.sqrt(self._get_covariances(self.clf_[qbn]))
-                    else:
-                        # no Gaussian distribution can be plotted
-                        kwargs['plot_fitting'] = False
-                    kwargs['colors'] = cmap(np.unique(data['prep_states']))
-                    fig, main_ax = self.plot_1D_hist(data['X'][:n_shots_to_plot],
-                                            data["prep_states"][:n_shots_to_plot],
-                                            **kwargs)
+        for dk, data in data_dict.items():
+            if qbn not in data['X']: continue
+
+            title = f"{self.raw_data_dict['timestamp']} {qbn} {dk}\n " \
+                    f"{self.classif_method} classifier" \
+                    f"{slice_title if slice_title is not None else ''}"
+
+            kwargs.update(dict(title=title))
+
+            # plot data and histograms
+            n_shots_to_plot = self.get_param_value('n_shots_to_plot', None)
+            if n_shots_to_plot is not None:
+                n_shots_to_plot *= n_qb_states
+            if data['X'][qbn][sweep_indx].shape[1] == 1:
+                if self.classif_method == "gmm":
+                    kwargs['means'] = self._get_means(clf_[qbn][sweep_indx])
+                    kwargs['std'] = np.sqrt(self._get_covariances(clf_[qbn][sweep_indx]))
                 else:
-                    fig, axes = self.plot_scatter_and_marginal_hist(
-                        data['X'][:n_shots_to_plot],
-                        data["prep_states"][:n_shots_to_plot],
-                        **kwargs)
+                    # no Gaussian distribution can be plotted
+                    kwargs['plot_fitting'] = False
+                kwargs['colors'] = cmap(np.unique(data['prep_states'][qbn][sweep_indx]))
+                fig, main_ax = self.plot_1D_hist(data['X'][qbn][sweep_indx][:n_shots_to_plot],
+                                        data["prep_states"][qbn][sweep_indx][:n_shots_to_plot],
+                                        **kwargs)
+            else:
+                fig, axes = self.plot_scatter_and_marginal_hist(
+                    data['X'][qbn][sweep_indx][:n_shots_to_plot],
+                    data["prep_states"][qbn][sweep_indx][:n_shots_to_plot],
+                    **kwargs)
 
-                    # plot clf_boundaries
-                    main_ax = fig.get_axes()[0]
-                    self.plot_clf_boundaries(data['X'], self.clf_[qbn], ax=main_ax,
-                                             cmap=tab_x)
-                    # plot means and std dev
-                    data_means = pdd['analysis_params']['means'][qbn]
-                    try:
-                        clf_means = self._get_means(self.clf_[qbn])
-                    except Exception as e: # not a gmm model--> no clf_means.
-                        clf_means = []
-                    try:
-                        covs = self._get_covariances(self.clf_[qbn])
-                    except Exception as e: # not a gmm model--> no cov.
-                        covs = []
+                # plot clf_boundaries
+                main_ax = fig.get_axes()[0]
+                self.plot_clf_boundaries(data['X'][qbn][sweep_indx],
+                                         clf_[qbn][sweep_indx],
+                                         ax=main_ax,
+                                         cmap=tab_x)
+                # plot means and std dev
+                data_means = pdd_ap['means'][qbn][sweep_indx]
+                try:
+                    clf_means = self._get_means(clf_[qbn][sweep_indx])
+                except Exception as e: # not a gmm model--> no clf_means.
+                    clf_means = []
+                try:
+                    covs = self._get_covariances(clf_[qbn][sweep_indx])
+                except Exception as e: # not a gmm model--> no cov.
+                    covs = []
 
-                    for i, data_mean in enumerate(data_means.values()):
-                        main_ax.scatter(data_mean[0], data_mean[1], color='w', s=80)
-                        if len(clf_means):
-                            main_ax.scatter(clf_means[i][0], clf_means[i][1],
-                                                      color='k', s=80)
-                        if len(covs) != 0:
-                            self.plot_std(clf_means[i] if len(clf_means)
-                                          else data_mean,
-                                          covs[i],
-                                          n_std=1, ax=main_ax,
-                                          edgecolor='k', linestyle='--',
-                                          linewidth=1)
+                for i, data_mean in enumerate(data_means.values()):
+                    main_ax.scatter(data_mean[0], data_mean[1], color='w', s=80)
+                    if len(clf_means):
+                        main_ax.scatter(clf_means[i][0], clf_means[i][1],
+                                        color='k', s=80)
+                    if len(covs) != 0:
+                        self.plot_std(clf_means[i] if len(clf_means)
+                                      else data_mean,
+                                      covs[i],
+                                      n_std=1, ax=main_ax,
+                                      edgecolor='k', linestyle='--',
+                                      linewidth=1)
 
-                # plot thresholds and mapping
-                plt_fn = {0: main_ax.axvline, 1: main_ax.axhline}
-                thresholds = pdd['analysis_params'][
-                    'classifier_params'][qbn].get("thresholds", dict())
-                mapping = pdd['analysis_params'][
-                    'classifier_params'][qbn].get("mapping", dict())
-                for k, thres in thresholds.items():
-                    plt_fn[k](thres, linewidth=2,
-                              label="threshold i.u. {}: {:.5f}".format(k, thres),
-                              color='k', linestyle="--")
-                    main_ax.legend(loc=[0.2,-0.62])
+            # plot thresholds and mapping
+            plt_fn = {0: main_ax.axvline, 1: main_ax.axhline}
+            thresholds = pdd_ap[
+                'classifier_params'][qbn][sweep_indx].get("thresholds", dict())
+            mapping = pdd_ap[
+                'classifier_params'][qbn][sweep_indx].get("mapping", dict())
+            for k, thres in thresholds.items():
+                plt_fn[k](thres, linewidth=2,
+                          label="threshold i.u. {}: {:.5f}".format(k, thres),
+                          color='k', linestyle="--")
+                main_ax.legend(loc=[0.2,-0.62])
 
-                ax_frac = {0: (0.07, 0.1), # locations for codewords
-                           1: (0.83, 0.1),
-                           2: (0.07, 0.9),
-                           3: (0.83, 0.9)}
-                for cw, state in mapping.items():
-                    main_ax.annotate("0b{:02b}".format(cw) + f":{state}",
-                                     ax_frac[cw], xycoords='axes fraction')
+            ax_frac = {0: (0.07, 0.1), # locations for codewords
+                       1: (0.83, 0.1),
+                       2: (0.07, 0.9),
+                       3: (0.83, 0.9)}
+            for cw, state in mapping.items():
+                main_ax.annotate("0b{:02b}".format(cw) + f":{state}",
+                                 ax_frac[cw], xycoords='axes fraction')
+            fig_key = f'{qbn}_{self.classif_method}_classifier_{dk}' \
+                      f'{f"_sp_{sweep_indx}" if sweep_indx is not None else ""}'
+            self.figs[fig_key] = fig
+        if show:
+            plt.show()
 
-                self.figs[f'{qbn}_{self.classif_method}_classifier_{dk}'] = fig
-            if show:
-                plt.show()
+        # state assignment prob matrix
+        title = f"{self.raw_data_dict['timestamp']} \n" \
+                f"{self.classif_method} State Assignment Probability Matrix {qbn}\n" \
+                f"Total # shots:{pdd_ap['n_shots']}"\
+                f"{slice_title if slice_title is not None else ''}"
 
-            # state assignment prob matrix
-            title = self.raw_data_dict['timestamp'] + "\n{} State Assignment" \
-                " Probability Matrix\nTotal # shots:{}"\
-                .format(self.classif_method,
-                        self.proc_data_dict['analysis_params']['n_shots'])
+        fig = self.plot_fidelity_matrix(
+            pdd_ap['state_prob_mtx'][qbn][sweep_indx],
+            self._order_state_labels(kwargs['states']),
+            title=title,
+            show=show,
+            auto_shot_info=False)
+        fig_key = f'{qbn}_state_prob_matrix_{self.classif_method}'\
+                  f'{f"_sp_{sweep_indx}" if sweep_indx is not None else ""}'
+        self.figs[fig_key] = fig
+
+        if self.preselection and \
+                len(pdd_ap['state_prob_mtx_masked'][qbn][sweep_indx]) != 0:
+            title = f"{self.raw_data_dict['timestamp']}\n"\
+                f"{self.classif_method} State Assignment Probability Matrix Masked {qbn}\n"\
+                f"Total # shots:{pdd_ap['n_shots_masked'][qbn][sweep_indx]}"\
+                f"{slice_title if slice_title is not None else ''}"
+
             fig = self.plot_fidelity_matrix(
-                self.proc_data_dict['analysis_params']['state_prob_mtx'][qbn],
+                pdd_ap['state_prob_mtx_masked'][qbn][sweep_indx],
                 self._order_state_labels(kwargs['states']),
-                title=title,
-                show=show,
-                auto_shot_info=False)
-            self.figs[f'{qbn}_state_prob_matrix_{self.classif_method}'] = fig
+                title=title, show=show, auto_shot_info=False)
+            fig_key = f'{qbn}_state_prob_matrix_masked_{self.classif_method}'\
+                f'{f"_sp_{sweep_indx}" if sweep_indx is not None else ""}'
+            self.figs[fig_key] = fig
 
-            if self.preselection and \
-                    len(pdd['analysis_params']['state_prob_mtx_masked'][qbn]) != 0:
-                title = self.raw_data_dict['timestamp'] + \
-                    "\n{} State Assignment Probability Matrix Masked"\
-                    "\nTotal # shots:{}".format(
-                        self.classif_method,
-                        self.proc_data_dict['analysis_params']['n_shots_masked'][qbn])
+    def prepare_plots(self):
+        # don't prepare sweep plots if there was no sweep
+        if self.proc_data_dict['n_dim_2_sweep_points'] == 1: return
+        plot_metrics = self.get_param_value('plot_metrics', 'fidelity')
+        if isinstance(plot_metrics, (dict, str)):
+            plot_metrics = [plot_metrics]
+        if 'all' in plot_metrics:
+            plot_metrics.remove('all')
+            plot_metrics.append('fidelity')
+            plot_metrics.append('infidelity')
 
-                fig = self.plot_fidelity_matrix(
-                    pdd['analysis_params']['state_prob_mtx_masked'][qbn],
-                    self._order_state_labels(kwargs['states']),
-                    title=title, show=show, auto_shot_info=False)
-                fig_key = f'{qbn}_state_prob_matrix_masked_{self.classif_method}'
-                self.figs[fig_key] = fig
+        if 'fidelity' in plot_metrics:
+            plot_metrics.remove('fidelity')
+            plot_metrics.append({
+                'metric': 'lambda fm: 100 * np.trace(fm) / float(np.sum(fm))',
+                'plot_name': 'fidelity',
+                'yunit': '%',
+                'yscale': 'linear',
+                'ymax': 100
+            })
+        if 'infidelity' in plot_metrics:
+            plot_metrics.remove('infidelity')
+            plot_metrics.append({
+                'metric': 'lambda fm: 1 - np.trace(fm) / float(np.sum(fm))',
+                'plot_name': 'infidelity',
+                'yunit': '',
+                'yscale': 'log'
+            })
+        for qbn in self.qb_names:
+            for pm in plot_metrics:
+                self.prepare_sweep_plot(qbn, pm)
+
+    def prepare_sweep_plot(self, qbn, plot_settings):
+        metric = plot_settings.get('metric', None)
+        try:
+            metric = eval(metric)
+        except SyntaxError:
+            log.warning('Could not parse the string in to a function.')
+        if not callable(metric):
+
+            log.warning('Every metric must contain a function taking '
+                        'the state probability matrix as an argument and '
+                        'returning a single value, e.g. the fidelity.')
+
+        yvals = np.array([metric(fm) for fm in self.proc_data_dict[
+            'analysis_params']['state_prob_mtx'][qbn]])
+        plot_name = plot_settings.get('plot_name', 'fidelity')
+        raw_fig_key = f'ssro_{plot_name}_{qbn}'
+
+        ymin = np.nanmin(yvals)
+        ymax = plot_settings.get('ymax', np.nanmax(yvals))
+
+        base_plot_dict, vline_key = \
+            self.get_base_sweep_plot_options(qbn=qbn, plot_name=plot_name)
+
+        plot_label = plot_settings.get('setlabel',
+                        plot_settings.get('ylabel', plot_name)).capitalize()
+
+        self.plot_dicts[raw_fig_key] = base_plot_dict
+        self.plot_dicts[raw_fig_key].update({
+            'yvals': yvals,
+            'ylabel': plot_settings.get('ylabel', plot_name).capitalize(),
+            'setlabel': f'{plot_label} (raw)',
+            'yunit': plot_settings.get('yunit', ''),
+            'yscale': plot_settings.get('yscale', 'linear'),
+            'color': 'C1',
+            'linestyle': '--',
+        })
+
+        if self.preselection:
+            yvals_masked = np.array([metric(fm) for fm in self.proc_data_dict[
+                'analysis_params']['state_prob_mtx_masked'][qbn]])
+            masked_fig_key = f'ssro_{plot_name}_masked_{qbn}'
+
+            self.plot_dicts[masked_fig_key] = {}
+            self.plot_dicts[masked_fig_key].update(
+                self.plot_dicts[raw_fig_key])
+
+            self.plot_dicts[masked_fig_key].update({
+                'yvals':  yvals_masked,
+                'setlabel': f'{plot_label} (preselected)',
+                'color': 'C0',
+                'linestyle': '-',
+            })
+
+            ymin = min(ymin, np.nanmin(yvals_masked))
+            ymax = max(ymax, np.nanmax(yvals_masked))
+
+        self.plot_dicts[vline_key].update({
+            'ymin': ymin,
+            'ymax': ymax, })
+
+        # add y ticks every 10^0.5
+        if plot_settings.get('yscale', 'linear') == 'log':
+            max_tick = np.ceil(np.nanmax(np.log10(ymax)) * 2) / 2 - 0.5
+            min_tick = np.floor(np.nanmin(np.log10(ymin)) * 2) / 2 + 0.5
+            n_ticks = int((max_tick - min_tick) * 2 + 1)
+            ticks = np.linspace(max_tick, min_tick, num=n_ticks)
+            new_labels = {
+                'ytick_loc': 10 ** ticks,
+                'ytick_labels': [fr'$10^{{{t}}}$' for t in ticks]}
+            self.plot_dicts[raw_fig_key].update(new_labels)
+            if self.preselection:
+                self.plot_dicts[masked_fig_key].update(new_labels)
+
+
+    def get_base_sweep_plot_options(self, qbn, plot_name):
+        pdd = self.proc_data_dict
+        sp_dict = pdd['sweep_points_2D_dict'][qbn]
+        if len(sp_dict) != 1:
+            # fall back to sweep point indx if this qb is not swept or if there
+            # are more than parameters that are swept
+            sp_unit = None
+            sp_vals = np.arange(self.proc_data_dict['n_dim_2_sweep_points'])
+            sp_hrs = 'Sweep point index'
+        else:
+            sp_name, sp_vals = next(iter(sp_dict.items()))
+            _, sp_unit, sp_hrs = self.sp.get_sweep_params_description(sp_name)
+
+        title = f"{self.raw_data_dict['timestamp']} {qbn} {plot_name}\n " \
+                f"{self.classif_method} classifier"
+        fig_id = f'ssro_{plot_name}_{qbn}'
+
+        fid_plot_options = {
+            'plotfn': self.plot_line,
+            'title': title,
+            'fig_id': fig_id,
+            'xvals': sp_vals,
+            'xlabel': sp_hrs,
+            'xunit': sp_unit,
+            'legend_ncol': 1,
+            'do_legend': True,
+            'legend_bbox_to_anchor': (1, -0.15),
+            'legend_pos': 'upper right',
+            'grid' : True, # TODO: doesn't yet work -> modify base analysis
+        }
+        best_fidelity = pdd['best_fidelity'][qbn]['fidelity']
+        best_slice = pdd['best_fidelity'][qbn]['sweep_index']
+        
+        textstr = f'best fidelity: {best_fidelity * 100:.2f}%'
+
+        vline_key = f'best_slice_vline_{plot_name}_{qbn}'
+        self.plot_dicts[vline_key] = {
+            'fig_id': fig_id,
+            'plotfn': self.plot_vlines,
+            'x': sp_vals[best_slice],
+            'linestyle': '--',
+            'colors': 'gray'}
+
+        for sp_name, sp_vals in sp_dict.items():
+            _, sp_unit, sp_hrs = self.sp.get_sweep_params_description(sp_name)
+            textstr += f'\n{sp_hrs} = {sp_vals[best_slice]} ' \
+                       f'{sp_unit if sp_unit is not None else ""}'
+
+        text_msg_key = f'text_msg_{plot_name}_{qbn}'
+        self.plot_dicts[text_msg_key] = {
+            'fig_id': fig_id,
+            'ypos': -0.2,
+            'xpos': -0.025,
+            'horizontalalignment': 'left',
+            'verticalalignment': 'top',
+            'plotfn': self.plot_text,
+            'text_string': textstr}
+
+        return fid_plot_options, vline_key
+
 
 class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
     """
