@@ -314,6 +314,18 @@ class Station(DelegateAttributes):
                 'component of that name is already registered to the station')
         self.components[namestr] = inst
 
+    def get(self, path_to_param):
+        param_value = 'not found'
+        try:
+            param = eval('self.' + path_to_param + '()')
+            if isinstance(param, dict):
+                param_value = param.get("value", "not found")
+            else:
+                param_value = param
+        except:
+            logger.warning('Problem at extracting parameter from station.')
+        return param_value
+
 
 class SettingsManager:
     """
@@ -1050,3 +1062,12 @@ def get_station_from_file(timestamp=None, folder=None, filepath=None,
     return get_loader_from_file(timestamp=timestamp, folder=folder,
                                 filepath=filepath, file_id=file_id)\
         .get_station()
+
+
+def extract_from_stations(stations, path_to_param):
+    param_value = 'not found'
+    for station in stations:
+        param_value = station.get(path_to_param)
+        if param_value != 'not found':
+            break
+    return param_value
