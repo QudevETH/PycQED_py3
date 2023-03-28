@@ -13,6 +13,7 @@ from pycqed.measurement.hdf5_data import DateTimeGenerator \
 import os
 import pycqed.gui.dict_viewer as dict_viewer
 from pathlib import Path
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,22 @@ class DelegateAttributes:
         raise AttributeError(
             "'{}' object and its delegates have no attribute '{}'".format(
                 self.__class__.__name__, key))
+
+
+class IndexableDict(OrderedDict):
+    def __getitem__(self, item):
+        try:
+            return super().__getitem__(item)
+        except KeyError as keyerror:
+            if isinstance(item, int):
+                try:
+                    return super().__getitem__(list(self.keys())[item])
+                except IndexError as e:
+                    logger.error(f"Integer seems to be out of range of list"
+                                 f" '{list(self.keys())}'")
+                    raise e
+            else:
+                raise keyerror
 
 
 class Parameter(DelegateAttributes):
@@ -345,7 +362,7 @@ class SettingsManager:
             station (Station or qcodes.Station): optional, adds given station
                 to the settings manager
         """
-        self.stations = {}
+        self.stations = IndexableDict()
         if station is not None:
             self.add_station(station, timestamp)
 
@@ -373,7 +390,7 @@ class SettingsManager:
                             'or is not snapshotable.')
 
     def load_from_file(self, timestamp: str, folder=None, filepath=None,
-                       file_id=None):
+                       file_id=None, param_path=None):
         """
         Loads station into the settings manager from saved files.
         Files contain dictionary of the snapshot (pickle, msgpack) or a hdf5
@@ -385,11 +402,15 @@ class SettingsManager:
             file_id (str): suffix of the file
             filepath (str): filepath of the file, overwrites timestamp and
                 folder
+            param_path (list(str)): List of path to parameter which should be
+                loaded to the station. Used to load HDF5 files faster. Set to
+                None of entire file should be loaded.
 
         Returns: Station which was created by the saved data.
         """
         station = get_station_from_file(timestamp=timestamp, folder=folder,
-                                        filepath=filepath, file_id=file_id)
+                                        filepath=filepath, file_id=file_id,
+                                        param_path=param_path)
 
         self.add_station(station, timestamp)
         return station
@@ -747,13 +768,17 @@ class Loader:
         import blosc2
         return blosc2.decompress(file)
 
-    def get_station(self):
+    def get_station(self, param_path=None):
         """
         Returns a station build from a snapshot. This snapshot is loaded from
         a file using self.get_snapshot() and the timestamp given by the
         initialization of the Loader object.
         Returns (Station): station build from the snapshot.
         """
+        if param_path is not None:
+            logger.warning("For files which are not HDF5, the entire file will"
+                           " be loaded in to the station regardless of "
+                           "param_path.")
         station = Station(timestamp=self.timestamp)
         snap = self.get_snapshot()
         for inst_name, inst_dict in snap['instruments'].items():
@@ -819,17 +844,40 @@ class HDF5Loader(Loader):
     def load_component(comp_name, comp):
         pass
 
-    def get_station(self):
+    def get_station(self, param_path=None):
         """
         Loads settings from a config file into a station.
+        param_path (list): dictionary of parameters which are loaded into a
+            station. If None, all parameters are loaded into the station.
 
         """
         from pycqed.analysis import analysis_toolbox as a_tools
         config_file = a_tools.open_config_file(filepath=self.filepath)
         station = Station(timestamp=self.timestamp)
-        for inst_name, inst_group in list(config_file.items()):
-            inst = self.load_instrument(inst_name, inst_group)
-            station.add_component(inst)
+        if param_path is None:
+            for inst_name, inst_group in list(config_file.items()):
+                inst = self.load_instrument(inst_name, inst_group)
+                station.add_component(inst)
+        else:
+            for path_to_param in param_path:
+                param_value = hlp_mod.extract_from_hdf_file(config_file,
+                                                            path_to_param)
+                if param_value == 'not found':
+                    logger.warning(f"Parameter {path_to_param} not found.")
+                param_name = path_to_param.split('.')[-1]
+                param = Parameter(param_name, param_value)
+
+
+                inst_path = path_to_param.split('.')[:-1]
+
+                inst = Instrument(inst_path[-1])
+                inst.add_parameter(param)
+                for inst_name in inst_path[-1:0:-1]:
+                    submod = inst
+                    inst = Instrument(inst_name)
+                    inst.add_submodule(submod.name, submod)
+                station.add_component(inst)
+
         a_tools.close_files([config_file])
 
         return station
@@ -1057,11 +1105,11 @@ def get_loader_from_file(timestamp=None, folder=None, filepath=None,
 
 
 def get_station_from_file(timestamp=None, folder=None, filepath=None,
-                          file_id=None):
+                          file_id=None, param_path=None):
 
     return get_loader_from_file(timestamp=timestamp, folder=folder,
-                                filepath=filepath, file_id=file_id)\
-        .get_station()
+                                filepath=filepath, file_id=file_id) \
+        .get_station(param_path=param_path)
 
 
 def extract_from_stations(stations, path_to_param):
