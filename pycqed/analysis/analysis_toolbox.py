@@ -349,8 +349,12 @@ def close_files(files):
         try:
             file.close()
         except AttributeError:
-            # file is an instance of h5py._hl.group.Group
-            file.file.close()
+            try:
+                # file is an instance of h5py._hl.group.Group
+                file.file.close()
+            except AttributeError:
+                # file is not an h5py object (e.g. station)
+                pass
 
 
 def get_plot_title_from_folder(folder):
