@@ -30,6 +30,7 @@ from pycqed.measurement.hdf5_data import write_dict_to_hdf5
 from pycqed.measurement.hdf5_data import read_dict_from_hdf5
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
+import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
 import logging
@@ -232,7 +233,7 @@ class BaseDataAnalysis(object):
         self.data_files, self.config_files = [], []
         for ts in self.timestamps:
             self.data_files += [a_tools.open_hdf_file(ts, mode=h5mode)]
-            self.config_files += [a_tools.open_config_file(ts)]
+            self.config_files += [setman.get_station_from_file(ts)]
 
     def close_files(self):
         # close data and config files
@@ -467,8 +468,14 @@ class BaseDataAnalysis(object):
                         raw_data_dict_ts['measured_data'] = \
                             np.array(data_file['Experimental Data']['Data']).T
                     else:
-                        raw_data_dict_ts[save_par] = hlp_mod.extract_from_files(
-                            files, file_par)
+                        raw_data_dict_ts[save_par] = \
+                            hlp_mod.extract_from_data_files(
+                                [data_file], file_par)
+                        if raw_data_dict_ts[save_par] == 'not found':
+                            raw_data_dict_ts[save_par] = \
+                                setman.extract_from_stations(
+                                    [config_file], file_par)
+
                 for par_name in raw_data_dict_ts:
                     if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
