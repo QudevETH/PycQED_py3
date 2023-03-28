@@ -509,7 +509,7 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
                           epd, add_param_method='append')
                 continue
 
-            add_param(all_keys[-1], extract_from_files(files, file_par),
+            add_param(all_keys[-1], extract_from_data_files(files, file_par),
                       epd, add_param_method=add_param_method)
         a_tools.close_files(files)
     except Exception as e:
@@ -597,7 +597,7 @@ def extract_from_hdf_file(file, path_to_param):
     return param_value
 
 
-def extract_from_files(files, path_to_param):
+def extract_from_data_files(files, path_to_param):
     """
     Extracts the value of a parameter from the open files.
 
