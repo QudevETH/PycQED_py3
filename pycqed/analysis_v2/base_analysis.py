@@ -139,6 +139,9 @@ class BaseDataAnalysis(object):
         '''
 
         try:
+            # set container for data_files and config files
+            self.data_files = []
+            self.config_files = setman.SettingsManager()
             # set error-handling behavior
             self.raise_exceptions = raise_exceptions
 
@@ -228,16 +231,15 @@ class BaseDataAnalysis(object):
                 log.error(traceback.format_exc())
 
     def open_files(self):
-        # open data and config files
+        # open data files
         h5mode = self.options_dict.get('h5mode', 'r')
-        self.data_files, self.config_files = [], []
+        self.data_files = []
         for ts in self.timestamps:
             self.data_files += [a_tools.open_hdf_file(ts, mode=h5mode)]
-            self.config_files += [setman.get_station_from_file(ts)]
 
     def close_files(self):
         # close data and config files
-        a_tools.close_files(self.data_files + self.config_files)
+        a_tools.close_files(self.data_files)
 
     def run_analysis(self):
         """
@@ -453,8 +455,8 @@ class BaseDataAnalysis(object):
             folder = a_tools.get_folder(timestamp)
             self.open_files()
             data_file = self.data_files[file_idx]
-            config_file = self.config_files[file_idx]
-            files = [data_file, config_file]
+            self.config_files.update_station(
+                timestamp, list(params_dict.values()))
             try:
                 for save_par, file_par in params_dict.items():
                     if save_par == 'timestamp':
@@ -473,8 +475,7 @@ class BaseDataAnalysis(object):
                                 [data_file], file_par)
                         if raw_data_dict_ts[save_par] == 'not found':
                             raw_data_dict_ts[save_par] = \
-                                setman.extract_from_stations(
-                                    [config_file], file_par)
+                                self.config_files.stations[timestamp].get(file_par)
 
                 for par_name in raw_data_dict_ts:
                     if par_name in numeric_params:
@@ -2247,17 +2248,14 @@ class BaseDataAnalysis(object):
 
     def get_instruments_by_class(self, instr_class, file_index=0):
         """
-        Returns all instruments of a given class
+        Returns all instrument names of a given class
         """
-        if not hasattr(self, 'config_files'):
-            self.open_files()
-        instruments = list(self.config_files[file_index].keys())
+        instruments = \
+            list(self.config_files.stations[file_index].components.values())
         dev_names = []
         for instrument in instruments:
-            instrument_class = hlp_mod.get_instr_param_from_file(
-                instrument, '__class__', file=self.config_files[file_index])
-            if instrument_class == instr_class:
-                dev_names.append(instrument)
+            if instrument.classname == instr_class:
+                dev_names.append(instrument.name)
         return dev_names
 
 
