@@ -251,6 +251,18 @@ class Instrument(DelegateAttributes):
         """
         self.submodules[name] = submod
 
+    def update(self, instrument: Instrument):
+        """
+        Updates self with attributes from a given instrument object.
+        Args:
+            instrument (Instrument): Instrument which attributes should be added
+                to self.
+        """
+        self.parameters.update(instrument.parameters)
+        self.functions.update(instrument.functions)
+        self.submodules.update(instrument.functions)
+        self.classname = instrument.classname
+
 
 class Station(DelegateAttributes):
     """
@@ -332,6 +344,16 @@ class Station(DelegateAttributes):
         self.components[namestr] = inst
 
     def get(self, path_to_param):
+        """
+        Tries to find parameter value for given string. Returns 'not found' if
+        an attribute error occurs.
+        Args:
+            path_to_param (str): path to parameter in form
+                %inst_name%.%param_name%
+
+        Returns (str): parameter value, if parameter value is a dictionary it
+            tries to get the "value" key.
+        """
         param_value = 'not found'
         try:
             param = eval('self.' + path_to_param + '()')
@@ -339,9 +361,25 @@ class Station(DelegateAttributes):
                 param_value = param.get("value", "not found")
             else:
                 param_value = param
-        except:
-            logger.warning('Problem at extracting parameter from station.')
+        except AttributeError:
+            param_value = 'not found'
+            # logger.warning('Problem at extracting parameter from station.')
         return param_value
+
+    def update(self, station):
+        """
+        Updates the station with instruments and parameters from another station
+        Args:
+            station(Station): Station which is included to self
+        """
+        self.instruments.update(station.instruments)
+        self.parameters.update(station.parameters)
+        self.config.update(station.config)
+        for comp_name, comp_inst in station.components.items():
+            if comp_name in self.components.keys():
+                self.components[comp_name].update(comp_inst)
+            else:
+                self.components[comp_name] = comp_inst
 
 
 class SettingsManager:
@@ -414,6 +452,44 @@ class SettingsManager:
 
         self.add_station(station, timestamp)
         return station
+
+    def update_station(self, timestamp, param_path=None, **kwargs):
+        """
+        Only relevant for HDF-files. Other files will load the entire station
+        to the settings manager due to small execution time.
+        Updates the station specified by the timestamp with the parameters given
+        in param_path. If no param_path are given, the entire station will be
+        loaded from the timestamp
+        Args:
+            timestamp (str, int): timestamp of the station which should be
+                updated. If timestamp not in settings manager, the station
+                will be loaded in to the settings manager.
+                If int it tries to retrieve the timestamp from the loaded
+                stations.
+            param_path (list): list of parameters which are loaded into a
+                station. If None, all parameters are loaded into the station.
+                Parameters must be of the form %inst_name%.%param_name%.
+            **kwargs: See docstring of self.load_from_file.
+        """
+        if isinstance(timestamp, int):
+            try:
+                timestamp = list(self.stations.keys())[timestamp]
+            except IndexError as e:
+                logger.error(f"Integer seems to be out of range of list"
+                             f" '{list(self.stations.keys())}'")
+                raise e
+
+        if timestamp not in self.stations.keys():
+            self.load_from_file(timestamp, param_path=param_path, **kwargs)
+        else:
+            if param_path is None:
+                self.stations.pop(timestamp)
+                self.load_from_file(timestamp=timestamp)
+            else:
+                tmp_station = get_station_from_file(timestamp=timestamp,
+                                                    param_path=param_path,
+                                                    **kwargs)
+                self.stations[timestamp].update(tmp_station)
 
     def spawn_snapshot_viewer(self, timestamp, new_process=False):
         """
@@ -548,7 +624,7 @@ class SettingsManager:
                 else:
                     component_snaps = \
                         [self.stations[tsp].components[component].snapshot()
-                            for tsp in timestamps]
+                         for tsp in timestamps]
 
                 # comparison of the snapshots
                 diff = self._compare_dict_instances(component_snaps, timestamps)
@@ -847,8 +923,9 @@ class HDF5Loader(Loader):
     def get_station(self, param_path=None):
         """
         Loads settings from a config file into a station.
-        param_path (list): dictionary of parameters which are loaded into a
+        param_path (list): list of parameters which are loaded into a
             station. If None, all parameters are loaded into the station.
+            Parameters must be of the form %inst_name%.%param_name%.
 
         """
         from pycqed.analysis import analysis_toolbox as a_tools
@@ -863,20 +940,26 @@ class HDF5Loader(Loader):
                 param_value = hlp_mod.extract_from_hdf_file(config_file,
                                                             path_to_param)
                 if param_value == 'not found':
-                    logger.warning(f"Parameter {path_to_param} not found.")
+                    # logger.warning(f"Parameter {path_to_param} not found.")
+                    break
                 param_name = path_to_param.split('.')[-1]
                 param = Parameter(param_name, param_value)
-
 
                 inst_path = path_to_param.split('.')[:-1]
 
                 inst = Instrument(inst_path[-1])
                 inst.add_parameter(param)
+
+                # if more than one instrument name exists, the instrument must
+                # be a submodule
                 for inst_name in inst_path[-1:0:-1]:
                     submod = inst
                     inst = Instrument(inst_name)
                     inst.add_submodule(submod.name, submod)
-                station.add_component(inst)
+                if inst.name in station.components.keys():
+                    station.components[inst.name].update(inst)
+                else:
+                    station.add_component(inst)
 
         a_tools.close_files([config_file])
 
@@ -1054,7 +1137,7 @@ class MsgDumper(Dumper):
 class PickleDumper(Dumper):
 
     def __init__(self, name: str, data: dict, datadir: str = None,
-                 compression=False, timestamp:str=None):
+                 compression=False, timestamp: str = None):
         super().__init__(name, data, datadir=datadir, compression=compression,
                          timestamp=timestamp)
         if self.compression:
@@ -1091,13 +1174,13 @@ def get_loader_from_format(file_format, **kwargs):
 
 
 def get_loader_from_file(timestamp=None, folder=None, filepath=None,
-                          file_id=None):
+                         file_id=None):
     file_format = Loader.get_file_format(timestamp=timestamp, folder=folder,
                                          filepath=filepath, file_id=file_id)
     if 'comp' in file_format:
         compression = True
     else:
-        compression= False
+        compression = False
     kwargs = dict(timestamp=timestamp, filepath=filepath,
                   compression=compression, folder=folder,
                   file_id=file_id)
@@ -1106,16 +1189,6 @@ def get_loader_from_file(timestamp=None, folder=None, filepath=None,
 
 def get_station_from_file(timestamp=None, folder=None, filepath=None,
                           file_id=None, param_path=None):
-
     return get_loader_from_file(timestamp=timestamp, folder=folder,
                                 filepath=filepath, file_id=file_id) \
         .get_station(param_path=param_path)
-
-
-def extract_from_stations(stations, path_to_param):
-    param_value = 'not found'
-    for station in stations:
-        param_value = station.get(path_to_param)
-        if param_value != 'not found':
-            break
-    return param_value
