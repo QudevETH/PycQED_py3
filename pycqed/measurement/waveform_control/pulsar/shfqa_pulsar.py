@@ -342,7 +342,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         for awg_nr, qachannel in self.awg.qachannels.items():
             if not self.awg.awg_active[awg_nr]:
                 continue  # no check needed
-            if self.awg._awg_program[awg_nr]:
+            if self.awg.has_awg_program(awg_nr):
                 # hardware spec or 'readout' mode
                 is_running.append(qachannel.generator.enable())
             else:

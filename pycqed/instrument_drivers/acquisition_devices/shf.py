@@ -22,8 +22,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     from by the actual instrument classes
 
     Attributes:
-        awg_active (list of bool): Whether the AWG of each acquisition unit has
-            been started by Pulsar.
+        awg_active (dict of bool): Whether the AWG of each acquisition unit has
+            been started by Pulsar (keys are indices of acquisition units).
         _acq_scope_memory (int): Number of points that the scope can acquire
             in one hardware run.
     """
@@ -74,7 +74,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self._awg_source_strings = {}
         self.timer = None
 
-        self.awg_active = [False] * self.n_acq_units
+        self.awg_active = {i: False for i in self._valid_qachs}
 
         self.add_parameter(
             'allowed_lo_freqs',
@@ -131,15 +131,14 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
 
-        self._acq_poll_inds will be set to a list of lists of zeros,
-            with first dimension the number of acquisition units
-            and second dimension the number of integration channels
-            used per acquisition unit.
+        self._acq_poll_inds will be set to a dict of lists of zeros,
+            with dict keys being indices of acquisition units and list entries
+            corresponding to the integration channels of the acquisition unit.
         """
-        self._acq_poll_inds = []
-        for i in range(self.n_acq_units):
+        self._acq_poll_inds = {}
+        for i in self.qachannels:
             channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
-            self._acq_poll_inds.append([0] * len(channels))
+            self._acq_poll_inds[i] = [0] * len(channels)
 
     def set_lo_freq(self, acq_unit, lo_freq):
         super().set_lo_freq(acq_unit, lo_freq)
@@ -303,7 +302,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 self.qachannels[i].oscs[0].gain(1.0)
                 self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
-                if self._awg_program[i]:
+                if self._awg_program[self._get_awg_program_index(i)]:
                     # assume that this sequencer program includes triggering
                     # for the spectroscopy
                     self.qachannels[i].spectroscopy.trigger.channel(
@@ -402,17 +401,29 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 raise NotImplementedError("Mode not recognised!")
         return np.mean(list(n_acq.values()))
 
+    def _get_awg_program_index(self, acq_unit):
+        """Return which index of _awg_program corresponds to an acq_unit"""
+        return list(self._valid_qachs.keys()).index(acq_unit)
+
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload=None):
         """
         Program the internal AWGs
         """
         qachannel = self.qachannels[acq_unit]
-        self._awg_program[acq_unit] = awg_program
+        self._awg_program[self._get_awg_program_index(acq_unit)] = awg_program
         self.store_awg_source_string(qachannel, awg_program)
         qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
+
+    def has_awg_program(self, acq_unit):
+        """Returns whether an acquisition unit has an AWG program
+
+        Args:
+            acq_unit (int): index of the acquisition unit
+        """
+        return bool(self._awg_program[self._get_awg_program_index(acq_unit)])
 
     def store_awg_source_string(self, channel, awg_str):
         """
@@ -588,7 +599,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     def start(self, **kwargs):
         for i, ch in self.qachannels.items():
             if self.awg_active[i]:  # Outputs a waveform
-                if self._awg_program[i]:  # Using the sequencer
+                if self._awg_program[self._get_awg_program_index(i)]:
+                    # Using the sequencer
                     # These 2 lines replace ...enable_sequencer(single=True)
                     # which also checks that it started, but sometimes fails
                     # (for short sequences?)
