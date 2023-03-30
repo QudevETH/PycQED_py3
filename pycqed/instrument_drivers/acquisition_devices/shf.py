@@ -155,6 +155,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     def prepare_poll_before_AWG_start(self):
         super().prepare_poll_before_AWG_start()
         for i in self._acq_units_used:
+            if not self.awg_active[i]:
+                log.warning(f'{self.name}: acquisition unit {i} is used '
+                            f'without an AWG program. This might result in '
+                            f'not triggering the acquisition unit.')
             if self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'readout':
                 self.qachannels[i].readout.run()
@@ -609,10 +613,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 else:
                     # No AWG needs to be started if the acq unit has no program
                     pass
-            elif i in self._acq_units_used:
-                log.warning(f'{self.name}: acquisition unit {i} is used '
-                            f'without an AWG program. This might result in '
-                            f'not triggering the acquisition unit.')
 
     def _check_allowed_acquisition(self):
         super()._check_allowed_acquisition()
