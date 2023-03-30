@@ -64,7 +64,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self._valid_qachs = {i: self._all_qachs[i] for i in chs}
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
         self.n_acq_units = len(self.qachannels)
-        self.lo_freqs = [None] * self.n_acq_units  # re-create with correct length
+        self.lo_freqs = {i: None for i in self._valid_qachs}  # re-create
         self.n_acq_int_channels = self.max_qubits_per_channel
         self._reset_acq_poll_inds()
         # Mode of the acquisition units ('readout' or 'spectroscopy')
@@ -241,6 +241,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # center freq and delta_f are used by the hardware sweeper,
         # acq_length by the software PSD using timetraces
         return center_freq, delta_f, acq_length
+
+    def _acq_unit_exists(self, acq_unit):
+        return acq_unit in self.qachannels
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,

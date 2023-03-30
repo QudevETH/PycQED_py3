@@ -39,8 +39,9 @@ class AcquisitionDevice():
             of acquisition_initialize, and the corresponding value is a list
             of str, which are supported as data_type argument of
             acquisition_initialize if that mode is used (*)
-        lo_freqs (list of float/None): LO frequencies of the internal or
-            external LOs of all acquisition units, see set_lo_freq
+        lo_freqs (dict of float/None): LO frequencies of the internal or
+            external LOs of all acquisition units, see set_lo_freq (keys are
+            indices of the acquisition units)
         timer: Timer object (see pycqed.utilities.timer.Timer). This is
             currently set by the detector function, in order to recover timer
             data from the acquisition device through the detector function.
@@ -72,7 +73,7 @@ class AcquisitionDevice():
         self._acq_mode = None
         self._acq_data_type = None
         self._reset_n_acquired()
-        self.lo_freqs = [None] * self.n_acq_units
+        self.lo_freqs = {i: None for i in range(self.n_acq_units)}
         self._acq_units_used = []
         self.timer = None
         self.extra_data = []
@@ -95,6 +96,10 @@ class AcquisitionDevice():
             lo_freq (float): the LO frequency
         """
         self.lo_freqs[acq_unit] = lo_freq
+
+    def _acq_unit_exists(self, acq_unit):
+        """Returns whether the acquisition unit with index acq_unit exists"""
+        return acq_unit in range(self.n_acq_units)
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
@@ -132,7 +137,7 @@ class AcquisitionDevice():
         self._acq_length = acquisition_length
         self._acq_channels = channels
         for ch in channels:
-            if ch[0] not in range(self.n_acq_units):
+            if not self._acq_unit_exists(ch[0]):
                 raise ValueError(f'{self.name}: Acquisition unit {ch[0]} '
                                  f'does not exist.')
             if mode == 'int_avg' and ch[1] not in range(
