@@ -659,8 +659,11 @@ class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """
 
     def __init__(self, *args, **kwargs):
+        valid_qachs = kwargs.pop('valid_qachs', None)
         self._check_server(kwargs)
         super().__init__(*args, **kwargs)
+        if valid_qachs is not None:
+            kwargs['valid_qachs'] = valid_qachs
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
 
