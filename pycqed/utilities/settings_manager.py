@@ -738,9 +738,12 @@ class Loader:
         if self.filepath is not None:
             return self.filepath
         from pycqed.analysis import analysis_toolbox as a_tools
-        self.folder = a_tools.get_folder(self.timestamp,
+        if self.timestamp is not None:
+            self.folder = a_tools.get_folder(self.timestamp,
                                          suppress_printing=False,
                                          **kwargs)
+        else:
+            self.folder = kwargs.get('folder', None)
         self.filepath = a_tools.measurement_filename(self.folder,
                                                      ext=self.extension[1:],
                                                      **kwargs)
@@ -762,7 +765,12 @@ class Loader:
         """
         if filepath is None:
             from pycqed.analysis import analysis_toolbox as a_tools
-            folder_dir = a_tools.get_folder(timestamp, folder=folder)
+            if timestamp is None:
+                # if only folder is given, folder needs to point directly to
+                # location of settings files
+                folder_dir = folder
+            else:
+                folder_dir = a_tools.get_folder(timestamp, folder=folder)
             dirname = os.path.split(folder_dir)[1]
             path = Path(folder_dir)
 
@@ -941,7 +949,7 @@ class HDF5Loader(Loader):
                                                             path_to_param)
                 if param_value == 'not found':
                     # logger.warning(f"Parameter {path_to_param} not found.")
-                    break
+                    continue
                 param_name = path_to_param.split('.')[-1]
                 param = Parameter(param_name, param_value)
 
@@ -1174,7 +1182,7 @@ def get_loader_from_format(file_format, **kwargs):
 
 
 def get_loader_from_file(timestamp=None, folder=None, filepath=None,
-                         file_id=None):
+                         file_id=None, **params):
     file_format = Loader.get_file_format(timestamp=timestamp, folder=folder,
                                          filepath=filepath, file_id=file_id)
     if 'comp' in file_format:
