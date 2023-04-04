@@ -143,12 +143,16 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                              )
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
-                             vals=vals.Enum("Dig1", "DIO", "ZSync"),
+                             vals=vals.MultiType(
+                                 vals.Dict(),
+                                 vals.Enum("Dig1", "DIO", "ZSync")),
                              parameter_class=ManualParameter,
                              docstring="Defines for which trigger source the "
                                        "AWG should wait, before playing the "
                                        "next waveform. Allowed values are: "
-                                       "'Dig1', 'DIO', 'ZSync'.")
+                                       "'Dig1', 'DIO', 'ZSync'. "
+                                       "Can be a dict with trigger "
+                                       "group names as keys.")
         pulsar.add_parameter(f"{name}_prepend_zeros",
                              initial_value=None,
                              vals=vals.MultiType(vals.Enum(None), vals.Ints(),
@@ -889,7 +893,24 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             command_table_index=command_table_index,
             internal_mod=self._use_internal_mod,
             allow_filter=metadata.get('allow_filter', False),
+            trigger_source=self.trigger_source,
         )
+
+    @property
+    def trigger_source(self):
+        trigger_source = self.pulsar.get(
+            f"{self._awg.name}_trigger_source")
+        if isinstance(trigger_source, str):
+            return trigger_source
+        return trigger_source[self.trigger_group]
+
+    @property
+    def trigger_group(self):
+        pulsar = self.pulsar
+        return pulsar.get_trigger_group(
+            [ch for ch in pulsar.channels
+             if pulsar.get_channel_awg(ch) == self._awg
+             and pulsar.get(f'{ch}_id') == self.channel_ids[0]][0])
 
     def _configure_awg_str(
             self,
