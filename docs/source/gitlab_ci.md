@@ -11,5 +11,4 @@ running unit tests, and even upload a python package to a registry (e.g. PyPI).
 
 This job builds a docker image with all the dependencies, required to 
 compile full documentation and then compiles the sphinx documentation, and 
-uploads it to the QuDev
-documentation webshare: `documentation.qudev.phys.ethz.ch`.
+uploads it to the documentation webshare.

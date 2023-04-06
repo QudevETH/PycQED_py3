@@ -26,3 +26,4 @@ plotly
 sphinx
 sphinx-rtd-theme
 myst-parser
+qcodes==0.35
