@@ -5,8 +5,9 @@ import struct
 import matplotlib.pyplot as plt
 import scipy.optimize
 from datetime import datetime
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
+from qcodes.instrument.parameter import ManualParameter
 
 def bits_to_byte(bits):
     res = 0
@@ -32,12 +33,31 @@ class ColdSwitchController(Instrument):
     NB_SWITCH_POS = 6
     NB_COLD_SWITCHES = 4
     LOG_FILENAME = 'cold_switch_{}_history.log'
+    TIME_FORMAT = "%Y/%m/%d, %H:%M:%S"
 
-    def __init__(self, name, port, power_supply: str, log_dirpath: str):
+    def __init__(self, name, port, power_supply: str, log_dirpath: str,
+                 nb_cold_switches=None,
+                 source_sink_table=None,
+                 power_supply_channel: str = 'ch1'):
         super().__init__(name)
         self.port = serial.Serial(port, 115200, timeout=5, writeTimeout=0)
         self.debug = False
-        self.power_supply = self.find_instrument(power_supply)
+        self.power_supply_channel = self.find_instrument(
+            power_supply).submodules[power_supply_channel]
+        self.nb_cold_switches = nb_cold_switches or self.NB_COLD_SWITCHES
+        self.source_sink_table = source_sink_table or self.SOURCE_SINK_TABLE
+        if not isinstance(list(self.source_sink_table.values())[0], dict):
+            # Only one table provided. Assume that the table is valid for all
+            # switches (offset by NB_SWITCH_POS from one switch to the next).
+            source_sink_table = {}
+            for i in range(1, self.nb_cold_switches + 1):
+                idx_increment = self.NB_SWITCH_POS * (i - 1)
+                source_sink_table[i] = {
+                    k: (v[0] + idx_increment, v[1] + idx_increment)
+                    for k, v in self.source_sink_table.items()
+                }
+            self.source_sink_table = source_sink_table
+        self.temperature_param = None
         self.log_dirpath = log_dirpath
         if not self.ping():
             self.port.close()
@@ -61,7 +81,7 @@ class ColdSwitchController(Instrument):
         self._write_to_ioexp(0x02, OLATA, 0x00)
         self._write_to_ioexp(0x02, OLATB, 0x00)
 
-        for idx in range(1, self.NB_COLD_SWITCHES + 1):
+        for idx in range(1, self.nb_cold_switches + 1):
             self.add_parameter(
                 f"switch_{idx}_mode",
                 vals=vals.Enum(*range(self.NB_SWITCH_POS + 1)),
@@ -71,6 +91,24 @@ class ColdSwitchController(Instrument):
                 get_cmd=lambda idx=idx:
                     self.get_cold_switch_channel(switch_idx=idx),
             )
+        self.add_parameter(
+            "dac_amp",
+            vals=vals.Ints(min_value=0, max_value=255),
+            initial_value=180,
+            parameter_class=ManualParameter,
+        )
+        self.add_parameter(
+            "min_switching_interval",
+            vals=vals.Ints(min_value=0),
+            initial_value=900,
+            parameter_class=ManualParameter,
+        )
+        self.add_parameter(
+            "max_switching_temperature",
+            vals=vals.Numbers(min_value=0, max_value=100e-3),
+            initial_value=18e-3,
+            parameter_class=ManualParameter,
+        )
 
     def close(self):
         self.port.close()
@@ -204,60 +242,109 @@ class ColdSwitchController(Instrument):
         states_L[ch_sink - 1] = 1
         self._set_states(states_H, states_L)
 
-    def _cold_switch_turn_off(self, channel_number, switch_idx, dac_amp=180,
+    def _cold_switch_turn_off(self, channel_number, switch_idx,
                               failsafe_duration=1):
-        self.power_supply.ch1.output(1)
+        self.power_supply_channel.output(1)
         time.sleep(1.0)
 
-        source, sink = self.SOURCE_SINK_TABLE[channel_number]
+        source, sink = self.source_sink_table[switch_idx][channel_number]
         # need to set dac amplitude after turning on the output of the PSU,
         # as the dac amplitude gets reset when turning on the output
-        self._set_dac(dac_amp)
+        self._set_dac(self.dac_amp())
 
-        idx_increment = self.NB_SWITCH_POS * (switch_idx - 1)
-        self._set_route(source + idx_increment, sink + idx_increment)
+        self._set_route(source, sink)
         time.sleep(0.05)
         self._turn_on_failsafe(failsafe_duration)
 
         time.sleep(1.0)
-        self.power_supply.ch1.output(0)
+        self.power_supply_channel.output(0)
 
-    def _cold_switch_turn_on(self, channel_number, switch_idx, dac_amp=180,
+    def _cold_switch_turn_on(self, channel_number, switch_idx,
                              failsafe_duration=1):
-        self.power_supply.ch1.output(1)
+        self.power_supply_channel.output(1)
         time.sleep(1.0)
 
-        sink, source = self.SOURCE_SINK_TABLE[channel_number]
+        sink, source = self.source_sink_table[switch_idx][channel_number]
         # need to set dac amplitude after turning on the output of the PSU,
         # as the dac amplitude gets reset when turning on the output
-        self._set_dac(dac_amp)
+        self._set_dac(self.dac_amp())
 
-        idx_increment = self.NB_SWITCH_POS*(switch_idx-1)
-        self._set_route(source + idx_increment, sink + idx_increment)
+        self._set_route(source, sink)
         time.sleep(0.05)
         self._turn_on_failsafe(failsafe_duration)
 
         time.sleep(1.0)
-        self.power_supply.ch1.output(0)
+        self.power_supply_channel.output(0)
 
     def get_cold_switch_channel(self, switch_idx):
-        with open(os.path.join(self.log_dirpath,
-                               self.LOG_FILENAME.format(switch_idx)), 'r') as f:
+        """TODO
+
+        Args:
+            switch_idx: number of the switch (1-indexed)
+        """
+        with open(self._get_logfile_path(switch_idx), 'r') as f:
             current_channel = int(list(f)[-1].split(' to ')[1])
         return current_channel
 
     def change_cold_switch_channel(self, new_channel, switch_idx):
+        """TODO
+
+        Args:
+            new_channel: new switch position (1-indexed)
+            switch_idx: number of the switch (1-indexed)
+        """
         old_channel = self.get_cold_switch_channel(switch_idx)
         if old_channel == new_channel:
             return
-        with open(os.path.join(self.log_dirpath,
-                               self.LOG_FILENAME.format(switch_idx)), 'a') as f:
-            f.write(datetime.now().strftime("%Y/%m/%d, %H:%M:%S")
-                    + f': {old_channel} to {new_channel}\n')
+        self.check_switching_allowed()
+        self.write_to_logfile(switch_idx, old_channel, new_channel)
         self._cold_switch_turn_off(
             channel_number=old_channel, switch_idx=switch_idx)
         time.sleep(0.5)
         self._cold_switch_turn_on(
             channel_number=new_channel, switch_idx=switch_idx)
+
+    def write_to_logfile(self, switch_idx, old_channel, new_channel):
+        with open(self._get_logfile_path(switch_idx), 'a') as f:
+            f.write(datetime.now().strftime(self.TIME_FORMAT)
+                    + f': {old_channel} to {new_channel}\n')
+
+    def _get_logfile_path(self, switch_idx):
+        return os.path.join(self.log_dirpath,
+                            self.LOG_FILENAME.format(switch_idx))
+
+    def get_last_switching_time(self, switch_idx=None):
+        """TODO
+
+        Args:
+            switch_idx: number of the switch (1-indexed) or None to take all
+            switches into account
+        """
+        switch_idx = (range(self.NB_COLD_SWITCHES) if switch_idx is None
+                      else [switch_idx])
+        times = []
+        for i in switch_idx:
+            path = self._get_logfile_path(i)
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    time_str = list(f)[-1].split(': ')[0]
+                    times.append(datetime.strptime(time_str, self.TIME_FORMAT))
+        return max(times)
+
+    def check_switching_allowed(self):
+        if not (interv := self.min_switching_interval()):
+            return
+        timedelta = datetime.now() - self.get_last_switching_time()
+        if timedelta.seconds < interv:
+            raise Exception(
+                f'A cold switch was operated {timedelta.seconds}s ago, but '
+                f'the minimum time between two switching events is {interv}s.')
+        if self.temperature_param:
+            if (temp := self.temperature_param()) > (
+                    max_temp := self.max_switching_temperature()):
+                raise Exception(
+                    f'Cold switches can only be operated when the base '
+                    f'temperature is below {max_temp/1e-3}mK, but it is '
+                    f'currently at {temp/1e-3}mK.')
 
 
