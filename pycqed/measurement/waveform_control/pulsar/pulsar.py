@@ -1228,6 +1228,7 @@ class Pulsar(Instrument):
                                  '{}_prepend_zeros',
                                  '{}_use_command_table',
                                  '{}_join_or_split_elements',
+                                 '{}_trigger_source',
                                  'prepend_zeros',
                                  'use_mcc']
             # Some of the settings are specified for each generator AWG module.
