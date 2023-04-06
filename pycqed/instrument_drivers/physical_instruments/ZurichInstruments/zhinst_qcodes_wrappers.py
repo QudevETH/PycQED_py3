@@ -102,11 +102,23 @@ class ZHInstSGMixin:
             gains=gains,
             sine_generator_index=sine_generator_index,
         )
+        # FIXME: remove the following line if ZI at some point takes it into
+        #  account directly in configure_sine_generation
+        self.sgchannels[int(chid[2]) - 1].sines[
+            sine_generator_index].harmonic(1)
         self._sgchannel_sine_enable[int(chid[2]) - 1] = enable
 
-    def configure_internal_mod(self, chid, enable=True, osc_index=0, phase=0.0,
-                               global_amp=0.5, gains=(1.0, - 1.0, 1.0, 1.0),
-                               sine_generator_index=0):
+    def configure_internal_mod(
+            self,
+            chid,
+            enable=True,
+            osc_index=0,
+            osc_frequency=None,
+            phase=0.0,
+            global_amp=0.5,
+            gains=(1.0, - 1.0, 1.0, 1.0),
+            sine_generator_index=0
+    ):
         """Configure the internal modulation of the SG channel.
 
         Args:
@@ -117,6 +129,9 @@ class ZHInstSGMixin:
                 Defaults to True.
             osc_index (int, optional): Index of the digital oscillator to be
                 used. Defaults to 0.
+            osc_frequency (float, optional): Frequency of the
+                up-conversion oscillator. If None, the oscillator frequency
+                will remain unchanged.
             phase (float, optional): Phase of the digital modulation.
                 Defaults to 0.0.
             global_amp (float, optional): Defaults to 0.5.
@@ -125,10 +140,13 @@ class ZHInstSGMixin:
             sine_generator_index (int, optional): index of the sine generator to
                 be used. Defaults to 0.
         """
+        if osc_frequency is None:
+            osc_frequency = self.sgchannels[int(chid[2]) - 1].oscs[osc_index].freq()
+
         self.sgchannels[int(chid[2]) - 1].configure_pulse_modulation(
             enable=enable,
             osc_index=osc_index,
-            osc_frequency=self.sgchannels[int(chid[2]) - 1].oscs[osc_index].freq(),
+            osc_frequency=osc_frequency,
             phase=phase,
             global_amp=global_amp,
             gains=gains,

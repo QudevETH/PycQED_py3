@@ -49,6 +49,28 @@ class Pulse:
 
     """
 
+    HASHABLE_TIME_ROUNDING_DIGITS = 12
+    """Specifies the precision of rounding when generating the hash entry for 
+    the difference between algorithm time and t_start. If this parameter has 
+    value n, then all differences will be rounded to the n-th decimal of 
+    s (second)."""
+
+    # This parameter is set to False by default for the robustness of the
+    # code. Individual pulse types that support internal modulation should
+    # rewrite this class parameter to True.
+    SUPPORT_INTERNAL_MOD = False
+    """Indicating whether this pulse is supposed to use hardware 
+    modulation of generator AWGs. """
+
+    # This parameter is set to False by default for the robustness of the
+    # code. For most of the pulses, like DRAG pulse, one can set this
+    # parameter to True as long as the pulse shape is proportional to the
+    # pulse.amplitude parameter. Developers can rewrite this parameter for
+    # individual pulses in pulse_library.py to True if needed.
+    SUPPORT_HARMONIZING_AMPLITUDE = False
+    """Indicating whether this pulse allows re-scaling its amplitude during 
+    upload and retrieve the original amplitude with AWG hardware commands."""
+
     def __init__(self, name, element_name, **kw):
 
         self.name = name
@@ -221,7 +243,8 @@ class Pulse:
             return []
         if self.pulse_off:
             return ['Offpulse', self.algorithm_time() - tstart, self.length]
-        return [type(self), self.algorithm_time() - tstart,
+        return [type(self), round(self.algorithm_time() - tstart,
+                                  self.HASHABLE_TIME_ROUNDING_DIGITS),
                 self.truncation_length, self.truncation_decay_length,
                 self.truncation_decay_const]
 
@@ -238,6 +261,39 @@ class Pulse:
         """
         raise NotImplementedError('chan_wf() not implemented for {}'
                                   .format(str(type(self))[1:-1]))
+
+    def mirror_amplitudes(self):
+        """
+        Mirrors (i.e. multiplies by -1) all attributes of the pulse
+        which contain the substring 'amplitude'.
+
+        In case it exists, this function uses self.mirror_correction, a dictionary
+        where keys are pulse attributes (which contain 'amplitude') and
+        values are corrections to be added to all instances of this pulse attribute.
+
+        """
+        mirror_correction = getattr(self, 'mirror_correction', None) or {}
+        for k in self.__dict__:
+            if 'amplitude' in k:
+                amp = -getattr(self, k)
+                if k in mirror_correction:
+                    amp += mirror_correction[k]
+                setattr(self, k, amp)
+
+    def get_mirror_pulse_obj_and_pattern(self):
+        """
+        Returns the pulse object and the mirror pattern if it exist (and None
+        if it does not exist). The mirror pattern is used by
+        Segment.resolve_mirror() to alternate the amplitude of the pulse in
+        the successive occurrences of the pulse in the segment according to the
+        provided pattern.
+        This function may be overwritten by child pulse classes to handle
+        patterns in case several pulses exist in the Pulse object (e.g.  flux
+        pulse assisted readout).
+        Returns:
+            (self, self.mirror_pattern)
+        """
+        return self, getattr(self, 'mirror_pattern', None)
 
     @classmethod
     def pulse_params(cls):

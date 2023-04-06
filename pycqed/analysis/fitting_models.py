@@ -154,8 +154,10 @@ def Qubit_dac_to_freq_precise(dac_voltage, Ej_max, E_c, asymmetry,
     dac_sweet_spot (V): voltage at which the sweet-spot is found
     V_per_phi0 (V): volt per phi0 (convert voltage to flux)
     '''
+    return_float = False
     if np.ndim(dac_voltage) == 0:
         dac_voltage = np.array([dac_voltage])
+        return_float = True
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
     if dac_flux_coefficient is not None:
@@ -173,7 +175,7 @@ def Qubit_dac_to_freq_precise(dac_voltage, Ej_max, E_c, asymmetry,
     for ej in Ej:
         freqs.append((transmon.transmon_levels(E_c, ej) / (2 * np.pi))[0])
     qubit_freq = np.array(freqs)
-    return qubit_freq
+    return qubit_freq[0] if return_float else qubit_freq
 
 def Qubit_dac_to_freq_res(dac_voltage, Ej_max, E_c, asymmetry, coupling, fr,
                               dac_sweet_spot=0.0, V_per_phi0=None,
@@ -1718,12 +1720,11 @@ def mixer_lo_leakage_guess(model, **kwargs):
         The values 'lq' and 'theta_q' are set as fixed parameters for reasons 
         descibed in the documentation of :py:func:'.mixer_lo_leakage'.
     """
-    pi_half = np.pi/2
     model.set_param_hint('li', value=0.0, min=0, max=1)
     model.set_param_hint('lq', value=0.0, min=0, max=1, vary=False)
-    model.set_param_hint('theta_i', value=0.0, min=-pi_half, max=pi_half)
-    model.set_param_hint('theta_q', value=0.0, min=-pi_half, 
-                         max=pi_half, vary=False
+    model.set_param_hint('theta_i', value=0.0, min=-np.pi, max=np.pi)
+    model.set_param_hint('theta_q', value=0.0, min=-np.pi,
+                         max=np.pi, vary=False
                          )
     model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
     return model.make_params(**kwargs)

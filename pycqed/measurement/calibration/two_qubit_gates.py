@@ -13,10 +13,12 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.instrument_drivers.meta_instrument.qubit_objects import qubit_object
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
+import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
+    as qb_mod
+
 log = logging.getLogger(__name__)
 
 # TODO: docstrings (list all kw at the highest level with reference to where
@@ -165,20 +167,26 @@ class MultiTaskingExperiment(QuantumExperiment):
         })
         if len(self.data_to_fit):
             self.exp_metadata.update({'data_to_fit': self.data_to_fit})
+
+        def replace_qc_params(obj):
+            obj = copy(obj)
+            if isinstance(obj, list):
+                ind = range(len(obj))
+            elif isinstance(obj, dict):
+                ind = obj.keys()
+            for i in ind:
+                if isinstance(obj[i], (dict, list)):
+                    obj[i] = replace_qc_params(obj[i])
+                elif isinstance(obj[i], qcodes.Parameter):
+                    obj[i] = repr(obj[i])
+            return(obj)
+
         if kw.get('store_preprocessed_task_list', False) and hasattr(
                 self, 'preprocessed_task_list'):
-            tl = [copy(t) for t in self.preprocessed_task_list]
-            for t in tl:
-                for k, v in t.items():
-                    if isinstance(v, qcodes.Parameter):
-                        t[k] = repr(v)
+            tl = replace_qc_params(self.preprocessed_task_list)
             self.exp_metadata.update({'preprocessed_task_list': tl})
         if self.task_list is not None:
-            tl = [copy(t) for t in self.task_list]
-            for t in tl:
-                for k, v in t.items():
-                    if isinstance(v, qcodes.Parameter):
-                        t[k] = repr(v)
+            tl = replace_qc_params(self.task_list)
             self.exp_metadata.update({'task_list': tl})
 
         super().run_measurement(**kw)
@@ -222,8 +230,15 @@ class MultiTaskingExperiment(QuantumExperiment):
         # SweepPoints object). This copy will then be extended with prefixed
         # task-specific sweep_points.
         self.sweep_points = SweepPoints(given_sweep_points)
-        # Internally, 1D and 2D sweeps are handled as 2D sweeps.
-        while len(self.sweep_points) < 2:
+        # Internally, all sweeps need to be handled as 2D sweeps (i.e.,
+        # _num_sweep_dims = 2) if force_2D_sweep is True. Otherwise,
+        # the number of sweep dimensions _num_sweep_dims is the largest
+        # number of dimensions in any of the (global or task-specific)
+        # SweepPoints objects.
+        self._num_sweep_dims = 2 if self.force_2D_sweep else max(
+            [len(t.get('sweep_points', [])) for t in self.task_list]
+            + [len(self.sweep_points)])
+        while len(self.sweep_points) < self._num_sweep_dims:
             self.sweep_points.add_sweep_dimension()
         preprocessed_task_list = []
         for task in self.task_list:
@@ -267,7 +282,12 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Create a prefix if it does not exist. Otherwise clean it up (add "_")
         prefix = task.get('prefix', None)
         if prefix is None:  # try to guess one based on contained qubits
-            prefix = '_'.join(self.find_qubits_in_tasks(self.qb_names, [task]))
+            if self.qb_names:
+                prefix = '_'.join(self.find_qubits_in_tasks(self.qb_names,
+                                                            [task]))
+            else:
+                prefix = '_'.join(self.find_qubits_in_tasks(self.meas_obj_names,
+                                                            [task]))
         prefix += ('_' if prefix[-1] != '_' else '')
         task['prefix'] = prefix
 
@@ -285,6 +305,12 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Generate kw sweep points for the task
         self.generate_kw_sweep_points(task)
+        # check whether new sweep points increase the total number of sweep
+        # dimensions
+        if (l := len(task.get('sweep_points', []))) > self._num_sweep_dims:
+            self._num_sweep_dims = l
+            while len(global_sweep_points) < self._num_sweep_dims:
+                global_sweep_points.add_sweep_dimension()
 
         # Add all task sweep points to the current_sweep_points object.
         # If a task-specific sweep point has the same name as a sweep point
@@ -300,10 +326,9 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Save the current_sweep_points object to the preprocessed task
         task['sweep_points'] = current_sweep_points
 
-        # Internally, 1D and 2D sweeps are handled as 2D sweeps.
-        while len(current_sweep_points) < 2:
+        while len(current_sweep_points) < self._num_sweep_dims:
             current_sweep_points.add_sweep_dimension()
-        while len(params_to_prefix) < 2:
+        while len(params_to_prefix) < self._num_sweep_dims:
             params_to_prefix.append([])
         # for all sweep dimensions
         for gsp, csp, params in zip(global_sweep_points,
@@ -415,16 +440,10 @@ class MultiTaskingExperiment(QuantumExperiment):
                 'all', self.all_main_blocks)
         else:
             self.all_main_blocks = self.all_main_blocks[0]
-        if len(self.sweep_points[0]) == 0:
-            # Create a single segement if no hard sweep points are provided.
-            self.sweep_points.add_sweep_parameter('dummy_hard_sweep', [0],
-                                                  dimension=0)
-        if len(self.sweep_points[1]) == 0:
-            # Internally, 1D and 2D sweeps are handled as 2D sweeps.
-            # With this dummy soft sweep, exactly one sequence will be created
-            # and the data format will be the same as for a true soft sweep.
-            self.sweep_points.add_sweep_parameter('dummy_soft_sweep', [0],
-                                                  dimension=1)
+        sweep_points = self.get_sweep_points_for_sweep_n_dim()
+        self._create_dummy_sweep_params(self.sweep_points)
+        if sweep_points is not self.sweep_points:
+            self._create_dummy_sweep_params(sweep_points)
         # Generate kw['ro_qubits'] as explained in the docstring
         op_codes = [p['op_code'] for p in self.all_main_blocks.pulses if
                     'op_code' in p]
@@ -432,9 +451,30 @@ class MultiTaskingExperiment(QuantumExperiment):
                            if f'RO {m}' not in op_codes
                            and f'Acq {m}' not in op_codes]
         # call sweep_n_dim to perform the actual sweep
-        return self.sweep_n_dim(self.sweep_points,
+        return self.sweep_n_dim(sweep_points,
                                 body_block=self.all_main_blocks,
                                 cal_points=self.cal_points, **kw)
+
+    def _create_dummy_sweep_params(self, sweep_points):
+        if len(sweep_points[0]) == 0:
+            # Create a single segement if no hard sweep points are provided.
+            sweep_points.add_sweep_parameter('dummy_hard_sweep', [0],
+                                             dimension=0)
+        if self._num_sweep_dims == 2 and len(sweep_points[1]) == 0:
+            # With this dummy soft sweep, exactly one sequence will be created
+            # and the data format will be the same as for a true soft sweep.
+            sweep_points.add_sweep_parameter('dummy_soft_sweep', [0],
+                                             dimension=1)
+
+    def get_sweep_points_for_sweep_n_dim(self):
+        """Return the sweep_points list that is passed to sweep_n_dim.
+
+        This method can be implemented by child classes to modify which sweep
+        points are used to generate segments and sequences, e.g. only one RO
+        segment is needed in a feedline spectroscopy and not one per fequency
+        sweep point.
+        """
+        return self.sweep_points
 
     @staticmethod
     def find_qubits_in_tasks(qubits, task_list, search_in_operations=True):
@@ -460,7 +500,7 @@ class MultiTaskingExperiment(QuantumExperiment):
         # helper function that checks candidates and calls itself recursively
         # if a candidate is a list
         def append_qbs(found_qubits, candidate):
-            if isinstance(candidate, qubit_object.Qubit):
+            if isinstance(candidate, qb_mod.QuDev_transmon):
                 if candidate.name in qbs_dict:
                     # avoid duplicates by adding it exactly in the form
                     # contained in the qbs_dict
@@ -594,8 +634,8 @@ class MultiTaskingExperiment(QuantumExperiment):
         d['kwargs'].update({
             MultiTaskingExperiment.__name__: odict({
                 'n_cal_points_per_state': (int, 1),
-                'cal_states': (str, 'auto'),
-                'ro_qubits': ((qubit_object.Qubit, 'multi_select'), None),
+                'cal_states': (str, None),
+                'ro_qubits': ((qb_mod.QuDev_transmon, 'multi_select'), None),
             })
         })
         d['task_list_fields'].update({
@@ -720,9 +760,9 @@ class CalibBuilder(MultiTaskingExperiment):
         """
         if tile > 0 and repeat > 0:
             raise ValueError('"repeat" and "tile" cannot both be > 0.')
-        # ensure that sweep_points is a SweepPoints object with at least two
-        # dimensions
-        sweep_points = SweepPoints(sweep_points, min_length=2)
+        # ensure that sweep_points is a SweepPoints object with at least one
+        # dimension
+        sweep_points = SweepPoints(sweep_points, min_length=1)
         # If there already exist sweep points in dimension 0, this adapt the
         # number of phases to the number of existing sweep points.
         if len(sweep_points[0]) > 0:
@@ -741,7 +781,7 @@ class CalibBuilder(MultiTaskingExperiment):
             hard_sweep_dict.add_sweep_parameter('phase', phases, 'deg')
         # add phase sweep points to the existing sweep points (overwriting
         # them if they exist already)
-        sweep_points.update(hard_sweep_dict + [{}])
+        sweep_points.update(hard_sweep_dict)
         return sweep_points
 
     @classmethod
@@ -835,7 +875,7 @@ class CPhase(CalibBuilder):
         nr_phases = self.sweep_points.length(0) // 2
         hard_sweep_dict = SweepPoints(
             'pi_pulse_off', [0] * nr_phases + [1] * nr_phases)
-        self.sweep_points.update(hard_sweep_dict + [{}])
+        self.sweep_points.update(hard_sweep_dict)
 
     def cphase_block(self, sweep_points,
                      qbl, qbr, num_cz_gates=1, max_flux_length=None,
@@ -863,8 +903,6 @@ class CPhase(CalibBuilder):
         """
         ref_pi_half = kw.get('ref_pi_half', False)
 
-        hard_sweep_dict, soft_sweep_dict = sweep_points
-
         pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
 
         pulse_modifs = {'all': {'element_name': 'cphase_initial_rots_el'}}
@@ -882,7 +920,7 @@ class CPhase(CalibBuilder):
             p['cphase'] = cphase
         # TODO here, we could do DD pulses (CH 2020-06-19)
 
-        for k in soft_sweep_dict:
+        for k in sweep_points.get_sweep_dimension(1, default={}):
             for p in fp.pulses:
                 p[k] = ParametricValue(k)
         max_flux_length = self.max_pulse_length(fp.pulses[0], sweep_points,
@@ -899,7 +937,7 @@ class CPhase(CalibBuilder):
         fr.set_end_after_all_pulses()
         if not ref_pi_half:
             fr.pulses[0]['pulse_off'] = ParametricValue(param='pi_pulse_off')
-        for k in hard_sweep_dict.keys():
+        for k in sweep_points[0].keys():
             if k != 'pi_pulse_on' and '=' not in k:
                 if ref_pi_half:
                     fr.pulses[0][k] = ParametricValue(k)
@@ -969,7 +1007,8 @@ class CPhase(CalibBuilder):
                            for qb in self.meas_objs}
         self.analysis = tda.CPhaseLeakageAnalysis(
             qb_names=self.meas_obj_names,
-            options_dict={'TwoD': True, 'plot_all_traces': plot_all_traces,
+            options_dict={'TwoD': (len(self.sweep_points) == 2),
+                          'plot_all_traces': plot_all_traces,
                           'plot_all_probs': plot_all_probs,
                           'channel_map': channel_map,
                           'ref_pi_half': ref_pi_half})
@@ -1205,7 +1244,7 @@ class DynamicPhase(CalibBuilder):
         nr_phases = self.sweep_points.length(0) // 2
         hard_sweep_dict = SweepPoints(
             'flux_pulse_off', [0] * nr_phases + [1] * nr_phases)
-        self.sweep_points.update(hard_sweep_dict + [{}])
+        self.sweep_points.update(hard_sweep_dict)
 
     def guess_label(self, **kw):
         """
@@ -1304,7 +1343,7 @@ class DynamicPhase(CalibBuilder):
         # All soft sweep points (sweep dimension 1) are interpreted as
         # parameters of the flux pulse, except if they are pulse modifier
         # sweep points (see docstring of Block.build).
-        for k in sweep_points[1]:
+        for k in sweep_points.get_sweep_dimension(1, default={}):
             if '=' not in k:  # '=' indicates a pulse modifier sweep point
                 for p in fp.pulses:
                     p[k] = ParametricValue(k)
@@ -1415,6 +1454,85 @@ class DynamicPhase(CalibBuilder):
                                 f'pulse settings for {op} have been '
                                 f'measured. Keeping the following old '
                                 f'value(s): {not_updated}')
+
+
+class MeasurementInducedDephasing(DynamicPhase):
+    """
+    Measures the measurement-induced dephasing of a qubit while applying a
+    readout pulse
+
+    The measurement consists of a readout pulse (no data acquisition)
+    interleaved in a Ramsey pulse sequence, followed by a readout pulse and
+    acquisition. This allows extracting the dephasing induced by the first
+    readout pulse, e.g. while sweeping its amplitude.
+    """
+
+    default_experiment_name = 'measurement_induced_dephasing'
+    kw_for_sweep_points = {
+        'amps': dict(param_name='amplitude', unit='V',
+                     label='Readout Amplitude', dimension=1)
+    }
+
+    def __init__(self, task_list=None, qubits=None, buffer_length_end=1e-6,
+                 **kw):
+        if task_list is None:
+            if qubits is None:
+                raise ValueError('Please provide either "qubits" or '
+                                 '"task_list"')
+            # Create task_list from qubits
+            task_list = [{'qb': qb.name} for qb in qubits]
+        for task in task_list:
+            qb = task.pop('qb')
+            task['qubits_to_measure'] = [qb]
+            qb_name = qb.name if not isinstance(qb, str) else qb
+            p_mod_key = f'op_code=RO {qb_name}, occurrence=0'
+            task.update(dict(
+                op_code=f'RO {qb_name}',
+                pulse_modifs={  # Applied in parallel_sweep to the first RO
+                    # Set operation_type of the RO pulse to None such that no
+                    # acquisition is performed
+                    f'attr=operation_type, {p_mod_key}': None,
+                    # Avoids that the pulses are deactivated by the sweep
+                    # points added by self.add_default_ramsey_sweep_points
+                    f'attr=pulse_off, {p_mod_key}': 0,
+                    # Additional delay to account for ring-down of the pulse
+                    f'attr=buffer_length_end, {p_mod_key}': buffer_length_end,
+                    # The following renaming avoids that parallel_sweep thinks
+                    # that there already is a RO in the sweep block.
+                    # (Note that this modification has to be the last one
+                    # because p_mod_key will no longer match the pulse
+                    # afterwards.)
+                    f'attr=op_code, {p_mod_key}': f'noRO {qb_name}',
+                },
+            ))
+
+        super().__init__(
+            qubits=qubits,
+            task_list=task_list,
+            nr_phases=kw.get('nr_phases', 4),  # fitting needs >=4 phases
+            endpoint=kw.get('endpoint', False),
+            reset_phases_before_measurement=False,  # Only needed for DynPhase
+            repeat_ro=False,  # Repeat patterns don't work if we sweep RO params
+            **kw,
+        )
+
+    def add_default_sweep_points(self, **kw):
+        """
+        Adds default sweep points for the measurement-induced dephasing
+        experiment. These are:
+        - Ramsey phases (in dimension 0)
+        :param kw: kwargs passed to add_default_ramsey_sweep_points
+        """
+        self.sweep_points = self.add_default_ramsey_sweep_points(
+            self.sweep_points, tile=1, **kw)
+
+    def run_analysis(self, **kw):
+        self.analysis = tda.MeasurementInducedDephasingAnalysis(
+            t_start=self.timestamp)
+
+    def run_update(self, **kw):
+        pass  # Bypass the update performed in the DynPhase experiment
+
 
 def measure_flux_pulse_timing_between_qubits(task_list, pulse_length,
                                              analyze=True, label=None, **kw):
@@ -1566,7 +1684,8 @@ class Chevron(CalibBuilder):
         # All sweep points are interpreted as parameters of the flux pulse,
         # except if they are pulse modifier sweep points (see docstring of
         # Block.build).
-        for k in list(sweep_points[0].keys()) + list(sweep_points[1].keys()):
+        for k in list(sweep_points[0].keys()) + list(
+                sweep_points.get_sweep_dimension(1, default={}).keys()):
             if '=' not in k:  # '=' indicates a pulse modifier sweep point
                 for p in fp.pulses:
                     p[k] = ParametricValue(k)
@@ -1615,7 +1734,8 @@ class Chevron(CalibBuilder):
         if 'options_dict' not in analysis_kwargs:
             analysis_kwargs['options_dict'] = {}
         if 'TwoD' not in analysis_kwargs['options_dict']:
-            analysis_kwargs['options_dict']['TwoD'] = True
+            if len(self.sweep_points) == 2:
+                analysis_kwargs['options_dict']['TwoD'] = True
         self.analysis = tda.MultiQubit_TimeDomain_Analysis(
             qb_names=self.meas_obj_names,
             t_start=self.timestamp, **analysis_kwargs)
@@ -1647,8 +1767,8 @@ class Chevron(CalibBuilder):
         d['kwargs'][MultiTaskingExperiment.__name__]['cal_states'] = (str, 'gef')
         d['task_list_fields'].update({
             Chevron.__name__: odict({
-                'qbc': ((Qubit, 'single_select'), None),
-                'qbt': ((Qubit, 'single_select'), None),
+                'qbc': ((qb_mod.QuDev_transmon, 'single_select'), None),
+                'qbt': ((qb_mod.QuDev_transmon, 'single_select'), None),
                 'num_cz_gates': (int, 1),
                 'init_state': (CircuitBuilder.STD_INIT, '11'),
                 'max_flux_length': (float, None),

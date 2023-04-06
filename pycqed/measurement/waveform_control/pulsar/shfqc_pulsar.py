@@ -3,8 +3,8 @@ import logging
 from qcodes import ManualParameter
 import qcodes.utils.validators as vals
 
-from .shfqa_pulsar import SHFAcquisitionModulePulsar
-from .shfsg_pulsar import SHFGeneratorModulePulsar
+from .shfqa_pulsar import SHFAcquisitionModulesPulsar
+from .shfsg_pulsar import SHFGeneratorModulesPulsar
 
 try:
     from zhinst.qcodes import SHFQC as SHFQC_core
@@ -14,7 +14,7 @@ except Exception:
 log = logging.getLogger(__name__)
 
 
-class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
+class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
     """ZI SHFQC specific Pulsar module"""
     AWG_CLASSES = [SHFQC_core]
 
@@ -38,9 +38,6 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         pulsar = self.pulsar
         name = self.awg.name
 
-        pulsar.add_parameter(f"{name}_use_placeholder_waves",
-                             initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1",),
@@ -56,16 +53,75 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
                                        'sweeper should be used in for '
                                        'spectroscopies on the SG channels ',
                              vals=vals.Bool())
+        pulsar.add_parameter(
+            f"{name}_use_placeholder_waves",
+            initial_value=False,
+            vals=vals.Bool(),
+            parameter_class=ManualParameter,
+            docstring="Configures whether to use placeholder "
+                      "waves in combination with binary "
+                      "waveform upload on this device. If set "
+                      "to True, placeholder waves "
+                      "will be enabled on all AWG modules on "
+                      "this device. If set to False, pulsar "
+                      "will check channel-specific settings "
+                      "and use placeholder waves on a "
+                      "per-AWG-module basis."
+        )
+        pulsar.add_parameter(
+            f"{name}_use_command_table",
+            initial_value=False,
+            vals=vals.Bool(),
+            parameter_class=ManualParameter,
+            docstring="Configures whether to use command table "
+                      "for waveform sequencing on this "
+                      "device. If set to True, command table "
+                      "will be enabled on all AWG modules on "
+                      "this device. If set to False, pulsar "
+                      "will check channel-specific settings "
+                      "and programs command table on a "
+                      "per-AWG-module basis."
+        )
 
-        SHFAcquisitionModulePulsar._create_all_channel_parameters(
+        pulsar.add_parameter(
+            f"{name}_harmonize_amplitude",
+            initial_value=False,
+            vals=vals.Bool(),
+            parameter_class=ManualParameter,
+            docstring="Configures whether to rescale waveform amplitudes "
+                      "before uploading and retrieve the original values with "
+                      "hardware playback commands. This allows reusing "
+                      "waveforms and reduces the number of waveforms to be "
+                      "uploaded. If set to True, this feature will be enabled "
+                      "on all AWG modules on this device. If set to False, "
+                      "pulsar will check channel-specific settings and "
+                      "executes on a per-AWG-module basis. Note that this "
+                      "feature has to be used in combination with command "
+                      "table."
+        )
+
+        pulsar.add_parameter(
+            f"{name}_internal_modulation",
+            initial_value=False,
+            vals=vals.Bool(),
+            parameter_class=ManualParameter,
+            docstring="Configures whether to use internal modulation for "
+                      "waveform generation on this device. If set to True, "
+                      "internal modulation will be enabled on all AWG modules "
+                      "on this device. If set to False, pulsar will check "
+                      "channel-specific settings and configures internal "
+                      "modulation on a per-AWG-module basis."
+        )
+
+        SHFAcquisitionModulesPulsar._create_all_channel_parameters(
             self, channel_name_map)
-        SHFGeneratorModulePulsar._create_all_channel_parameters(
+        SHFGeneratorModulesPulsar._create_all_channel_parameters(
             self, channel_name_map)
 
     @classmethod
     def _get_superclass(cls, id):
-        return SHFAcquisitionModulePulsar if 'qa' in id \
-            else SHFGeneratorModulePulsar
+        return SHFAcquisitionModulesPulsar if 'qa' in id \
+            else SHFGeneratorModulesPulsar
 
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         """See :meth:`PulsarAWGInterface.create_channel_parameters`.
@@ -88,12 +144,12 @@ class SHFQCPulsar(SHFAcquisitionModulePulsar, SHFGeneratorModulePulsar):
         kwargs = dict(repeat_pattern=repeat_pattern,
                       channels_to_upload=channels_to_upload,
                       channels_to_program=channels_to_program)
-        SHFAcquisitionModulePulsar.program_awg(*args, **kwargs)
-        SHFGeneratorModulePulsar.program_awg(*args, **kwargs)
+        SHFAcquisitionModulesPulsar.program_awg(*args, **kwargs)
+        SHFGeneratorModulesPulsar.program_awg(*args, **kwargs)
 
     def is_awg_running(self):
-        return SHFAcquisitionModulePulsar.is_awg_running(self) and \
-               SHFGeneratorModulePulsar.is_awg_running(self)
+        return SHFAcquisitionModulesPulsar.is_awg_running(self) and \
+               SHFGeneratorModulesPulsar.is_awg_running(self)
 
     def sigout_on(self, ch, on=True):
         id = self.pulsar.get(ch + '_id')
