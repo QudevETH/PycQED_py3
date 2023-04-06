@@ -210,19 +210,19 @@ class CircuitBuilder:
         else:
             raise KeyError(f'CZ gate "{cz_pulse_name} {qb1} {qb2}" not found.')
 
-    def get_pulse(self, op, parse_rotation_gates=False):
+    def get_pulses(self, op, parse_rotation_gates=False):
         """
         Gets a pulse from the operation dictionary, and possibly parses
         logical indexing as well as arbitrary angle from Z gate operation.
         Examples:
-             >>> get_pulse('CZ 0 2', parse_rotation_gates=True)
+             >>> get_pulses('CZ 0 2', parse_rotation_gates=True)
              will perform a CZ gate (according to cz_pulse_name)
              between the qubits with logical indices 0 and 2
-             >>> get_pulse('Z100 qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z100 qb1', parse_rotation_gates=True)
              will perform a 100 degree Z rotation
-             >>> get_pulse('Z:theta qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z:theta qb1', parse_rotation_gates=True)
              will perform a parametric Z rotation with parameter name theta
-             >>> get_pulse('Z:2*[theta] qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z:2*[theta] qb1', parse_rotation_gates=True)
              will perform a parametric Z rotation with twice the
              value of the parameter named theta. The brackets are used to
              indicated the parameter name. This feature has also been tested
@@ -255,7 +255,7 @@ class CircuitBuilder:
         op = op_name + ' ' + ' '.join(op_info[1:])
 
         if op in self.operation_dict:
-            p = self.copy_op(self.operation_dict[op])
+            p = [self.copy_op(self.operation_dict[op])]
         # elif op_info[0].rstrip('0123456789.') == 'CZ' or \
         #         op_info[0].startswith('CZ:'):
         elif op_name.startswith('CZ'):
@@ -296,8 +296,29 @@ class CircuitBuilder:
                 pulse_name = self.cz_pulse_name
             operation = self.get_cz_operation_name(op_info[1], op_info[2],
                                                    cz_pulse_name=pulse_name)
-            p = self.copy_op(self.operation_dict[operation])
-            p['cphase'] = cphase
+            if self.decompose_rotation_gates.get(pulse_name, False):
+                decomposed_op = [
+                    f'Z180 {op_info[2]}',
+                    f'Y90 {op_info[2]}',
+                    operation,
+                    f'Z180 {op_info[2]}',
+                    f'Y90 {op_info[2]}',
+                    f'Z0 {op_info[2]}',
+                    f'Z180 {op_info[2]}',
+                    f'Y90 {op_info[2]}',
+                    operation,
+                    f'Z180 {op_info[2]}',
+                    f'Y90 {op_info[2]}',
+                ]
+                p = [
+                    self.copy_op(self.operation_dict[do]) for do in decomposed_op
+                ]
+                p[5]['basis_rotation']: {op_info[2]: cphase}
+                return p
+            else:
+                p = [self.copy_op(self.operation_dict[operation])]
+                p[0]['cphase'] = cphase
+                return p
 
         elif parse_rotation_gates and op not in self.operation_dict:
             # assumes operation format of, e.g., f" Z{angle} qbname"
@@ -336,10 +357,10 @@ class CircuitBuilder:
                     param = angle
 
             if self.decompose_rotation_gates.get(op_name[0], False):
-                raise NotImplementedError('Decomposed rotations not '
+                raise NotImplementedError('Single qb decomposed rotations not '
                                           'implemented yet.')
             else:
-                p = self.get_pulse(f"{op_name[0]}180 {qbn}")
+                p = self.get_pulses(f"{op_name[0]}180 {qbn}")
                 if op_name[0] == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
@@ -349,11 +370,11 @@ class CircuitBuilder:
                         else:  # angle = parameter
                             func = (lambda x, qbn=op_info[1], f=factor:
                                     {qbn: f * x})
-                        p['basis_rotation'] = ParametricValue(
+                        p[0]['basis_rotation'] = ParametricValue(
                             param, func=func, op_split=(op_name, op_info[1]))
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
-                        p['basis_rotation'] = {qbn: factor * float(angle)}
+                        p[0]['basis_rotation'] = {qbn: factor * float(angle)}
                 else:
                     qb, _ = self.get_qubits(qbn)
                     corr_func = qb[0].calculate_nonlinearity_correction
@@ -362,26 +383,26 @@ class CircuitBuilder:
                             # combine the mathematical expression with a
                             # function that calculates the amplitude
                             func = (
-                                lambda x, a=p['amplitude'], f=factor,
+                                lambda x, a=p[0]['amplitude'], f=factor,
                                        fnc=eval('lambda x : ' + angle):
                                 a * corr_func(
                                     ((f * fnc(x) + 180) % (-360) + 180) / 180))
                         else:  # angle = parameter
-                            func = lambda x, a=p['amplitude'], f=factor: \
+                            func = lambda x, a=p[0]['amplitude'], f=factor: \
                                 a * corr_func(
                                     ((f * x + 180) % (-360) + 180) / 180)
-                        p['amplitude'] = ParametricValue(
+                        p[0]['amplitude'] = ParametricValue(
                             param, func=func, op_split=(op_name, op_info[1]))
                     else:  # angle is a given value
                         angle = factor * float(angle)
                         # configure drive pulse amplitude for this angle
-                        p['amplitude'] *= corr_func(
+                        p[0]['amplitude'] *= corr_func(
                             ((angle + 180) % (-360) + 180) / 180)
         else:
             raise KeyError(f"Operation {' '.join(op_info)} not found.")
-        p['op_code'] = op
+        p[0]['op_code'] = op
         if op_info[0][0] == 's':
-            p['ref_point'] = 'start'
+            p[0]['ref_point'] = 'start'
 
         return p
 
@@ -538,7 +559,7 @@ class CircuitBuilder:
             reset_ro_pulses = []
             ops_and_codewords = {}
             for i, qbn in enumerate(qb_names):
-                reset_ro_pulses.append(self.get_pulse('RO ' + qbn))
+                reset_ro_pulses += self.get_pulses('RO ' + qbn)
                 reset_ro_pulses[-1]['ref_point'] = 'start' if i != 0 else 'end'
 
                 if preparation_type == 'active_reset_e':
@@ -563,7 +584,7 @@ class CircuitBuilder:
             for i, qbn in enumerate(qb_names):
                 for ops, codeword in ops_and_codewords[qbn]:
                     for j, op in enumerate(ops):
-                        reset_pulses.append(self.get_pulse(op + qbn))
+                        reset_pulses += self.get_pulses(op + qbn)
                         # Reset pulses cannot include phase information at the moment
                         # since we use the exact same waveform(s) (corresponding to
                         # a given codeword) for every reset pulse(s) we play (no
@@ -623,7 +644,7 @@ class CircuitBuilder:
         elif preparation_type == 'preselection':
             preparation_pulses = []
             for i, qbn in enumerate(qb_names):
-                preparation_pulses.append(self.get_pulse('RO ' + qbn))
+                preparation_pulses += self.get_pulses('RO ' + qbn)
                 preparation_pulses[-1]['ref_point'] = 'start'
                 preparation_pulses[-1]['element_name'] = 'preselection_element'
             preparation_pulses[0]['ref_pulse'] = ref_pulse
@@ -667,7 +688,8 @@ class CircuitBuilder:
         # if qb_names is the name of a single qb, expects single pulse output
         single_qb_given = not isinstance(qb_names, list)
         _, qb_names = self.get_qubits(qb_names)
-        pulses = [self.get_pulse(f'Z{theta} {qbn}', True) for qbn in qb_names]
+        pulses = [p for qbn in qb_names for p in self.get_pulses(
+            f'Z{theta} {qbn}', True)]
         return pulses[0] if single_qb_given else pulses
 
     def get_ops_duration(self, operations=None, pulses=None, fill_values=None,
@@ -744,14 +766,15 @@ class CircuitBuilder:
                 else:
                     return [s.format(**fill_values) for s in op]
 
-            pulses = [self.get_pulse(op_format(op, **fill_values), True)
-                      for op in operations]
+            pulses = [p for op in operations for p in
+                      self.get_pulses(op_format(op, **fill_values), True)]
         else:
             # the shortcut if op in self.operation_dict is for speed reasons
-            pulses = [self.copy_op(self.operation_dict[op])
+            p_lists = [[self.copy_op(self.operation_dict[op])]
                       if op in self.operation_dict
-                      else self.get_pulse(op, True)
+                      else self.get_pulses(op, True)
                       for op in operations]
+            pulses = [p for p_list in p_lists for p in p_list]  # flattened
 
         return Block(block_name, pulses, pulse_modifs, copy_pulses=False)
 
@@ -860,11 +883,12 @@ class CircuitBuilder:
         if pulse_dicts is not None:
             for i, pp in enumerate(pulse_dicts):
                 # op_code determines which pulse to use
-                pulse = self.get_pulse(pp['op_code']) if 'op_code' in pp else {}
+                p_list = self.get_pulses(pp['op_code']) if 'op_code' in pp \
+                    else [{}]
                 # all other entries in the pulse dict are interpreted as
                 # pulse parameters that overwrite the default values
-                pulse.update(pp)
-                pulses += [pulse]
+                [pulse.update(pp) for pulse in p_list]
+                pulses += p_list
         return Block(block_name, pulses)
 
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
