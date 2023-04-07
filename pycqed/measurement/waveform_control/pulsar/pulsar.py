@@ -584,7 +584,7 @@ class Pulsar(Instrument):
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
                            parameter_class=ManualParameter)
-        self.add_parameter('flux_channels', initial_value=[],
+        self.add_parameter('flux_channels', initial_value={},
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_mtx',
                            initial_value=None, parameter_class=ManualParameter)
