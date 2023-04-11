@@ -60,6 +60,9 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
             self.sweep_functions_dict = {} if sweep_functions_dict is None \
                                         else sweep_functions_dict
             self.preprocessed_task_list = self.preprocess_task_list()
+            # To avoid uploading many times the same sequence
+            self.sweep_points_pulses = sp_mod.SweepPoints(
+                min_length=2 if self.force_2D_sweep else 1)
 
             self.autorun()
         except Exception as x:
@@ -110,15 +113,19 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
         """
         return [task['mobj']]
 
+    def get_sweep_points_for_sweep_n_dim(self):
+        return self.sweep_points_pulses
+
     def run_measurement(self, **kw):
         # Rerun in case params of the measurement objects changed since the init
         self.preprocessed_task_list = self.preprocess_task_list()
 
         self.sequences, self.mc_points = self.parallel_sweep(
             self.preprocessed_task_list, self.sweep_block, **kw)
-        # FIXME is this needed?
         self.mc_points[0] = range(self.preprocessed_task_list[0][
                                       'sweep_points'].length(0))
+        self.mc_points[1] = range(self.preprocessed_task_list[0][
+                                      'sweep_points'].length(1))
 
         # self.generate_sweep_functions()
         for dim in range(1, len(self.sweep_points)):
