@@ -1057,6 +1057,7 @@ class NDimQuantumExperiment():
         self.experiments = {}
         if QuantumExperiment is not None:
             self.QuantumExperiment = QuantumExperiment
+        self.timestamps = []
         self.forget_experiments = forget_experiments
         self.sweep_points = SweepPoints(sweep_points)
         self._generate_sweep_lengths()
@@ -1118,7 +1119,7 @@ class NDimQuantumExperiment():
                 )
         return current_sp
 
-    def create_experiment(self, idxs):
+    def create_experiment(self, idxs, **kw):
         """
         Instantiates sub-experiments.
 
@@ -1133,7 +1134,8 @@ class NDimQuantumExperiment():
         )
         self.experiments[idxs] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp, exp_metadata=exp_metadata,
-            **self.kwargs)
+            **self.kwargs, **kw)
+        self.timestamps = [qe.timestamp for qe in self.experiments.values()]
         if self.forget_experiments:
             del self.experiments[idxs]
 
@@ -1184,8 +1186,7 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         super()._generate_sweep_lengths(sp)
 
 
-    def create_experiment(self, idxs):
-        current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
+    def create_experiment(self, idxs, **kw):
         current_tl = [copy(t) for t in self.task_list]
         for task in current_tl:
             # Just to ease recovering the full sp in the analysis
@@ -1194,9 +1195,5 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
             # Make sp that will actually be used in the experiment
             task['sweep_points'] = self.make_2d_sweep_points(
                 task.get('sweep_points', []), idxs)
-        self.experiments[idxs] = self.QuantumExperiment(
-            *self.args, sweep_points=current_sp,
-            task_list=current_tl, **self.kwargs)
-        if self.forget_experiments:
-            del self.experiments[idxs]
+        super().create_experiment(idxs, task_list=current_tl)
 
