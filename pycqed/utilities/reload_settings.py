@@ -4,14 +4,17 @@ import logging
 log = logging.getLogger(__name__)
 
 def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
-                    dev=None,
+                    qubits=None, dev=None,
                     DCSources=None,
                     fluxlines_dict=None,
                     **kw):
     """
     Reload settings from the database.
     """
-    qubits = kw.get('qubits', kw.get('qbs', dev.get_qubits()))
+    if qubits is None:
+        qubits = kw.get('qbs')  # allow qbs as an alias for qubits
+    if qubits is None:
+        qubits = dev.get_qubits()  # take all qubits from the device object
 
     for qb in qubits:
         gen.load_settings(qb, timestamp=timestamp)
