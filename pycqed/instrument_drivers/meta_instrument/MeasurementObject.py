@@ -302,7 +302,7 @@ class MeasurementObject(Instrument):
             ro_mod_freq = self.ro_mod_freq()
         return ro_freq[0] - ro_mod_freq[0]
 
-    def prepare(self, switch='modulated'):
+    def prepare(self, switch='modulated', **kw):
         """Prepare instruments for a measurement involving this measurement
         object.
 

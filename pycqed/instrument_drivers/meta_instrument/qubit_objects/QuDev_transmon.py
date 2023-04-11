@@ -901,7 +901,7 @@ class QuDev_transmon(MeasurementObject):
                 acquisition_length=self.acq_length()
             )
 
-    def prepare(self, drive='timedomain', switch='default'):
+    def prepare(self, drive='timedomain', switch='default', **kw):
         """Prepare instruments for a measurement involving this qubit.
 
         The preparation includes:
