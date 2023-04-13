@@ -14,6 +14,7 @@ from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.measurement.hdf5_data import read_dict_from_hdf5
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement import sweep_points as sp_mod
+import pycqed.utilities.settings_manager as setman
 
 
 def decode_parameter_value(param_value):
@@ -488,8 +489,10 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
 
     h5mode = get_param('h5mode', data_dict, default_value='r', **params)
     data_file = a_tools.open_hdf_file(folder=folder, mode=h5mode, **params)
-    config_file = a_tools.open_config_file(folder=folder, mode=h5mode, **params)
-    files = [data_file, config_file]
+    # config_file = a_tools.open_config_file(folder=folder, mode=h5mode, **params)
+    config_station = setman.get_station_from_file(
+        folder=folder, param_path=params_dict.values(), **params)
+    # files = [data_file, config_file]
 
     try:
         for save_par, file_par in params_dict.items():
@@ -508,12 +511,15 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
                           [os.path.split(folder)[1][7:]],
                           epd, add_param_method='append')
                 continue
-
-            add_param(all_keys[-1], extract_from_data_files(files, file_par),
+            tmp_param = extract_from_data_files([data_file], file_par)
+            if tmp_param == 'not found':
+                tmp_param = config_station.get(file_par)
+            add_param(all_keys[-1], tmp_param,
                       epd, add_param_method=add_param_method)
-        a_tools.close_files(files)
+
+        a_tools.close_files([data_file])
     except Exception as e:
-        a_tools.close_files(files)
+        a_tools.close_files([data_file])
         raise e
 
     for par_name in data_dict:
