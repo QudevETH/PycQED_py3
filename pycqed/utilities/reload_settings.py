@@ -3,6 +3,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
+
 def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
                     qubits=None, dev=None,
                     DCSources=None,
@@ -10,6 +11,15 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
                     **kw):
     """
     Reload settings from the database.
+
+    Attributes:
+        timestamp: Timestamp from which to reload settings
+        timestamp_filters: Timestamp from which to reload predistortion filters
+        load_flux_bias: If True, sets the DC source biases for the flux lines
+        qubits: Qubits for which to reload settings
+        dev: Device object to reload. qubits are taken from dev if None
+        DCSources: DCSources to reload if load_flux_bias is True
+        fluxlines_dict: Dictionary containing the flux lines qcodes parameters
     """
     if qubits is None:
         qubits = kw.get('qbs')  # allow qbs as an alias for qubits
@@ -26,7 +36,6 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
     if dev is not None:
         gen.load_settings(dev, timestamp=timestamp)
         dev.configure_pulsar()
-
 
     if load_flux_bias:  # reload and set flux bias
 
