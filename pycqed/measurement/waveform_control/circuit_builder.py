@@ -531,7 +531,7 @@ class CircuitBuilder:
             return Block(block_name, [])
         if prep_params is None:
             prep_params = self.get_prep_params(qb_names)
-        if len(init_state) == 1:
+        if len(init_state) == 1 and isinstance(init_state, str):
             init_state = [init_state] * len(qb_names)
         else:
             assert len(init_state) == len(qb_names), \
