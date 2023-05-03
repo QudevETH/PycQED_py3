@@ -503,6 +503,9 @@ class SettingsManager:
         Returns:
 
         """
+        if timestamp not in self.stations.keys():
+            print(f"timestamp '{timestamp}' will be loaded onto the station.")
+            self.load_from_file(timestamp)
         snapshot_viewer = dict_viewer.SnapshotViewer(
             snapshot=self.stations[timestamp].snapshot(),
             timestamp=timestamp)
@@ -972,6 +975,9 @@ class HDF5Loader(Loader):
         a_tools.close_files([config_file])
 
         return station
+
+    def get_snapshot(self):
+        return self.get_station().snapshot()
 
 
 class PickleLoader(Loader):

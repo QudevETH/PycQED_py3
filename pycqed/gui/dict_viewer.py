@@ -919,11 +919,7 @@ def get_snapshot_from_filepath(filepath):
     """
     from pycqed.utilities.settings_manager import get_loader_from_file
     loader = get_loader_from_file(filepath=filepath)
-    if hasattr(loader, 'get_snapshot'):
-        return loader.get_snapshot()
-    else:
-        station = loader.get_station()
-        return station.snapshot()
+    return loader.get_snapshot()
 
 
 if __name__ == "__main__":
