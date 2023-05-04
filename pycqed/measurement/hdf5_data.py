@@ -105,7 +105,7 @@ class DateTimeGenerator:
 class Data(h5py.File):
 
     def __init__(self, name: str, datadir: str,
-                 timestamp: str = None):
+                 timestamp: str = None, auto_increase=True):
         """
         Creates an empty data set including the file, for which the currently
         set file name generator is used.
@@ -114,6 +114,8 @@ class Data(h5py.File):
             name (string) : base name of the file
             datadir (string) : A folder will be created within the datadir
                 using the standard timestamp structure
+            auto_increase (bool) : if true, filepath name is increased by 1s
+                if file already exists
         """
         self._name = name
 
@@ -127,7 +129,7 @@ class Data(h5py.File):
         self._datemark = time.strftime('%Y%m%d', self._localtime)
 
         self.filepath = DateTimeGenerator().new_filename(
-            self, folder=datadir)
+            self, folder=datadir, auto_increase=auto_increase)
 
         self.filepath = self.filepath.replace("%timemark", self._timemark)
 

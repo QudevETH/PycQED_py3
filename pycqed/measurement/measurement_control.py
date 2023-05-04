@@ -1931,9 +1931,17 @@ class MeasurementControl(Instrument):
             import sys
             opt = numpy.get_printoptions()
             numpy.set_printoptions(threshold=sys.maxsize)
-
+            new_object = False
             if data_object is None:
                 data_object = self.data_object
+                # checks if data object is closed and opens it if neccessary,
+                # hdf5 file needs to be closed in the end
+                if not data_object.__bool__():
+                    new_object = True  # tags if a new object was opened
+                    data_object = h5d.Data(name=self.get_measurement_name(),
+                      datadir=self.datadir(),
+                      timestamp=self.last_timestamp(),
+                                           auto_increase=False)
             if not hasattr(self, 'station'):
                 log.warning('No station object specified, could not save '
                             'instrument settings')
@@ -1955,6 +1963,8 @@ class MeasurementControl(Instrument):
                                                    entry_point=instrument_grp,
                                                    instrument=ins)
             numpy.set_printoptions(**opt)
+            if new_object:
+                data_object.close() # new
 
         else:
             if self.settings_file_format() == 'msgpack':
