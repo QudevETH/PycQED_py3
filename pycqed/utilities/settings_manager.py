@@ -952,7 +952,7 @@ class HDF5Loader(Loader):
                     param_value = hlp_mod.extract_from_hdf_file(config_file,
                                                                 path_to_param)
                     if param_value == 'not found':
-                        # logger.warning(f"Parameter {path_to_param} not found.")
+                        logger.warning(f"Parameter {path_to_param} not found.")
                         continue
                     # if param path is only an instrument (%inst_name%)
                     if len(path_to_param.split('.')) == 1:

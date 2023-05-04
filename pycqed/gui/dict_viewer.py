@@ -507,7 +507,7 @@ class DictView(qt.QtWidgets.QWidget):
             # If search is not empty, only QTreeWidgetItem which are found
             # are displayed
             if not self.found_titem_list == []:
-                self.show_all(self.tree_widget.topLevelItem(0), hide=True)
+                self.show_all(self.root_item, hide=True)
                 for titem in self.found_titem_list:
                     titem.setHidden(False)
                     self.show_titem(titem, expand=True)
