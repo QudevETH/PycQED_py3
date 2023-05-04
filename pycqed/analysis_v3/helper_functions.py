@@ -514,6 +514,10 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
             tmp_param = extract_from_data_files([data_file], file_par)
             if tmp_param == 'not found':
                 tmp_param = config_station.get(file_par)
+            # if parameter still not found, parameter wont be added
+            # warning is provided by station.get
+            if tmp_param == 'not found':
+                continue
             add_param(all_keys[-1], tmp_param,
                       epd, add_param_method=add_param_method)
 
