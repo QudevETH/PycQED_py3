@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 import logging
+import h5py
 import numpy as np
 import time
 from pycqed.measurement.hdf5_data import DateTimeGenerator \
@@ -939,40 +940,43 @@ class HDF5Loader(Loader):
             Parameters must be of the form %inst_name%.%param_name%.
 
         """
-        from pycqed.analysis import analysis_toolbox as a_tools
-        config_file = a_tools.open_config_file(filepath=self.filepath)
-        station = Station(timestamp=self.timestamp)
-        if param_path is None:
-            for inst_name, inst_group in list(config_file.items()):
-                inst = self.load_instrument(inst_name, inst_group)
-                station.add_component(inst)
-        else:
-            for path_to_param in param_path:
-                param_value = hlp_mod.extract_from_hdf_file(config_file,
-                                                            path_to_param)
-                if param_value == 'not found':
-                    # logger.warning(f"Parameter {path_to_param} not found.")
-                    continue
-                param_name = path_to_param.split('.')[-1]
-                param = Parameter(param_name, param_value)
-
-                inst_path = path_to_param.split('.')[:-1]
-
-                inst = Instrument(inst_path[-1])
-                inst.add_parameter(param)
-
-                # if more than one instrument name exists, the instrument must
-                # be a submodule
-                for inst_name in inst_path[-1:0:-1]:
-                    submod = inst
-                    inst = Instrument(inst_name)
-                    inst.add_submodule(submod.name, submod)
-                if inst.name in station.components.keys():
-                    station.components[inst.name].update(inst)
-                else:
+        with h5py.File(self.filepath, 'r') as file:
+            config_file = file['Instrument settings']
+            station = Station(timestamp=self.timestamp)
+            if param_path is None:
+                for inst_name, inst_group in list(config_file.items()):
+                    inst = self.load_instrument(inst_name, inst_group)
                     station.add_component(inst)
+            else:
+                for path_to_param in param_path:
+                    param_value = hlp_mod.extract_from_hdf_file(config_file,
+                                                                path_to_param)
+                    if param_value == 'not found':
+                        # logger.warning(f"Parameter {path_to_param} not found.")
+                        continue
+                    # if param path is only an instrument (%inst_name%)
+                    if len(path_to_param.split('.')) == 1:
+                        inst_path = path_to_param
+                        inst = Instrument(inst_path[-1])
+                    else:
+                        param_name = path_to_param.split('.')[-1]
+                        param = Parameter(param_name, param_value)
 
-        a_tools.close_files([config_file])
+                        inst_path = path_to_param.split('.')[:-1]
+
+                        inst = Instrument(inst_path[-1])
+                        inst.add_parameter(param)
+
+                    # if more than one instrument name exists, the instrument
+                    # must be a submodule
+                    for inst_name in inst_path[-1:0:-1]:
+                        submod = inst
+                        inst = Instrument(inst_name)
+                        inst.add_submodule(submod.name, submod)
+                    if inst.name in station.components.keys():
+                        station.components[inst.name].update(inst)
+                    else:
+                        station.add_component(inst)
 
         return station
 
@@ -1202,7 +1206,7 @@ def get_loader_from_file(timestamp=None, folder=None, filepath=None,
 
 
 def get_station_from_file(timestamp=None, folder=None, filepath=None,
-                          file_id=None, param_path=None):
+                          file_id=None, param_path=None, **kwargs):
     return get_loader_from_file(timestamp=timestamp, folder=folder,
                                 filepath=filepath, file_id=file_id) \
         .get_station(param_path=param_path)
