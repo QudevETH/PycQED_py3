@@ -3307,7 +3307,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
-        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
         for qb_name in self.qb_names:
             fig_title = (self.raw_data_dict['timestamp'] + ' ' +
                          self.raw_data_dict['measurementstring'] +
