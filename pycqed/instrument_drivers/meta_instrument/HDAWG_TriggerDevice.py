@@ -19,7 +19,6 @@ class HDAWG_TriggerDevice(Instrument):
         "\n"
         "wave w_pulse = marker({pulse_length}, 3);\n"
         "repeat (reps) {{\n"
-        "  waitWave();\n"
         "  playWave(1, w_pulse);\n"
         "  playZero(sep);\n"
         "}}\n"
