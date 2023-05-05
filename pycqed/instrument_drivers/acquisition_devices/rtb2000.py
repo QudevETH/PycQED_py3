@@ -43,8 +43,8 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
         return [units[i] for i in range(len(units))]
 
     def find_address(self):
-        import visa
-        rm = visa.ResourceManager()
+        import pyvisa
+        rm = pyvisa.ResourceManager()
         res = [r for r in rm.list_resources() if self._MODEL_IDENTIFIER in r]
         if len(res) == 0:
             raise Exception(f'{self.__class__.__name__}: Could not find a VISA '
