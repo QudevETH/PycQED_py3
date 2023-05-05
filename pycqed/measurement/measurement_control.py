@@ -32,7 +32,7 @@ from pycqed.analysis.tools.data_manipulation import get_generation_means
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
-from qcodes_loop import color_cycle
+from qcodes_loop.plots.colors import color_cycle
 
 from pycqed.utilities.errors import NoProgressError
 
