@@ -42,7 +42,7 @@ except:
     print('Could not import msvcrt (used for detecting keystrokes)')
 
 try:
-    from qcodes.plots.pyqtgraph import QtPlot
+    from qcodes_loop.plots.pyqtgraph import QtPlot
 except Exception:
     print('pyqtgraph plotting not supported, '
           'try "from qcodes.plots.pyqtgraph import QtPlot" '
