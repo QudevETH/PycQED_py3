@@ -56,6 +56,7 @@ setup(name='PycQED',
       install_requires=[
           # requierments from 30.08.2021
           'qcodes',
+          'qcodes_loop',
           'qcodes-contrib-drivers',
           'sklearn',
           'zhinst',
