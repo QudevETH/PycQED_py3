@@ -57,7 +57,7 @@ setup(name='PycQED',
           # requierments from 30.08.2021
           'qcodes',
           'qcodes-contrib-drivers',
-          'sklearn',
+          'scikit-learn',
           'zhinst',
           'lmfit',
           'qutip',
