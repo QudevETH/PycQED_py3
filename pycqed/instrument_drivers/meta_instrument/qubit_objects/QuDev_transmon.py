@@ -901,7 +901,7 @@ class QuDev_transmon(MeasurementObject):
                 acquisition_length=self.acq_length()
             )
 
-    def prepare(self, drive='timedomain', switch='default', **kw):
+    def prepare(self, drive='timedomain', switch='default'):
         """Prepare instruments for a measurement involving this qubit.
 
         The preparation includes:
@@ -926,6 +926,12 @@ class QuDev_transmon(MeasurementObject):
                 'no_drive' is configured for this qubit; 'modulated' in all
                 other cases).
         """
+
+        allowed_drive_modes = [None, 'continuous_spec',
+                               'continuous_spec_modulated', 'pulsed_spec',
+                               'timedomain']
+        if not drive in allowed_drive_modes:
+            raise NotImplementedError(f"Drive mode {drive} not implemented!")
 
         if switch == 'default':
             if drive is None and 'no_drive' in self.switch_modes():
