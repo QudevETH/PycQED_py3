@@ -528,6 +528,9 @@ class ZIGeneratorModule:
         self._awg_nr = awg_nr
         """AWG module number of the current instance."""
 
+        self.module_name = f"{self._awg.name}_generator{awg_nr}"
+        """Name of this AWG module."""
+
         self.channel_ids = None
         """A list of all programmable IDs of this AWG channel/channel pair."""
 
@@ -727,10 +730,25 @@ class ZIGeneratorModule:
             # Command table should be uploaded after compiling and uploading
             # the sequencer code, because the command table memory will be
             # erased when the device is re-programmed with the new sequencer
-            # code.
-            self._upload_command_table()
+            # code. If the multicore compiler is used, "upload_command_table"
+            # method will be pended and executed after the sequencer program
+            # gets uploaded.
+            if self.pulsar.use_mcc():
+                self.multi_core_compiler.post_sequencer_code_upload[
+                    self.module_name].append(
+                    (self._upload_command_table, dict()))
+            else:
+                self._upload_command_table()
 
-        self._set_signal_output_status()
+        if self.pulsar.use_mcc():
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name].append(
+                (self._set_signal_output_status, dict()))
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name].append(
+                (self._update_device_ready_status_mcc, dict()))
+        else:
+            self._set_signal_output_status()
         if any(self.has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self._awg.name)
 
@@ -1370,6 +1388,14 @@ class ZIGeneratorModule:
                 self.waveform_cache = dict()
                 self.waveform_cache['wave_idx_lookup'] = self._wave_idx_lookup
 
+    def _update_device_ready_status_mcc(self):
+        """ Updates ready flag in the mock DAQ server when multi-core
+        compilation (MCC) is enabled. This is needed we use a different
+        generator instance for MCC. In this case, we would need to rewrite
+        this method in the child class to keep the ready flag in sync.
+        """
+        pass
+
     def _upload_placeholder_waveforms(
             self,
             waveforms,
@@ -1419,12 +1445,12 @@ class ZIGeneratorModule:
         except KeyError:
             prev_dio_valid_polarity = None
 
-        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
-            # Parallel seqc string compilation and upload
-            self._awg_interface.multi_core_compiler.add_active_awg(
-                self._awg_interface.awgs_mcc[self._awg_nr])
-            self._awg_interface.multi_core_compiler.load_sequencer_program(
-                self._awg_interface.awgs_mcc[self._awg_nr], awg_str)
+        if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
+            self.multi_core_compiler.sequencer_code_mcc[self.module_name] = (
+                self._awg_interface.awg_mcc_generators[self._awg_nr], awg_str)
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name] = list()
+            self._save_awg_str(awg_str=awg_str)
         else:
             if self.pulsar.use_mcc():
                 log.warning(
