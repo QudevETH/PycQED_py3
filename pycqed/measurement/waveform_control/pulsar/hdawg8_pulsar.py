@@ -22,13 +22,13 @@ from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
     .ZI_base_instrument import MockDAQServer
 
 from .pulsar import PulsarAWGInterface
-from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
+from .zi_pulsar_mixin import ZIPulsarMixin
 from .zi_pulsar_mixin import ZIGeneratorModule
 
 
 log = logging.getLogger(__name__)
 
-class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
+class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI HDAWG8 specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [ZI_HDAWG_core]
@@ -59,28 +59,29 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
     def __init__(self, pulsar, awg):
         super().__init__(pulsar, awg)
+
+        # Set up multi-core compiler
+        self.multi_core_compiler = pulsar.multi_core_compiler
         try:
             # Here we instantiate a zhinst.qcodes-based HDAWG in addition to
             # the one based on the ZI_base_instrument because the parallel
             # uploading of elf files is only supported by the qcodes driver
             from pycqed.instrument_drivers.physical_instruments. \
                 ZurichInstruments.zhinst_qcodes_wrappers import HDAWG8
-            self._awg_mcc = HDAWG8(awg.devname, name=awg.name + '_mcc',
-                                   host='localhost', interface=awg.interface,
-                                   server=awg.server)
-            if getattr(self.awg.daq, 'server', None) == 'emulator':
-                # This is a hack for virtual setups to make sure that the
-                # ready node is in sync between the two mock DAQ servers.
-                for i in range(4):
-                    path = f'/{self.awg.devname}/awgs/{i}/ready'
-                    self._awg_mcc._session.daq_server.nodes[
-                        path] = self.awg.daq.nodes[path]
+            self.awg_mcc = HDAWG8(
+                awg.devname,
+                name=awg.name + '_mcc',
+                host='localhost',
+                interface=awg.interface,
+                server=awg.server
+            )
+            self.awg_mcc_generators = self.awg_mcc.awgs
+
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '
                       f'{awg.name} ({awg.devname}).')
-            self._awg_mcc = None
-        self._init_mcc()
+            self.awg_mcc = None
 
         # dict for storing previously-uploaded waveforms
         self.waveform_cache = dict()
@@ -94,12 +95,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                 awg_nr=awg_nr
             )
             self.awg_modules.append(channel_pair)
-
-    def _get_awgs_mcc(self) -> list:
-        if self._awg_mcc is not None:
-            return list(self._awg_mcc.awgs)
-        else:
-            return []
 
     def create_awg_parameters(self, channel_name_map):
         super().create_awg_parameters(channel_name_map)
@@ -571,16 +566,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         if chid[-1] != 'm':  # not a marker channel
             self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
-    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
-        # This wrapper method is needed because 'finalize_upload_after_mcc'
-        # method in 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms'
-        # method from device interfaces instead of from channel interfaces.
-        self.awg_modules[awg_nr].upload_waveforms(
-            wave_idx=wave_idx,
-            waveforms=waveforms,
-            wave_hashes=wave_hashes
-        )
-
     def is_channel_pair(
             self,
             cname1: str,
@@ -772,21 +757,30 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         a1 = None if a1 is None else np.pad(a1, n - a1.size)
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         wf_raw_combined = merge_waveforms(a1, a2, mc)
-        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
-            # Parallel seqc compilation is used, which must take place before
-            # waveform upload. Waveforms are added to self.wfms_to_upload and
-            # will be uploaded to device in pulsar._program_awgs.
-            self._awg_interface.wfms_to_upload[(awg_nr, wave_idx)] = \
-                (wf_raw_combined, wave_hashes)
+        if self.pulsar.use_mcc() and self.multi_core_compiler:
+            # Waveforms are added to mcc.post_sequencer_code_upload and will
+            # be uploaded to device in pulsar._program_awgs after multi-core
+            # compiler is executed.
+            upload_command = (
+                self.upload_waveforms,
+                {"wave_idx": wave_idx,
+                 "waveforms": wf_raw_combined,
+                 "wave_hashes": wave_hashes}
+            )
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name].append(upload_command)
         else:
             self.upload_waveforms(wave_idx, wf_raw_combined, wave_hashes)
 
     def upload_waveforms(self, wave_idx, waveforms, wave_hashes):
         """
-        Upload waveforms to an awg core (awg_nr).
+        Upload waveforms to the node [wave_idx] of this generator
+        module. Note that this method only works when a valid [wave_idx] is
+        assigned to every uploaded waveform, which is only the case when
+        _use_placeholder_waves is enabled.
 
         Args:
-            wave_idx (int): index of wave upload (0 or 1)
+            wave_idx (int): index of wave upload
             waveforms (array): waveforms to upload
             wave_hashes: waveforms hashes
         """
@@ -925,6 +919,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         return hdawg_command_table_entry
 
     def _upload_command_table(self):
+
         # ZI data acquisition server
         daq = self._awg.daq
         device_id = self._awg.get_idn()['serial']
@@ -956,6 +951,12 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             status = 1
 
         return status
+
+    def _update_device_ready_status_mcc(self):
+        if getattr(self.awg.daq, 'server', None) == 'emulator':
+            path = f'/{self._awg.devname}/awgs/{self._awg_nr}/ready'
+            self._awg.daq.nodes[path]["value"] = \
+                self._awg_interface.awg_mcc_generators[self._awg_nr].ready()
 
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():
