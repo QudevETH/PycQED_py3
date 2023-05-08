@@ -519,6 +519,9 @@ class ZIGeneratorModule:
         self._awg_interface = awg_interface
         """Pulsar interface of the parent device."""
 
+        self.multi_core_compiler = awg_interface.multi_core_compiler
+        """Multi-core compiler used for the parent device, if applicable."""
+
         self.pulsar = awg_interface.pulsar
         """Pulsar instance which saves global configurations for all devices."""
 
