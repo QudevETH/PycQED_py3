@@ -1195,5 +1195,5 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
             # Make sp that will actually be used in the experiment
             task['sweep_points'] = self.make_2d_sweep_points(
                 task.get('sweep_points', []), idxs)
-        super().create_experiment(idxs, task_list=current_tl)
+        super().create_experiment(idx, task_list=current_tl, **kw)
 
