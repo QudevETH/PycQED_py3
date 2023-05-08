@@ -298,7 +298,8 @@ class Sequence:
                 parameter_suffix="_use_command_table"
             ):
                 logging.warning(
-                    f"On {awg_module.awg.name}: PycQED will "
+                    f"On {awg_module.awg.name}_"
+                    f"{awg_module.analog_channel_ids[0]}: PycQED will "
                     f"not harmonize amplitude for this AWG module "
                     f"because this feature only works when command table "
                     f"is enabled. Please set \"_use_command_table\" "
