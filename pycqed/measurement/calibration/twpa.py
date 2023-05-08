@@ -60,7 +60,7 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
             self.sweep_functions_dict = {} if sweep_functions_dict is None \
                                         else sweep_functions_dict
             self.preprocessed_task_list = self.preprocess_task_list()
-            # To avoid uploading many times the same sequence
+            # See get_sweep_points_for_sweep_n_dim
             self.sweep_points_pulses = sp_mod.SweepPoints(
                 min_length=2 if self.force_2D_sweep else 1)
 
@@ -114,14 +114,28 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
         return [task['mobj']]
 
     def get_sweep_points_for_sweep_n_dim(self):
+        """ Returns a SweepPoints object to be used to generate the sequences
+
+        The SweepPoints of the experiment, when converted to sequences,
+        would yield many times the same sequence (since only instruments
+        parameters change). To avoid generating and uploading more waveforms
+        than necessary, we pass to sweep_n_dim SweepPoints corresponding only
+        to the sequences to be uploaded by Pulsar. The full SweepPoints (in the
+        task list) are still used as mc_points to measure the correct number
+        of points, and in the analysis.
+        """
         return self.sweep_points_pulses
 
     def run_measurement(self, **kw):
-        # Rerun in case params of the measurement objects changed since the init
+        # self.preprocess_task_list was run once in self.__init__, such that
+        # sequences and waveforms are available e.g. for debugging. Here, it is
+        # rerun in case params of the measurement objects changed since the init
         self.preprocessed_task_list = self.preprocess_task_list()
 
         self.sequences, self.mc_points = self.parallel_sweep(
             self.preprocessed_task_list, self.sweep_block, **kw)
+        # Set mc_points to the full SweepPoints of the experiment,
+        # see self.get_sweep_points_for_sweep_n_dim
         self.mc_points[0] = range(self.preprocessed_task_list[0][
                                       'sweep_points'].length(0))
         self.mc_points[1] = range(self.preprocessed_task_list[0][
