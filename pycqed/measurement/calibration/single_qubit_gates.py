@@ -2214,6 +2214,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
                 # add default artificial_detuning to kw before passing to
                 # init of parent
                 kw['artificial_detuning'] = 0
+            if 'minimum_sampling_ratio' not in kw:
+                # add default artificial_detuning to kw before passing to
+                # init of parent
+                kw['minimum_sampling_ratio'] = 2
             self.echo = echo
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
@@ -2285,6 +2289,18 @@ class Ramsey(SingleQubitGateCalibExperiment):
                 ramsey_block.pulses[-1]['phase'] = ParametricValue(
                     'pulse_delay', func=lambda x, o=first_delay_point:
                     ((x-o)*art_det*360) % 360)
+
+        delays = sweep_points.get_sweep_params_property('values', 0, 'pulse_delay')
+        minimum_sampling_ratio = kw["minimum_sampling_ratio"]
+        delta_t_min = np.min(np.diff(delays))
+        artificial_oscillation_period = 1/art_det
+        sampling_ratio = artificial_oscillation_period/delta_t_min
+        if sampling_ratio < kw["minimum_sampling_ratio"]:
+            log.warning(
+                f'Chosen artificial detuning {art_det} and minimum delta between delays '
+                f'{delta_t_min} results in a sampling ratio of {sampling_ratio}, below the '
+                f'minimum of {minimum_sampling_ratio}.'
+            )
 
         if self.echo:
             # add echo block: pi-pulse halfway between the two X90_tr_name
