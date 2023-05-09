@@ -295,7 +295,7 @@ class CircuitBuilder:
                     param = angle
                     func = (lambda x, f=factor: f * x)
                 cphase = ParametricValue(
-                    param, func=func, op_split=(op_name, op_info[1]))
+                    param, func=func, op_split=[op_name, op_info[1], op_info[2]])
             elif len(op_name.rstrip('0123456789.'))!=len(op_name):  # 'NameVal
                 pulse_name = op_name.rstrip('0123456789.')
                 angle = float(op_name[len(pulse_name):])
