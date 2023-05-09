@@ -271,82 +271,6 @@ class CircuitBuilder:
 
         if op in self.operation_dict:
             p = [self.copy_op(self.operation_dict[op])]
-        elif op_name.startswith('CZ'):
-            # FIXME just copied stuff from below, to be cleaned up
-            factor = -1 if op_name[0] == 'm' else 1
-            if factor == -1:
-                op_name = op_name[1:]
-            # op_name = "Name:Function" (e.g. "Z:2*[theta]", see docstring)
-            if len(op_name_split := op_name.split(':')) > 1:
-                pulse_name, angle = op_name_split
-
-                # Parse param
-                param_start = angle.find('[') + 1
-                # If '[' is contained, this indicates that the parameter
-                # is part of a mathematical expression. Otherwise, the angle
-                # is equal to the parameter.
-                if param_start > 0:
-                    param_end = angle.find(']', param_start)
-                    param = angle[param_start:param_end]
-                    angle = angle.replace('[' + param + ']', 'x')
-                    f = eval('lambda x : ' + angle)
-                    func = (lambda x, f=factor, fnc=f:
-                            f * fnc(x))
-                else:
-                    param = angle
-                    func = (lambda x, f=factor: f * x)
-                cphase = ParametricValue(
-                    param, func=func,
-                    op_split=[op_name, op_info[1], op_info[2]])
-            # op_name = "NameVal" (e.g. "Z100", see docstring)
-            elif len(op_name_rstrip := op_name.rstrip('0123456789.')) != len(
-                    op_name):
-                pulse_name = op_name_rstrip
-                cphase = float(op_name[len(pulse_name):])  # gate angle
-            else:  # no cphase specified: standard CZ gate (180 deg)
-                pulse_name = op_name
-                cphase = None
-            if pulse_name == 'CZ':
-                # If the op_code only contains the generic keyword 'CZ': set
-                # the actual CZ pulse name to the default of the experiment
-                pulse_name = self.cz_pulse_name
-            operation = self.get_cz_operation_name(op_info[1], op_info[2],
-                                                   cz_pulse_name=pulse_name)
-            if cphase_qubit_name := self.decompose_rotation_gates.get(
-                    pulse_name, False):
-                # Index of the gate whose phase sets the cphase
-                cphase_gate_index = 5
-                # Name of the qubit on which single-qubit gates are done
-                if not isinstance(cphase_qubit_name, str):
-                    # Defaults to second qubit if not passed explicitly
-                    cphase_qubit_name = op_info[2]
-                decomposed_op = [
-                    f'Z180 {cphase_qubit_name}',
-                    f'Y90 {cphase_qubit_name}',
-                    operation,
-                    f'Z180 {cphase_qubit_name}',
-                    f'Y90 {cphase_qubit_name}',
-                    f'Z0 {cphase_qubit_name}',
-                    f'Z180 {cphase_qubit_name}',
-                    f'Y90 {cphase_qubit_name}',
-                    operation,
-                    f'Z180 {cphase_qubit_name}',
-                    f'Y90 {cphase_qubit_name}',
-                ]
-                p = [
-                    self.copy_op(self.operation_dict[do])
-                    for do in decomposed_op
-                ]
-                if isinstance(cphase, ParametricValue):
-                    # Update the op_split info in the ParametricValue,
-                    # such that it matches the operation decomposition
-                    cphase.op_split[0] = 'Z'
-                p[cphase_gate_index]['basis_rotation'] = {cphase_qubit_name:
-                                                              cphase}
-            else:
-                p = [self.copy_op(self.operation_dict[operation])]
-                p[0]['cphase'] = cphase
-            return p
 
         elif parse_rotation_gates:
             # assumes operation format of, e.g., f" Z{angle} qbname"
@@ -356,8 +280,84 @@ class CircuitBuilder:
             factor = -1 if op_name[0] == 'm' else 1
             if factor == -1:
                 op_name = op_name[1:]
-            if op_name[0] not in ['X', 'Y', 'Z']:
+            if not any([op_name.startswith(g) for g in ['X', 'Y', 'Z', 'CZ']]):
                 raise KeyError(f'Gate "{op}" not found.')
+
+            if op_name.startswith('CZ'):  # Two-qubit gate
+                # op_name = "Name:Function" (e.g. "Z:2*[theta]", see docstring)
+                if len(op_name_split := op_name.split(':')) > 1:
+                    pulse_name, angle = op_name_split
+
+                    # Parse param
+                    param_start = angle.find('[') + 1
+                    # If '[' is contained, this indicates that the parameter
+                    # is part of a mathematical expression. Otherwise, the angle
+                    # is equal to the parameter.
+                    if param_start > 0:
+                        param_end = angle.find(']', param_start)
+                        param = angle[param_start:param_end]
+                        angle = angle.replace('[' + param + ']', 'x')
+                        f = eval('lambda x : ' + angle)
+                        func = (lambda x, f=factor, fnc=f:
+                                f * fnc(x))
+                    else:
+                        param = angle
+                        func = (lambda x, f=factor: f * x)
+                    cphase = ParametricValue(
+                        param, func=func,
+                        op_split=[op_name, op_info[1], op_info[2]])
+                # op_name = "NameVal" (e.g. "Z100", see docstring)
+                elif len(
+                        op_name_rstrip := op_name.rstrip('0123456789.')) != len(
+                        op_name):
+                    pulse_name = op_name_rstrip
+                    cphase = float(op_name[len(pulse_name):])  # gate angle
+                else:  # no cphase specified: standard CZ gate (180 deg)
+                    pulse_name = op_name
+                    cphase = None
+                if pulse_name == 'CZ':
+                    # If the op_code only contains the generic keyword 'CZ': set
+                    # the actual CZ pulse name to the default of the experiment
+                    pulse_name = self.cz_pulse_name
+                operation = self.get_cz_operation_name(op_info[1], op_info[2],
+                                                       cz_pulse_name=pulse_name)
+                if cphase_qubit_name := self.decompose_rotation_gates.get(
+                        pulse_name, False):
+                    # Index of the gate whose phase sets the cphase
+                    cphase_gate_index = 5
+                    # Name of the qubit on which single-qubit gates are done
+                    if not isinstance(cphase_qubit_name, str):
+                        # Defaults to second qubit if not passed explicitly
+                        cphase_qubit_name = op_info[2]
+                    decomposed_op = [
+                        f'Z180 {cphase_qubit_name}',
+                        f'Y90 {cphase_qubit_name}',
+                        operation,
+                        f'Z180 {cphase_qubit_name}',
+                        f'Y90 {cphase_qubit_name}',
+                        f'Z0 {cphase_qubit_name}',
+                        f'Z180 {cphase_qubit_name}',
+                        f'Y90 {cphase_qubit_name}',
+                        operation,
+                        f'Z180 {cphase_qubit_name}',
+                        f'Y90 {cphase_qubit_name}',
+                    ]
+                    p = [
+                        self.copy_op(self.operation_dict[do])
+                        for do in decomposed_op
+                    ]
+                    if isinstance(cphase, ParametricValue):
+                        # Update the op_split info in the ParametricValue,
+                        # such that it matches the operation decomposition
+                        cphase.op_split[0] = 'Z'
+                    p[cphase_gate_index]['basis_rotation'] = {cphase_qubit_name:
+                                                                  cphase}
+                else:
+                    p = [self.copy_op(self.operation_dict[operation])]
+                    p[0]['cphase'] = cphase
+                return p
+
+            # Single-qubit gate
             angle, qbn = op_name[1:], op_info[1]
             if angle[-1] == 's' and angle[:-1].isnumeric():
                 # For non-parametric gates, an alternative syntax for
