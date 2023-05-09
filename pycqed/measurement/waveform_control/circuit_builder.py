@@ -311,24 +311,31 @@ class CircuitBuilder:
                 pulse_name = self.cz_pulse_name
             operation = self.get_cz_operation_name(op_info[1], op_info[2],
                                                    cz_pulse_name=pulse_name)
-            if self.decompose_rotation_gates.get(pulse_name, False):
+            if cphase_qubit_name := self.decompose_rotation_gates.get(pulse_name, \
+                    False):
+                # Index of the gate whose phase sets the cphase
+                cphase_gate_index = 5
+                # Name of the qubit on which single-qubit gates are done
+                if not isinstance(cphase_qubit_name, str):
+                    # Defaults to second qubit if not passed explicitly
+                    cphase_qubit_name = op_info[2]
                 decomposed_op = [
-                    f'Z180 {op_info[2]}',
-                    f'Y90 {op_info[2]}',
+                    f'Z180 {cphase_qubit_name}',
+                    f'Y90 {cphase_qubit_name}',
                     operation,
-                    f'Z180 {op_info[2]}',
-                    f'Y90 {op_info[2]}',
-                    f'Z0 {op_info[2]}',
-                    f'Z180 {op_info[2]}',
-                    f'Y90 {op_info[2]}',
+                    f'Z180 {cphase_qubit_name}',
+                    f'Y90 {cphase_qubit_name}',
+                    f'Z0 {cphase_qubit_name}',
+                    f'Z180 {cphase_qubit_name}',
+                    f'Y90 {cphase_qubit_name}',
                     operation,
-                    f'Z180 {op_info[2]}',
-                    f'Y90 {op_info[2]}',
+                    f'Z180 {cphase_qubit_name}',
+                    f'Y90 {cphase_qubit_name}',
                 ]
                 p = [
                     self.copy_op(self.operation_dict[do]) for do in decomposed_op
                 ]
-                p[5]['basis_rotation']: {op_info[2]: cphase}
+                p[cphase_gate_index]['basis_rotation']: {cphase_qubit_name: cphase}
             else:
                 p = [self.copy_op(self.operation_dict[operation])]
                 p[0]['cphase'] = cphase
