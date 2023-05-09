@@ -894,7 +894,7 @@ class CircuitBuilder:
         if pulse_dicts is not None:
             for i, pp in enumerate(pulse_dicts):
                 # op_code determines which pulse to use
-                p_list = self.get_pulses(pp['op_code']) if 'op_code' in pp \
+                p_list = self.get_pulses(pp.pop('op_code')) if 'op_code' in pp \
                     else [{}]
                 # all other entries in the pulse dict are interpreted as
                 # pulse parameters that overwrite the default values
