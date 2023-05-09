@@ -210,6 +210,14 @@ class CircuitBuilder:
         else:
             raise KeyError(f'CZ gate "{cz_pulse_name} {qb1} {qb2}" not found.')
 
+    def get_pulse(self, *args, **kwargs):
+        """Wrapper for get_pulses, for backwards compatibility only"""
+        pulses = self.get_pulses(*args, **kwargs)
+        if len(pulses) > 1:
+            raise ValueError("get_pulse returned several pulses, please use "
+                             "the newest version - get_pulses - instead!")
+        return pulses[0]
+
     def get_pulses(self, op, parse_rotation_gates=False):
         """
         Gets a pulse from the operation dictionary, and possibly parses
