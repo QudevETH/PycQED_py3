@@ -276,8 +276,9 @@ class CircuitBuilder:
             factor = -1 if op_name[0] == 'm' else 1
             if factor == -1:
                 op_name = op_name[1:]
-            if len(op_name.split(':'))>1:  # format 'Name:Function
-                pulse_name, angle = op_name.split(':')
+            # op_name = "Name:Function" (e.g. "Z:2*[theta]", see docstring)
+            if len(op_name_split := op_name.split(':')) > 1:
+                pulse_name, angle = op_name_split
 
                 # Parse param
                 param_start = angle.find('[') + 1
@@ -296,10 +297,11 @@ class CircuitBuilder:
                     func = (lambda x, f=factor: f * x)
                 cphase = ParametricValue(
                     param, func=func, op_split=[op_name, op_info[1], op_info[2]])
-            elif len(op_name.rstrip('0123456789.'))!=len(op_name):  # 'NameVal
-                pulse_name = op_name.rstrip('0123456789.')
-                angle = float(op_name[len(pulse_name):])
-                cphase = angle
+            # op_name = "NameVal" (e.g. "Z100", see docstring)
+            elif len(op_name_rstrip := op_name.rstrip('0123456789.')) != len(
+                    op_name):
+                pulse_name = op_name_rstrip
+                cphase = float(op_name[len(pulse_name):])  # gate angle
             else:  # no cphase specified: standard CZ gate (180 deg)
                 pulse_name = op_name
                 cphase = None
@@ -327,13 +329,12 @@ class CircuitBuilder:
                     self.copy_op(self.operation_dict[do]) for do in decomposed_op
                 ]
                 p[5]['basis_rotation']: {op_info[2]: cphase}
-                return p
             else:
                 p = [self.copy_op(self.operation_dict[operation])]
                 p[0]['cphase'] = cphase
-                return p
+            return p
 
-        elif parse_rotation_gates and op not in self.operation_dict:
+        elif parse_rotation_gates:
             # assumes operation format of, e.g., f" Z{angle} qbname"
             # FIXME: This parsing is format dependent and is far from ideal but
             #  to generate parametrized pulses it is helpful to be able to
@@ -778,16 +779,13 @@ class CircuitBuilder:
                     return op.format(**fill_values)
                 else:
                     return [s.format(**fill_values) for s in op]
-
-            pulses = [p for op in operations for p in
-                      self.get_pulses(op_format(op, **fill_values), True)]
-        else:
-            # the shortcut if op in self.operation_dict is for speed reasons
-            p_lists = [[self.copy_op(self.operation_dict[op])]
-                      if op in self.operation_dict
-                      else self.get_pulses(op, True)
-                      for op in operations]
-            pulses = [p for p_list in p_lists for p in p_list]  # flattened
+            operations = [op_format(op, **fill_values) for op in operations]
+        # the shortcut if op in self.operation_dict is for speed reasons
+        p_lists = [[self.copy_op(self.operation_dict[op])]
+                  if op in self.operation_dict
+                  else self.get_pulses(op, True)
+                  for op in operations]
+        pulses = [p for p_list in p_lists for p in p_list]  # flattened
 
         return Block(block_name, pulses, pulse_modifs, copy_pulses=False)
 
