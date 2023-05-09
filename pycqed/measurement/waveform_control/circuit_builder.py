@@ -23,11 +23,13 @@ class CircuitBuilder:
              object if available, or otherwise the first operation from the
              operation_dict whose name contains 'CZ', or we fall back to
              'CZ' if no such operation is found.)
-         decompose_rotation_gates: (dict of bool) whether arbitrary
+         decompose_rotation_gates: (dict of bool or strings) whether arbitrary
             rotation gates should be decomposed into pi rotations
             and virtual Z gates, e.g., {'X': True, 'Y': False}.
             False means direct implementation. For gate types not specified
-            here, the default is False.
+            here, the default is False. Alternatively, it is possible to
+            specify a qubit name (string) instead of True, to indicate to which
+            qubit the single-qubit gates of the decomposition should be applied.
          prep_params: (dict) custom preparation params (default: from
             instrument settings)
          fast_mode: (bool, default: False) activate faster processing by
@@ -220,8 +222,9 @@ class CircuitBuilder:
 
     def get_pulses(self, op, parse_rotation_gates=False):
         """
-        Gets a pulse from the operation dictionary, and possibly parses
-        logical indexing as well as arbitrary angle from Z gate operation.
+        Gets pulse dictionaries, corresponding to the operation op, from the
+        operation dictionary, and possibly parses logical indexing as well as
+        arbitrary angles.
         Examples:
              >>> get_pulses('CZ 0 2', parse_rotation_gates=True)
              will perform a CZ gate (according to cz_pulse_name)
@@ -245,6 +248,9 @@ class CircuitBuilder:
         Adding 'm' (for minus) in front of an op_code (e.g.,
         'mZ:theta qb1') negates the sign. If 's' is also given,
         it has to be in the order 'sm'.
+        Note that this is only for one operation op, but may return more than
+        one pulse, for example for gate decomposition into several hardware
+        gates.
 
         Args:
             op: operation (str in the above format, or iterable
@@ -252,7 +258,8 @@ class CircuitBuilder:
             parse_rotation_gates: whether or not to look for gates with
             arbitrary angles.
 
-        Returns: deepcopy of the pulse dictionary
+        Returns: list of pulses, where each pulse is a copy (see self.copy_op)
+        of the corresponding pulse dictionary
 
         """
         op_info = op.split(" ") if isinstance(op, str) else op
@@ -264,17 +271,14 @@ class CircuitBuilder:
 
         if op in self.operation_dict:
             p = [self.copy_op(self.operation_dict[op])]
-        # elif op_info[0].rstrip('0123456789.') == 'CZ' or \
-        #         op_info[0].startswith('CZ:'):
         elif op_name.startswith('CZ'):
-            # print(f"{op_name} starts with 'CZ'!")
             # FIXME just copied stuff from below, to be cleaned up
             factor = -1 if op_name[0] == 'm' else 1
             if factor == -1:
                 op_name = op_name[1:]
             if len(op_name.split(':'))>1:  # format 'Name:Function
-                # print("parameterised pulse")
                 pulse_name, angle = op_name.split(':')
+
                 # Parse param
                 param_start = angle.find('[') + 1
                 # If '[' is contained, this indicates that the parameter
@@ -290,17 +294,18 @@ class CircuitBuilder:
                 else:
                     param = angle
                     func = (lambda x, f=factor: f * x)
-                # print(f"angle = {angle}")
                 cphase = ParametricValue(
                     param, func=func, op_split=(op_name, op_info[1]))
             elif len(op_name.rstrip('0123456789.'))!=len(op_name):  # 'NameVal
                 pulse_name = op_name.rstrip('0123456789.')
                 angle = float(op_name[len(pulse_name):])
                 cphase = angle
-            else:  # non-arbitrary CZ
+            else:  # no cphase specified: standard CZ gate (180 deg)
                 pulse_name = op_name
                 cphase = None
-            if pulse_name == 'CZ':  # to keep previous behaviour
+            if pulse_name == 'CZ':
+                # If the op_code only contains the generic keyword 'CZ': set
+                # the actual CZ pulse name to the default of the experiment
                 pulse_name = self.cz_pulse_name
             operation = self.get_cz_operation_name(op_info[1], op_info[2],
                                                    cz_pulse_name=pulse_name)
@@ -408,7 +413,7 @@ class CircuitBuilder:
                             ((angle + 180) % (-360) + 180) / 180)
         else:
             raise KeyError(f"Operation {' '.join(op_info)} not found.")
-        p[0]['op_code'] = op
+        p[0]['op_code'] = op  # FIXME won't work with decomposed CARB
         if op_info[0][0] == 's':
             p[0]['ref_point'] = 'start'
 
