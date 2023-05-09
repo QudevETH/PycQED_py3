@@ -380,8 +380,27 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
     @staticmethod
     def calc_cphase_params(cphase, cphase_calib_dict, cphase_ctrl_params,
                            target=0):
-        # calib: measure trans_amplitude2 -> cphase and finetuning params
-        # this function: cphase -> trans_amplitude2 and finetuning params
+        """Calculates pulse parameters to implement a given conditional phase
+
+        During the calibration, cphase_calib_dict is measured:
+            {control_param: [...], 'cphase': [...], 'other_param': [...]}
+        The goal of this function is to interpolate between all parameter
+        values, for a given value of cphase.
+
+        Args:
+            cphase (float): Value of the conditional phase
+            cphase_calib_dict (dict): Calibration dictionary, containing
+                measurement values of the cphase as a function of the control
+                parameter of the pulse
+            cphase_ctrl_params (list): Names of the pulse parameters to
+            interpolate
+            target (float): Target for the value of the main control
+                parameter (cphase_ctrl_params[0]), in case the calibrated
+                range is wide enough to allow several values
+
+        Returns:
+            Dict of control parameters names and values
+        """
 
         # Currently cphase_calib_dict = {'param': [values...] ...} including
         # 'cphase', all with the same number of points.
