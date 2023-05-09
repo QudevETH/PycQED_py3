@@ -339,7 +339,8 @@ class CircuitBuilder:
                     # Update the op_split info in the ParametricValue,
                     # such that it matches the operation decomposition
                     cphase.op_split[0] = 'Z'
-                p[cphase_gate_index]['basis_rotation']: {cphase_qubit_name: cphase}
+                p[cphase_gate_index]['basis_rotation'] = {cphase_qubit_name:
+                                                              cphase}
             else:
                 p = [self.copy_op(self.operation_dict[operation])]
                 p[0]['cphase'] = cphase
