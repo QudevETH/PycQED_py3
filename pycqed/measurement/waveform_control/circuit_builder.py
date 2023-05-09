@@ -296,7 +296,8 @@ class CircuitBuilder:
                     param = angle
                     func = (lambda x, f=factor: f * x)
                 cphase = ParametricValue(
-                    param, func=func, op_split=[op_name, op_info[1], op_info[2]])
+                    param, func=func,
+                    op_split=[op_name, op_info[1], op_info[2]])
             # op_name = "NameVal" (e.g. "Z100", see docstring)
             elif len(op_name_rstrip := op_name.rstrip('0123456789.')) != len(
                     op_name):
@@ -311,8 +312,8 @@ class CircuitBuilder:
                 pulse_name = self.cz_pulse_name
             operation = self.get_cz_operation_name(op_info[1], op_info[2],
                                                    cz_pulse_name=pulse_name)
-            if cphase_qubit_name := self.decompose_rotation_gates.get(pulse_name, \
-                    False):
+            if cphase_qubit_name := self.decompose_rotation_gates.get(
+                    pulse_name, False):
                 # Index of the gate whose phase sets the cphase
                 cphase_gate_index = 5
                 # Name of the qubit on which single-qubit gates are done
@@ -333,7 +334,8 @@ class CircuitBuilder:
                     f'Y90 {cphase_qubit_name}',
                 ]
                 p = [
-                    self.copy_op(self.operation_dict[do]) for do in decomposed_op
+                    self.copy_op(self.operation_dict[do])
+                    for do in decomposed_op
                 ]
                 if isinstance(cphase, ParametricValue):
                     # Update the op_split info in the ParametricValue,
