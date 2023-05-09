@@ -426,7 +426,8 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         """
         if cphase is not None:
             self.cphase = cphase
-        if self.cphase is not None:
+        if not (self.cphase is None
+                or hasattr(self.cphase, '_is_parametric_value')):
             param_dict = \
                 self.calc_cphase_params(
                     cphase=self.cphase,
