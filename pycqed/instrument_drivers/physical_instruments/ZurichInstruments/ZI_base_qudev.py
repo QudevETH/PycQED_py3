@@ -98,9 +98,6 @@ class MockDAQServer(zibase.MockDAQServer):
     def listNodes(self, path):
         return json.loads(self.listNodesJSON(path + "/*"))
 
-    def listNodes(self, path):
-        return json.loads(self.listNodesJSON(path + "/*"))
-
     def set_device_type(self, device, devtype):
         self._device_types[device] = devtype
 
