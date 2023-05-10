@@ -574,8 +574,9 @@ class Device(Instrument):
         Get AWG channel delays
 
         Args:
-            qb_used: qubits whose delays should be set to the AWG channels (
-            useful e.g. for shared AWG channels). If None, all qubits are used.
+            qb_used (list of string): names of qubits whose delays should be
+            set to the AWG channels (useful e.g. for shared AWG channels).
+            If None, all qubits are used.
 
         Returns:
             Dictionary of delay values for the AWG channels of the system to
@@ -614,6 +615,9 @@ class Device(Instrument):
         Configure pulse generation instrument settings.
 
         For now, only sets AWG channel delays.
+
+        Args:
+            qb_used: see get_channel_delays
         """
 
         pulsar = self.instr_pulsar.get_instr()
