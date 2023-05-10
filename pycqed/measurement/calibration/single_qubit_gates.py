@@ -2308,7 +2308,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
                 f'Chosen artificial detuning {art_det} and minimum delta '
                 f'between delays {delta_t_min} results in a sampling ratio of '
                 f'{sampling_ratio}, below the minimum of '
-                f'{minimum_sampling_ratio}.'
+                f'{minimum_sampling_ratio}. Decrease the spacing between '
+                'delays or reduce the artificial detuning.'
             )
 
         if self.echo:
