@@ -2184,6 +2184,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
         sweep points, which will be identical for all tasks.
     :param echo: (bool, default: False) whether to do an Echo (True) or a
         Ramsey (False) measurement.
+    :param minimum_sampling_ratio: (float, default: 2) minimum sampling
+        period of the Ramsey measurement relative to the expected
+        artificial detuning. Sampling ratios below this (too low of an
+        artificial detuning or too large time steps) trigger a warning.
     :param kw: keyword arguments.
         Can be used to provide keyword arguments to sweep_n_dim, autorun, and
         to the parent class.
@@ -2208,20 +2212,15 @@ class Ramsey(SingleQubitGateCalibExperiment):
     default_experiment_name = 'Ramsey'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 delays=None, echo=False, **kw):
+                 delays=None, echo=False, minimum_sampling_ratio=2, **kw):
         try:
             if 'artificial_detuning' not in kw:
                 # add default artificial_detuning to kw before passing to
                 # init of parent
                 kw['artificial_detuning'] = 0
-            if 'minimum_sampling_ratio' not in kw:
-                minimum_sampling_ratio = 2
-            else:
-                minimum_sampling_ratio = kw["minimum_sampling_ratio"]
-            for task in task_list:
-                task["minimum_sampling_ratio"] = minimum_sampling_ratio
 
             self.echo = echo
+            self.minimum_sampling_ratio = minimum_sampling_ratio
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              delays=delays, **kw)
@@ -2268,10 +2267,6 @@ class Ramsey(SingleQubitGateCalibExperiment):
             pulse (X90_tr_name in the pulse sequence). Will be used to calculate
             phase of the 2nd X90_tr_name at each delay.
             first_delay_point: (float) see docstring of update_preproc_tasks
-            minimum_sampling_ratio: (float, default: 2) minimum sampling period
-            of the Ramsey measurement relative to the expected artificial
-            detuning. Sampling ratios below this (too low of an artificial
-            detuning or too large time steps) trigger a warning.
         """
 
         # create prepended pulses
@@ -2299,16 +2294,15 @@ class Ramsey(SingleQubitGateCalibExperiment):
 
         delays = sweep_points.get_sweep_params_property('values', 0,
                                                         'pulse_delay')
-        minimum_sampling_ratio = kw["minimum_sampling_ratio"]
         delta_t_min = np.min(np.diff(delays))
         artificial_oscillation_period = 1/art_det
         sampling_ratio = artificial_oscillation_period/delta_t_min
-        if sampling_ratio < minimum_sampling_ratio:
+        if sampling_ratio < self.minimum_sampling_ratio:
             log.warning(
                 f'Chosen artificial detuning {art_det} and minimum delta '
                 f'between delays {delta_t_min} results in a sampling ratio of '
                 f'{sampling_ratio}, below the minimum of '
-                f'{minimum_sampling_ratio}. Decrease the spacing between '
+                f'{self.minimum_sampling_ratio}. Decrease the spacing between '
                 'delays or reduce the artificial detuning.'
             )
 
