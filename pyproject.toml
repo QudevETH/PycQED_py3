@@ -77,3 +77,11 @@ user = [
 [project.urls]
 documentation = "https://documentation.qudev.phys.ethz.ch/control_software/pycqed_py3/qudev_master/"
 repository = "https://gitlab.ethz.ch/qudev/control_software/pycqed_py3"
+
+[tool.setuptools.packages.find]
+where = ["./"]
+
+[tool.setuptools.package-data]
+pycqed = [
+    "utilities/WARNING.png",
+]
