@@ -2215,9 +2215,12 @@ class Ramsey(SingleQubitGateCalibExperiment):
                 # init of parent
                 kw['artificial_detuning'] = 0
             if 'minimum_sampling_ratio' not in kw:
-                # add default artificial_detuning to kw before passing to
-                # init of parent
-                kw['minimum_sampling_ratio'] = 2
+                minimum_sampling_ratio = 2
+            else:
+                minimum_sampling_ratio = kw["minimum_sampling_ratio"]
+            for task in task_list:
+                task["minimum_sampling_ratio"] = minimum_sampling_ratio
+
             self.echo = echo
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
@@ -2265,6 +2268,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
             pulse (X90_tr_name in the pulse sequence). Will be used to calculate
             phase of the 2nd X90_tr_name at each delay.
             first_delay_point: (float) see docstring of update_preproc_tasks
+            minimum_sampling_ratio: (float, default: 2) minimum sampling period
+            of the Ramsey measurement relative to the expected artificial
+            detuning. Sampling ratios below this (too low of an artificial
+            detuning or too large time steps) trigger a warning.
         """
 
         # create prepended pulses
@@ -2290,16 +2297,18 @@ class Ramsey(SingleQubitGateCalibExperiment):
                     'pulse_delay', func=lambda x, o=first_delay_point:
                     ((x-o)*art_det*360) % 360)
 
-        delays = sweep_points.get_sweep_params_property('values', 0, 'pulse_delay')
+        delays = sweep_points.get_sweep_params_property('values', 0,
+                                                        'pulse_delay')
         minimum_sampling_ratio = kw["minimum_sampling_ratio"]
         delta_t_min = np.min(np.diff(delays))
         artificial_oscillation_period = 1/art_det
         sampling_ratio = artificial_oscillation_period/delta_t_min
-        if sampling_ratio < kw["minimum_sampling_ratio"]:
+        if sampling_ratio < minimum_sampling_ratio:
             log.warning(
-                f'Chosen artificial detuning {art_det} and minimum delta between delays '
-                f'{delta_t_min} results in a sampling ratio of {sampling_ratio}, below the '
-                f'minimum of {minimum_sampling_ratio}.'
+                f'Chosen artificial detuning {art_det} and minimum delta '
+                f'between delays {delta_t_min} results in a sampling ratio of '
+                f'{sampling_ratio}, below the minimum of '
+                f'{minimum_sampling_ratio}.'
             )
 
         if self.echo:
