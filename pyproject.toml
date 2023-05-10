@@ -1,0 +1,79 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools",
+    "wheel",
+]
+
+[project]
+name = "pycqed"
+version = "0.1.0"
+description = "Python-based circuit QED data acquisition framework"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "Adriaan Rol", email = "adriaan.rol@gmail.com"},
+]
+maintainers = [
+    {name = "Adriaan Rol", email = "adriaan.rol@gmail.com"},
+    {name = "Christoph Hellings", email = "christoph.hellings@phys.ethz.ch"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    'func_timeout',
+    'lmfit',
+    'more_itertools',
+    'neupy',
+    'pyqtgraph',
+    'pyside2',
+    'qcodes',
+    'qcodes-contrib-drivers',
+    'qcodes_loop',
+    'qutip',
+    'scikit-learn',
+    'tensorflow',
+    'zhinst',
+]
+
+[project.optional-dependencies]
+docs = [
+    "myst-parser",
+    "sphinx",
+    "sphinx-rtd-theme",
+]
+linting = [
+    "pylint",
+]
+measurement_setup = [
+    "nidaqmx",
+    "pyvisa",
+    "pyserial",
+    "zhinst-qcodes",
+]
+user = [
+    "cython",
+    "jupyter",
+    "jupyter_contrib_nbextensions",
+    "matplotlib",
+    "nlopt",
+    "numpy",
+    "pandas",
+    "psutil",
+    "pyqtgraph",
+    "pyyaml",
+    "qutip",
+    "requests",
+    "scipy",
+    "sympy",
+]
+
+[project.urls]
+documentation = "https://documentation.qudev.phys.ethz.ch/control_software/pycqed_py3/qudev_master/"
+repository = "https://gitlab.ethz.ch/qudev/control_software/pycqed_py3"
