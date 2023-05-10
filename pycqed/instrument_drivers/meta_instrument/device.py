@@ -590,10 +590,20 @@ class Device(Instrument):
         for (qbn, obj_type), v in object_delays.items():
             qb = self.get_qb(qbn)
             if obj_type == 'drive':
-                channel_delays[qb.ge_I_channel()] = v
-                channel_delays[qb.ge_Q_channel()] = v
+                ch_to_set = [qb.ge_I_channel(), qb.ge_Q_channel()]
             elif obj_type == 'flux':
-                channel_delays[qb.flux_pulse_channel()] = v
+                ch_to_set = [qb.flux_pulse_channel()]
+            else:
+                raise ValueError(f"Unrecognized channel type: {obj_type}!")
+            for ch in ch_to_set:
+                if ch in channel_delays and channel_delays[ch] != v:
+                    log.warning(f"Delay of channel {ch} has conflicting "
+                                f"values! This happens if several qubits "
+                                f"share the same channel. Please pass qb_used "
+                                f"to get_channel_delays in order to set "
+                                f"AWG channel delays only for a subset of "
+                                f"qubits measured in parallel.")
+                channel_delays[ch] = v
         return channel_delays
 
     def configure_pulsar(self, qb_used=None):
