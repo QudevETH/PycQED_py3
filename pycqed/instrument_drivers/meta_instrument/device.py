@@ -584,8 +584,11 @@ class Device(Instrument):
         """
         object_delays = self.relative_delay_graph().get_absolute_delays()
         if qb_used is not None:
-            object_delays = {key: val for key, val in sorted(
-                object_delays.items(), key=lambda item: item[0][0] in qb_used)}
+            object_delays = {
+                (qbn, obj_type): delay
+                for (qbn, obj_type), delay in object_delays.items()
+                if qbn in qb_used
+            }
         channel_delays = {}
         for (qbn, obj_type), v in object_delays.items():
             qb = self.get_qb(qbn)
