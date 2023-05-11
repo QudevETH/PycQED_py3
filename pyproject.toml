@@ -26,15 +26,22 @@ classifiers = [
 dependencies = [
     'func_timeout',
     'lmfit',
+    "matplotlib",
     'more_itertools',
     'neupy',
+    "nlopt",
+    "numpy",
+    "pandas",
     'pyqtgraph',
     'pyside2',
     'qcodes',
     'qcodes-contrib-drivers',
     'qcodes_loop',
     'qutip',
+    "requests",
     'scikit-learn',
+    "scipy",
+    "sympy",
     'tensorflow',
     'zhinst',
 ]
@@ -49,26 +56,20 @@ linting = [
     "pylint",
 ]
 measurement_setup = [
+    "influxdb",
     "nidaqmx",
     "pyvisa",
     "pyserial",
+    "zhinst-hdiq",
     "zhinst-qcodes",
 ]
 user = [
     "cython",
     "jupyter",
     "jupyter_contrib_nbextensions",
-    "matplotlib",
-    "nlopt",
-    "numpy",
-    "pandas",
     "psutil",
-    "pyqtgraph",
+    "plotly",
     "pyyaml",
-    "qutip",
-    "requests",
-    "scipy",
-    "sympy",
 ]
 
 [project.urls]
