@@ -893,6 +893,220 @@ class Client:
                 return None
         return device_property_type
 
+    def get_device_property_value_by_name(self, device_name:str=None, qubit_num:int=None, property_name:str=None):
+        """Get the asymmetry of the specified qubit on the specified device.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            qubit_num (int): number of the qubit
+            property_name (str): pyname of the property type which should be returned
+
+        Returns:
+            val: value of the corresponding property type
+        """
+        property_type_id = self.get_device_property_type_for(py_name=property_name).id
+        qubit_type_id = self.get_component_type_for(py_name="qb").id
+
+        device = self.get_device_for(name=device_name)
+        component = self.get_component_for(type=qubit_type_id,
+                          devicedesign=device.devicedesign,
+                          number=qubit_num)
+
+        search_kwargs = {
+            "type": str(property_type_id),
+            "device": str(device.id),
+            "component": str(component.id)
+        }
+
+        try:
+            search_kwargs = utils.noneless(**search_kwargs)
+            device_property_values_list = self.get_api_instance().list_device_property_values(
+                **search_kwargs)
+        except device_db_client.exceptions.NotFoundException:
+            log.debug(f"No value for the property {property_name} for qubit "
+                      f"{qubit_num} on device {device_name} found.")
+            return None
+
+        if len(device_property_values_list) == 0:
+            log.debug(f"No value for the property {property_name} for qubit "
+                      f"{qubit_num} on device {device_name} found.")
+            return None
+        elif len(device_property_values_list) > 1:
+            log.debug(f"Found {len(device_property_values_list)} values "
+                      f"for the property {property_name} for qubit {qubit_num} "
+                      f"on device {device_name}. Just return the first one.")
+
+        return device_property_values_list[0]["value"]
+
+    def get_asymmetry_for(self, device_name:str=None, qubit_num:int=None):
+        """Get the asymmetry of the specified qubit on the specified device.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            qubit_num (int): number of the qubit
+
+        Returns:
+            d: asymmetry of the SQUID loop of the corresponding qubit
+        """
+
+        return self.get_device_property_value_by_name(
+                device_name=device_name,
+                qubit_num=qubit_num,
+                property_name="asymmetry"
+                )
+
+    def get_device_design_property_value_by_name(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None, property_name:str=None):
+        """Get the value of the qubit parameter specifiec in `property_name`
+        of the specified qubit on the specified device design.
+        Only one of `device_name` and `device_design_name` should be passed.
+        If `device_name` is passed, the associated `device_design_name` is
+        automatically determined.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            device_design_name (str): name of the device design
+            qubit_num (int): number of the qubit
+            property_name (str): pyname of the property type which should be returned
+
+        Returns:
+            val: value of the corresponding property type
+        """
+        property_type_id = self.get_device_design_property_type_for(py_name=property_name).id
+        qubit_type_id = self.get_component_type_for(py_name="qb").id
+
+        if device_name != None:
+            device = self.get_device_for(name=device_name)
+            device_design_id = device.devicedesign
+        else:
+            device_design = self.get_device_design_for(name=device_design_name)
+            device_design_id = device_design.id
+
+        component = self.get_component_for(type=qubit_type_id,
+                          devicedesign=device_design_id,
+                          number=qubit_num)
+
+        search_kwargs = {
+            "type": str(property_type_id),
+            "component": str(component.id)
+        }
+
+        try:
+            search_kwargs = utils.noneless(**search_kwargs)
+            device_design_property_values_list = self.get_api_instance().list_device_design_property_values(
+                **search_kwargs)
+        except device_db_client.exceptions.NotFoundException:
+            log.debug(f"No value for the property {property_name} for qubit "
+                      f"{qubit_num} on device {device_name} found.")
+            return None
+
+        if len(device_design_property_values_list) == 0:
+            log.debug(f"No value for the property {property_name} for qubit "
+                      f"{qubit_num} on device {device_name} found.")
+            return None
+        elif len(device_design_property_values_list) > 1:
+            log.debug(f"Found {len(device_design_property_values_list)} values "
+                      f"for the property {property_name} for qubit {qubit_num} "
+                      f"on device {device_name}. Just return the first one.")
+
+        return device_design_property_values_list[0]["value"]
+
+    def get_Ec_for(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None):
+        """Get the charging energy E_c in Hz of the specified qubit on the
+        specified device. Only one of `device_name` and `device_design_name`
+        should be passed.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            device_design_name (str): name of the device design
+            qubit_num (int): number of the qubit
+
+        Returns:
+            Ec: charging energy in Hz
+        """
+
+        return self.get_device_design_property_value_by_name(
+                device_name=device_name,
+                device_design_name=device_design_name,
+                qubit_num=qubit_num,
+                property_name="E_c"
+                )
+
+    def get_ro_freq_for(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None):
+        """Get the bare readout frequency in Hz of the specified qubit on the
+        specified device. Only one of `device_name` and `device_design_name`
+        should be passed.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            device_design_name (str): name of the device design
+            qubit_num (int): number of the qubit
+
+        Returns:
+            ro_freq: bare readout frequency in Hz
+        """
+
+        return self.get_device_design_property_value_by_name(
+                device_name=device_name,
+                device_design_name=device_design_name,
+                qubit_num=qubit_num,
+                property_name="fr"
+                )
+
+    def get_Ej_max_for(self, device_name:str=None, qubit_num:int=None):
+        """Get the total Josephson energy Ej_max in Hz of the specified qubit on
+        the specified device.
+        It is calculated as Ej_max = c / R_N with c some conversion factor which
+        is stored in the database and R_N the normal state resistance which is
+        also stored in the database.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            qubit_num (int): number of the qubit
+
+        Returns:
+            Ej_max: total Josephson energy in Hz
+        """
+        device = self.get_device_for(name=device_name)
+
+        nsr = self.get_device_property_value_by_name(
+                device_name=device_name,
+                qubit_num=qubit_num,
+                property_name="nsr"
+                )
+
+        return device.E_J_conversion_factor * 1e6 / nsr # E_J_conversion_factor
+            # is in GHz/kOhm and nsr is in Ohm, so multiply by 10^6 to get the
+            # result in Hz
+
+    def get_ham_fit_dict_for(self, device_name:str=None, qubit_num:int=None):
+        """Get a dictionary with the charging energy, the total Josephson energy
+        and the asymmetry of the specified qubit on the specified device. This
+        dict can directly be passed to the `qb.fit_ge_freq_from_dc_offset()`
+        function. E_c and Ej_max are returned in Hz such that the dict can
+        directly be passed to `Qubit_freq_to_dac_res` in
+        `pycqed.analysis.fitting_models`.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            qubit_num (int): number of the qubit
+
+        Returns:
+            ham_fit_dict(dict): dict of E_c in Hz, Ej_max in Hz and asymmetry
+        """
+        return dict(E_c=self.get_Ec_for(
+                        device_name = device_name,
+                        qubit_num = qubit_num
+                    ),
+                    Ej_max=self.get_Ej_max_for(
+                        device_name = device_name,
+                        qubit_num = qubit_num
+                    ),
+                    asymmetry=self.get_asymmetry_for(
+                        device_name = device_name,
+                        qubit_num = qubit_num
+                    )
+                )
+
     @decorators.at_least_one_not_none(
         ['id', 'name', 'verbose_name', 'py_name'])
     def get_device_design_property_type_for(self,
@@ -1425,7 +1639,7 @@ class Client:
         return device_property_values
 
     @decorators.only_one_not_none(['id', 'name'])
-    def get_device_design_connectivity_graph(self, name=None, id=None):
+    def get_device_design_connectivity_graph(self, name=None, id=None, return_strings=False, return_tuples=True):
         """Returns the connectivity graph of a device design.
 
         For example for the S17v2 design, it will return
@@ -1437,10 +1651,14 @@ class Client:
         Args:
             id (int|str): id of the device design
             name (str): name of the device design
+            return_strings (bool):  True: return strings, e.g. 'qb7',
+                                    False: return integers, e.g. 7
+            return_tuples (bool):   True: return tuples, e.g. [(1, 2), ...]
+                                    False: return lists, e.g. [[1, 2], ...]
 
         Returns:
-            list: list of tuples, representing the connectivity graph of the
-                device design
+            connectivity_graph (list): list of tuples or lists, representing the
+                connectivity graph of the device design
         """
         api = self.get_api_instance()
 
@@ -1516,7 +1734,17 @@ class Client:
 
                 # Append the two qubits as tuples. If tuples are not required,
                 # one can also just use connectivity_graph.append(qbs_list)
-                connectivity_graph.append((qbs_list[0], qbs_list[1]))
+                if return_strings:
+                    qb1 = f"qb{qbs_list[0]}"
+                    qb2 = f"qb{qbs_list[1]}"
+                else:
+                    qb1 = qbs_list[0]
+                    qb2 = qbs_list[1]
+
+                if return_tuples:
+                    connectivity_graph.append((qb1, qb2))
+                else:
+                    connectivity_graph.append([qb1, qb2])
 
         return connectivity_graph
 
