@@ -51,14 +51,11 @@ except ImportError:
         from qcodes.plots.pyqtgraph import QtPlot
     except Exception:
         log.warning(
-            'pyqtgraph plotting not supported, '
-            'try "from qcodes.plots.pyqtgraph import QtPlot" '
-            'to see the full error'
+            'pyqtgraph plotting not supported. When instantiating an '
+            'MC object, be sure to set live_plot_enabled=False. '
+            'The full traceback follows:'
         )
-        log.warning(
-            'When instantiating an MC object,'
-            ' be sure to set live_plot_enabled=False'
-        )
+        log.warning(traceback.format_exc())
 
 EXPERIMENTAL_DATA_GROUP_NAME = 'Experimental Data'
 
