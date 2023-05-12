@@ -1157,7 +1157,8 @@ class Pulsar(Instrument):
                                  '{}_prepend_zeros',
                                  '{}_use_command_table',
                                  '{}_join_or_split_elements',
-                                 'prepend_zeros']
+                                 'prepend_zeros',
+                                 'use_mcc']
             # Some of the settings are specified for each generator AWG module.
             # We should check these parameters as well.
             generator_settings_to_check = [
