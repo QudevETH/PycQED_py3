@@ -607,7 +607,8 @@ class Device(Instrument):
                                 f"to get_channel_delays in order to set "
                                 f"AWG channel delays only for a subset of "
                                 f"qubits measured in parallel.")
-                channel_delays[ch] = v
+                if ch:  # If channel exists for this qubit
+                    channel_delays[ch] = v
         return channel_delays
 
     def configure_pulsar(self, qb_used=None):
