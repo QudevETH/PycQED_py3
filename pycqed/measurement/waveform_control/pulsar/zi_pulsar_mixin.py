@@ -452,8 +452,9 @@ class MultiCoreCompilerZhinstToolkit:
 
     def _update_session(self):
         """Get the current ZI LabOne server session."""
-        self.session = list(self.sequencer_code_mcc.values())[0][
-            0].parent._tk_object._session
+        if len(self.sequencer_code_mcc.values()):
+            self.session = list(self.sequencer_code_mcc.values())[0][
+                0].parent._tk_object._session
 
     def _compile_and_upload_seqc(self):
         """Compile the sequencer code and generate bitstreams to program the
