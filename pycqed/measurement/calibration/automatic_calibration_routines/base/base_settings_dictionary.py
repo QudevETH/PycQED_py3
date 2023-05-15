@@ -355,7 +355,7 @@ class SettingsDictionary(dict):
                                 settings_setup_folder,
                                 settings_sample_folder]:
             if settings_folder is not None:
-                for file in Path.iterdir(settings_folder):
+                for file in Path(settings_folder).iterdir():
                     with open(file) as f:
                         update_nested_dictionary(
                             self, {file.stem: json.load(f)})
