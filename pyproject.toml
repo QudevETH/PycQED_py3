@@ -9,11 +9,7 @@ description = "Python-based circuit QED data acquisition framework"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
-    {name = "Adriaan Rol", email = "adriaan.rol@gmail.com"},
-]
-maintainers = [
-    {name = "Adriaan Rol", email = "adriaan.rol@gmail.com"},
-    {name = "Christoph Hellings", email = "christoph.hellings@phys.ethz.ch"},
+    {name = "Quantum Device Laboratory"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -35,7 +31,6 @@ dependencies = [
     'pyqtgraph',
     'pyside2',
     'qcodes',
-    'qcodes-contrib-drivers',
     'qcodes-loop',
     'qutip',
     "requests",
@@ -71,10 +66,6 @@ user = [
     "plotly",
     "pyyaml",
 ]
-
-[project.urls]
-documentation = "https://documentation.qudev.phys.ethz.ch/control_software/pycqed_py3/qudev_master/"
-repository = "https://gitlab.ethz.ch/qudev/control_software/pycqed_py3"
 
 [tool.setuptools.packages.find]
 where = ["./"]
