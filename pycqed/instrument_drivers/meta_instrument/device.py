@@ -852,6 +852,63 @@ class Device(Instrument):
         else:
             return fig
 
+    def __getattr__(self, item):
+        """Attribute getter function
+
+        This function is overloaded such that if an attribute is not found in
+        the device it is fetched from self.qubits instead.
+
+        Args:
+            item: name of the attribute to fetch
+
+        Returns:
+            func: function equivalent to a qcodes parameter for all qubits,
+            see docstring
+        """
+        try:
+            # Normal behaviour (the requested attribute exists)
+            return super().__getattr__(item)
+        except AttributeError as e:
+            # If the requested attribute does not exist, try to fetch
+            # it instead from all the qubits
+            # Example:
+            # dev.ge_freq() ---> Returns {'qb1': 6.02e9, ...}
+            # dev.ge_freq(5.0e9) ---> Sets the ge_freq of all qubits
+            qbs_with_attr = [qb for qb in self.qubits if hasattr(qb, item)]
+            if qbs_with_attr:
+                def func(p=None, common_value_all_qubits=False):
+                    """Effective qcodes parameter acting on several qubits
+
+                    Args:
+                        p: Value to set to the qubits. If None, the function
+                            acts as a getter instead.
+                            p can be formatted in two ways:
+                            - case 1: a value v to set to the qubits
+                            - case 2: a dict of values to set to each qubit,
+                                e.g. {'qb1': v1, ...}
+                        common_value_all_qubits: If p is a dict, indicates that
+                            this whole dict should be set to each qubit. In
+                            other words, it should be recognized as case 1
+                            and not case 2.
+                    """
+                    if p is None:
+                        # No value passed: getter
+                        return {qb.name: qb.__getattr__(item)() for qb in
+                                qbs_with_attr}
+                    elif isinstance(p, dict) and not common_value_all_qubits:
+                        # Parse p to set p[qbn] to each qubit
+                        [qb.__getattr__(item)(p[qb.name])
+                         for qb in qbs_with_attr if qb.name in p]
+                    else:
+                        # Directly set p to each qubit
+                        # (p can be a value, or a dict if whole_dict)
+                        [qb.__getattr__(item)(p)
+                            for qb in qbs_with_attr]
+                return func
+            else:
+                # If the attribute does not exist in the qubits either
+                raise e
+
 
 class RelativeDelayGraph:
     """
