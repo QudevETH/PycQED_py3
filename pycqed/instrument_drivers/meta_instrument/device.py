@@ -35,6 +35,7 @@ from qcodes.utils import validators as vals
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis_v3 import plotting as plot_mod
+from collections import OrderedDict
 
 log = logging.getLogger(__name__)
 
@@ -568,9 +569,14 @@ class Device(Instrument):
                 f'names are: {self._two_qb_gates}')
         return gate_name
 
-    def get_channel_delays(self):
+    def get_channel_delays(self, qb_used=None):
         """
         Get AWG channel delays
+
+        Args:
+            qb_used (list of string): names of qubits whose delays should be
+            set to the AWG channels (useful e.g. for shared AWG channels).
+            If None, all qubits are used.
 
         Returns:
             Dictionary of delay values for the AWG channels of the system to
@@ -578,27 +584,47 @@ class Device(Instrument):
             `self.relative_delay_graph()`.
         """
         object_delays = self.relative_delay_graph().get_absolute_delays()
+        if qb_used is not None:
+            object_delays = {
+                (qbn, obj_type): delay
+                for (qbn, obj_type), delay in object_delays.items()
+                if qbn in qb_used
+            }
         channel_delays = {}
         for (qbn, obj_type), v in object_delays.items():
             qb = self.get_qb(qbn)
             if obj_type == 'drive':
-                channel_delays[qb.ge_I_channel()] = v
-                channel_delays[qb.ge_Q_channel()] = v
+                ch_to_set = [qb.ge_I_channel(), qb.ge_Q_channel()]
             elif obj_type == 'flux':
-                channel_delays[qb.flux_pulse_channel()] = v
+                ch_to_set = [qb.flux_pulse_channel()]
+            else:
+                raise ValueError(f"Unrecognized channel type: {obj_type}!")
+            for ch in ch_to_set:
+                if ch in channel_delays and channel_delays[ch] != v:
+                    log.warning(f"Delay of channel {ch} has conflicting "
+                                f"values! This happens if several qubits "
+                                f"share the same channel. Please pass qb_used "
+                                f"to get_channel_delays in order to set "
+                                f"AWG channel delays only for a subset of "
+                                f"qubits measured in parallel.")
+                if ch:  # If channel exists for this qubit
+                    channel_delays[ch] = v
         return channel_delays
 
-    def configure_pulsar(self):
+    def configure_pulsar(self, qb_used=None):
         """
         Configure pulse generation instrument settings.
 
         For now, only sets AWG channel delays.
+
+        Args:
+            qb_used: see get_channel_delays
         """
 
         pulsar = self.instr_pulsar.get_instr()
 
         # configure channel delays
-        channel_delays = self.get_channel_delays()
+        channel_delays = self.get_channel_delays(qb_used=qb_used)
         for ch, v in channel_delays.items():
             awg = pulsar.get_channel_awg(ch)
             chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
@@ -984,7 +1010,7 @@ class RelativeDelayGraph:
             such that the relative delays are satisfied.
         """
         # determine root of the tree
-        abs_delays = {}
+        abs_delays = OrderedDict()
         min_delay = np.inf
         refs = set()
         children = set()
