@@ -65,4 +65,3 @@ pages:
     - qudev_master
     - /^Proj\/.*$/
     - /^doc\/.*$/
-    - enh/pyproject.toml
