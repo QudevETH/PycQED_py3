@@ -999,9 +999,10 @@ class HamiltonianFittingAnalysis:
             fluxlines_dict: dictionary containing the fluxline ids (necessary
                 to determine voltage)
         """
+        from pycqed.utilities.settings_manager import get_station_from_file
         path = a_tools.get_folder(timestamp)
         data = a_tools.open_hdf_file(folder=path)
-        config_file = a_tools.open_config_file(folder=path)
+        station = get_station_from_file(folder=path)
 
         if "_ge_" in path:
             transition = "ge"
@@ -1028,17 +1029,13 @@ class HamiltonianFittingAnalysis:
                 "analysis_params_dict"
             ][qubit_name]["exp_decay"].attrs["new_qb_freq_stderr"]
             dc_source_key = fluxlines_dict[qubit_name].instrument.name
-            voltage = float(
-                config_file[dc_source_key].attrs[
-                    fluxlines_dict[qubit_name].name
-                ]
-            )
+            voltage = \
+                float(station.get(f'{dc_source_key}.'
+                                  f'{fluxlines_dict[qubit_name].name}'))
             HamiltonianFittingAnalysis._fill_experimental_values(
                 experimental_values, voltage, transition, freq
             )
-            a_tools.close_files([data, config_file])
         except KeyError:
-            a_tools.close_files([data, config_file])
             log.warning(f"Could not get ramsey data from file {path}")
 
     @staticmethod
