@@ -3370,7 +3370,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                         'linestyle': 'dotted',
                         'marker': 'None',
                         'setlabel': '$f_{RO}$ = ' \
-                                    + f'{(frequency[argmax]/1e9):.3f} GHz',
+                                    + f'{(frequency[argmax]/1e9):.4f} GHz',
                         'do_legend': True,
                 }
 
