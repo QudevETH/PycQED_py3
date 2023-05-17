@@ -34,7 +34,7 @@ from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 try:
     from qcodes_loop.plots.colors import color_cycle
-except ImportError:
+except ModuleNotFoundError:
     from qcodes.plots.colors import color_cycle
 
 from pycqed.utilities.errors import NoProgressError
@@ -46,7 +46,7 @@ except:
 
 try:
     from qcodes_loop.plots.pyqtgraph import QtPlot
-except ImportError:
+except ModuleNotFoundError:
     try:
         from qcodes.plots.pyqtgraph import QtPlot
     except Exception:
