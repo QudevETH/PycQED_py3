@@ -180,6 +180,7 @@ def load_settings(instrument,
     '''
     from numpy import array  # DO not remove. Used in eval(array(...))
     from collections import OrderedDict  # DO NOT remove. Used in eval()
+    from pycqed.utilities.settings_manager import get_station_from_file
     if folder is None:
         folder_specified = False
     else:
@@ -203,13 +204,11 @@ def load_settings(instrument,
             print('Folder used: {}'.format(folder))
 
         try:
-            f = a_tools.open_config_file(folder)
-            sets_group = f
-            ins_group = sets_group[instrument_name]
+            station = get_station_from_file(folder=folder)
+            ins_loaded = station.components[instrument_name]
 
             if verbose:
-                print('Loaded settings successfully from the HDF file.')
-
+                print('Loaded settings successfully from the file.')
             params_to_set = kw.pop('params_to_set', None)
             if params_to_set is not None:
                 if len(params_to_set) == 0:
@@ -217,14 +216,14 @@ def load_settings(instrument,
                 if verbose and update:
                     print('Setting parameters {} for {}.'.format(
                         params_to_set, instrument_name))
-                params_to_set = [(param, val) for (param, val) in
-                                ins_group.attrs.items() if param in
+                params_to_set = [(param, val()) for (param, val) in
+                                 ins_loaded.parameters.items() if param in
                                  params_to_set]
             else:
                 if verbose and update:
                     print('Setting parameters for {}.'.format(instrument_name))
                 params_to_set = [
-                    (param, val) for (param, val) in ins_group.attrs.items()
+                    (param, val()) for (param, val) in ins_loaded.parameters.items()
                     if param not in getattr(
                         instrument, '_params_to_not_load', {})]
 
@@ -237,56 +236,18 @@ def load_settings(instrument,
             for parameter, value in params_to_set:
                 if parameter in instrument.parameters.keys() and \
                         hasattr(instrument.parameters[parameter], 'set'):
-                    if value == 'None':  # None is saved as string in hdf5
-                        try:
-                            instrument.set(parameter, None)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    elif value == 'False':
-                        try:
-                            instrument.set(parameter, False)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    elif value == 'True':
-                        try:
-                            instrument.set(parameter, True)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    else:
-                        try:
-                            instrument.set(parameter, int(value))
-                        except Exception:
-                            try:
-                                instrument.set(parameter, float(value))
-                            except Exception:
-                                try:
-                                    instrument.set(parameter, eval(value))
-                                except Exception:
-                                    try:
-                                        instrument.set(parameter,
-                                                       value)
-                                    except Exception:
-                                        log.error('Could not set parameter '
-                                              '"%s" to "%s" '
-                                              'for instrument "%s"' % (
-                                                  parameter, value,
-                                                  instrument_name))
-
+                    try:
+                        instrument.set(parameter, value)
+                    except Exception:
+                        log.error('Could not set parameter '
+                                  '"%s" to "%s" '
+                                  'for instrument "%s"' % (
+                                      parameter, value,
+                                      instrument_name))
             success = True
-            a_tools.close_files([f])
         except Exception as e:
             logging.warning(e)
             success = False
-            try:
-                a_tools.close_files([f])
-            except:
-                pass
             if timestamp is None and not folder_specified:
                 print('Trying next folder.')
                 older_than = os.path.split(folder)[0][-8:] \
