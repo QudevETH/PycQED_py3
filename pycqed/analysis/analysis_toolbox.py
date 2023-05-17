@@ -461,6 +461,10 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
     Returns:
         None or the results as str or dict, see parameter of arg output
     """
+    log.warning('This function is no longer maintained and works only for hdf'
+                'files. Please use the settings manager '
+                '(pycqed.utilitities.settings_manager.SettingsManager) and the'
+                'function compare_stations().')
     files_to_close = []
     try:
         if isinstance(a, str):

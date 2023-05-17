@@ -364,7 +364,7 @@ class Station(DelegateAttributes):
                 param_value = param
         except AttributeError:
             param_value = 'not found'
-            # logger.warning('Problem at extracting parameter from station.')
+            logger.warning('Problem at extracting parameter from station.')
         return param_value
 
     def update(self, station):
