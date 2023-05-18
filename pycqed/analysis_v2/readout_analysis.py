@@ -1761,7 +1761,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
             'zlabel': "Counts",
             'zrange': [0,1],
             'title': (self.timestamps[0] + ' \n' +
-                      self.raw_data_dict['measurementstring'][0]),
+                      self.raw_data_dict['measurementstring']),
             'xunit': None,
             'yunit': None,
             'xtick_loc': np.arange(len(self.observables))[obs_filter],
