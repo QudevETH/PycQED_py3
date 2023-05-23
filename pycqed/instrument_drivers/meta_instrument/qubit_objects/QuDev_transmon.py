@@ -369,9 +369,6 @@ class QuDev_transmon(MeasurementObject):
         self.add_pulse_parameter(op_name, ps_name + '_gaussian_filter_sigma',
                                  'gaussian_filter_sigma', initial_value=2e-9,
                                  vals=vals.Numbers(0))
-        self.add_pulse_parameter(op_name, ps_name + '_square_wave',
-                                 'square_wave', initial_value=False,
-                                 vals=vals.Bool())
         self.add_pulse_parameter(op_name, ps_name + '_trans_amplitude',
                                  '_trans_amplitude', initial_value=0,
                                  vals=vals.Numbers(),
@@ -642,7 +639,7 @@ class QuDev_transmon(MeasurementObject):
         :param transition: (str, default: 'ge') the transition whose
             frequency should be calculated. Currently, only 'ge' is
             implemented for all models. The model 'transmon_res' also allows to
-            the 'ef' and 'gf' transition to be specfified.
+            compute the 'ef' and 'gf' transition.
         :param model: (str, default: 'transmon_res') the model to use.
             Currently 'transmon_res' and 'approx' are supported. See
             docstring of self.calculate_frequency
