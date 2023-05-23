@@ -2,15 +2,15 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 class InterpolatedHamiltonianModel:
-    """Provides as simple class to wrap the scipy 1D interpolation method to
+    """Provides a simple class to wrap the scipy 1D interpolation method to
     speed-up the computation of the Hamiltonian model when this is called
-    several times, e.g. when called in a loop as part of a fitting routine.
+    several times, e.g., when called in a loop as part of a fitting routine.
     """
 
     def __init__(self, qb, n_steps=1001, flux=None, **kw):
         """
         Args:
-            qb (QuDev_transmon): Qb to which the Hamiltonian model correspondss
+            qb (QuDev_transmon): Qb to which the Hamiltonian model corresponds
             flux (array): Initial flux points to compute the data points used in
                 the interpolation. Will be mapped to domain [0, 1]. If None one
                 needs to specify n_steps instead. Defaults to None.
@@ -64,7 +64,7 @@ class InterpolatedHamiltonianModel:
             transition (str, optional): Which transition frequency should be
                 calculated. Either 'ge' or 'ef'. Defaults to 'ge'.
             return_ge_and_ef (bool, optional): Whether to return both
-                transitions, 'ge' or 'ef'. Overwrites the choice taken in
+                transitions, 'ge' and 'ef'. Overwrites the choice taken in
                 argument transition. Defaults to False.
 
         In case flux and bias are both None (default), the method will assume
