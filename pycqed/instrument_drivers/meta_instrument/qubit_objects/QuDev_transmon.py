@@ -553,13 +553,21 @@ class QuDev_transmon(MeasurementObject):
             the flux value from self.flux_parking() is used.
         :param update: (bool, default False) whether the result should be
             stored as {transition}_freq parameter of the qubit object.
-        :return: calculated ge transition frequency
+        :param return_ge_and_ef: (bool, default False) compute 'ge' as well as
+            'ef' transition frequency. This only works for model 'transmon_res'.
+            If True, the transition frequency will not be updated in the qubit
+            object.
+        :return: calculated transition frequency/frequencies
         """
 
         if transition not in ['ge', 'ef'] or (transition == 'ef' and
                                               model not in ['transmon_res']):
             raise NotImplementedError(
                 f'calculate_frequency: Currently, transition {transition} is '
+                f'not implemented for model {model}.')
+        if return_ge_and_ef and model not in ['transmon_res']:
+            raise NotImplementedError(
+                f'calculate_frequency: Currently, return_ge_and_ef is '
                 f'not implemented for model {model}.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
         if flux_amplitude_bias_ratio is None:
@@ -604,8 +612,6 @@ class QuDev_transmon(MeasurementObject):
                 freq = freqs[0]
             if transition == 'ef':
                 freq = freqs[1]
-            if transition == 'gf':
-                freq = freqs[0] + freqs[1]
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx', 'transmon', and"
