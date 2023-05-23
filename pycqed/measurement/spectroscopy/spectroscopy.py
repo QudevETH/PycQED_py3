@@ -1,4 +1,5 @@
 import numpy as np
+from collections import OrderedDict
 import traceback
 from pycqed.utilities.general import assert_not_none, \
     configure_qubit_mux_readout
@@ -75,7 +76,8 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
                          df_kwargs=df_kwargs, **kw)
         self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
-        self.sweep_points_pulses = SweepPoints(min_length=2, )
+        self.sweep_points_pulses = SweepPoints(
+            min_length=2 if self.force_2D_sweep else 1)
         """sweep points that are passed to sweep_n_dim and used to generate
         segments. This reduced set is introduce to prevent that a segment
         is generated for every frequency sweep point.
@@ -85,6 +87,10 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         self.grouped_tasks = {}
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
+        # new sweep points created from kws might increase the total number of
+        # sweep dimensions: extend sweep_points_pulses if needed
+        while len(self.sweep_points_pulses) < self._num_sweep_dims:
+            self.sweep_points_pulses.add_sweep_dimension()
 
         self.group_tasks()
         self.check_all_freqs_per_lo()
@@ -92,16 +98,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         self.check_hard_sweep_compatibility()
         self.resolve_freq_sweep_points(**kw)
         self.generate_sweep_functions()
-        if len(self.sweep_points_pulses[0]) == 0:
-            # Create a single segement if no hard sweep points are provided.
-            self.sweep_points_pulses.add_sweep_parameter('dummy_hard_sweep',
-                                                         [0], dimension=0)
-        if len(self.sweep_points_pulses[1]) == 0:
-            # Internally, 1D and 2D sweeps are handled as 2D sweeps.
-            # With this dummy soft sweep, exactly one sequence will be created
-            # and the data format will be the same as for a true soft sweep.
-            self.sweep_points_pulses.add_sweep_parameter('dummy_soft_sweep',
-                                                         [0], dimension=1)
 
         self._fill_temporary_values()
         # temp value ensure that mod_freqs etc are set corretcly
@@ -744,6 +740,223 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             ]
             qb.set(f'ro_freq', ro_freq)
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'].update({
+            ResonatorSpectroscopy.__name__: OrderedDict({
+                'trigger_separation': (float, 5e-6)
+            })
+        })
+        return d
+
+class FeedlineSpectroscopy(ResonatorSpectroscopy):
+    """
+    Performs a 1D resonator spectroscopy for a given feedline.
+
+    The analysis looks for dips in the magnitude result. Two dips are searched
+    for each qubit passed in 'feedline'. Each pair of dips is assigned to a
+    qubit following the order of the current ro_freq. The two dips at the lowest
+    frequency will be assigned to the qubit with the lowest ro_freq and so on.
+
+    The sharpest dip of each pair is chosen to update the readout frequency
+    of the corresponding qubit.
+
+    Compatible task_dict keys:
+        feedline: list of QuDev_transmons belonging to the same feedline. The
+            first qubit of the list will be used to label the task. The qubits
+            passed here will be used in the analysis to assign the found dips
+            to each qubit.
+            FIXME: should be refactored in future to be meas_obj (see parent
+            class).
+        freqs: List or np.array containing the drive frequencies of the
+            spectroscopy measurement. (1. dim. sweep points)
+    """
+
+    kw_for_sweep_points = {
+        'freqs':
+            dict(param_name='freq',
+                 unit='Hz',
+                 label=r'RO frequency, $f_{RO}$',
+                 dimension=0),
+    }
+    default_experiment_name = 'FeedlineSpectroscopy'
+
+    def __init__(self, task_list, **kw):
+        """
+        Args:
+            task_list: a list of tasks to be sent to the instrument.
+        """
+        self.qubits = []
+        self.feedlines = []
+
+        # Build the task_list for the parent class
+        for task in task_list:
+            # Choose the first qubit of each feedline as the reference
+            task['qb'] = task['feedline'][0]
+            self.qubits.append(task['qb'])
+            # Remove feedline from task. This is necessary because the qubit
+            # objects that it contains are QCoDeS instruments and they can not
+            # be pickled when exp_metadata is deepcopied in the base class
+            self.feedlines.append(task['feedline'])
+            task.pop('feedline')
+
+        # Sort the qubits and the feedlines consistently with what is already
+        # done in a MultiTaskingExperiment. Namely, the tasks are sorted using
+        # the name of the qubits.
+        # Keeping track of this order ensures that each tasks can be analyzed
+        # correctly. See the link for the sorting snippet
+        # https://stackoverflow.com/questions/9764298/how-to-sort-two-lists-which-reference-each-other-in-the-exact-same-way
+        self.qubits, self.feedlines = zip(*sorted(
+            zip(self.qubits, self.feedlines), key=lambda pair: pair[0].name))
+        # Convert tuples to lists again
+        self.qubits = list(self.qubits)
+        self.feedlines = list(self.feedlines)
+        super().__init__(task_list, qubits=self.qubits, **kw)
+
+    def run_update(self, **kw):
+        """
+        Updates the readout frequency of the qubits corresponding to the
+        measured feedlines.
+        """
+        for qb_name, feedline in zip(self.qb_names, self.feedlines):
+            for qb in feedline:
+                try:
+                    ro_freq = self.analysis.fit_res[qb_name][
+                        f"{qb.name}_RO_frequency"]
+                    qb.ro_freq(ro_freq)
+                except KeyError:
+                    log.warning(f"RO frequency of {qb.name} was not updated")
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Launches the analysis using ResonatorSpectroscopyAnalysis. Search
+        for the dips corresponding to the readout resonator and the Purcell
+        filter for each qubit of the feedline.
+        The number of dips that the algorithm looks for is twice the number
+        of qubits belonging to the feedline.
+
+        Args:
+            analysis_kwargs (dict): keyword arguments passed to the analysis
+                class
+
+        Returns:
+            (ResonatorSpectroscopyAnalysis): the analysis object
+
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        analysis_kwargs['feedlines_qubits'] = self.feedlines
+        self.analysis = spa.FeedlineSpectroscopyAnalysis(**analysis_kwargs)
+        return self.analysis
+
+
+class ResonatorSpectroscopyFluxSweep(ResonatorSpectroscopy):
+    """
+    Performs a 2D resonator spectroscopy for a given qubit, sweeping the
+    frequency and the voltage bias.
+
+    The analysis looks for two dips in the magnitude result at each bias
+    voltage. Afterwards, the extrema closest to zero voltage are chosen as the
+    USS and LSS.
+
+    If update is True, the qubits are parked at their sweet spot. The readout
+    frequency is also updated accordingly. The width of the dips is used to
+    decide which of the two dips should be used.
+
+    Compatible task_dict keys:
+        qb: see parent class
+        freqs: see parent class
+        volts: see parent class
+    """
+
+    kw_for_sweep_points = {
+        'freqs':
+            dict(param_name='freq',
+                 unit='Hz',
+                 label=r'RO frequency, $f_{RO}$',
+                 dimension=0),
+        'volts':
+            dict(param_name='volt',
+                 unit='V',
+                 label=r'fluxline voltage',
+                 dimension=1),
+    }
+
+    default_experiment_name = 'ResonatorSpectroscopyFluxSweep'
+
+    def __init__(self, task_list, fluxlines_dict, **kw):
+        self.fluxlines_dict = fluxlines_dict
+        # Build the task_list for the parent class
+        for task in task_list:
+            task['sweep_functions_dict'] = {'volt': self.fluxlines_dict[task['qb']]}
+        super().__init__(task_list, **kw)
+
+    def run_update(self, **kw):
+        """
+        Updates each qubit bias voltage to the designated sweet spot.
+        The RO frequency is also updated, choosing the dip with the minimum
+        average width.
+
+        The 'dac_sweet_spot' and 'V_per_phi0' keys of the
+        'fit_ge_freq_from_dc_offset' dictionary are updated, to store the found
+        value of the USS and LSS.
+
+        The flux_parking() value is also updated depending on the order of the
+        sweet spots,
+        """
+
+        for qb in self.qubits:
+            if qb.flux_parking() != 0 and np.abs(qb.flux_parking()) != 0.5:
+                log.warning((f"{qb.name}.flux_parking() is not 0, 0.5"
+                             "nor -0.5. Nothing will be updated."))
+            else:
+                sweet_spot = self.analysis.fit_res[
+                        qb.name][f'{qb.name}_sweet_spot']
+                opposite_sweet_spot = self.analysis.fit_res[
+                        qb.name][f'{qb.name}_opposite_sweet_spot']
+                sweet_spot_RO_freq = self.analysis.fit_res[
+                        qb.name][f'{qb.name}_sweet_spot_RO_frequency']
+
+                self.fluxlines_dict[qb.name](sweet_spot)
+                qb.ro_freq(sweet_spot_RO_freq)
+                # Update V_per_phi0 key in each qubit. From this, it is possible
+                # to retrieve the opposite sweet spot
+                V_per_phi0 = np.abs(2 * (sweet_spot - opposite_sweet_spot))
+                qb.fit_ge_freq_from_dc_offset()['V_per_phi0'] = V_per_phi0
+
+                # Store the USS in 'dac_sweet_spot'
+                if qb.flux_parking() == 0:
+                    qb.fit_ge_freq_from_dc_offset(
+                    )['dac_sweet_spot'] = sweet_spot
+                elif qb.flux_parking() == 0.5:
+                    qb.fit_ge_freq_from_dc_offset(
+                    )['dac_sweet_spot'] = sweet_spot - V_per_phi0/2
+                elif qb.flux_parking() == -0.5:
+                    qb.fit_ge_freq_from_dc_offset(
+                    )['dac_sweet_spot'] = sweet_spot + V_per_phi0/2
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Launches the analysis using ResonatorSpectroscopyFluxSweepAnalysis.
+        At each voltage bias, search for two dips corresponding to the readout
+        resonator and the Purcell filter. The found dips are used to determine
+        the USS and LSS closest to zero. The average width of the dips is
+        also calculated.
+
+        Args:
+            analysis_kwargs: keyword arguments passed to the analysis class
+
+        Returns: analysis object
+
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        self.analysis = spa.ResonatorSpectroscopyFluxSweepAnalysis(
+            **analysis_kwargs)
+        return self.analysis
+
 
 class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """Base class to be able to perform 1d and 2d qubit spectroscopies on one
@@ -1008,7 +1221,7 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             amp_range = pulsar.get(f'{ch}_amp')
             func = lambda power, a=amp_range: dbm_to_vp(power) / a
             sf = swf.Transformed_Sweep(
-                param, func, 'Spectrocopy power', unit='dBm')
+                param, func, 'Spectroscopy power', unit='dBm')
         if get_swf:
             return sf
         else:
@@ -1044,6 +1257,60 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 ]
                 self.temporary_values.append((amp,
                                               dbm_to_vp(qb.spec_power())))
+
+
+
+class QubitSpectroscopy1D(QubitSpectroscopy):
+    """
+    Performs a 1D QubitSpectroscopy and fits the result the result to extract
+    the qubit frequency. See QubitSpectroscopy for allowed keywords.
+
+    The analysis class is QubitSpectroscopy1DAnalysis, see it for the allowed
+    keyword arguments for the analysis. The keyword arguments for the analysis
+    can be passed as a dict via the argument 'analysis_kwargs' of
+    QubitSpectroscopy1D.
+    """
+
+    kw_for_sweep_points = {
+        'freqs':
+            dict(param_name='freq',
+                 unit='Hz',
+                 label=r'Drive frequency, $f_{DR}$',
+                 dimension=0),
+    }
+    default_experiment_name = 'QubitSpectroscopy1D'
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs the analysis to find the qubit frequency. The analysis class is
+        QubitSpectroscopy1DAnalysis
+
+        Args:
+            analysis_kwargs (dict, optional): keyword arguments for
+                QubitSpectroscopy1DAnalysis. See it for the allowed keyword
+                arguments. Defaults to None.
+
+        Returns:
+            QubitSpectroscopy1DAnalysis: the analysis that was run.
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = spa.QubitSpectroscopy1DAnalysis(**analysis_kwargs)
+        return self.analysis
+
+    def run_update(self, **kw):
+        """
+        Updates the qubit frequency. If the ef transition was analyzed, updates
+        both the ge and the ef frequency, otherwise updates only the ge
+        frequency.
+        """
+        for qb in self.qubits:
+            f0 = self.analysis.fit_res[qb.name].params['f0'].value
+            qb.ge_freq(f0)
+            if self.analysis.analyze_ef:
+                f0_ef = 2 * self.analysis.fit_res[
+                    qb.name].params['f0_gf_over_2'] - f0
+                qb.ef_freq(f0_ef)
 
 
 class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):

@@ -26,8 +26,8 @@ import sys
 this_module = sys.modules[__name__]
 pp_mod.search_modules.add(this_module )
 
-prx_single_column_width = 3.404
-prx_two_column_width = 7.057
+prx_single_column_width = 3.375
+prx_two_column_width = 2*prx_single_column_width
 # Default to PRX style, change these global variables according to journal
 FIGURE_WIDTH_1COL = prx_single_column_width
 FIGURE_WIDTH_2COL = prx_two_column_width
@@ -117,7 +117,7 @@ def get_default_plot_params(set_params=True, figure_width='1col',
 
 def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
                            startletter="a", ha='left', va='top',
-                           fmt="({})", **kwargs):
+                           fmt="({})", letters=None, **kwargs):
     """
     Adds letters to top left corner of subplots corresponding to axes from fig.
     :param fig: figure object
@@ -131,16 +131,18 @@ def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
     :param va: vertical alignment of letters
     :param fmt: string format for the numbering. Defaults to '({})' yielding
         (a), (b), ...
+    :param letters: list of complete strings to put on each axis in axes
     :return: fig, axes
 
     Attention!
     Needs to be called after fig.subplots_adjust() or fig.tight_layout()
 
     """
-    # ax_geom = get_axes_geometry_from_figure(fig)
-    alphabet = 'abcdefghijklmnopqrstuvwxyz'
-    s = alphabet.index(startletter)
-    letters = [fmt.format(alphabet[x + s]) for x in range(len(np.array(axes).flatten()))]
+    if letters is None:
+        alphabet = 'abcdefghijklmnopqrstuvwxyz'
+        s = alphabet.index(startletter)
+        letters = [fmt.format(alphabet[x + s]) for x in
+                   range(len(np.array(axes).flatten()))]
     for i, ax in enumerate(np.array(axes).flatten()):
         letter = letters[i]
         xo = xoffset[i] if np.ndim(xoffset) != 0 else xoffset

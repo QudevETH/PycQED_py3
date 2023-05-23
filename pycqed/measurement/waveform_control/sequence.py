@@ -21,6 +21,10 @@ class Sequence:
     """
 
     RENAMING_SEPARATOR = "+"
+    AMPLITUDE_ROUNDING_DIGITS = 7
+    """Specifies the rounding precision when processing waveform amplitudes 
+    in harmonize_amplitude method. If this parameter has value n, then the 
+    waveform amplitudes will be rounded to the n-th digit of V (volt)."""
 
     def __init__(self, name, segments=()):
         """
@@ -30,13 +34,16 @@ class Sequence:
             segments (list, tuple): list of segments to add to the sequence
         """
         self.name = name
+        self.timer = Timer(self.name)
         self.pulsar = ps.Pulsar.get_instance()
         self.segments = odict()
         self.awg_sequence = {}
         self.repeat_patterns = {}
         self.extend(segments)
-        self.timer = Timer(self.name)
         self.is_resolved = False
+        self.awg_scaling_factors = dict()
+        """A list of AWG names whose pulse amplitudes has processed with 
+        method 'self.harmonize_amplitude'."""
 
     def add(self, segment):
         if segment.name in self.segments:
@@ -45,6 +52,7 @@ class Sequence:
         self.segments[segment.name] = segment
         if len(self.segments) == 1:
             self.segments[segment.name].is_first_segment = True
+        self.timer.children.update({segment.name: segment.timer})
 
     def extend(self, segments):
         """
@@ -114,15 +122,28 @@ class Sequence:
             for group in trigger_groups:
                 awgs.add(self.pulsar.get_awg_from_trigger_group(group))
 
+        # Note that method 'self.generate_waveforms_sequences' will be
+        # called by 'pulsar._program_awgs' multiple times, but we only
+        # want to execute 'self.harmonize_amplitude' once. Otherwise,
+        # we will have wrong pulse amplitudes and scaling parameters.
+        for awg in awgs:
+            if awg not in self.awg_scaling_factors.keys():
+                self.awg_scaling_factors[awg] = \
+                    self.harmonize_amplitude(awg)
+
         for segname, seg in self.segments.items():
             for group in trigger_groups:
                 awg = self.pulsar.get_awg_from_trigger_group(group)
                 if awg not in awgs:
                     continue
+                scaling_factors = self.awg_scaling_factors[awg]
                 sequences.setdefault(awg, odict())
                 # Store name of the segment as key and None as value.
                 # This is used when compiling docstrings in seqc.
                 sequences[awg].setdefault(segname, None)
+
+                # Take element metadata from the resolved segments.
+                element_metadata = seg.element_metadata
                 elnames = seg.elements_on_awg.get(group, [])
                 for elname in elnames:
                     sequences[awg].setdefault(elname, {'metadata': {}})
@@ -155,12 +176,21 @@ class Sequence:
                     sequences[awg][elname]['metadata'].setdefault('trigger_groups', set())
                     sequences[awg][elname]['metadata']['trigger_groups'].add(group)
                     # Write modulation and sine configuration to element
-                    if seg.mod_config:
+                    if elname in element_metadata.keys() \
+                            and 'mod_config' in element_metadata[elname].keys()\
+                                and element_metadata[elname]['mod_config']:
                         sequences[awg][elname]['metadata']['mod_config'] = \
-                                seg.mod_config
+                            element_metadata[elname]['mod_config']
+                    elif seg.mod_config:
+                        sequences[awg][elname]['metadata']['mod_config'] =\
+                            seg.mod_config
                     if seg.sine_config:
                         sequences[awg][elname]['metadata']['sine_config'] = \
-                                seg.sine_config
+                            seg.sine_config
+                    # Pass command table scaling factors to element metadata
+                    if elname in scaling_factors.keys():
+                        sequences[awg][elname]['metadata']['scaling_factor'] \
+                            = scaling_factors[elname]
                 # Experimental feature to sweep values of nodes of ZI HDAWGs
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.
@@ -225,6 +255,154 @@ class Sequence:
                 seg._test_overlap()
             # mark sequence as resolved
             seq.is_resolved = True
+
+    def harmonize_amplitude(self, awg):
+        """Rescale waveform amplitudes such that the largest pulse amplitude
+        in an element is the same as the largest in that sequence. The 
+        scaling factor is saved in the dictionary scaling_factors and 
+        passed to element metadata, such that the original waveform can be 
+        retrieved when generating command table entries. This allows reusing 
+        waveforms to the largest extent based on wave hashes. Note that 
+        the rescaling will be skipped on the target AWG modules where command 
+        table is not activated.
+        
+        Args:
+            awg: (str) AWG name to be processed.
+
+        Returns:
+            scaling_factors: (dict) factors to be passed to the command table
+                entries in order to retrieve the original pulse amplitude.
+        """
+        scaling_factors = dict()
+
+        # Command table wave sequencing is only implemented for
+        # AWG interfaces that have awg_modules attribute.
+        awg_interface = self.pulsar.awg_interfaces[awg]
+        if not hasattr(awg_interface, "awg_modules"):
+            return dict()
+
+        awg_modules = awg_interface.awg_modules
+        for awg_module in awg_modules:
+            # harmonize_amplitude only affects AWGs whose command table wave
+            # sequencing is enabled.
+            if not self.pulsar.check_channel_parameter(
+                    awg=awg_module.awg.name,
+                    channel=awg_module.get_i_channel(),
+                    parameter_suffix="_harmonize_amplitude"
+            ):
+                continue
+
+            if not self.pulsar.check_channel_parameter(
+                awg=awg_module.awg.name,
+                channel=awg_module.get_i_channel(),
+                parameter_suffix="_use_command_table"
+            ):
+                logging.warning(
+                    f"On {awg_module.awg.name}: PycQED will "
+                    f"not harmonize amplitude for this AWG module "
+                    f"because this feature only works when command table "
+                    f"is enabled. Please set \"_use_command_table\" "
+                    f"parameter to true for this AWG module if you want "
+                    f"to allow harmonizing amplitude.")
+                continue
+            # Only check analog channels
+            channel_ids = awg_module.analog_channel_ids
+            # Collects all elements that are relevant to this AWG module.
+            # Records the maximum amplitude in each element.
+            elements_on_channel = dict()
+            element_max_amp = dict()
+            for segname, seg in self.segments.items():
+                elements_on_channel[segname] = set()
+                for chid in channel_ids:
+                    channel = self.pulsar._id_channel(
+                        chid, awg_interface.awg.name)
+                    elements_on_channel[segname] |= \
+                        seg.elements_on_channel.get(channel, set())
+
+                for elname in elements_on_channel[segname]:
+                    current_max_amp = 0
+                    for pulse in seg.elements[elname]:
+                        # boolean parameter indicating whether one pulse
+                        # overlaps with the current AWG module
+                        pulse_overlaps_with_channel = any([
+                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            for channel in pulse.channels])
+                        # boolean parameter indicating whether one pulse
+                        # is played solely on the current AWG module
+                        pulse_only_on_channel = all([
+                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            for channel in pulse.channels])
+
+                        if not pulse_overlaps_with_channel:
+                            continue
+                        elif not pulse_only_on_channel:
+                            # The pulse only partially overlaps with the
+                            # current AWG module. It is currently not
+                            # supported to harmonize amplitude across
+                            # multiple AWG modules.
+                            raise RuntimeError(
+                                f"On element {elname}: Harmonizing amplitude "
+                                f"does not support pulse played across "
+                                f"multiple AWG modules. Please disable "
+                                f"harmonizing amplitude for all AWG modules "
+                                f"relevant to this pulse."
+                            )
+
+                        if not pulse.SUPPORT_HARMONIZING_AMPLITUDE:
+                            # Harmonizing amplitude is not allowed for this
+                            # pulse type
+                            raise RuntimeError(
+                                f"On {awg_module.awg.name}: pulse {pulse.name} "
+                                f"does not allow harmonizing amplitude. "
+                                f"Please disable \"_harmonize_amplitude\" "
+                                f"parameter for this AWG module."
+                            )
+
+                        if abs(getattr(pulse, "amplitude", 0)) > \
+                                abs(current_max_amp):
+                            current_max_amp = getattr(pulse, "amplitude", 0.0)
+                    element_max_amp[elname] = current_max_amp
+
+            if not len(element_max_amp) or \
+                    max(element_max_amp.values()) == 0:
+                # There is no element played on this awg module.
+                continue
+            # choose the pulse amplitude that has the largest absolute value
+            max_val = max(element_max_amp.values())
+            min_val = min(element_max_amp.values())
+            sequence_max_amp = abs(max_val) \
+                if abs(max_val) >= abs(min_val) else abs(min_val)
+            for segname, seg in self.segments.items():
+                for elname in elements_on_channel[segname]:
+                    element_scaling_factor = \
+                        element_max_amp[elname] / sequence_max_amp
+
+                    # Saves element scaling factor to element metadata.
+                    # This factors will be provided to command table
+                    # entries to retrieve the correct absolute amplitude.
+                    scaling_factors[elname] = dict()
+                    for chid in channel_ids:
+                        channel = self.pulsar._id_channel(
+                            chid, awg_interface.awg.name)
+                        scaling_factors[elname][channel] = \
+                            element_scaling_factor
+
+                    for pulse in seg.elements[elname]:
+                        if len(pulse.channels) == 0 or \
+                                not all([self.pulsar.get(f'{channel}_id')
+                                         in channel_ids
+                                         for channel in pulse.channels]):
+                            continue
+                        # Round amplitude to allow reusing waveform in
+                        # the presence of finite numerical precision.
+                        pulse.amplitude = round(
+                            pulse.amplitude / element_scaling_factor,
+                            self.AMPLITUDE_ROUNDING_DIGITS
+                        ) if element_scaling_factor != 0 else \
+                            round(sequence_max_amp,
+                                  self.AMPLITUDE_ROUNDING_DIGITS)
+
+        return scaling_factors
 
     def n_acq_elements(self, per_segment=False):
         """

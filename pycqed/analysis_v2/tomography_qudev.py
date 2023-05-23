@@ -72,14 +72,14 @@ def hermitian_traceless_basis(d: int) -> List[qtp.Qobj]:
             if i == d - 1 and j == d - 1:
                 continue
             elif i == j:
-                O = np.diag(-np.ones(d, dtype=np.complex) / d)
+                O = np.diag(-np.ones(d, dtype=complex) / d)
                 O[i, j] += 1
             elif i > j:
-                O = np.zeros((d, d), dtype=np.complex)
+                O = np.zeros((d, d), dtype=complex)
                 O[i, j] = 1
                 O[j, i] = 1
             else:
-                O = np.zeros((d, d), dtype=np.complex)
+                O = np.zeros((d, d), dtype=complex)
                 O[i, j] = 1j
                 O[j, i] = -1j
             Os.append(qtp.Qobj(O))
@@ -250,7 +250,7 @@ def pauli_values_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
         Fs_corr.append(qtp.Qobj(np.diag(new_op)))
         assign_corr.append(np.diag(F.full()))
     pauli_Fs = rotated_measurement_operators(rotations, Fs_corr)
-    pauli_Fs = list(itertools.chain(*np.array(pauli_Fs, dtype=np.object).T))
+    pauli_Fs = list(itertools.chain(*np.array(pauli_Fs, dtype=object).T))
 
     pauli_mus = np.reshape(mus,[-1,2**nr_qubits])
     for i,raw_mus in enumerate(pauli_mus):
@@ -285,7 +285,7 @@ def ltriag_matrix(params: np.ndarray, d: int):
 
     The Cholesky decomposition of a positive-definite matrix is of this form.
     """
-    T = np.zeros((d, d), dtype=np.complex)
+    T = np.zeros((d, d), dtype=complex)
     T[np.tril_indices(d)] += params[:((d * d + d) // 2)]
     T[np.tril_indices(d, -1)] += 1j * params[((d * d + d) // 2):]
     return qtp.Qobj(T)
@@ -340,7 +340,7 @@ def concurrence(rho):
     # convert to bell basis
     b = [np.sqrt(0.5)*qtp.Qobj(np.array(l)) for l in
             [[1, 0, 0, 1], [1j, 0, 0, -1j], [0, 1j, 1j, 0], [0, 1, -1, 0]]]
-    rhobell = np.zeros((4, 4), dtype=np.complex)
+    rhobell = np.zeros((4, 4), dtype=complex)
     for i in range(4):
         for j in range(4):
             rhobell[i, j] = (b[j].dag()*rho*b[i])[0, 0]

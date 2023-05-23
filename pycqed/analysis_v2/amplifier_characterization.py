@@ -264,6 +264,42 @@ class MultiTWPA_SNR_Analysis(ba.NDim_BaseDataAnalysis):
      for now only feasible with qubits.
     """
 
+    def tile_data_ndim(self, ana_ids, post_proc_func, on_qb=False):
+
+        # FIXME: this function is specific to MultiTWPA_SNR_Analysis.
+        #  Once spectroscopies can be done without a qb, this can be cleaned
+        #  up and replaced by the method from the base class, since we can
+        #  remove on_qb and replace the interleaved list of mobjs and qb by a
+        #  proper list of mobj
+
+        data_ndim = {}
+        sweep_points_ndim = {}
+
+        for mobj_id in range(len(self.mobj_names) // 2):
+            mobjn = self.mobj_names[2 * mobj_id]  # FIXME see main FIXME
+            data_ndim[mobjn] = {}
+            sweep_points_ndim[mobjn] =\
+                self.get_ndim_sweep_points_from_mobj_name(
+                    ana_ids, self.mobj_names[2 * mobj_id + on_qb])
+            sweep_lengths = sweep_points_ndim[mobjn].length()
+            data_ndim[mobjn] = np.nan * np.ones(sweep_lengths)
+            for ana_id in ana_ids:
+                # idxs: see NDimQuantumExperiment
+                # idxs are for now the same for all tasks, they are just stored
+                # in the task list for convenience
+                idxs = \
+                self.raw_data_dict[ana_id]['exp_metadata']['task_list'][0][
+                    'ndim_current_idxs']
+                ch_map = self.raw_data_dict[ana_id]['exp_metadata'][
+                    'meas_obj_value_names_map'][
+                    self.mobj_names[2 * mobj_id + on_qb]]
+                ana_data_dict = self.raw_data_dict[ana_id]['measured_data']
+                spectrum = post_proc_func(ana_data_dict, ch_map)
+                for i in range(sweep_lengths[0]):
+                    for j in range(sweep_lengths[1]):
+                        data_ndim[mobjn][(i, j, *idxs)] = spectrum[i, j]
+        return data_ndim, sweep_points_ndim
+
     def get_measurement_groups(self):
         post_proc_noise = lambda data_dict, ch_map: data_dict[ch_map[0]]
         post_proc_gain = lambda data_dict, ch_map: 20 * np.log10(
@@ -345,7 +381,7 @@ class MultiTWPA_SNR_Analysis(ba.NDim_BaseDataAnalysis):
                                 if qb.acq_unit() == TWPA.acq_unit()]
 
             sp = pdd['sweep_points'][mobjn]
-            plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+            plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
             gain_min = self.options_dict.get('gain_min', 0)
             gain_max = self.options_dict.get('gain_max', 35)
             snr_min = self.options_dict.get('snr_min', 0)

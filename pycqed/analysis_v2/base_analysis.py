@@ -970,7 +970,12 @@ class BaseDataAnalysis(object):
             fit_yvals = fit_dict['fit_yvals']
             fit_xvals = fit_dict['fit_xvals']
             method = fit_dict.get('method', 'leastsq')
-            steps = fit_dict.get('steps', None)
+            fit_kwargs = {}
+            if 'steps' in fit_dict:
+                # We add this to the kwargs only if it is explicitly provided
+                # because we have observed recent lmfit versions showing a
+                # warning when passing this parameter.
+                fit_kwargs['steps'] = fit_dict['steps']
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -1003,7 +1008,7 @@ class BaseDataAnalysis(object):
                         model.set_param_hint(key, **val)
                     guess_pars = model.make_params()
             fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals, method=method,
-                                            params=guess_pars, steps=steps)
+                                            params=guess_pars, **fit_kwargs)
 
             self.fit_res[key] = fit_dict['fit_res']
 
@@ -2390,7 +2395,7 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
         }
         return measurement_groups
 
-    def tile_data_ndim(self, ana_ids, post_proc_func, on_qb=False):
+    def tile_data_ndim(self, ana_ids, post_proc_func):
         """
         Creates an N-dimensional dataset from separate timestamps each
         containing 2-dimensional data, and returns the corresponding
@@ -2402,26 +2407,17 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
                 used
             post_proc_func (function): specifies how to convert the raw data
                 per channel
-            on_qb (bool): whether the measurement was run on a qubit instead
-                of a MeasurementObject (to be removed, see FIXME below)
         into a value in the N-dim dataset (by default: sqrt(I**2+Q**2) )
 
         """
 
-        # FIXME: this function is specific to MultiTWPA_SNR_Analysis.
-        #  Once spectroscopies can be done without a qb, this can be cleaned
-        #  up since we can remove on_qb and replace the interleaved list of
-        #  mobjs and qb to a proper list of mobj
-
         data_ndim = {}
         sweep_points_ndim = {}
 
-        for mobj_id in range(len(self.mobj_names) // 2):
-            mobjn = self.mobj_names[2 * mobj_id]  # FIXME see main FIXME
+        for mobjn in self.mobj_names:
             data_ndim[mobjn] = {}
             sweep_points_ndim[mobjn] =\
-                self.get_ndim_sweep_points_from_mobj_name(
-                    ana_ids, self.mobj_names[2 * mobj_id + on_qb])
+                self.get_ndim_sweep_points_from_mobj_name(ana_ids, mobjn)
             sweep_lengths = sweep_points_ndim[mobjn].length()
             data_ndim[mobjn] = np.nan * np.ones(sweep_lengths)
             for ana_id in ana_ids:
@@ -2432,13 +2428,12 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
                 self.raw_data_dict[ana_id]['exp_metadata']['task_list'][0][
                     'ndim_current_idxs']
                 ch_map = self.raw_data_dict[ana_id]['exp_metadata'][
-                    'meas_obj_value_names_map'][
-                    self.mobj_names[2 * mobj_id + on_qb]]
+                    'meas_obj_value_names_map'][mobjn]
                 ana_data_dict = self.raw_data_dict[ana_id]['measured_data']
-                spectrum = post_proc_func(ana_data_dict, ch_map)
+                data_2D = post_proc_func(ana_data_dict, ch_map)
                 for i in range(sweep_lengths[0]):
                     for j in range(sweep_lengths[1]):
-                        data_ndim[mobjn][(i, j, *idxs)] = spectrum[i, j]
+                        data_ndim[mobjn][(i, j, *idxs)] = data_2D[i, j]
         return data_ndim, sweep_points_ndim
 
     def get_meas_objs_from_task(self, task):

@@ -54,7 +54,7 @@ class AcquisitionDevice():
     acq_weights_n_samples = None
     acq_Q_sign = 1
     allowed_modes = []
-    allowed_weights_types = ['optimal', 'optimal_qutrit', 'SSB',
+    allowed_weights_types = ['custom', 'custom_2D', 'SSB',
                              'DSB', 'DSB2', 'square_rot']
 
     def __init__(self, *args, **kwargs):
@@ -75,7 +75,9 @@ class AcquisitionDevice():
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
         self.timer = None
-        self.extra_data_callback = None
+        self.extra_data = []
+        """List of dicts representing additional data to be stored. Keys
+        in the dicts correspond to kwargs of save_extra_data."""
 
     def set_lo_freq(self, acq_unit, lo_freq):
         """Set the local oscillator frequency used for an acquisition unit.
@@ -154,10 +156,9 @@ class AcquisitionDevice():
         """Finalize the acquisition device.
 
         Performs cleanup at the end of an experiment (i.e., not repeatedly in
-        sweeps). By default, only removes the extra_data_callback and the
-        timer. Can be overridden in child classes to add further functionality.
+        sweeps). By default, only removes the timer. Can be overridden in
+        child classes to add further functionality.
         """
-        self.extra_data_callback = None
         self.timer = None
 
     def _reset_n_acquired(self):
@@ -216,8 +217,12 @@ class AcquisitionDevice():
         triggers) if it does not rely on first-trigger detection. Unlike
         acquisition_initialize, this function is called multiple times in a
         soft sweep.
+
+        The method in this base class resets self.extra_data, which can then
+        be filled by calling save_extra_data from the poll method of child
+        classes.
         """
-        pass
+        self.pop_extra_data()
 
     def prepare_poll_after_AWG_start(self):
         """Final preparations for an acquisition after starting AWGs.
@@ -249,13 +254,7 @@ class AcquisitionDevice():
                                   f'for {self.__class__.__name__}')
 
     def save_extra_data(self, dataset_name, data, column_names=None):
-        """Store additional data via self.extra_data_callback
-
-        This method calls self.extra_data_callback if it is not None. It is
-        expected that the callback function accepts the arguments described
-        in the docstring of MC.save_extra_data, see therein for details
-        about the args. The name of the acquisition device is passed
-        group_name.
+        """Store additional data to provide it to the detector function
 
         Args:
             dataset_name (str): The name of the dataset in which the data
@@ -264,9 +263,15 @@ class AcquisitionDevice():
             column_names (None or list of str): names of the columns of the
                 data array.
         """
-        if self.extra_data_callback is not None:
-            self.extra_data_callback(self.name, dataset_name, data,
-                                     column_names=column_names)
+        self.extra_data.append(dict(
+            dataset_name=dataset_name, data=data, column_names=column_names))
+
+    def pop_extra_data(self):
+        """Return stored additional data and reset extra data storage
+        """
+        ed = self.extra_data
+        self.extra_data = []
+        return ed
 
     def start(self, **kw):
         """ Start the built-in AWG (if present).
@@ -457,9 +462,9 @@ class AcquisitionDevice():
         :param weights_type: (str) the type of weights can be:
             - manual: do not set any weights (keep what is configured in the
                 acquisition device)
-            - optimal: use the optimal weights for single-channel integration
+            - custom: use the weights for single-channel integration
                 provided in weights_I[0], weights_Q[0].
-            - optimal_qutrit: use the optimal weights for two-channel
+            - custom_2D: use the weights for two-channel
                 integration provided in weights_I[:2], weights_Q[:2]
             - SSB: single-sideband demodulation using two integration
                 channels and both physical input channels.
@@ -481,8 +486,8 @@ class AcquisitionDevice():
         :param weights_I: (list/tuple of np.array or None) The i-th entry of
             the list defines the weights for first physical input channel
             used in the i-th integration channel. Must have (at least) one
-            entry if weights type is optimal and two entries if weights type
-            is optimal_qutrit. Unneeded entries are ignored, and the whole
+            entry if weights type is custom and two entries if weights type
+            is custom_2D. Unneeded entries are ignored, and the whole
             list is ignored for other weights types.
         :param weights_Q: (list of np.array or None) Like weights_I,
             but for the second physical input channel.
@@ -493,7 +498,7 @@ class AcquisitionDevice():
             raise ValueError(f'Weights type {weights_type} not supported by '
                              f'{self.name}.')
         aQs = self.acq_Q_sign
-        for wt, n_chan in [('optimal', 1), ('optimal_qutrit', 2)]:
+        for wt, n_chan in [('custom', 1), ('custom_2D', 2)]:
             if weights_type == wt:
                 if (len(weights_I) < n_chan or len(weights_Q) < n_chan
                         or any([w is None for w in weights_I[:n_chan]])
