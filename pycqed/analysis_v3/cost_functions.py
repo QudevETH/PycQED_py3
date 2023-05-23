@@ -11,7 +11,7 @@ pp_mod.search_modules.add(sys.modules[__name__])
 def mean_squared_error(data_dict, keys_in, keys_out, labels,
                        sorted_by_label=False, **params):
     """
-    Computes the MSE for a set of data points and there correspoding labels.
+    Computes the MSE for a set of data points and their correspoding labels.
 
     :param data_dict: OrderedDict containing data to be processed and where
                     processed data is to be stored
@@ -22,9 +22,7 @@ def mean_squared_error(data_dict, keys_in, keys_out, labels,
     :param labels: list of labels used to compute the error.
     :param sorted_by_label (str, default=False): Whether the data is sorted by
         label first (True) or by parameter (False).
-    :param params: keyword arguments:
-        data_filter (str, default: 'lambda x: x'): filtering condition passed
-            as a string that will be evaluated with eval.
+    :param params: keyword arguments
 
     Assumptions:
         - if any keyo in keys_out contains a '.' string, keyo is assumed to
