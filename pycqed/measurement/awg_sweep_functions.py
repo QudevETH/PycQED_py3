@@ -187,10 +187,30 @@ class SegmentHardSweep(swf.UploadingSweepFunction, swf.Hard_Sweep):
 
 
 class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
-    # TODO hard or soft?
     def __init__(self, circuit_builder, params, block=None,
                  block_func=None, parameter_name='None',
                  unit='', upload=True, **kw):
+        """Sweep function used to efficiently iterate between different
+        parameter sets of a parameterized quantum circuit (represented by a
+        `Block`).
+
+        Args:
+            circuit_builder (CircuitBuilder): Instance of CircuitBuilder that
+                is used to compile the block into sequences.
+            params (list[str]): List of the ParametricValues names in `block`.
+            block (Block, optional): Block that contains ParametricValues and
+                is compiled into sequences using circuit_builder. Either block
+                or block_func need to be specified. Defaults to None.
+            block_func (Callable, optional): Function that is passed to
+                sweep_n_dim. Either block or block_func need to be specified.
+                Defaults to None.
+            parameter_name (str, optional): _description_. Defaults to 'None'.
+            unit (str, optional): Unit of the sweep parameter. Defaults to ''.
+            upload (bool, optional): Whether to upload the sequences before
+                measurement. Defaults to True.
+            kw (optional): Keyword arguments, e.g., `sweep_kwargs` which will
+                be passed to `sweep_n_dim` in `self.set_parameter`.
+        """
         super().__init__(sequence=None, upload=upload,
                          upload_first=False,
                          parameter_name=parameter_name, unit=unit, **kw)
@@ -202,6 +222,16 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         self.sweep_points = None
 
     def set_parameter(self, vals, **kw):
+        """Compiles the `Block` for the given values into a sequence and uploads
+        it to hardware.
+
+        Args:
+            vals (list[tuples]): List of tuples. Each tuple corresponds to one
+                complete set of ParametricValues, i.e,
+                `len(vals[i]) = len(self.params)`.
+
+        `self.circuit_builder.sweep_n_dim` is used to convert vals into a hard sweep sequence which is subsequently uploaded to hardware.
+        """
         self.sweep_points = sp_mod.SweepPoints([{
             p: ([vs[i] for vs in vals], '', p)
             for i, p in enumerate(self.params)}])
