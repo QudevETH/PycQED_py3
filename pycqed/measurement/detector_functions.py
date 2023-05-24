@@ -1004,9 +1004,15 @@ class MultiPollDetector(PollDetector):
             return [self.AWG.master_awg] + self.AWG.awgs
         return [self.AWG]
 
-    def set_attr_for_all(self, attr_name, value):
+    @property
+    def acq_data_len_scaling(self):
+        return self._acq_data_len_scaling
+
+    @acq_data_len_scaling.setter
+    def acq_data_len_scaling(self, value):
+        self._acq_data_len_scaling = value
         for det in self.detectors:
-            setattr(det, attr_name, value)
+            det.acq_data_len_scaling = value
 
     def get_values(self):
         """

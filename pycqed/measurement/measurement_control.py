@@ -636,7 +636,9 @@ class MeasurementControl(Instrument):
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
             if len(self.sweep_functions) == 1 and \
                     isinstance(sweep_function, awg_swf.BlockSoftHardSweep):
-                # TODO comment
+                # Here, x corresponds to a tuple of circuit parameters or a
+                # list of tuples of circuit parameters, see
+                # `BlockSoftHardSweep` for details.
                 x = np.atleast_2d(x)
                 self.timer.checkpoint(
                     "MeasurementControl.measure_soft_adaptive"
@@ -645,10 +647,12 @@ class MeasurementControl(Instrument):
                 self.timer.checkpoint(
                     "MeasurementControl.measure_soft_adaptive"
                     ".adaptive_function.swf.set_parameter.end")
-                tmp_df_acq_data_len_scaling = self.detector_function.acq_data_len_scaling
-                self.detector_function.set_attr_for_all('acq_data_len_scaling', 1)
+                # We need to temporarily set acq_data_len_scaling to one to
+                # ensure proper configuration for SSRO.
+                tmp_scaling = self.detector_function.acq_data_len_scaling
+                self.detector_function.acq_data_len_scaling = 1
                 self.detector_function.prepare(x)
-                self.detector_function.set_attr_for_all('acq_data_len_scaling', tmp_df_acq_data_len_scaling)
+                self.detector_function.acq_data_len_scaling = tmp_scaling
                 break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
