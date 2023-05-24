@@ -490,7 +490,7 @@ def concurrence(rho):
     # convert to bell basis
     b = [np.sqrt(0.5)*np.array(l) for l in
          [[1, 0, 0, 1], [1j, 0, 0, -1j], [0, 1j, 1j, 0], [0, 1, -1, 0]]]
-    rhobell = np.zeros((4, 4), dtype=np.complex)
+    rhobell = np.zeros((4, 4), dtype=complex)
     for i in range(4):
         for j in range(4):
             rhobell[i, j] = b[j].conj().T @ rho @ b[i]

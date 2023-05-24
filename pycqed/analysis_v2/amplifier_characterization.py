@@ -381,7 +381,7 @@ class MultiTWPA_SNR_Analysis(ba.NDim_BaseDataAnalysis):
                                 if qb.acq_unit() == TWPA.acq_unit()]
 
             sp = pdd['sweep_points'][mobjn]
-            plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+            plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
             gain_min = self.options_dict.get('gain_min', 0)
             gain_max = self.options_dict.get('gain_max', 35)
             snr_min = self.options_dict.get('snr_min', 0)

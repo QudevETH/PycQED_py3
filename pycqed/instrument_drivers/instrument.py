@@ -38,3 +38,14 @@ class Instrument(QcodesInstrument):
         if param_name not in self.parameters and len(args) == 1:
             return args[0]  # interpret second argument as default value
         return super().get(param_name)
+
+
+class DummyVisaHandle:
+    """Dummy handle for virtual visa instruments to avoid crash in snapshot
+    """
+    class DummyTimeOut:
+        def get(self):
+            return None
+    read_termination = None
+    write_termination = None
+    timeout = DummyTimeOut()

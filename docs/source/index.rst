@@ -36,6 +36,7 @@ the docstrings inside Python files.
    pycqed.analysis
    pycqed.analysis_v2
    pycqed.analysis_v3
+   pycqed.gui
    pycqed.instrument_drivers
    pycqed.measurement
    pycqed.simulations

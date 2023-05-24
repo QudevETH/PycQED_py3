@@ -220,9 +220,9 @@ def do_postselection_f_level(data_dict, keys_in, keys_out=None, **params):
     pg, pe, pf = list(data_to_proc_dict.values())
 
     mpre = np.logical_not(np.arange(pe.size) % 2)
-    mmeas = (np.arange(pe.size) % 2).astype(np.bool)
+    mmeas = (np.arange(pe.size) % 2).astype(bool)
 
-    ro = pe.copy().astype(np.bool)
+    ro = pe.copy().astype(bool)
 
     # make sure segments where preselection readout is not g are filtered out
     ro[mpre] = np.logical_not(pg[mpre])
@@ -924,7 +924,7 @@ def calculate_probability_table(data_dict, keys_in, keys_out=None, **params):
     for readout_n in range(n_readouts):
         # first result all ground
         for obs, states_of_mobjs in observables.items():
-            mask = np.ones((n_shots//n_readouts), dtype=np.bool)
+            mask = np.ones((n_shots//n_readouts), dtype=bool)
             # slow qubit is the first in channel_map list
             for mobjn, state in states_of_mobjs.items():
                 if isinstance(mobjn, tuple):
