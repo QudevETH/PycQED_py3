@@ -645,7 +645,8 @@ class ProcessingPipeline(list):
         'keys_out' in the the **node_params of each node.
 
         :param data_dict: dictionary where to store the processed results
-        :overwrite_data_dict: force to overwrite existing data_dict
+        :overwrite_data_dict: force to overwrite existing data_dict. Defaults
+            to False.
         :param params: keyword arguments
         """
         if data_dict is None:
