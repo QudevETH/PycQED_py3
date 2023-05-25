@@ -28,6 +28,8 @@ def decode_parameter_value(param_value):
     Returns:
         the converted parameter value
     """
+    log.warning("Deprecated function, will be removed in a future MR;"
+                " Please use utilities.io.hdf5.decode_attribute_value instead.")
     if isinstance(param_value, bytes):
         param_value = param_value.decode('utf-8')
     # If it is an array of value decodes individual entries
