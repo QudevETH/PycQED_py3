@@ -1,3 +1,0 @@
--r ../../requirements.txt
-zhinst-hdiq
-zhinst-qcodes
