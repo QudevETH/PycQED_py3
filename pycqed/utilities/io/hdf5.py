@@ -15,6 +15,12 @@ import time
 import h5py
 import numpy as np
 import logging
+
+from pycqed.utilities.io.base_io import Loader, file_extensions, \
+    DateTimeGenerator
+from pycqed.instrument_drivers.mock_qcodes_interface import Parameter, \
+    Instrument, Station
+
 log = logging.getLogger(__name__)
 
 try:
@@ -24,82 +30,6 @@ except Exception:
     log.warning('qutip was not imported. qutip objects will be stored as '
                 'strings.')
     qutip_imported = False
-
-
-class DateTimeGenerator:
-    """
-    Class to generate filenames / directories based on the date and time.
-    """
-
-    def __init__(self):
-        pass
-
-    def create_data_dir(self, datadir: str, name: str=None, ts=None,
-                        datesubdir: bool=True, timesubdir: bool=True,
-                        auto_increase: bool = True):
-        """
-        Create and return a new data directory.
-
-        Input:
-            datadir (string): base directory
-            name (string): optional name of measurement
-            ts (time.localtime()): timestamp which will be used
-                if timesubdir=True
-            datesubdir (bool): whether to create a subdirectory for the date
-            timesubdir (bool): whether to create a subdirectory for the time
-            auto_increase (bool): ensures that timestamp is unique and if not
-                increases by 1s until it is.
-
-        Output:
-            The directory to place the new file in
-        """
-
-        path = datadir
-        if ts is None:
-            ts = time.localtime()
-        if datesubdir:
-            path = os.path.join(path, time.strftime('%Y%m%d', ts))
-        if timesubdir:
-            tsd = time.strftime('%H%M%S', ts)
-            timestamp_verified = False
-            counter = 0
-            # Verify if timestamp is unique by seeing if the folder exists
-            while not timestamp_verified and auto_increase:
-                counter += 1
-                try:
-                    measdirs = [d for d in os.listdir(path)
-                                if d[:6] == tsd]
-                    if len(measdirs) == 0:
-                        timestamp_verified = True
-                    else:
-                        # if timestamp not unique, add one second
-                        # This is quite a hack
-                        ts = time.localtime((time.mktime(ts)+1))
-                        tsd = time.strftime('%H%M%S', ts)
-                    if counter >= 3600:
-                        raise Exception()
-                except OSError as err:
-                    if 'cannot find the path specified' in str(err):
-                        timestamp_verified = True
-                    elif 'No such file or directory' in str(err):
-                        timestamp_verified = True
-                    else:
-                        raise err
-            if name is not None:
-                path = os.path.join(path, tsd+'_'+name)
-            else:
-                path = os.path.join(path, tsd)
-
-        return path, tsd
-
-    def new_filename(self, data_obj, folder, auto_increase: bool = True):
-        """Return a new filename, based on name and timestamp."""
-        path, tstr = self.create_data_dir(folder,
-                                          name=data_obj._name,
-                                          ts=data_obj._localtime,
-                                          auto_increase=auto_increase)
-        filename = '%s_%s.hdf5' % (tstr, data_obj._name)
-        return os.path.join(path, filename)
 
 
 class Data(h5py.File):
@@ -292,6 +222,58 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
             entry_point.attrs[key] = str(item)
 
 
+def read_from_hdf5(path_to_key_or_attribute, h5_group):
+    """
+    Wrapper to extract either attributes or keys from open hdf5 files. Using
+    read_attribute_from_hdf5 and read_dict_from_hdf5.
+    Args:
+        path_to_key_or_attribute (str): path to the attribute or key
+            separated by '.'
+        h5_group (hdf5 file/group): hdf5 file or group from which to read.
+
+    Returns: key (as a dict) or attribute or 'not found' if it could not find
+        the specified path
+
+    """
+    param_value = read_attribute_from_hdf5(path_to_key_or_attribute, h5_group)
+    if param_value == 'not found':
+        group_name = '/'.join(path_to_key_or_attribute.split('.'))
+        try:
+            param_value = read_dict_from_hdf5({}, h5_group[group_name])
+        except Exception:
+            return 'not found'
+    return param_value
+
+
+def read_attribute_from_hdf5(path_to_attribute, h5_group):
+    """
+    Low level extractor for parameters
+    Args:
+        path_to_attribute (str): path to the attribute separated by '.'
+        h5_group (hdf5 file/group): hdf5 file or group from which to read.
+
+    Returns: attribute value or 'not found' if it can not find path_to_attribute
+
+    """
+    param_value = 'not found'
+
+    try:
+        if len(path_to_attribute.split('.')) == 1:
+            param_value = decode_attribute_value(h5_group.attrs[path_to_attribute])
+        else:
+            group_name = '/'.join(path_to_attribute.split('.')[:-1])
+            par_name = path_to_attribute.split('.')[-1]
+            group = h5_group[group_name]
+            attrs = list(group.attrs)
+            if par_name in attrs:
+                param_value = decode_attribute_value(
+                    group.attrs[par_name])
+    except Exception as e:
+        param_value = 'not found'
+
+    return param_value
+
+
 def read_dict_from_hdf5(data_dict: dict, h5_group):
     """
     Reads a dictionary from an hdf5 file or group that was written using the
@@ -350,3 +332,119 @@ def read_dict_from_hdf5(data_dict: dict, h5_group):
             raise NotImplementedError('cannot read "list_type":"{}"'.format(
                 h5_group.attrs['list_type']))
     return data_dict
+
+def decode_attribute_value(param_value):
+    """
+       Converts byte type to the true type of a parameter loaded from a file.
+
+       Args:
+           param_value: the raw value of the parameter as retrieved from the HDF
+               file
+
+       Returns:
+           the converted parameter value
+       """
+    if isinstance(param_value, bytes):
+        param_value = param_value.decode('utf-8')
+    # If it is an array of value decodes individual entries
+    if isinstance(param_value, np.ndarray) or isinstance(param_value, list):
+        param_value = [av.decode('utf-8') if isinstance(av, bytes)
+                       else av for av in param_value]
+    try:
+        return eval(param_value)
+    except Exception:
+        return param_value
+
+
+class HDF5Loader(Loader):
+
+    def __init__(self, timestamp=None, filepath=None, extension=None, **kwargs):
+        super().__init__(timestamp=timestamp, filepath=filepath,
+                         extension=extension)
+
+        if self.extension is None:
+            self.extension = file_extensions['hdf5']
+        self.filepath = self.get_filepath(**kwargs)
+        self.h5mode = kwargs.get('h5mode', 'r')
+
+    @staticmethod
+    def load_instrument(inst_name, inst_group):
+        """
+        Loads instrument object from settings given as a hdf object.
+        Args:
+            inst_name (str): Name of the instrument
+            inst_group (hdf group): Values of the instrument as a group.
+
+        Returns: Instrument object.
+
+        """
+        inst = Instrument(inst_name)
+        # load parameters
+        for param_name in list(inst_group.attrs):
+            param_value = decode_attribute_value(
+                inst_group.attrs[param_name])
+            par = Parameter(param_name, param_value)
+            inst.add_parameter(par)
+        # load class name
+        if '__class__' in inst_group:
+            inst.add_classname(
+                decode_attribute_value(inst_group.attrs['__class__']))
+        # load submodules
+        for submod_name, submod_group in list(inst_group.items()):
+            submod_inst = HDF5Loader.load_instrument(submod_name, submod_group)
+            inst.add_submodule(submod_name, submod_inst)
+        return inst
+
+    @staticmethod
+    def load_component(comp_name, comp):
+        pass
+
+    def get_station(self, param_path=None):
+        """
+        Loads settings from a config file into a station.
+        param_path (list): list of parameters which are loaded into a
+            station. If None, all parameters are loaded into the station.
+            Parameters must be of the form %inst_name%.%param_name%.
+
+        """
+        with h5py.File(self.filepath, 'r') as file:
+            config_file = file['Instrument settings']
+            station = Station(timestamp=self.timestamp)
+            if param_path is None:
+                for inst_name, inst_group in list(config_file.items()):
+                    inst = self.load_instrument(inst_name, inst_group)
+                    station.add_component(inst)
+            else:
+                for path_to_param in param_path:
+                    param_value = read_attribute_from_hdf5(path_to_param,
+                                                           config_file)
+                    if param_value == 'not found':
+                        continue
+                    # if param path is only an instrument (%inst_name%)
+                    if len(path_to_param.split('.')) == 1:
+                        inst_path = path_to_param
+                        inst = Instrument(inst_path[-1])
+                    else:
+                        param_name = path_to_param.split('.')[-1]
+                        param = Parameter(param_name, param_value)
+
+                        inst_path = path_to_param.split('.')[:-1]
+
+                        inst = Instrument(inst_path[-1])
+                        inst.add_parameter(param)
+
+                    # if more than one instrument name exists, the instrument
+                    # must be a submodule
+                    for inst_name in inst_path[-1:0:-1]:
+                        submod = inst
+                        inst = Instrument(inst_name)
+                        inst.add_submodule(submod.name, submod)
+                    if inst.name in station.components.keys():
+                        station.components[inst.name].update(inst)
+                    else:
+                        station.add_component(inst)
+
+        return station
+
+    def get_snapshot(self):
+        return self.get_station().snapshot()
