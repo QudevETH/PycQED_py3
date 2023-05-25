@@ -56,4 +56,3 @@ class PickleDumper(Dumper):
             if self.compression:
                 packed = Dumper.compress_file(packed)
             file.write(packed)
-            

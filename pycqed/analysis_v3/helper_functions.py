@@ -11,7 +11,7 @@ from copy import deepcopy
 from collections import OrderedDict
 from more_itertools import unique_everseen
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.measurement.hdf5_data import read_dict_from_hdf5
+from pycqed.utilities.io.hdf5 import read_dict_from_hdf5
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement import sweep_points as sp_mod
 import pycqed.utilities.settings_manager as setman

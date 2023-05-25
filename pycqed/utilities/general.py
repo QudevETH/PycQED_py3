@@ -6,7 +6,7 @@ import json
 import time
 import datetime
 import pickle
-from pycqed.measurement import hdf5_data as h5d
+from pycqed.utilities.io import hdf5 as h5d
 from pycqed.analysis import analysis_toolbox as a_tools
 import errno
 import pycqed as pq

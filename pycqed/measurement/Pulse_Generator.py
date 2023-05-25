@@ -1,7 +1,7 @@
 import numpy as np
 # import qt
 from matplotlib import pyplot as plt
-from pycqed.measurement import hdf5_data
+from pycqed.utilities.io import hdf5
 import time
 import h5py
 

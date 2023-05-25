@@ -30,6 +30,7 @@ from pycqed.measurement.hdf5_data import write_dict_to_hdf5
 from pycqed.measurement.hdf5_data import read_dict_from_hdf5
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
+from pycqed.utilities.io import hdf5 as hdf5_io
 import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
@@ -1015,7 +1016,7 @@ class BaseDataAnalysis(object):
                             fr_group = analysis_group.create_group(fr_key)
 
                         d = self._convert_dict_rec(copy.deepcopy(fit_res))
-                        write_dict_to_hdf5(d, entry_point=fr_group)
+                        hdf5_io.write_dict_to_hdf5(d, entry_point=fr_group)
                 except Exception as e:
                     data_file.close()
                     raise e
@@ -1078,7 +1079,7 @@ class BaseDataAnalysis(object):
                         del proc_data_group[key]
 
                     d = {key: self.proc_data_dict[key]}
-                    write_dict_to_hdf5(d, entry_point=proc_data_group,
+                    hdf5_io.write_dict_to_hdf5(d, entry_point=proc_data_group,
                                        overwrite=overwrite)
                 except Exception as e:
                     data_file.close()

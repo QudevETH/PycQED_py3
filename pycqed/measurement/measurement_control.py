@@ -14,8 +14,8 @@ import numbers
 from scipy.optimize import fmin_powell
 
 import pycqed.version
-from pycqed.measurement import hdf5_data as h5d
 from pycqed.utilities import general
+from pycqed.utilities.io import hdf5 as h5d
 from pycqed.utilities.general import dict_to_ordered_tuples
 from pycqed.utilities.get_default_datadir import get_default_datadir
 
@@ -1968,11 +1968,9 @@ class MeasurementControl(Instrument):
 
         else:
             if self.settings_file_format() == 'msgpack':
-                from pycqed.utilities.settings_manager \
-                    import MsgDumper as Dumper
+                from pycqed.utilities.io.msgpack import MsgDumper as Dumper
             elif self.settings_file_format() == 'pickle':
-                from pycqed.utilities.settings_manager \
-                    import PickleDumper as Dumper
+                from pycqed.utilities.io.pickle import PickleDumper as Dumper
             else:
                 raise NotImplementedError(
                     f"Format '{self.settings_file_format()}' not known.")
