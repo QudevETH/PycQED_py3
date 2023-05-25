@@ -12,7 +12,6 @@ import numbers
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
-from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
     write_warning_message_to_text_file)
@@ -26,8 +25,6 @@ import datetime
 import json
 import lmfit
 import h5py
-from pycqed.measurement.hdf5_data import write_dict_to_hdf5
-from pycqed.measurement.hdf5_data import read_dict_from_hdf5
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.utilities.io import hdf5 as hdf5_io
@@ -470,13 +467,25 @@ class BaseDataAnalysis(object):
                     elif save_par == 'measured_data':
                         raw_data_dict_ts['measured_data'] = \
                             np.array(data_file['Experimental Data']['Data']).T
-                    else:
+                    elif file_par == 'Timers':
                         raw_data_dict_ts[save_par] = \
-                            hlp_mod.extract_from_data_files(
-                                [data_file], file_par)
-                        if raw_data_dict_ts[save_par] == 'not found':
+                            hdf5_io.read_dict_from_hdf5({}, data_file[file_par])
+                    else:
+                        if len(file_par.split('.')) == 1:
+                            par_name = file_par.split('.')[0]
+                            for group_name in data_file.keys():
+                                raw_data_dict_ts[save_par] = \
+                                    hdf5_io.read_from_hdf5(par_name,
+                                                           data_file[group_name])
+                                if raw_data_dict_ts[save_par] != 'not found':
+                                    break
+                        else:
                             raw_data_dict_ts[save_par] = \
-                                self.config_files.stations[timestamp].get(file_par)
+                                hdf5_io.read_from_hdf5(file_par, data_file)
+                            if raw_data_dict_ts[save_par] == 'not found':
+                                raw_data_dict_ts[save_par] = \
+                                    self.config_files.stations[timestamp].get(
+                                        file_par)
 
                 for par_name in raw_data_dict_ts:
                     if par_name in numeric_params:
