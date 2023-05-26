@@ -290,6 +290,12 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
                     f'indices {np.argwhere(r > 1)}: {r_str} '
                     f'Truncating to 1.')
         r[r>1] = 1
+    if np.any(r < asymmetry):
+        r_str = '[' + ', '.join([f'{x}' for x in r[r<asymmetry]]) + ']'
+        log.warning(f'Ratio Ej/Ej_max is smaller than the asymmetry at '
+                    f'indices {np.argwhere(r < asymmetry)}: {r_str} '
+                    f'Rounding up to the asymmetry = {asymmetry}.')
+        r[r<asymmetry] = asymmetry
     phi = np.arccos(np.sqrt((r**2 - asymmetry**2)/(1-asymmetry**2)))
 
     if dac_flux_coefficient is not None:
