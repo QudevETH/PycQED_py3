@@ -327,10 +327,10 @@ class Station(DelegateAttributes):
         try:
             param = eval('self.' + path_to_param + '()')
             if isinstance(param, dict):
-                param_value = param.get("value", "not found")
+                param_value = param.get("value", param)
             else:
                 param_value = param
-        except AttributeError:
+        except Exception:
             param_value = 'not found'
             logger.warning(f'Parameter {path_to_param} not found in station.')
         return param_value
