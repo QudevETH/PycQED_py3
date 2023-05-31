@@ -16,6 +16,10 @@ import h5py
 import numpy as np
 import logging
 
+# Do not remove, used inside eval()
+from numpy import array
+from collections import OrderedDict
+
 from pycqed.utilities.io.base_io import Loader, file_extensions, \
     DateTimeGenerator
 from pycqed.instrument_drivers.mock_qcodes_interface import Parameter, \
