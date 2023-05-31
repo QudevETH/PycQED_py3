@@ -1,25 +1,24 @@
-from pycqed.measurement.calibration.single_qubit_gates import (
-    SingleQubitGateCalibExperiment
-)
+from pycqed.measurement.calibration.automatic_calibration_routines.base import\
+    update_nested_dictionary
+
+from .base_step import Step, IntermediateStep
 from pycqed.measurement.calibration import single_qubit_gates as qbcal
 from pycqed.measurement.quantum_experiment import QuantumExperiment
-from pycqed.utilities.state_and_transition_translation import *
 from pycqed.utilities.general import temporary_value
 from pycqed.utilities.reload_settings import reload_settings
-from collections import OrderedDict as odict
 
 import pycqed.analysis.analysis_toolbox as a_tools
+from typing import List, Any, Tuple, Dict, Type, Optional
+from warnings import warn
 import numpy as np
 import copy
 import logging
 import pprint
 import inspect
-import collections.abc
-import os
-import json
-import re
 
-log = logging.getLogger(__name__)
+ROUTINES = 'Routines'
+log = logging.getLogger(ROUTINES)
+log.setLevel('INFO')
 
 try:
     from pycqed.utilities import devicedb
@@ -31,338 +30,6 @@ else:
     _device_db_client_module_missing = False
 
 
-class SettingsDictionary(dict):
-    """This class represents the configuration parameters specified in default,
-    setup, and sample folder as a dictionary.
-    The hierarchy (in descending significance) is User - Sample - Setup - Default
-    """
-
-    _USE_DB_STRING = "USE_DB"
-
-    def __init__(self,
-                 init_dict={},
-                 db_client=None,
-                 db_client_config=None,
-                 dev_name=None):
-        """
-        Initializes the dictionary.
-
-        Args:
-            init_dict (dict): A dictionary to initialize the custom dictionary
-                with.
-            db_client (devicedb.Client): A client to connect to the device
-                database.
-            db_client_config (devicedb.Config): A configuration object for the
-                device database as an alternative way to initialize the database
-                connection.
-            dev_name (str): The name of the device in use. Used to tell the
-                device database which device it should use.
-        """
-
-        # Copies items, no deep copy
-        super().__init__(init_dict)
-
-        self.dev_name = dev_name
-
-        self.db_client = None
-        if db_client is not None:
-            if _device_db_client_module_missing:
-                log.warning(
-                    "Can't use the given client to connect to the "
-                    "device database. The module 'device-db-client' was not "
-                    "successfully imported.")
-            else:
-                self.db_client = db_client
-        elif db_client_config:
-            if _device_db_client_module_missing:
-                log.warning(
-                    "Can't use the given configuration to connect to "
-                    "the device database. The module 'device-db-client' was "
-                    "not successfully imported.")
-            else:
-                self.enable_use_database(db_client_config)
-
-    def update_user_settings(self, settings_user):
-        """Updates the current configuration parameter dictionary with the
-        provided user parameters.
-
-        Args:
-            settings_user (dict): A dictionary with the user configuration
-                parameters.
-        """
-        update_nested_dictionary(self, settings_user)
-
-    def _get_unprocessed_param_value(self,
-                                     param,
-                                     lookups,
-                                     sublookups=None,
-                                     qubit=None,
-                                     groups=None,
-                                     leaf=True,
-                                     associated_component_type_hint=None):
-        """Looks for the requested parameter recursively in the configuration
-        parameter dictionary. It is used as a helper function for
-        get_param_value, but the actual search in the nested dictionary is
-        done here.
-
-        Args:
-            param (str): The name of the parameter to look up.
-            lookups (list of str): The scopes in which the parameter should be
-                looked up.
-            sublookups (list of str): The subscopes to be looked up. The
-                parameter is then looked up in self[lookup][sublookup]
-            qubit (str): The name of the qubit, if the parameter is
-                qubit-specific.
-            groups (list of str): The groups the qubit is in, as specified in
-                the dictionary.
-            leaf (boolean): True if the scope to search the parameter for is a
-                leaf node (e.g. a measurement or intermediate step, not a
-                routine)
-            associated_component_type_hint (str): A hint for the device
-                database, if the parameter does not belong to the qubit.
-
-        Returns:
-            A tuple with the raw fetched parameter from the dictionary and a
-            boolean indicating success.
-        """
-        for lookup in lookups:
-            if lookup is None:
-                continue
-            if lookup in self:
-                if sublookups:
-                    # If a scope in lookups is found and there are sublookups,
-                    # search again for the parameter in self[lookup] using
-                    # the previous sublookups as lookups.
-                    val, success = SettingsDictionary.get_param_value(
-                        self[lookup],
-                        param,
-                        lookups=sublookups,
-                        qubit=qubit,
-                        groups=groups,
-                        leaf=leaf,
-                        associated_component_type_hint=
-                        associated_component_type_hint)
-                    if success:
-                        return val, success
-                elif not leaf and lookup != 'General':
-                    # If there are no sublookups, use 'General' as a sublookup
-                    # scope and the lookup node is not a leaf node (e.g., not
-                    # a QuantumExperiment step)
-                    val, success = SettingsDictionary.get_param_value(
-                        self,
-                        param,
-                        lookups=[lookup],
-                        sublookups=['General'],
-                        qubit=qubit,
-                        groups=groups,
-                        associated_component_type_hint=
-                        associated_component_type_hint)
-                    if success:
-                        return val, success
-                else:
-                    # Look if param is defined for a specific qubit or a group
-                    # of qubits
-                    if qubit and 'qubits' in self[lookup]:
-                        for group, v in self[lookup]['qubits'].items():
-                            if group == qubit or group in groups:
-                                if param in v:
-                                    return v[param], True
-                    # Return the parameter if it is found in self[lookup]
-                    if param in self[lookup]:
-                        return self[lookup][param], True
-
-        return None, False
-
-    def get_param_value(self,
-                        param,
-                        lookups,
-                        sublookups=None,
-                        qubit=None,
-                        groups=None,
-                        leaf=True,
-                        associated_component_type_hint=None):
-        """Looks up the requested parameter in the configuration parameters.
-        If the fetched value is a request to query the database, the queried
-        value is returned.
-
-        Args:
-            param (str): The name of the parameter to look up.
-            lookups (list of str): The scopes in which the parameter should be
-                looked up.
-            sublookups (list of str): The subscopes to be looked up. The
-                parameter is then looked up in self[lookup][sublookup]
-            qubit (str): The name of the qubit, if the parameter is
-                qubit-specific.
-            groups (list of str): The groups the qubit is in, as specified in
-                the dictionary.
-            leaf (boolean): True if the scope to search the parameter for is a
-                leaf node (e.g. a measurement or intermediate step, not a
-                routine).
-            associated_component_type_hint (str): A hint for the device
-                database, if the parameter does not belong to the qubit.
-
-        Returns
-            A tuple with the postprocessed fetched parameter from the
-            dictionary and a boolean indicating success.
-        """
-
-        val, success = SettingsDictionary._get_unprocessed_param_value(
-            self, param, lookups, sublookups, qubit, groups, leaf)
-
-        # Use database value
-        if isinstance(val, list) and len(
-                val) and val[0] == SettingsDictionary._USE_DB_STRING:
-            if _device_db_client_module_missing:
-                log.warning(
-                    "Can't read values from the device database. "
-                    "The module 'device-db-client' was not successfully "
-                    "imported.")
-            else:
-                if qubit is None:
-                    raise ValueError(
-                        "When using the database, only parameters associated "
-                        "with a qubit are allowed. Provide qubit as a keyword.")
-                db_value = self.db_client.get_device_property_value_from_param_args(
-                    qubit.name, param, associated_component_type_hint)
-                success = db_value is not None
-                if success:
-                    return db_value.value, success
-                elif len(val) > 1:
-                    return val[1], True
-                else:
-                    return None, False
-
-        return val, success
-
-    def get_qubit_groups(self, qubit, lookups):
-        """Gets the groups the specified qubit belongs to out of the
-        configuration parameter dictionary.
-
-        Args:
-            qubit (str): The name of the qubit.
-            lookups (list of str): The scopes in which to search for the qubits
-                group definitions. Default is ['Groups'].
-
-        Returns:
-            set: A set of strings with the group names the qubit is part of.
-        """
-        groups = set()
-        for lookup in lookups:
-            if lookup in self:
-                for group_name, group in self[lookup].items():
-                    if qubit in group:
-                        groups.add(group_name)
-        return groups
-
-    def load_settings_from_file(self,
-                                settings_default_folder=None,
-                                settings_setup_folder=None,
-                                settings_sample_folder=None,
-                                settings_user=None):
-        """Loads the device settings from the folders storing Default, Setup and
-        Sample parameters and puts it into the configuration parameter
-        dictionary as a nested dictionary. The folders should contain JSON files.
-        Order in the hierarchy: Sample overwrites Setup overwrites Default values.
-        Additionally, when settings_sample_folder is specified, it overwrites
-        the dictionary loaded from the files.
-
-        Since JSON only supports strings as keys, postprocessing is applied.
-        Therefore, it is also possible to use a string with a tuple inside as a
-        key, which is converted to a tuple in the dictionary, e.g.
-        "('SFHQA', 1)" is converted to ('SFHQA', 1).
-
-        Args:
-            settings_default_folder (string): Full path to the folder for
-                default settings. If None, uses the default PycQED settings
-                in "autocalib_default_settings".
-            settings_setup_folder (string): Full path to the folder for setup
-                settings.
-            settings_sample_folder (string): Full path to the folder for sample
-                settings.
-            settings_default_folder (string): User settings as a dictionary.
-        """
-        if settings_default_folder == None:
-            dirname = os.path.dirname(os.path.abspath(__file__))
-            settings_default_folder = os.path.join(
-                dirname, "autocalib_default_settings")
-        if settings_setup_folder is None:
-            log.warning("No settings_setup_folder specified.")
-        if settings_sample_folder is None:
-            log.warning("No settings_sample_folder specified.")
-
-        for settings_folder in [
-                settings_default_folder, settings_setup_folder,
-                settings_sample_folder
-        ]:
-            if settings_folder is not None:
-                settings_files = os.listdir(settings_folder)
-                for file in settings_files:
-                    with open(os.path.join(settings_folder, file)) as f:
-                        update_nested_dictionary(
-                            self, {os.path.splitext(file)[0]: json.load(f)})
-
-        if settings_user is not None:
-            self.update_user_settings(settings_user, reload_database=False)
-
-        self._postprocess_settings_from_file()
-
-    def _postprocess_settings_from_file(self):
-        """Since JSON only supports strings as keys, postprocessing is applied.
-        Therefore, it is also possible to use a string with a tuple inside as a
-        key, which is converted to a tuple in the dictionary, e.g.
-        "('SFHQA', 1)" is converted to ('SFHQA', 1).
-        """
-        for k in list(self.keys()):
-            if isinstance(self[k], collections.abc.Mapping):
-                SettingsDictionary._postprocess_settings_from_file(self[k])
-            if re.search('^\(.*\)$', k):  # represents a tuple
-                self[eval(k)] = self.pop(k)
-
-    def enable_use_database(self, db_client_config):
-        """Can be called to enable querying the database with configuration
-        parameters. Either this function is called or the database client is
-        already specified in the init of the dictionary.
-
-        Args:
-            db_client_config (devicedb.Config): A configuration object for the
-                device.
-        """
-        if self.dev_name is not None:
-            db_client_config.device_name = self.dev_name
-        self.db_client = devicedb.Client(db_client_config)
-
-    def copy(self, overwrite_dict=None):
-        """Creates a deepcopy of the current dictionary.
-
-        Args:
-            overwrite_dict (dict): When this is not None, the content of the
-                dictionary is cleared and replaced with the dict specified in
-                overwrite_dict. Other arguments of the dictionary like the
-                device database client stay the same.
-
-        Returns:
-            SettingsDictionary: the deepcopied dictionary.
-        """
-
-        if overwrite_dict is None:
-            overwrite_dict = self
-        settings_copy = SettingsDictionary(copy.deepcopy(overwrite_dict),
-                                           db_client=self.db_client,
-                                           dev_name=self.dev_name)
-
-        return settings_copy
-
-    def __deepcopy__(self, memo):
-        """Overloads the standard deepcopying function to enable
-        deepcopying the dictionary by disabling deepcopying of certain argument
-        objects.
-        """
-        return self.__class__(
-            {k: copy.deepcopy(v, memo) for k, v in self.items()},
-            db_client=self.db_client,
-            dev_name=self.dev_name)
-
-
 class RoutineTemplate(list):
     """Class to describe templates for (calibration) routines.
 
@@ -371,28 +38,30 @@ class RoutineTemplate(list):
     measurements, calibration routines, or intermediate steps.
     """
 
-    def __init__(
-        self,
-        steps,
-        global_settings=None,
-        routine=None,
-    ):
+    def __init__(self,
+                 steps,
+                 global_settings=None,
+                 routine=None,
+                 ):
         """Initialize the routine template.
 
         Args:
-            steps (list): List of steps that define the routine. Each step
-                consists of a list of three elements. Namely, the step class,
-                the step label (a string), and the step settings (a dictionary).
+            steps (list of :obj:`Step`): List of steps that define the routine.
+                Each step consists of a list of three elements. Namely, the step
+                class, the step label (a string), and the step settings (a
+                dictionary). It can optionally also have a fourth element to
+                give the experiment temporary values.
                 For example:
                 steps = [
                     [StepClass1, step_label_1, step_settings_1],
-                    [StepClass2, step_label_2, step_settings_2],
+                    [StepClass2, step_label_2, step_settings_2,
+                    step_tmp_vals_2],
                 ]
             global_settings (dict, optional): Dictionary containing global
                 settings for each step of the routine (e.g., "dev", "update",
                 "delegate_plotting"). Defaults to None.
-            routine (AutomaticCalibrationRoutine, optional): Routine that the
-                RoutineTemplate defines. Defaults to None.
+            routine (:obj:`AutomaticCalibrationRoutine`, optional): Routine that
+                the RoutineTemplate defines. Defaults to None.
         """
         super().__init__(steps)
 
@@ -514,74 +183,20 @@ class RoutineTemplate(list):
             self.update_settings_at_index(settings=x, index=i)
 
     def view(
-        self,
-        print_global_settings=True,
-        print_general_settings=True,
-        print_tmp_vals=False,
+            self,
+            **kws
     ):
-        """Prints a user-friendly representation of the routine template.
-
-        Args:
-            print_global_settings (bool): If True, prints the global settings
-                of the routine. Defaults to True.
-            print_general_settings (bool): If True, prints the 'General' scope
-                of the routine settings. Defaults to True.
-            print_tmp_vals (bool): If True, prints the temporary values of the
-                routine. Defaults to False.
-        """
-        try:
-            print(self.routine.name)
-        except AttributeError:
-            pass
-
-        if print_global_settings:
-            print("Global settings:")
-            pprint.pprint(self.global_settings)
-            print()
-
-        if print_general_settings:
-            try:
-                print("General settings:")
-                pprint.pprint(
-                    self.routine.settings[self.routine.name]['General'])
-                print()
-            except AttributeError:
-                pass
-
-        for i, x in enumerate(self):
-            print(f"Step {i}, {x[0].__name__} ({x[1]})")
-            print("Settings:")
-            pprint.pprint(x[2], indent=4)
-
-            if print_tmp_vals:
-                try:
-                    print("Temporary values:")
-                    pprint.pprint(x[3], indent=4)
-                except IndexError:
-                    pass
-            print()
+        """DEPRECATED."""
+        warn('This method is deprecated, use `Routine.view()` instead',
+             DeprecationWarning, stacklevel=2)
 
     def __str__(self):
         """Returns a string representation of the routine template.
 
         FIXME: this representation does not include the tmp_vals of the steps.
         """
-        try:
-            s = self.routine.name + "\n"
-        except AttributeError:
-            s = ""
 
-        if self.global_settings:
-            s += "Global settings:\n"
-            s += pprint.pformat(self.global_settings) + "\n"
-
-        try:
-            if self.routine.settings:
-                s += "General settings:\n"
-                s += pprint.pformat(
-                    self.routine.settings[self.routine.name]['General']) + "\n"
-        except AttributeError:
-            pass
+        s = ""
 
         for i, x in enumerate(self):
             s += f"Step {i}, {x[0].__name__}, {x[1]}\n"
@@ -638,9 +253,8 @@ class RoutineTemplate(list):
             step (list): Routine template step.
         """
         assert isinstance(step, list), "Step must be a list"
-        assert (
-            len(step) == 3 or len(step) == 4
-        ), "Step must be a list of length 3 or 4 (to include temporary values)"
+        assert (len(step) == 3 or len(step) == 4), \
+            "Step must be a list of length 3 or 4 (to include temporary values)"
         assert isinstance(step[0], type), (
             "The first element of the step "
             "must be a class (e.g. measurement or a calibration routine)")
@@ -665,396 +279,6 @@ class RoutineTemplate(list):
         return new_data
 
 
-class Step:
-    """A class to collect functionality used for each step in a routine.
-    A step can be an AutomaticCalibrationRoutine, an IntermediateStep
-    or a measurements. Measurements are wrapped with a wrapper class
-    which inherits from this class to give access to its functions.
-    """
-
-    def __init__(self, dev, routine=None, **kw):
-        """Initializes the Step class.
-
-        Arguments:
-            dev (Device): The device which is currently measured.
-            routine (Step): The parent of the step. If this step is the root
-                routine, this should be None.
-
-        Keyword Arguments:
-            step_label (str): A unique label for this step to be used in the
-                configuration parameters files.
-            settings (SettingsDictionary): The configuration parameters
-                passed down from its parent. If None, the dictionary is taken
-                from the Device object.
-            qubits (list): A list with the Qubit objects which should be part of
-                the step.
-            settings_user (dict): A dictionary from the user to update the
-                configuration parameters with.
-
-        """
-        self.routine = routine
-        self.step_label = self.kw.pop('step_label', None)
-        self.dev = dev
-        # Copy default settings from autocalib if this is the root routine, else
-        # create an empty SettingsDictionary
-        default_settings = self.dev.autocalib_settings.copy(
-        ) if self.routine is None else self.routine.settings.copy({})
-        self.settings = self.kw.pop("settings", default_settings)
-        self.qubits = self.kw.pop("qubits", self.dev.get_qubits())
-
-        # FIXME: this is there to make the current one-qubit-only implementation
-        # of HamiltionianFitting work easily
-        # remove dependency on self.qubit
-        self.qubit = self.qubits[0]
-
-        settings_user = self.kw.pop('settings_user', None)
-        if settings_user:
-            self.settings.update_user_settings(settings_user)
-        self.parameter_lookups = [
-            self.step_label,
-            self.get_lookup_class().__name__, 'General'
-        ]
-        self.parameter_sublookups = None
-        self.leaf = True
-
-    class NotFound:
-        """This class is used in get_param_value to identify the cases where
-        a keyword could not be found in the configuration parameter dictionary.
-        It is necessary to distinguish between the cases when None is explicitly
-        specified for a keyword argument and when no keyword argument was found.
-        """
-
-        def __bool__(self):
-            """Return False by default for the truth value of an instance of
-            NotFound.
-            """
-            return False
-
-    def get_param_value(self,
-                        param,
-                        qubit=None,
-                        sublookups=None,
-                        default=None,
-                        leaf=None,
-                        associated_component_type_hint=None):
-        """Looks up the requested parameter in the own configuration parameter
-        dictionary. If no value was found, the parent routine's function is
-        called recursively up to the root routine.
-
-        This effectively implements the priority hierarchy for the settings: the
-        settings specified for the most specific step will have priority over
-        those specified for the more general ones. For instance, the settings
-        of a QuantumExperiment step specified within the settings of an
-        AutomaticRoutine step will have priority over the generic settings of
-        the same QuantumExperiment Step specified in the root node of the
-        dictionary.
-
-        The lookups used for the search are those defined in
-        self.parameters_lookups, i.e., ['step_label', 'StepClass', 'General']
-        (sorted by priority).
-
-        Args:
-            param (str): The name of the parameter to look up.
-            sublookups (list of str): Optional subscopes to be looked up. The
-                sublookups will be assumed to be sorted by priority (highest
-                priority first).
-            default: The default value the parameters falls back to if no value
-                was found for the parameter in the whole dictionary. By setting
-                it to NotFound() it is possible to detect whether the value
-                was found in the configuration parameter dictionary. Defaults to
-                None.
-                FIXME: A better solution would be to change the function and
-                return also a bool indicating whether a parameter was found.
-                This would require minimal changes in this function, but it
-                would require to go through the code and fix all the lines
-                containing a call to get_param_value.
-            leaf (boolean): True if the scope to search the parameter for is a
-                leaf node (e.g. a measurement or intermediate step, not a
-                routine)
-            associated_component_type_hint (str): A hint for the device database,
-                if the parameter does not belong to the qubit.
-
-        Returns:
-            The value found in the dictionary. If no value was found, either the
-            default value is returned if specified or otherwhise None.
-        """
-        # Get the groups the specified qubit belongs to. This allows searching
-        # for qubit-specific settings
-        groups = None
-        if qubit is not None:
-            groups = self.get_qubit_groups(qubit)
-        # Look for the parameter in  self.settings with the initial default
-        # lookups. Note that self.settings is different for different steps.
-        lookups = self.parameter_lookups
-        if leaf is None:
-            leaf = self.leaf
-        val, success = self.settings.get_param_value(
-            param,
-            lookups=lookups,
-            sublookups=sublookups,
-            qubit=qubit,
-            groups=groups,
-            leaf=leaf,
-            associated_component_type_hint=associated_component_type_hint)
-
-        if not success:
-            # If the initial search failed, repeat it by calling the
-            # parent routine's function (if there is a parent routine). Keep the
-            # sublookups if they were specified, otherwise use the initial
-            # lookups as sublookups.
-            if self.routine is not None:
-                sublookups = sublookups if sublookups else lookups
-                val = self.routine.get_param_value(
-                    param,
-                    qubit=qubit,
-                    sublookups=sublookups,
-                    leaf=leaf,
-                    associated_component_type_hint=associated_component_type_hint
-                )
-                if val is None or type(val) == self.NotFound:
-                    success = False
-                else:
-                    success = True
-            # If the initial search failed and there is no parent routine,
-            # look for the parameter in the settings using the sublookups as
-            # lookups. Basically, search for the given parameter within the
-            # given sublookups in the root node of the settings.
-            elif sublookups:
-                val, success = self.settings.get_param_value(
-                    param,
-                    lookups=sublookups,
-                    sublookups=None,
-                    qubit=qubit,
-                    groups=groups,
-                    leaf=leaf,
-                    associated_component_type_hint=associated_component_type_hint
-                )
-
-        return val if success else default
-
-    def get_qubit_groups(self, qubit):
-        """Gets the groups the specified qubit belongs to out of the
-        configuration parameter dictionary.
-
-        Args:
-            qubit (str): The name of the qubit.
-
-        Returns:
-            set: A set of strings with the group names the qubit is part of.
-        """
-        # FIXME: When a qubit is removed from a group with the same
-        # name in higher hierarchy, it will still remain.
-        lookups = ['Groups']
-        groups = self.settings.get_qubit_groups(qubit, lookups)
-        if self.routine is not None:
-            groups.update(self.routine.get_qubit_groups(qubit))
-        return groups
-
-    def run(self):
-        """Run the Step. To be implemented by subclasses.
-        """
-        pass
-
-    def get_empty_device_properties_dict(self, step_type=None):
-        """Returns an empty dictionary of the following structure, for use with
-        `get_device_property_values`
-
-        Example:
-            .. code-block:: python
-                {
-                    'step_type': step_type,
-                    'property_values': []
-                }
-        Args:
-            step_type (str, optional): The name of the step. Defaults to the
-                class name.
-
-        Returns:
-            dict: An empty property value dictionary (i.e., no results)
-        """
-        return {
-            'step_type':
-                step_type if step_type is not None else str(
-                    type(self).__name__),
-            'property_values': [],
-        }
-
-    def get_device_property_values(self, **kwargs):
-        """Returns a dictionary of high-level property values from running this
-        step. To be overridden by children classes.
-
-        Here is an example of the output dictionary
-
-        Example:
-            .. code-block:: python
-                {
-                    'step_type': 'RamseyStep',
-                    'property_values': [{
-                        'qubits': 'qb2',
-                        'component_type': 'qb',
-                        'property_type': 'ge_T2_star',
-                        'value': 6.216582600129854e-05,
-                        'timestamp': '20220101_101500',
-                        'rawdata_folder_path': 'Q:\\....\\20220101\\101500_...',
-                    }, {
-                        'qubits': 'qb7',
-                        'component_type': 'qb',
-                        'property_type': 'ge_T2_star',
-                        'value': 1.9795263942036515e-05,
-                        'timestamp': '20220101_101500',
-                        'rawdata_folder_path': 'Q:\\....\\20220101\\101500_...',
-                    }]
-                }
-
-
-        Returns:
-            dict: dictionary of high-level property values (may be empty)
-        """
-        # Default return is an empty dictionary
-        return self.get_empty_device_properties_dict()
-
-    @classmethod
-    def gui_kwargs(cls, device):
-        """Returns the kwargs necessary to run a QuantumExperiment. Every
-        QuantumExperiment should implement them. The keywords returned by
-        this method will be included in the requested settings (see
-        get_requested_settings) and eventually extracted from the configuration
-        parameter dictionary (see parse_settings).
-
-        NOTE: The name of the function could be confusing. This function was
-        first implemented to retrieve the kwargs to be specified with a GUI.
-        The same name was maintained to make use of the already implemented
-        functions.
-
-        Args:
-            device (Device): The device that is being measured.
-
-        Returns:
-            dict: Dictionary of kwargs necessary to run a QuantumExperiment.
-        """
-        return {
-            'kwargs':
-                odict({
-                    Step.__name__: {
-                        # kwarg: (fieldtype, default_value),
-                        # 'delegate_plotting': (bool, False),
-                    },
-                })
-        }
-
-    def get_requested_settings(self):
-        """Gets a set of keyword arguments which are needed for the
-        initialization of the current step. The keywords are retrieved via the
-        gui_kwargs method that is implemented in each QuantumExperiment.
-
-        Returns:
-            dict: A dictionary containing names and default values of keyword
-                arguments which are needed for the current step.
-        """
-        gui_kwargs = self.__class__.gui_kwargs(self.dev)
-        # Remove second layer of dict
-        requested_kwargs = {
-            k: {ky: vy for kx, vx in v.items()
-                for ky, vy in vx.items()}
-            for k, v in gui_kwargs.items()
-        }
-        return requested_kwargs
-
-    def parse_settings(self, requested_kwargs):
-        """Resolves the keyword arguments from get_requested_settings to calls
-        within the parameter dictionary.
-
-        Args:
-            requested_kwargs (dict): A dictionary containing the names and
-            default values of the keyword arguments for an experiment.
-        Returns:
-            The exact keyword arguments to pass to the experiment class.
-        """
-        kwargs = {}
-        for k, v in requested_kwargs['kwargs'].items():
-            kwargs[k] = self.get_param_value(k, default=self.NotFound())
-            # If the keyword was not found in the configuration parameter
-            # dictionary, it will not be passed to the QuantumExperiment.
-            # This prevents problem when the gui_kwargs default values raise
-            # errors
-            if type(kwargs[k]) == self.NotFound:
-                kwargs.pop(k)
-
-        kwargs['measure'] = False
-        kwargs['analyze'] = False
-        kwargs['qubits'] = self.qubits
-        return kwargs
-
-    @property
-    def highest_lookup(self):
-        """Returns the highest scope for this step which is not None
-        in the order step_label, class name, General.
-
-        Returns:
-            str: A string with the highest lookup of this step which is not
-                None.
-        """
-        return self._get_first_not_none(self.parameter_lookups)
-
-    @property
-    def highest_sublookup(self):
-        """Returns the highest subscope for this step which is not None.
-
-        Returns:
-            str: A string with the highest sublookup of this step which is not
-                None. If the step is a leaf, this is None, otherwhise it is
-                "General".
-        """
-        return None if self.parameter_sublookups is None else self._get_first_not_none(
-            self.parameter_sublookups)
-
-    def _get_first_not_none(self, lookup_list):
-        """Returns the first subscope in the lookup list that is not None.
-
-        Args:
-            lookup_list (list): List of scopes to look up.
-
-        Returns:
-            str: The first subscope in lookup_list that is not None. If all the
-                entries in lookup_list are None, returns None.
-        """
-        return next((item for item in lookup_list if item is not None), None)
-
-    @classmethod
-    def get_lookup_class(cls):
-        """
-        Returns:
-            class: The class corresponding to the experiment that the Step is
-                based on. If there is no experiment, the class itself is
-                returned.
-        """
-        if issubclass(cls, SingleQubitGateCalibExperiment):
-            return cls.__bases__[0]
-        if issubclass(cls, QuantumExperiment):
-            return cls.__bases__[0]
-        return cls
-
-
-class IntermediateStep(Step):
-    """Class used for defining intermediate steps between automatic calibration
-    steps.
-
-    NOTE: Currently, there is no difference between an IntermediateStep and a
-    Step. A different class was implemented just in case future modifications
-    will make it necessary.
-    """
-
-    def __init__(self, **kw):
-        self.kw = kw
-        super().__init__(**kw)
-
-    def run(self):
-        """Intermediate processing step to be overridden by Children (which are
-        routine specific).
-        """
-        pass
-
-
 class AutomaticCalibrationRoutine(Step):
     """Base class for general automated calibration routines
 
@@ -1064,7 +288,7 @@ class AutomaticCalibrationRoutine(Step):
     after the base class __init__ and before the routine is actually created
     (which happens in final_init).
 
-    In the children classes, the intialization follows this hierarchy:
+    In the children classes, the initialization follows this hierarchy:
         ChildRoutine.__init__
             AutomaticCalibrationRoutine.__init__
             final_init
@@ -1077,13 +301,12 @@ class AutomaticCalibrationRoutine(Step):
     at runtime when the parent routine is running the subroutine step.
     """
 
-    def __init__(
-        self,
-        dev,
-        routine=None,
-        autorun=True,
-        **kw,
-    ):
+    def __init__(self,
+                 dev,
+                 routine=None,
+                 autorun=True,
+                 **kw,
+                 ):
         """Initializes the routine.
 
         Args:
@@ -1092,10 +315,11 @@ class AutomaticCalibrationRoutine(Step):
                 initialization.
             routine (Step): The parent routine of the routine.
 
-        Keyword Arguments:
+        Keyword args:
             qubits (list): List of qubits to be used in the routine
 
-        Configuration parameters (coming from the configuration parameter dictionary):
+        Configuration parameters (coming from the configuration parameter
+        dictionary):
             update (bool): If True, the routine will overwrite qubit attributes
                 with the values found in the routine. Note that if the routine
                 is used as subroutine, this should be set to True.
@@ -1112,8 +336,17 @@ class AutomaticCalibrationRoutine(Step):
 
         self.parameter_sublookups = ['General']
         self.leaf = False
+        self.step_label = self.step_label or self.name
 
         self.DCSources = self.kw.pop("DCSources", None)
+
+        self.routine_steps: List[Step] = []
+        self.current_step_index = 0
+
+        self.routine_template: Optional[RoutineTemplate] = None
+        self.current_step: Optional[Step] = None
+        self.current_step_settings: Optional[Dict] = None
+        self.current_step_tmp_vals: Optional[List[Tuple[Any, Any]]] = None
 
         # MC - trying to get it from either the device or the qubits
         for source in [self.dev] + self.qubits:
@@ -1124,6 +357,10 @@ class AutomaticCalibrationRoutine(Step):
                 pass
 
         self.create_initial_parameters()
+
+        # Registering start of routine so all data in measurement period can
+        # be retrieved later to determine the Hamiltonian model
+        self.preroutine_timestamp = self.MC.get_datetimestamp()
 
     def merge_settings(self, lookups, sublookups):
         """Merges all scopes relevant for a particular child step. The settings
@@ -1139,7 +376,7 @@ class AutomaticCalibrationRoutine(Step):
         a) Initialization of Routine's steps. This will extract the settings
         of SubRoutine from the configuration parameter dictionary.
 
-        Call: Routine.merge_settings(lookups=[None,"Routine"],
+        Call: Routine.merge_settings(lookups=[None, "Routine"],
                                sublookups=["subroutine_label", "SubRoutine"])
 
             Look for the relevant settings in this order:
@@ -1178,9 +415,9 @@ class AutomaticCalibrationRoutine(Step):
 
         The dictionary of settings that were merged according to the
         hierarchy specified in the lookups can be used to update 
-        ExperimentStep.settings
+        :obj:`Step.settings`.
 
-        Arguements:
+        Arguments:
             lookups (list): A list of all scopes for the parent routine
                 of the step whose settings need to be merged. The elements
                 of the list will be interpreted in descending order of priority.
@@ -1227,8 +464,8 @@ class AutomaticCalibrationRoutine(Step):
         return settings
 
     def extract_step_settings(self,
-                              step_class,
-                              step_label,
+                              step_class: Type[Step],
+                              step_label: str,
                               step_settings=None,
                               lookups=None,
                               sublookups=None):
@@ -1266,6 +503,7 @@ class AutomaticCalibrationRoutine(Step):
         """
         if not issubclass(step_class, Step):
             raise NotImplementedError("Steps have to inherit from class Step.")
+
         if step_settings is None:
             step_settings = {}
         # No 'General' lookup since at this point we are only interested
@@ -1292,7 +530,6 @@ class AutomaticCalibrationRoutine(Step):
         """
         # Create RoutineTemplate based on _DEFAULT_ROUTINE_TEMPLATE
         self.routine_template = copy.deepcopy(self._DEFAULT_ROUTINE_TEMPLATE)
-        self.routine_template.routine = self
 
         for step in self.routine_template:
             # Retrieve the step settings from the configuration parameter
@@ -1356,8 +593,9 @@ class AutomaticCalibrationRoutine(Step):
             for parallel_group in parallel_groups:
                 # Find the qubits belonging to parallel_group
                 qubits_filtered = [
-                    qb for qb in self.qubits if qb.name is parallel_group or
-                    parallel_group in self.get_qubit_groups(qb.name)
+                    qb for qb in self.qubits if
+                    (qb.name == parallel_group or
+                     parallel_group in self.get_qubit_groups(qb.name))
                 ]
                 # Create a new step for qubits_filtered only and add it to the
                 # routine template
@@ -1398,9 +636,10 @@ class AutomaticCalibrationRoutine(Step):
         qubits = step_settings.pop('qubits', self.qubits)
         dev = step_settings.pop('dev', self.dev)
         autocalib_settings = self.settings.copy(
-            step_settings.pop('settings', {}))
+            overwrite_dict=step_settings.pop('settings', {}))
         # Executing the step with corresponding settings
-        if issubclass(step_class, qbcal.SingleQubitGateCalibExperiment):
+        if issubclass(step_class, qbcal.SingleQubitGateCalibExperiment) or \
+                issubclass(step_class, QuantumExperiment):
             step = step_class(qubits=qubits,
                               routine=self,
                               dev=dev,
@@ -1424,8 +663,8 @@ class AutomaticCalibrationRoutine(Step):
                               settings=autocalib_settings,
                               **step_settings)
         else:
-            log.error(f"automatic subroutine is not compatible (yet) with the "
-                      f"current step class {step_class}")
+            raise ValueError(f"automatic subroutine is not compatible (yet)"
+                             f"with the current step class {step_class}")
         self.current_step = step
         self.current_step_settings = step_settings
 
@@ -1440,6 +679,7 @@ class AutomaticCalibrationRoutine(Step):
                   f"({self.routine_template.step_name(index=j)}), executing...")
 
         self.current_step.run()
+        self.current_step.post_run()  # optional. Update results for example.
 
         self.routine_steps.append(self.current_step)
         self.current_step_index += 1
@@ -1448,7 +688,8 @@ class AutomaticCalibrationRoutine(Step):
         """Runs the complete automatic calibration routine. In case the routine
         was already completed, the routine is reset and run again. In case the
         routine was interrupted, it will run from the last completed step, the
-        index of which is saved in the current_step_index attribute of the routine.
+        index of which is saved in the current_step_index attribute of the
+        routine.
         Additionally, it is possible to start the routine from a specific step.
 
         Args:
@@ -1461,10 +702,10 @@ class AutomaticCalibrationRoutine(Step):
                 step1), if stop_index is set to 2.
 
         FIXME: There's an issue when starting from a given start index. The
-        routine_steps is only wiped if the routine ran completely and is reran
-        from the start. In the future, it might be good to implement a way so
-        the user can choose if previous results should be wiped or not (that is,
-        if routine_steps should be wiped or not).
+         routine_steps is only wiped if the routine ran completely and is reran
+         from the start. In the future, it might be good to implement a way so
+         the user can choose if previous results should be wiped or not (that is,
+         if routine_steps should be wiped or not).
         """
         routine_name = self.name
 
@@ -1474,20 +715,17 @@ class AutomaticCalibrationRoutine(Step):
             # saving instrument settings before the routine
             self.MC.create_instrument_settings_file(
                 f"pre-{self.name}_routine-settings")
-            self.preroutine_timestamp = a_tools.get_last_n_timestamps(1,)[0]
-        else:
-            # Registering start of routine so all data in measurement period can
-            # be retrieved later to determine the Hamiltonian model
-            self.preroutine_timestamp = self.MC.get_datetimestamp()
+            self.preroutine_timestamp = a_tools.get_last_n_timestamps(1)[0]
 
         # Rerun routine if already finished
         if (len(self.routine_template) != 0) and (self.current_step_index >=
                                                   len(self.routine_template)):
             self.create_initial_routine(load_parameters=False)
             self.run()
+            self.post_run()
             return
 
-        # Start and stop indeces
+        # Start and stop indices
         if start_index is not None:
             self.current_step_index = start_index
         elif self.current_step_index >= len(self.routine_template):
@@ -1520,6 +758,9 @@ class AutomaticCalibrationRoutine(Step):
 
         if self.get_param_value('verbose'):
             print(f"Routine {routine_name} finished!")
+
+    def post_run(self):
+        routine_name = self.name
 
         # Saving instrument settings post-routine
         if (self.get_param_value('save_instrument_settings') or
@@ -1566,8 +807,6 @@ class AutomaticCalibrationRoutine(Step):
         NOTE: This method wipes the results of the previous run stored in
         routine_steps.
         """
-        self.routine_steps = []
-        self.current_step_index = 0
 
         # Loading initial parameters. Note that if load_parameters=False,
         # the parameters are not reloaded and thus remain the same. This is
@@ -1589,14 +828,15 @@ class AutomaticCalibrationRoutine(Step):
         self.create_initial_routine(load_parameters=False)
         if self.autorun:
             # FIXME: if the init does not finish the object does not exist and
-            # the routine results are not accesible
+            #  the routine results are not accessible
             try:
                 self.run()
+                self.post_run()
             except:
                 log.error(
                     "Autorun failed to fully run, concluded routine steps "
                     "are stored in the routine_steps attribute.",
-                    exc_info=1,
+                    exc_info=True,
                 )
 
     @property
@@ -1611,10 +851,10 @@ class AutomaticCalibrationRoutine(Step):
                 (overwriting the previous frb value).
 
         FIXME: The selection of parameters extracted from the qb is currently
-        tailored to the first example use cases. This either needs to be
-        generalized to extract more parameters here, or we could decide the
-        concrete routines could override the method to extract their specific
-        parameters.
+         tailored to the first example use cases. This either needs to be
+         generalized to extract more parameters here, or we could decide the
+         concrete routines could override the method to extract their specific
+         parameters.
         """
         qb = self.qubit
 
@@ -1633,18 +873,53 @@ class AutomaticCalibrationRoutine(Step):
 
         return settings
 
-    def view(self, **kw):
-        """Prints a user friendly representation of the routine settings
+    def view(self,
+             print_global_settings=True,
+             print_general_settings=True,
+             print_tmp_vals=False,
+             print_results=True,
+             **kws
+             ):
+        """Prints a user-friendly representation of the routine template.
 
-        Keyword Arguments:
+        Args:
             print_global_settings (bool): If True, prints the global settings
                 of the routine. Defaults to True.
-            print_parameters (bool): If True, prints the parameters of the
-                routine. Defaults to True.
+            print_general_settings (bool): If True, prints the 'General' scope
+                of the routine settings. Defaults to True.
             print_tmp_vals (bool): If True, prints the temporary values of the
                 routine. Defaults to False.
+            print_results (bool): If True, prints the results dicts of all the
+                steps of the routine.
         """
-        self.routine_template.view(**kw)
+
+        print(self.name)
+
+        if print_global_settings:
+            print("Global settings:")
+            pprint.pprint(self.global_settings)
+            print()
+
+        if print_general_settings:
+            print("General settings:")
+            pprint.pprint(self.settings[self.name]['General'])
+            print()
+
+        for i, x in enumerate(self.routine_template):
+            print(f"Step {i}, {x[0].__name__} ({x[1]})")
+            print("Settings:")
+            pprint.pprint(x[2], indent=4)
+
+            if print_tmp_vals:
+                try:
+                    print("Temporary values:")
+                    pprint.pprint(x[3], indent=4)
+                except IndexError:
+                    pass
+            print()
+
+        if print_results:
+            print_step_results(self)
 
     def update_settings_at_index(self, settings: dict, index):
         """Updates the settings of the step at position 'index'. Wrapper of
@@ -1728,9 +1003,9 @@ class AutomaticCalibrationRoutine(Step):
                                                             index=index)
 
     def add_step(self,
-                 step_class,
-                 step_label,
-                 step_settings,
+                 step_class: Type[Step],
+                 step_label: str,
+                 step_settings: Optional[Dict[str, Any]] = None,
                  step_tmp_vals=None,
                  index=None):
         """Adds a step to the routine template. The settings of the step are
@@ -1739,7 +1014,7 @@ class AutomaticCalibrationRoutine(Step):
         Args:
             step_class (Step): Class of the step
             step_label (str): Label of the step
-            step_settings (dict): Settings of the step. If any settings
+            step_settings (dict, optional): Settings of the step. If any settings
                 are found in step_settings['settings'], they will have priority
                 over those found in the configuration parameter dictionary.
             step_tmp_vals (list, optional): Temporary values for the step. Each
@@ -1767,7 +1042,7 @@ class AutomaticCalibrationRoutine(Step):
                 {
                     'step_type': step_type,
                     'property_values': [],
-                    'timestamp': '20220101_161403', # from self.preroutine_timestamp
+                    'timestamp': '20220101_161403',
                 }
         Args:
             step_type (str, optional): The name of the step. Defaults to the
@@ -1799,10 +1074,6 @@ class AutomaticCalibrationRoutine(Step):
                 'qb4': 'lss',
                 'qb7': None,
             }
-
-        Args:
-            qubit_sweet_spots (dict, optional): a dictionary mapping qubits to
-                sweet-spots ('uss', 'lss', or None)
 
 
         An example of what is returned is given below.
@@ -1874,7 +1145,7 @@ class AutomaticCalibrationRoutine(Step):
     def name(self):
         """Returns the name of the routine.
         """
-        # Name depends on whether or not the object is initialized.
+        # Name depends on whether the object is initialized.
         if type(self) is not type:
             return type(self).__name__
         else:
@@ -1929,27 +1200,14 @@ def keyword_subset_for_function(keyword_arguments, function):
     return keyword_subset(keyword_arguments, allowed_keywords)
 
 
-def update_nested_dictionary(d, u):
-    """Updates a nested dictionary. Each value of 'u' will update the
-    corresponding entry of 'd'. If an entry of 'u' is a dictionary itself,
-    then the function is called recursively, and the subdictionary of 'd' will
-    be the dictionary to be updated.
-
-    If 'u' contains a key that does not exist in 'd', it will be added to 'd'.
-
-    Args:
-        d (dict): Dictionary to be updated.
-        u (dict): Dictionary whose items will update the dictionary 'd'.
-
-    Returns:
-        dict: The updated dictionary.
-    """
-    for k, v in u.items():
-        # Check whether the value 'v' is a dictionary. In this case,
-        # updates_nested_dictionary is called again recursively. The
-        # subdictionary d[k] will be updated with v.
-        if isinstance(v, collections.abc.Mapping):
-            d[k] = update_nested_dictionary(d.get(k, {}), v)
-        else:
-            d[k] = v
-    return d
+def print_step_results(step: Step, routine_name: str = ''):
+    """Recursively print the results of the step and its sub-steps."""
+    if step.results:  # Do not print None or empty dictionaries
+        print(f'{routine_name} Step {step.step_label} results:')
+        pprint.pprint(step.results)
+        print()
+    if hasattr(step, 'routine_steps'):  # A routine with sub-steps
+        for sub_step in step.routine_steps:
+            print_step_results(sub_step, routine_name=step.step_label)
+    else:
+        pass

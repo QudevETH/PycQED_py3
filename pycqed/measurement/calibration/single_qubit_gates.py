@@ -2539,7 +2539,6 @@ class ReparkingRamsey(Ramsey):
             Passed to parent method.
         """
 
-        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
         options_dict = analysis_kwargs.pop('options_dict', {})

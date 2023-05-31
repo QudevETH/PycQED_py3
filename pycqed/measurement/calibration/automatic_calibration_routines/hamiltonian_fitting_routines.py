@@ -1,17 +1,17 @@
-from .autocalib_framework import IntermediateStep
-from .autocalib_framework import AutomaticCalibrationRoutine
-from .autocalib_framework import (
-    keyword_subset_for_function,
-    update_nested_dictionary
-)
-from .autocalib_framework import (
-    _device_db_client_module_missing
-)
+from pycqed.measurement.calibration.automatic_calibration_routines.base import (
+    IntermediateStep, AutomaticCalibrationRoutine, update_nested_dictionary,
+    ROUTINES)
+from pycqed.measurement.calibration.automatic_calibration_routines.base. \
+    base_automatic_calibration_routine import (_device_db_client_module_missing,
+                                               keyword_subset_for_function)
+from pycqed.measurement.calibration.automatic_calibration_routines import (
+    routines_utils, AdaptiveReparkingRamsey, UpdateFrequency, SetBiasVoltage)
+
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
 
-from .single_qubit_routines import ReparkingRamseyStep
-from .single_qubit_routines import FindFrequency
+from pycqed.measurement.calibration.automatic_calibration_routines.\
+    single_qubit_routines import FindFrequency, RabiStep
 
 from pycqed.utilities import hamiltonian_fitting_analysis as hfa
 from pycqed.utilities.state_and_transition_translation import *
@@ -21,61 +21,73 @@ from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import pycqed.analysis.analysis_toolbox as a_tools
 import numpy as np
 import logging
+from typing import Dict, Tuple
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 
-log = logging.getLogger(__name__)
+log = logging.getLogger(ROUTINES)
 
 
 class HamiltonianFitting(AutomaticCalibrationRoutine,
                          hfa.HamiltonianFittingAnalysis):
-    """Constructs a HamiltonianFitting routine used to determine a
-        Hamiltonian model for a transmon qubit.
+    """
+    Constructs a HamiltonianFitting routine used to determine a
+    Hamiltonian model for a transmon qubit.
 
     Routine steps:
+
     1) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at either
-        the USS or LSS
+        the USS or LSS.
     2) UpdateFrequency (update_frequency_<tr_name>_<i>): updates the frequency
         of the qubit at current bias voltage. The bias voltage is calculated
         from the previous Hamiltonian model (if given), otherwise the guessed
         one will be used.
-    3) FindFrequency (find_frequency_<tr_name>_<i>): see corresponding routine
-    4) ReparkingRamsey (reparking_ramsey_<i>): see corresponding routine
+    3) :obj:`FindFrequency` (find_frequency_<tr_name>_<i>): see corresponding
+        routine.
+    4) :obj:`AdaptiveReparkingRamsey` (reparking_ramsey_<i>): see corresponding
+        routine.
+    5) :obj:`RabiStep` (rabi_step_ge): see corresponding step.
+
     Steps 1), 2), 3), and 4) are repeated for the ge transition for both the
     upper and the lower sweet spot.
-    Steps 2) and 3) are repeated also for the ef transition at the upper
+    Step 5) is done only for the designated sweet spot.
+    Steps 2) and 3) are repeated also for the ef transition at the designated
     sweet spot.
-    5) DetermineModel (determine_model_preliminary): fits a Hamiltonian
+
+    6) DetermineModel (determine_model_preliminary): fits a Hamiltonian
         model based on the three transition frequencies
         i) |g⟩ ↔ |e⟩ (USS)
         ii) |g⟩ ↔ |e⟩ (LSS)
         iii) |e⟩ ↔ |f⟩ (USS).
+
     For the remaining fluxes and transitions specified in "measurements" the
     following step will be run:
-        6) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at the
+        7) SetBiasVoltage (set_bias_voltage_<i>): sets the bias voltage at the
             midpoint.
-        7) UpdateFrequency (update_frequency_ge_<i>): updates the frequency of
+        8) UpdateFrequency (update_frequency_ge_<i>): updates the frequency of
             the qubit at the midpoint by using the preliminary Hamiltonian
             model.
-        8) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
+        9) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
             sets temporary bias voltage for flux-pulse-assisted readout.
-        9) FindFrequency (find_frequency_ge_<i>): see corresponding routine
-        ...
+        10) FindFrequency (find_frequency_ge_<i>): see corresponding routine.
+
     Afterwards, the final model is determined:
-    10) DetermineModel (determine_model_final): fits a Hamiltonian model based
+    11) DetermineModel (determine_model_final): fits a Hamiltonian model based
         on the transition frequencies at the fluxes specified in "measurements".
-        By default they are:
+        By default, they are:
         i) |g⟩ ↔ |e⟩ (USS)
         ii) |g⟩ ↔ |e⟩ (LSS)
         iii) |e⟩ ↔ |f⟩ (USS)
         iv) |g⟩ ↔ |e⟩ (midpoint).
     """
-    def __init__(
-        self,
-        dev,
-        qubit,
-        fluxlines_dict,
-        **kw,
-    ):
-        """Constructs a HamiltonianFitting routine used to determine a
+
+    def __init__(self,
+                 dev,
+                 qubit,
+                 fluxlines_dict,
+                 **kw):
+        """
+        Constructs a HamiltonianFitting routine used to determine a
         Hamiltonian model for a transmon qubit.
 
         Args:
@@ -96,21 +108,21 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 spot.
 
                 default:
-                    {0: ('ge', 'ef')),
-                    -0.5: ('ge',),
-                    -0.25: ('ge',)}
+                {"{designated}": ["ge", "ef"],
+                 "{opposite}": ["ge"],
+                 "{mid}": ["ge"]}
 
-            flux_to_voltage_and_freq_guess (dict): Guessed values for voltage
-                and ge-frequencies for the fluxes in the measurement dictionary
-                in case no Hamiltonian model is available yet. If passed, the
-                dictionary must include guesses for the first two fluxes of
-                `measurements` (which should be sweet spots). Default is None,
-                in which case it is required to have use_prior_model==True. This
-                means that the guesses will automatically be calculated with the
-                existing model.
+            flux_to_voltage_and_freq_guess (dict(float, tuple(float, float))):
+                Guessed values for voltage and ge-frequencies for the fluxes in
+                the measurement dictionary in case no Hamiltonian model is
+                available yet. If passed, the dictionary must include guesses
+                for the first two fluxes of `measurements` (which should be
+                sweet spots). Default is None, in which case it is required to
+                have use_prior_model==True. This means that the guesses will
+                automatically be calculated with the existing model.
 
-                Note, for succesful execution of the routine either a
-                flux_to_voltage_and_freq_guess must be passed or a
+                Note, for successful execution of the routine either a
+                `flux_to_voltage_and_freq_guess` must be passed or a
                 flux-voltage model must be specified in the qubit object.
 
                 For example, `flux_to_voltage_and_freq_guess = {0:(-0.5,
@@ -133,9 +145,6 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             delegate_plotting (bool): whether to delegate plotting to the
                 `plotting` module. The variable is stored in the global settings
                 and the default value is False.
-            anharmonicity (float): guess for the anharmonicity. Default -175
-                MHz. Note the sign convention, the anharmonicity alpha is
-                defined as alpha = f_ef - f_ge.
             method (str): optimization method to use. Default is Nelder-
                 Mead.
             include_mixer_calib_carrier (bool): If True, include mixer
@@ -150,21 +159,20 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 try to get the parameters from the qubit object. Default is
                 False.
 
-        FIXME: If the guess is very rough, it might be good to have an option to
-        run a qubit spectroscopy before. This could be included in the future
-        either directly here or, maybe even better, as an optional step in
-        FindFrequency.
-
         FIXME: There needs to be a general framework allowing the user to decide
-        which optional steps should be included (e.g., mixer calib, qb spec,
-        FindFreq before ReparkingRamsey, etc.).
+         which optional steps should be included (e.g., mixer calib, qb spec,
+         FindFreq before ReparkingRamsey, etc.).
 
         FIXME: The routine relies on fp-assisted read-out which assumes
-        that the qubit object has a model containing the dac_sweet_spot and
-        V_per_phi0. While these values are not strictly needed, they are needed
-        for the current implementation of the ro_flux_tmp_vals. This is
-        detrimental for the routine if use_prior_model = False and the qubit
-        doesn't contain a prior model.
+         that the qubit object has a model containing the dac_sweet_spot and
+         V_per_phi0. While these values are not strictly needed, they are needed
+         for the current implementation of the ro_flux_tmp_vals. This is
+         detrimental for the routine if use_prior_model = False and the qubit
+         doesn't contain a prior model.
+
+        FIXME: Remove the dependence on `use_prior_model`, which should always
+         be True. The preliminary values before any measurement can be estimated
+         from the design values.
         """
 
         super().__init__(
@@ -180,37 +188,30 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             'flux_to_voltage_and_freq_guess')
 
         if not use_prior_model:
-            assert (
-                flux_to_voltage_and_freq_guess is not None
-            ), "If use_prior_model is False, flux_to_voltage_and_freq_guess"\
-                "must be specified"
+            assert (flux_to_voltage_and_freq_guess is not None
+                    ), "If use_prior_model is False, " \
+                       "flux_to_voltage_and_freq_guess must be specified."
 
         # Flux to voltage and frequency dictionaries (guessed and measured)
         self.flux_to_voltage_and_freq = {}
-        if not flux_to_voltage_and_freq_guess is None:
-            flux_to_voltage_and_freq_guess = (
-                flux_to_voltage_and_freq_guess.copy())
-        self.flux_to_voltage_and_freq_guess = flux_to_voltage_and_freq_guess
+        if flux_to_voltage_and_freq_guess is not None:
+            self.flux_to_voltage_and_freq_guess: Dict[float, Tuple[
+                float, float]] = flux_to_voltage_and_freq_guess.copy()
 
         # Routine attributes
         self.fluxlines_dict = fluxlines_dict
-        # Retrieve the DCSources from the fluxlines_dict. These are necessary
-        # to reload the pre-routine settings when update=False
-        self.DCSources = []
-        for qb in self.dev.qubits:
-            dc_source = self.fluxlines_dict[qb.name].instrument
-            if dc_source not in self.DCSources:
-                self.DCSources.append(dc_source)
+        routines_utils.append_DCsources(self)
 
         self.measurements = {
-            float(k): tuple(transition_to_str(t) for t in v)
-            for k, v in measurements.items()
+            routines_utils.flux_to_float(qb=self.qubit, flux=k):
+                tuple(transition_to_str(t) for t in v) for k, v in
+            measurements.items()
         }
 
         # Validity of measurement dictionary
         for flux, transitions in self.measurements.items():
             for t in transitions:
-                if not t in ["ge", "ef"]:
+                if t not in ["ge", "ef"]:
                     raise ValueError(
                         "Measurements must only include 'ge' and "
                         "'ef' (transitions). Currently, other transitions are "
@@ -224,28 +225,25 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             "First entries of the measurement dictionary must be sweet spots"
             "(flux must be half integer)")
 
-        # If use_prior_model is True, generate guess from prior Hamiltonian
+        # If `use_prior_model` is True, generate guess from prior Hamiltonian
         # model
         if use_prior_model:
-            assert len(qubit.fit_ge_freq_from_dc_offset()) > 0, (
-                "To use the prior Hamiltonian model, a model must be present in"
-                " the qubit object")
-
+            freq_model = routines_utils.get_transmon_freq_model(qubit)
+            # Use measured values for designated sweet spot or estimated ones
+            # for other fluxes
             self.flux_to_voltage_and_freq_guess = {
-                self.ss1_flux: (
-                    qubit.calculate_voltage_from_flux(self.ss1_flux),
-                    qubit.calculate_frequency(flux=self.ss1_flux),
-                ),
-                self.ss2_flux: (
-                    qubit.calculate_voltage_from_flux(self.ss2_flux),
-                    qubit.calculate_frequency(flux=self.ss2_flux),
-                ),
+                flux: (self.fluxlines_dict[qubit.name](),
+                       qubit.ge_freq()) if flux == qubit.flux_parking() else (
+                    qubit.calculate_voltage_from_flux(flux=flux),
+                    qubit.calculate_frequency(model=freq_model,
+                                              flux=flux))
+                for flux in [self.ss1_flux, self.ss2_flux]
             }
 
         # Validity of flux_to_voltage_and_freq_guess dictionary
         x = set(self.flux_to_voltage_and_freq_guess.keys())
         y = set(self.measurements.keys())
-        z = set([self.ss1_flux, self.ss2_flux])
+        z = {self.ss1_flux, self.ss2_flux}
 
         assert x.issubset(y), (
             "Fluxes in flux_to_voltage_and_freq_guess must be a subset of the "
@@ -254,61 +252,58 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         self.other_fluxes_with_guess = list(x - z)
         self.fluxes_without_guess = list(y - x)
 
-        if self.get_param_value("get_parameters_from_qubit_object", False):
+        if self.get_param_value("get_parameters_from_qubit_object",
+                                default=False):
             update_nested_dictionary(
                 self.settings,
                 {self.highest_lookup: {
                     "General": self.parameters_qubit
                 }})
 
+        self.results[self.qubit.name] = {}
         self.final_init(**kw)
 
     def create_routine_template(self):
-        """Creates the routine template for the HamiltonianFitting routine using
+        """
+        Creates the routine template for the HamiltonianFitting routine using
         the specified parameters.
         """
-        super().create_routine_template()
+        super().create_routine_template()  # Create empty routine template
         qubit = self.qubit
 
         # Measurements at fluxes with provided guess voltage/freq
         for i, flux in enumerate([
-                self.ss1_flux,
-                self.ss2_flux,
-                *self.other_fluxes_with_guess,
+            self.ss1_flux,
+            self.ss2_flux,
+            *self.other_fluxes_with_guess,
         ], 1):
             # Getting the guess voltage and frequency
             voltage_guess, ge_freq_guess = self.flux_to_voltage_and_freq_guess[
                 flux]
 
             # Setting bias voltage to the guess voltage
-            step_label = 'set_bias_voltage_' + str(i)
-            settings = {step_label: {"voltage": voltage_guess}}
-            step_settings = {'settings': settings}
-            self.add_step(self.SetBiasVoltage, step_label, step_settings)
+            step_label = f'set_bias_voltage_{i}'
+            step_settings = {"qubit": qubit,
+                             "voltage": voltage_guess}
+            self.add_step(SetBiasVoltage, step_label, step_settings)
 
             for transition in self.measurements[flux]:
                 # ge-transitions
                 if transition == "ge":
 
-                    step_label = 'update_frequency_' + \
-                        transition + '_' + str(i)
+                    step_label = f'update_frequency_{transition}_{i}'
                     # Updating ge-frequency at this voltage to guess value
-                    settings = {
-                        step_label: {
-                            "frequency": ge_freq_guess,
-                            "transition_name": transition,
-                        }
-                    }
-                    step_settings = {'settings': settings}
-                    self.add_step(self.UpdateFrequency, step_label,
-                                  step_settings)
+                    step_settings = {"qubits": [qubit],
+                                     "frequencies": [ge_freq_guess],
+                                     "transition": transition}
+                    self.add_step(UpdateFrequency, step_label, step_settings)
 
                     # Finding the ge-transition frequency at this voltage
-                    step_label = 'find_frequency_' + transition + '_' + str(i)
+                    step_label = f'find_frequency_{transition}_{i}'
                     find_freq_settings = {
-                        'settings':{
+                        'settings': {
                             step_label: {
-                                "General":{
+                                "General": {
                                     "transition_name": transition,
                                 }
                             }
@@ -327,12 +322,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     # perform a Reparking Ramsey and update the flux-voltage
                     # relation stored in routine.
                     if flux in [self.ss1_flux, self.ss2_flux]:
-
                         self.add_step(
-                            ReparkingRamseyStep,
+                            AdaptiveReparkingRamsey,
                             'reparking_ramsey_' +
                             ('1' if flux == self.ss1_flux else '2'),
-                            {},
+                            {"fluxlines_dict": self.fluxlines_dict},
                             step_tmp_vals=ro_flux_tmp_vals(qubit,
                                                            v_park=voltage_guess,
                                                            use_ro_flux=True),
@@ -355,24 +349,33 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         )
 
                 elif transition == "ef":
-                    # Updating ef-frequency at this voltage to guess value
-                    step_label = 'update_frequency_' + transition
-                    settings = {
-                        step_label: {
-                            "flux": flux,
-                            "transition_name": transition,
+                    # First run a ge-Rabi measurement
+                    step_label = f'rabi_step_ge'
+                    step_settings = {
+                        "qubits": [self.qubit],
+                        'settings': {
+                            step_label: {
+                                "transition_name": 'ge',
+                            }
                         }
                     }
-                    step_settings = {'settings': settings}
-                    self.add_step(self.UpdateFrequency, step_label,
-                                  step_settings)
+                    self.add_step(RabiStep, step_label, step_settings)
+
+                    # Updating ef-frequency at this voltage to guess value
+
+                    step_label = f'update_frequency_{transition}'
+                    step_settings = {"qubits": [qubit],
+                                     "fluxes": [flux],
+                                     "transition": transition,
+                                     "use_model": False}
+                    self.add_step(UpdateFrequency, step_label, step_settings)
 
                     # Finding the ef-frequency
-                    step_label = "find_frequency_" + transition
+                    step_label = f"find_frequency_{transition}"
                     find_freq_settings = {
-                        'settings':{
+                        'settings': {
                             step_label: {
-                                "General":{
+                                "General": {
                                     "transition_name": transition,
                                 }
                             }
@@ -404,35 +407,25 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         for i, flux in enumerate(self.fluxes_without_guess,
                                  len(self.other_fluxes_with_guess) + 2):
             # Updating bias voltage using earlier reparking measurements
-            step_label = 'set_bias_voltage_' + str(i)
-            self.add_step(self.SetBiasVoltage, step_label,
-                          {'settings': {
-                              step_label: {
-                                  "flux": flux
-                              }
-                          }})
+            step_label = f'set_bias_voltage_{i}'
+            self.add_step(SetBiasVoltage, step_label,
+                          step_settings={"qubit": qubit,
+                                         "flux": flux})
 
             # Looping over all transitions
             for transition in self.measurements[flux]:
-
                 # Updating transition frequency of the qubit object to the value
                 # calculated by prior or preliminary model
-                step_label = 'update_frequency_' + transition + '_' + str(i)
-                settings = {
-                    'settings': {
-                        step_label: {
-                            "flux": flux,
-                            "transition": transition,
-                            "use_prior_model": True
-                        }
-                    }
-                }
-                self.add_step(self.UpdateFrequency, step_label, settings)
+                step_label = f'update_frequency_{transition}_{i}'
+                step_settings = {"qubits": [qubit],
+                                 "fluxes": [flux],
+                                 "transition": transition}
+                self.add_step(UpdateFrequency, step_label, step_settings)
 
                 # Set temporary values for Find Frequency
                 step_label = 'set_tmp_values_flux_pulse_ro_' + \
-                    transition+'_'+str(i)
-                settings = {step_label: {"flux_park": flux,}}
+                             transition + '_' + str(i)
+                settings = {step_label: {"flux_park": flux, }}
                 set_tmp_vals_settings = {
                     "settings": settings,
                     "index": len(self.routine_template) + 1,
@@ -458,13 +451,30 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         # Determining final model based on all data
         self.add_step(self.DetermineModel, 'determine_model_final', {})
 
-        # Interweave routine if the user wants to include mixer calibration
-        # FIXME: Currently not included because it still needs to be properly
-        # tested (there were problem with mixer calibration on Otemma)
-        # self.add_mixer_calib_steps(**self.kw)
+        # FIXME: add mixer calibration step
+        #  self.add_mixer_calib_steps(**self.kw)
+
+    def post_run(self):
+        """
+        Park the qubit at its designated sweet spot after the routine is over.
+        """
+        qb = self.qubit
+
+        # Setting bias voltage
+        voltage = qb.calculate_voltage_from_flux(flux := qb.flux_parking())
+        self.fluxlines_dict[qb.name](voltage)
+        log.info(f'{qb.name} updated with voltage {voltage} V, corresponding to'
+                 f' flux {flux}')
+
+        # Updating ge-frequency at this voltage to guess value
+        qb.ge_freq(ge_freq := qb.calculate_frequency(flux=flux))
+        log.info(f'{qb.name} updated with ge-frequency {ge_freq} Hz.')
+
+        AutomaticCalibrationRoutine.post_run(self)
 
     def add_mixer_calib_steps(self, **kw):
-        """Add steps to calibrate the mixer after the rest of the routine is
+        """
+        Add steps to calibrate the mixer after the rest of the routine is
         defined. Mixer calibrations are put after every UpdateFrequency step.
 
         Configuration parameters (coming from the configuration parameter
@@ -505,11 +515,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             while i < len(self.routine_template):
                 step_class = self.get_step_class_at_index(i)
 
-                if step_class == self.UpdateFrequency:
+                if step_class == UpdateFrequency:
 
                     # Include mixer calibration skewness
                     if include_mixer_calib_skewness:
-
                         self.add_step(
                             MixerCalibrationSkewness,
                             'mixer_calibration_skewness',
@@ -520,7 +529,6 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
                     # Include mixer calibration carrier
                     if include_mixer_calib_carrier:
-
                         self.add_step(
                             MixerCalibrationCarrier,
                             'mixer_calibration_carrier',
@@ -531,9 +539,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 i += 1
 
     class UpdateFluxToVoltage(IntermediateStep):
-        """Intermediate step that updates the flux_to_voltage_and_freq
+        """
+        Intermediate step that updates the flux_to_voltage_and_freq
         dictionary using prior ReparkingRamsey measurements.
         """
+
         def __init__(self, index_reparking, **kw):
             """Initialize UpdateFluxToVoltage step.
 
@@ -547,8 +557,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                     frequency for using the ReparkingRamsey results.
 
             FIXME: it might be useful to also include results from normal ramsey
-            experiments. For example, this could be used in UpdateFrequency if
-            there is no model but a measurement of the ge-frequency was done.
+             experiments. For example, this could be used in UpdateFrequency if
+             there is no model but a measurement of the ge-frequency was done.
             """
             super().__init__(index_reparking=index_reparking, **kw)
 
@@ -564,162 +574,30 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             # voltage found by reparking routine
             reparking_ramsey = self.routine.routine_steps[index_reparking]
             try:
-                apd = reparking_ramsey.analysis.proc_data_dict[
-                    "analysis_params_dict"]
-                voltage = apd["reparking_params"][
-                    qb.name]["new_ss_vals"]["ss_volt"]
-                frequency = apd["reparking_params"][
-                    qb.name]["new_ss_vals"]["ss_freq"]
+                voltage = reparking_ramsey.results[qb.name]["ss_volt"]
+                frequency = reparking_ramsey.results[qb.name]["ss_freq"]
             except KeyError:
                 log.error(
                     "Analysis reparking ramsey routine failed, flux to "
                     "voltage mapping can not be updated (guess values will be "
                     "used in the rest of the routine)")
-
-                (
-                    voltage,
-                    frequency,
-                ) = self.routine.flux_to_voltage_and_freq_guess[flux]
+                voltage, frequency = \
+                    self.routine.flux_to_voltage_and_freq_guess[flux]
 
             self.routine.flux_to_voltage_and_freq.update(
                 {flux: (voltage, frequency)})
 
-    class UpdateFrequency(IntermediateStep):
-        """Updates the frequency of the specified transition at a specified
-            flux and voltage bias.
-        """
-        def __init__(self, **kw):
-            """Initialize the UpdateFrequency step.
-
-            Keyword Arguments:
-                routine (Step): the routine to which this step belongs to.
-
-            Configuration parameters (coming from the configuration parameter
-             dictionary):
-                frequency (float): Frequency to which the qubit should be set.
-                transition_name (str): Transition to be updated.
-                use_prior_model (bool): If True, the frequency is updated using
-                    the Hamiltonian model. If False, the frequency is updated
-                    using the specified frequency.
-                flux (float): Flux (in units of Phi0) to which the qubit
-                    frequency should correspond. Useful if the frequency is not
-                    known a priori and there is a Hamiltonian model or a
-                    flux-frequency relationship is known.
-                voltage (float): the dac voltage to which the qubit frequency
-                    should correspond. Useful if the frequency is not known a
-                    priori and there is a Hamiltonian model or a
-                    flux-frequency relationship is known.
-
-            FIXME: the flux-frequency relationship stored in
-            flux_to_voltage_and_freq should/could be used here.
-            """
-            super().__init__(**kw,)
-
-            # Transition and frequency
-            self.transition = self.get_param_value(
-                'transition_name')  # default is "ge"
-            self.frequency = self.get_param_value(
-                'frequency')  # default is None
-            self.flux = self.get_param_value('flux')
-            self.voltage = self.get_param_value('voltage')
-
-            assert not (
-                self.frequency is None and self.flux is None and
-                self.voltage is None
-            ), "No transition, frequency or voltage specified. At least one of "
-            "these should be specified."
-
-        def run(self):
-            """Updates frequency of the qubit for a given transition. This can
-            either be done by passing the frequency directly, or in case a
-            model exists by passing the voltage or flux.
-            """
-            qb = self.qubit
-            frequency = self.frequency
-
-            # If no explicit frequency is given, try to find it for given flux
-            # or voltage using the Hamiltonian model stored in qubit
-            if frequency is None:
-                if self.transition == "ge" or "ef":
-                    # A (possibly preliminary) Hamiltonian model exists
-                    if (self.get_param_value('use_prior_model') and
-                            len(qb.fit_ge_freq_from_dc_offset()) > 0):
-                        frequency = qb.calculate_frequency(
-                            flux=self.flux,
-                            bias=self.voltage,
-                            transition=self.transition,
-                        )
-
-                    # No Hamiltonian model exists, but we want to know the ef-
-                    # frequency when the ge-frequency is known at this flux and
-                    # there is a guess for the anharmonicity
-
-                    # FIXME: instead of qb.ge_freq() we should use the frequency
-                    # stored in the flux_to_voltage_and_freq dictionary. The
-                    # current implementation assumes that the ef measurement is
-                    # preceded by the ge-measurement at the same voltage (and
-                    # thus flux).
-                    elif self.transition == "ef":
-                        frequency = (qb.ge_freq() +
-                                     self.get_param_value("anharmonicity"))
-
-                    # No Hamiltonian model exists
-                    else:
-                        raise NotImplementedError(
-                            "Can not estimate frequency with incomplete model, "
-                            "make sure to save a (possibly preliminary) model "
-                            "first")
-
-            if self.get_param_value('verbose'):
-                print(f"{self.transition}-frequency updated to ", frequency,
-                      "Hz")
-
-            qb[f"{self.transition}_freq"](frequency)
-
-    class SetBiasVoltage(IntermediateStep):
-        """Intermediate step that updates the bias voltage of the qubit.
-        This can be done by simply specifying the voltage, or by specifying
-        the flux. If the flux is given, the corresponding bias is calculated
-        using the Hamiltonian model stored in the qubit object.
-        """
-
-        def __init__(self, **kw):
-            """Initialize the SetBiasVoltage step.
-
-            Keyword Arguments:
-                routine (Step): the routine to which this step belongs to.
-
-            Configuration parameters (coming from the configuration parameter
-             dictionary):
-                flux (float): Flux (in units of Phi0) at which the qubit should
-                    be parked. The voltage is calculated from this value
-                    using qb.calculate_voltage_from_flux(flux).
-                voltage (float): Voltage bias at which the qubit should be
-                    parked. This is used only if the flux is not specified.
-            """
-            super().__init__(**kw)
-
-        def run(self):
-            for qb in self.qubits:
-                flux = self.get_param_value("flux", qubit=qb.name)
-                if flux is not None:
-                    voltage = qb.calculate_voltage_from_flux(flux)
-                else:
-                    voltage = self.get_param_value("voltage", qubit=qb.name)
-                if voltage is None:
-                    raise ValueError("No voltage or flux specified")
-                self.routine.fluxlines_dict[qb.name](voltage)
-
     class DetermineModel(IntermediateStep):
-        """Intermediate step that determines the model of the qubit based on
+        """
+        Intermediate step that determines the model of the qubit based on
         the measured data. Can be used for both estimating the model and
         determining the final model.
         """
-        def __init__(
-            self,
-            **kw,
-        ):
-            """Initialize the DetermineModel step.
+
+        def __init__(self,
+                     **kw):
+            """
+            Initialize the DetermineModel step.
 
             Configuration parameters (coming from the configuration parameter
             dictionary):
@@ -735,10 +613,15 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 method (str): the optimization method to be used
                     when determining the model. Default is Nelder-Mead.
             """
-            super().__init__(**kw,)
+            super().__init__(**kw, )
+            self.experimental_values: Dict[str, float] = {}
+            self.__result_dict: Dict[str, float] = {}
+            self.__end_of_run_timestamp: str = None
 
         def run(self):
-            """Runs the optimization and extract the fit parameters of the model.
+            """
+            Runs the optimization and extract the fit parameters of the
+            model.
             The extracted parameters are saved in the qubit object.
             """
             kw = self.kw
@@ -754,6 +637,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 ))
 
             log.info(f"Experimental values: {self.experimental_values}")
+            self.routine.results[self.qubit.name][
+                "experimental_values"] = self.experimental_values
 
             # Preparing guess parameters and choosing parameters to optimize
             p_guess, parameters_to_optimize = self.make_model_guess(
@@ -787,7 +672,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             self.__end_of_run_timestamp = a_tools.get_last_n_timestamps(1)[0]
 
         def get_device_property_values(self, **kwargs):
-            """Returns a dictionary of high-level device property values from
+            """
+            Returns a dictionary of high-level device property values from
             running this DetermineModel step
 
             Args:
@@ -801,9 +687,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             results = self.get_empty_device_properties_dict()
             sweet_spots = kwargs.get('qubit_sweet_spots', {})
             if _device_db_client_module_missing:
-                log.warning("Assemblying the dictionary of high-level device "
-                "property values requires the module 'device-db-client', which "
-                "was not imported successfully.")
+                log.warning("Assembling the dictionary of high-level device "
+                            "property values requires the module "
+                            "'device-db-client', which was not imported "
+                            "successfully.")
             elif self.__result_dict is not None:
                 # For DetermineModel, the results are in
                 # self.__result_dict from self.run()
@@ -811,7 +698,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 # immediately after. If we set `save_instrument_settings=True`,
                 # we will have a timestamp after __end_of_run_timestamp.
                 if self.get_param_value('save_instrument_settings'
-                                       ) or not self.get_param_value("update"):
+                                        ) or not self.get_param_value("update"):
                     timestamps = a_tools.get_timestamps_in_range(
                         self.__end_of_run_timestamp)
                     # one after __end_of_run_timestamp
@@ -829,7 +716,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         node_creator.create_node(
                             property_type='Ej_max',
                             value=self.__result_dict['Ej_max'],
-                        ),)
+                        ), )
 
                 # Charging Energy
                 if 'E_c' in self.__result_dict.keys():
@@ -837,7 +724,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         node_creator.create_node(
                             property_type='E_c',
                             value=self.__result_dict['E_c'],
-                        ),)
+                        ), )
 
                 # Asymmetry
                 if 'asymmetry' in self.__result_dict.keys():
@@ -845,7 +732,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         node_creator.create_node(
                             property_type='asymmetry',
                             value=self.__result_dict['asymmetry'],
-                        ),)
+                        ), )
 
                 # Coupling
                 if 'coupling' in self.__result_dict.keys():
@@ -853,7 +740,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         node_creator.create_node(
                             property_type='coupling',
                             value=self.__result_dict['coupling'],
-                        ),)
+                        ), )
 
                 # Bare Readout Resonator Frequency
                 if 'fr' in self.__result_dict.keys():
@@ -862,7 +749,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                             property_type='fr',
                             component_type='ro_res',  # Not a qubit property
                             value=self.__result_dict['fr'],
-                        ),)
+                        ), )
 
                 # Anharmonicity
                 if 'anharmonicity' in self.__result_dict.keys():
@@ -870,13 +757,14 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         node_creator.create_node(
                             property_type='anharmonicity',
                             value=self.__result_dict['anharmonicity'],
-                        ),)
+                        ), )
             return results
 
         def make_model_guess(self,
                              use_prior_model=True,
                              include_resonator=True):
-            """Constructing parameters for the Hamiltonian model optimization.
+            """
+            Constructing parameters for the Hamiltonian model optimization.
             This includes defining values for the fixed parameters as well as
             initial guesses for the parameters to be optimized.
 
@@ -896,7 +784,14 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             if use_prior_model:
                 p_guess = self.qubit.fit_ge_freq_from_dc_offset()
 
-            # Using guess parameters instead
+                if "coupling" not in p_guess.keys():
+                    p_guess["coupling"] = self.get_param_value(
+                        "coupling") * include_resonator
+                if "fr" not in p_guess.keys():
+                    p_guess["fr"] = self.get_param_value(
+                        "fr", associated_component_type_hint="ro_res")
+
+            # Using new guess parameters instead
             else:
                 p_guess = {
                     "Ej_max":
@@ -951,7 +846,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                  voltages=None,
                                  verbose=True,
                                  **kw):
-        """Performs a verification measurement of the model for given fluxes
+        """
+        Performs a verification measurement of the model for given fluxes
         (or voltages). The read-out is done using flux assisted read-out and
         the read-out should be configured beforehand.
 
@@ -959,13 +855,13 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         fit_ge_freq_from_dc_offset model.
 
         FIXME: the current implementation forces the user to use flux-pulse
-        assisted read-out. In the future, the routine should also work on
-        set-ups that only have DC sources, but no flux AWG. Possible solutions:
-        - have the user specify the RO frequencies that are to be used at the
-            various flux biases
-        - use the Hamiltonian model to determine the RO frequencies at the
-            various flux biases. Note, the usual Hamiltonian model does not
-            take the Purcell filter into account which might cause problems.
+         assisted read-out. In the future, the routine should also work on
+         set-ups that only have DC sources, but no flux AWG. Possible solutions:
+         - have the user specify the RO frequencies that are to be used at the
+             various flux biases
+         - use the Hamiltonian model to determine the RO frequencies at the
+             various flux biases. Note, the usual Hamiltonian model does not
+             take the Purcell filter into account which might cause problems.
 
         Args:
             qubit (QuDev_transmon): Qubit to perform the verification
@@ -981,7 +877,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             verbose (bool): If True, prints updates on the progress of the
                 measurement.
 
-        Keyword Arguments:
+        Keyword args:
             reset_fluxline (bool): bool for resetting to fluxline to initial
                 value after the measurement. Default is True.
             plot (bool): bool for plotting the results at the end, default False.
@@ -990,13 +886,13 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             dict: dictionary of verification measurements.
 
         FIXME: In an automated routine that is supposed to run without user
-        interaction, plots should rather be stored in a timestamp folder rather
-        than being shown on the screen. get_experimental_values_from_timestamps
-        (or get_experimental_values?) could keep track of which timestamps
-        belong to the current analysis, and you could then use get_folder
-        (from analysis_toolbox) to get the folder of the latest among these
-        timestamps. However, this might require refactoring the methods to not
-        be static methods.
+         interaction, plots should rather be stored in a timestamp folder rather
+         than being shown on the screen. get_experimental_values_from_timestamps
+         (or get_experimental_values?) could keep track of which timestamps
+         belong to the current analysis, and you could then use get_folder
+         (from analysis_toolbox) to get the folder of the latest among these
+         timestamps. However, this might require refactoring the methods to not
+         be static methods.
         """
 
         result_dict = qubit.fit_ge_freq_from_dc_offset()
@@ -1050,7 +946,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         return experimental_values
 
     def get_device_property_values(self, **kwargs):
-        """Returns a property values dictionary of the fitted Hamiltonian
+        """
+        Returns a property values dictionary of the fitted Hamiltonian
         parameters
 
         Returns:
@@ -1074,15 +971,16 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
 
 class MixerCalibrationSkewness(IntermediateStep):
-    """Mixer calibration step that calibrates the skewness of the mixer.
-    """
+    """Mixer calibration step that calibrates the skewness of the mixer."""
+
     def __init__(self, routine, **kw):
-        """Initialize the MixerCalibrationSkewness step.
+        """
+        Initialize the MixerCalibrationSkewness step.
 
         Args:
             routine (Step): Routine object.
 
-        Keyword Arguments:
+        Keyword args:
             calibrate_drive_mixer_skewness_function: method for calibrating to
                 be used. Default is to use calibrate_drive_mixer_skewness_model.
         """
@@ -1104,15 +1002,16 @@ class MixerCalibrationSkewness(IntermediateStep):
 
 
 class MixerCalibrationCarrier(IntermediateStep):
-    """Mixer calibration step that calibrates the carrier of the mixer.
-    """
+    """Mixer calibration step that calibrates the carrier of the mixer."""
+
     def __init__(self, routine, **kw):
-        """Initialize the MixerCalibrationCarrier step.
+        """
+        Initialize the MixerCalibrationCarrier step.
 
         Args:
             routine (Step): Routine object.
 
-        Keyword Arguments:
+        Keyword args:
             calibrate_drive_mixer_carrier_function: method for calibrating to
                 be used. Default is to use calibrate_drive_mixer_carrier_model.
         """
@@ -1134,15 +1033,15 @@ class MixerCalibrationCarrier(IntermediateStep):
 
 
 class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
-    """Intermediate step that sets the temporary values for flux-pulse-assisted
+    """
+    Intermediate step that sets the temporary values for flux-pulse-assisted
     readout for a step of the routine. The step will modify the temporary
     values of the step at the specified index.
     """
-    def __init__(
-        self,
-        index,
-        **kw,
-    ):
+
+    def __init__(self,
+                 index,
+                 **kw):
         """Initialize the SetTemporaryValuesFluxPulseReadOut step.
 
         Args:
@@ -1175,9 +1074,9 @@ class SetTemporaryValuesFluxPulseReadOut(IntermediateStep):
         qb = self.qubit
         index = self.kw["index"]
 
-        if flux := self.get_param_value("flux_park") is not None:
+        if (flux := self.get_param_value("flux_park")) is not None:
             v_park = qb.calculate_voltage_from_flux(flux)
-        elif v_park_tmp := self.get_param_value("voltage_park") is not None:
+        elif (v_park_tmp := self.get_param_value("voltage_park")) is not None:
             v_park = v_park_tmp
         else:
             raise ValueError("No voltage or flux specified")

@@ -128,6 +128,7 @@ $RECYCLE.BIN/
 *.qumis
 *.txt
 !.requirements.txt
+!docs/source/autodocumenter_requirements.txt
 *.png
 pycqed/measurement/openql_experiments/output/*
 

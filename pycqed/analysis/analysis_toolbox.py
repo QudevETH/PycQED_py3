@@ -22,7 +22,6 @@ from matplotlib import cm
 
 latest_data_match_whole_words = False
 datadir = get_default_datadir()
-print('Data directory set to:', datadir)
 fetch_data_dir = None
 ignore_delegate_plotting = False
 
