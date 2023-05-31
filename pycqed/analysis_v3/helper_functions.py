@@ -28,8 +28,8 @@ def decode_parameter_value(param_value):
     Returns:
         the converted parameter value
     """
-    log.warning("Deprecated function, will be removed in a future MR;"
-                " Please use utilities.io.hdf5.decode_attribute_value instead.")
+    # log.warning("Deprecated function, will be removed in a future MR;"
+    #             " Please use utilities.io.hdf5.decode_attribute_value instead.")
     if isinstance(param_value, bytes):
         param_value = param_value.decode('utf-8')
     # If it is an array of value decodes individual entries
@@ -279,16 +279,17 @@ def get_qb_channel_map_from_file(qb_names, file_path, value_names, **kw):
                        }
         params = get_params_from_files({}, params_dict, folder=file_path, **kw)
         uhf = params.get('instr_acq')
-        if uhf == 'not found':
+        if uhf is None:  # Compatibility with older setting files where key
+            # instr_acq was named instr_uhf
             uhf = params.get('instr_uhf')
-        acq_unit = params['acq_unit']
+        acq_unit = params.get('acq_unit')
         qbchs = [str(params['acq_I_channel'])]
         ro_acq_weight_type = params['acq_weights_type']
 
         if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'custom_2D',
                                   'optimal_qutrit']:
             qbchs += [str(params['acq_Q_channel'])]
-        if acq_unit == 'not found':
+        if acq_unit is None:  # compatibility with older setting files
             vn_string = uhf + '_' + ro_type
         else:
             vn_string = uhf + '_' + str(acq_unit) + '_' + ro_type
