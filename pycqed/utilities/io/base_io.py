@@ -1,5 +1,5 @@
 #  base input-output class for reading and writing files
-# should not be initiated alone and only serves as a skelleton for child classes
+# should not be initiated alone and only serves as a skeleton for child classes
 from __future__ import annotations
 
 import os

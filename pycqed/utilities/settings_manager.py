@@ -354,6 +354,17 @@ class Timestamp(str):
 
 
 def get_loader_from_format(file_format, **kwargs):
+    """
+    Returns a loader instance of the respectice file format which is passed as
+    an argument.
+    Args:
+        file_format (str): File format as a string, see base_io.file_extensions
+        **kwargs: Arguments of the loader class. See respective loader init
+        docstring.
+
+    Returns: Loader instance.
+
+    """
     if 'hdf5' in file_format:
         return HDF5Loader(**kwargs)
     elif 'pickle' in file_format:
@@ -367,6 +378,25 @@ def get_loader_from_format(file_format, **kwargs):
 
 def get_loader_from_file(timestamp=None, folder=None, filepath=None,
                          file_id=None, **params):
+    """
+    Returns a loader instance which loads instrument settings from a file
+        specified by a timestamp or a filepath. If filepath is not none, it
+        overwrites the timestamp.
+    Args:
+        timestamp(str): In the format YYYYMMDD_HHMMSS
+        folder(str): Folder which hosts the timestamp. a_tools.datadir will not
+            be considered when folder is not none.
+        filepath(str): The actual filepath of the file. Overwrites timestamp and
+            folder.
+        file_id(str): File id, can be used when several instrument settings have
+            the same timestamp (see a_tools.measurement_filename())
+        **kwargs: additional kwargs for the specific loader classes, e.g.
+            custom file extensions.
+
+    Returns: respective loader class instance (HDF5Loader, PickleLoader or
+        MsgLoader)
+
+    """
     file_format = Loader.get_file_format(timestamp=timestamp, folder=folder,
                                          filepath=filepath, file_id=file_id)
     if 'comp' in file_format:
@@ -381,6 +411,31 @@ def get_loader_from_file(timestamp=None, folder=None, filepath=None,
 
 def get_station_from_file(timestamp=None, folder=None, filepath=None,
                           file_id=None, param_path=None, **kwargs):
+    """
+    Returns a station object from an instrument settings file. The file can be
+    specified by a timestamp, folder path or filepath. The list param_path can
+    be specified to load only certain parameters from the settings file.
+
+    Args:
+        timestamp(str): In the format YYYYMMDD_HHMMSS
+        folder(str): Folder which hosts the timestamp. a_tools.datadir will not
+            be considered when folder is not none.
+        filepath(str): The actual filepath of the file. Overwrites timestamp and
+            folder.
+        file_id(str): File id, can be used when several instrument settings have
+            the same timestamp (see a_tools.measurement_filename())
+        param_path (list(str)): List of path to parameters which are loaded.
+            Reduces the loading time of hdf5-files tremendously.
+            If not specified, the entire instrument settings will be loaded into
+            the station (always like this for non-hdf5 file formats).
+            e.g.: ['qb1.T1', 'AWG2.sigouts_3_range']
+        **kwargs: additional kwargs for the specific loader classes, e.g.
+            custom file extensions.
+
+    Returns: mock_qcodes_interface.station instance with the instrument
+        settings loaded into it.
+
+    """
     return get_loader_from_file(timestamp=timestamp, folder=folder,
                                 filepath=filepath, file_id=file_id) \
         .get_station(param_path=param_path)
