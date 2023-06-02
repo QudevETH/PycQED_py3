@@ -664,6 +664,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             elif "preselection" in self.prep_params.get('preparation_type',
                                                         'wait'):
                 self.data_filter = lambda x: x[1::2]  # filter preselection RO
+                self.data_with_reset = True
             else:
                 self.data_filter = lambda x: x
 
@@ -882,7 +883,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self.process_single_shots(
                 predict_proba=self.predict_proba,
                 classifier_params=self.get_param_value("classifier_params"),
-                states_map=self.get_param_value("states_map"))
+                states_map=self.get_param_value("states_map"),
+                thresholding=self.options_dict.get('thresholding', False),
+            )
 
         # create projected_data_dict
         if self.rotate:
@@ -1844,7 +1847,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 only be kept if both qb1 and qb2 are in the state specified by
                 preselection_state_int (usually, the ground state), while qb2 is preselected
                 independently of qb1.
-                 Defaults to None: in this case each qubit is preselected independently from others
+                If None (by default) or empty: in this case each qubit is
+                preselected independently from others.
             predict_proba (bool): whether or not to consider input as raw voltages shots.
                 Should be false if input shots are already probabilities, e.g. when using
                 classified readout.
@@ -1882,7 +1886,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # compute final mask taking into account all qubits in presel_qubits for each qubit
         presel_mask = {}
 
-        if preselection_qbs is None:
+        if preselection_qbs is None or len(preselection_qbs) == 0:
             # default is each qubit preselected individually
             # note that the list includes the qubit name twice as the minimal
             # number of arguments in logical_and.reduce() is 2.
@@ -1896,10 +1900,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         return presel_mask
 
-    def process_single_shots(self, predict_proba=True,
+    def process_single_shots(self, predict_proba=False,
                              classifier_params=None,
                              states_map=None,
-                             thresholding=True):
+                             thresholding=False):
         """
         Processes single shots from proc_data_dict("meas_results_per_qb")
         This includes assigning probabilities to each shot (optional),
@@ -2131,9 +2135,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                   slice_idxs_list)
 
             if 'preparation_params' in self.metadata:
-                if 'active' in self.metadata['preparation_params'].get(
-                        'preparation_type', 'wait') or \
-                        not self.data_with_reset:
+                if self.data_with_reset:
                     # Plot raw data without the active reset readouts
                     key = 'meas_results_per_qb'
                     raw_data_dict = self.proc_data_dict[key][qb_name]
