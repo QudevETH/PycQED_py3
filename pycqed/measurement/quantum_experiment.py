@@ -1123,8 +1123,7 @@ class NDimQuantumExperiment():
         return current_sp
 
     def create_experiment(self, idx, **kw):
-        """
-        Instantiates a sub-experiment (one 2-D QuantumExperiment).
+        """Instantiates a sub-experiment (one 2-D QuantumExperiment).
 
         Args:
             idx (tuple): indices corresponding to the experiment to instantiate,
