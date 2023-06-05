@@ -16,6 +16,7 @@ class MeasurementObject(Instrument):
     _acq_weights_type_aliases = {}  # see self.get_acq_weights_type()
     _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
                            'GaussFilteredCosIQPulseMultiChromatic']
+    _allowed_drive_modes = [None]
 
     def __init__(self, name, **kw):
         super().__init__(name, **kw)
@@ -317,8 +318,7 @@ class MeasurementObject(Instrument):
             switch (str): the required switch mode, see the docstring of
             switch_modes
         """
-        allowed_drive_modes = [None]
-        if not drive in allowed_drive_modes:
+        if drive not in self._allowed_drive_modes:
             raise NotImplementedError(f"Drive mode {drive} not implemented!")
 
         self.configure_mod_freqs()

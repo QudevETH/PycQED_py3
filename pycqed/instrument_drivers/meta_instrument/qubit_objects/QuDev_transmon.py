@@ -60,6 +60,9 @@ class QuDev_transmon(MeasurementObject):
     _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
                            'GaussFilteredCosIQPulseMultiChromatic',
                            'GaussFilteredCosIQPulseWithFlux']
+    _allowed_drive_modes = [None, 'continuous_spec',
+                           'continuous_spec_modulated', 'pulsed_spec',
+                           'timedomain']
 
     def __init__(self, name, transition_names=('ge', 'ef'), **kw):
         super().__init__(name, **kw)
@@ -926,12 +929,6 @@ class QuDev_transmon(MeasurementObject):
                 'no_drive' is configured for this qubit; 'modulated' in all
                 other cases).
         """
-
-        allowed_drive_modes = [None, 'continuous_spec',
-                               'continuous_spec_modulated', 'pulsed_spec',
-                               'timedomain']
-        if not drive in allowed_drive_modes:
-            raise NotImplementedError(f"Drive mode {drive} not implemented!")
 
         if switch == 'default':
             if drive is None and 'no_drive' in self.switch_modes():
