@@ -52,3 +52,6 @@ virtualRohdeSchwarz_SGS100A:
 
 MeasurementControl:
   live_plot_enabled: False # Disable popup plots
+
+VC707:
+  virtual: True
