@@ -1785,14 +1785,18 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 unit = unit[0]
         return label, unit
 
-    def _get_single_shots_per_qb(self, raw=False):
+    def _get_single_shots_per_qb(self, raw=False, qb_names=None):
         """
         Gets single shots from the proc_data_dict and arranges
         them as arrays per qubit
         Args:
             raw (bool): whether or not to return raw shots (before
             data filtering)
-
+            qb_names (list): Qubits for which to extract the data. If None
+            (default): uses self.qb_names. This can be useful if extracting
+            data for qubits which are not in self.qb_names.
+            E.g.: Doing an experiment on qb1 (self.qb_names = ['qb1']) but
+            preselecting on qb2, meaning that we need the data from both.
         Returns: shots_per_qb: dict where keys are qb_names and
             values are arrays of shape (n_shots, n_value_names) for
             1D measurements and (n_shots*n_soft_sp, n_value_names) for
@@ -1805,7 +1809,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         key = 'meas_results_per_qb'
         if raw:
             key += "_raw"
-        for qbn in self.qb_names:
+        if qb_names is None:
+            qb_names = self.qb_names
+        for qbn in qb_names:
             # if "1D measurement" , shape is (n_shots, n_vn) i.e. one
             # column for each value_name (often equal to n_ro_ch)
             shots_per_qb[qbn] = \
@@ -1990,18 +1996,39 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # preselection readouts
         n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots * n_seqs)
 
+        # get qubits for which data should be extracted
+        preselection_qbs = self.get_param_value("preselection_qbs")
+        if preselection_qbs is None:
+            # by default, extract data for all qubits in self.qb_names
+            qb_names_to_extract = self.qb_names
+        else:
+            # Data should be extracted both for qubits in self.qb_names
+            # (qubits on which the experiment is performed), and for qubits
+            # used in preselection. These two sets may or not be distinct.
+            # Preselection will not work if data is not extracted for the
+            # preselection qubits as well.
+            # E.g. self.qb_names = ['qb1'] (only qubit to analyse) and
+            # preselection_qbs = {"qb1": ["qb1", "qb2"]},
+            # i.e. preselection is done for qb1 using ['qb1', 'qb2'] so we
+            # should exctract data no only for qb1 but also qb2.
+            qb_names_to_extract = [
+                qbn for qbns in list(preselection_qbs.values()) for qbn in qbns]
+            qb_names_to_extract = set(qb_names_to_extract + self.qb_names)
+
         # get classification parameters
         if classifier_params is None:
             classifier_params = {}
             from numpy import array  # for eval
-            for qbn in self.qb_names:
+            for qbn in qb_names_to_extract:
                 classifier_params[qbn] = self.get_hdf_param_value(
                 f'Instrument settings/{qbn}', "acq_classifier_params")
 
         # prepare preselection mask
         if preselection:
-            # get preselection readouts
-            shots_per_qb_before_filtering = self._get_single_shots_per_qb(raw=True)
+
+            # get preselection readouts for selected qubits
+            shots_per_qb_before_filtering = self._get_single_shots_per_qb(raw=True, qb_names=qb_names_to_extract)
+
             n_ro_before_filtering = \
                 list(shots_per_qb_before_filtering.values())[0].shape[0] // \
                 (n_shots * n_seqs)
