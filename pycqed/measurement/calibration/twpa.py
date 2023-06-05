@@ -61,6 +61,8 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
                                         else sweep_functions_dict
             self.preprocessed_task_list = self.preprocess_task_list()
             # See get_sweep_points_for_sweep_n_dim
+            # Here the sweep points for pulses are an empty dict, meaning
+            # that we only upload one Sequence with one Segment
             self.sweep_points_pulses = sp_mod.SweepPoints(
                 min_length=2 if self.force_2D_sweep else 1)
 
