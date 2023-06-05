@@ -129,11 +129,6 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
         return self.sweep_points_pulses
 
     def run_measurement(self, **kw):
-        # self.preprocess_task_list was run once in self.__init__, such that
-        # sequences and waveforms are available e.g. for debugging. Here, it is
-        # rerun in case params of the measurement objects changed since the init
-        self.preprocessed_task_list = self.preprocess_task_list()
-
         self.sequences, self.mc_points = self.parallel_sweep(
             self.preprocessed_task_list, self.sweep_block, **kw)
         # Set mc_points to the full SweepPoints of the experiment,
