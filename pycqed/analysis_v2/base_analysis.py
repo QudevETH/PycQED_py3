@@ -33,7 +33,6 @@ import copy
 import traceback
 import logging
 log = logging.getLogger(__name__)
-log.addHandler(logging.StreamHandler())
 
 class BaseDataAnalysis(object):
     """
