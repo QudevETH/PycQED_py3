@@ -1803,12 +1803,12 @@ class Segment:
                         if self.pulsar.get('{}_type'.format(c)) == 'analog':
                             if np.max(wfs[codeword][c], initial=0) > amp:
                                 logging.warning(
-                                    'Clipping waveform {} > {}'.format(
-                                        np.max(wfs[codeword][c]), amp))
+                                    'Clipping waveform {}: {} > {}'.format(
+                                        c, np.max(wfs[codeword][c]), amp))
                             if np.min(wfs[codeword][c], initial=0) < -amp:
                                 logging.warning(
-                                    'Clipping waveform {} < {}'.format(
-                                        np.min(wfs[codeword][c]), -amp))
+                                    'Clipping waveform {}: {} < {}'.format(
+                                        c, np.min(wfs[codeword][c]), -amp))
                             np.clip(
                                 wfs[codeword][c],
                                 -amp,
