@@ -11,15 +11,6 @@ from zhinst.core.errors import CoreError
 
 log = logging.getLogger(__name__)
 
-try:
-    from pycqed.measurement.waveform_control.pulsar.zi_multi_core_compiler. \
-        multi_core_compiler import MultiCoreCompiler
-except ImportError:
-    log.debug('Could not import MultiCoreCompiler, parallel programming of ZI devices will not work.')
-    class MultiCoreCompiler():
-        def __init__(self):
-            self._awgs = {}
-
 class ZIPulsarMixin:
     """Mixin containing utility functions needed by ZI AWG pulsar interfaces.
 
