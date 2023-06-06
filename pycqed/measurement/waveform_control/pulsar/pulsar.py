@@ -657,8 +657,8 @@ class Pulsar(Instrument):
         self.num_channel_groups = {}
 
         self.multi_core_compiler = MultiCoreCompilerZhinstToolkit()
-        """Multi-core compiler wrapper class for Zurich Instruments tool kit
-        multi-core programming utility."""
+        """Wrapper class for Zurich Instruments tool kit multi-core 
+        programming function."""
 
         self._awgs_prequeried_state = False
 

@@ -364,7 +364,6 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.awg._awg_needs_configuration[0] = False
         self.awg._awg_program[0] = True
 
-        # TODO: check which awg should be used for programming the awg string
         if self.pulsar.use_mcc() and self.awg_mcc:
             self.multi_core_compiler.sequencer_code_mcc[self.awg.name] = (
                 self.awg_mcc.awgs[0], awg_str)

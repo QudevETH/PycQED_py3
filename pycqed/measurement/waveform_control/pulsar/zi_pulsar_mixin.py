@@ -406,7 +406,7 @@ class ZIPulsarMixin:
 
 class MultiCoreCompilerZhinstToolkit:
     """
-    A wrapper class for ZI multicore compilation with zhinst-toolkit
+    Wrapper class for ZI multicore compilation with zhinst-toolkit
     (version >= 0.5.2).
     """
     def __init__(self):
@@ -424,12 +424,12 @@ class MultiCoreCompilerZhinstToolkit:
         self.post_sequencer_code_upload = dict()
         """Upload functions to be executed after programming the sequencer 
         code. This variable is a dictionary {module_name: (upload_function, 
-        parameter_list)}, where upload_function is the fucntion 
-        to be called after programming the seuqencer code and parameter_list 
-        is a dictionary that provides input for upload_function."""
+        parameter_list)}, where upload_function is the function 
+        to be called after programming the sequencer code and parameter_list 
+        is a dictionary provided to upload_function."""
 
     def reset_upload_cache(self):
-        """Reset the upload dictionary."""
+        """Reset the upload dictionaries."""
         self.sequencer_code_mcc.clear()
         self.post_sequencer_code_upload.clear()
 
@@ -512,7 +512,7 @@ class ZIGeneratorModule:
         """Pulsar interface of the parent device."""
 
         self.multi_core_compiler = awg_interface.multi_core_compiler
-        """Multi-core compiler used for the parent device, if applicable."""
+        """Multi-core compiler used by the parent device."""
 
         self.pulsar = awg_interface.pulsar
         """Pulsar instance which saves global configurations for all devices."""
@@ -1383,8 +1383,8 @@ class ZIGeneratorModule:
     def _update_device_ready_status_mcc(self):
         """ Updates ready flag in the mock DAQ server when multi-core
         compilation (MCC) is enabled. This is needed we use a different
-        generator instance for MCC. In this case, we would need to rewrite
-        this method in the child class to keep the ready flag in sync.
+        generator instance for MCC. This method needs to be rewritten in
+        relevant children classes to keep the ready flag in sync.
         """
         pass
 
