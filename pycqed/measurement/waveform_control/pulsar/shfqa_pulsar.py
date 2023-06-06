@@ -51,6 +51,14 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
     }
     IMPLEMENTED_ACCESSORS = ["amp", "centerfreq"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.awg_mcc = self.awg
+        self.awg_mcc_qagenerators = list()
+        for qachannel in self.awg_mcc.qachannels:
+            self.awg_mcc_qagenerators.append(qachannel.generator)
+        self.multi_core_compiler = self.pulsar.multi_core_compiler
+
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
         for ch_nr in range(len(self.awg.qachannels)):
@@ -240,14 +248,19 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     playback_strings.append(
                         shfqa_sweeper_playback_string_template.format(
                             n_step=acq['n_step']))
-                    self.awg.set_awg_program(
-                        i,
-                        shfqa_sequence_string_template.format(
-                            prep_string=shfqa_sweeper_prep_string.format(
-                                f_start=acq['f_start'],
-                                f_step=acq['f_step'],
-                            ),
-                            playback_string='\n  '.join(playback_strings)))
+                    sequence_string = shfqa_sequence_string_template.format(
+                        prep_string=shfqa_sweeper_prep_string.format(
+                            f_start=acq['f_start'],
+                            f_step=acq['f_step'],
+                        ),
+                        playback_string='\n  '.join(playback_strings)
+                    )
+                    if self.pulsar.use_mcc():
+                        self.multi_core_compiler.sequencer_code_mcc[
+                            f"{self.awg.name}_qa{i}"] = (
+                            self.awg_mcc_qagenerators[i], sequence_string)
+                    else:
+                        self.awg.set_awg_program(i, sequence_string)
                     # The acquisition modules will each be triggered by their
                     # sequencer
                 else:
@@ -262,9 +275,24 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 path = f"/{self.awg.get_idn()['serial']}/qachannels/{i}/" \
                        f"spectroscopy/envelope"
                 if w is not None:
-                    daq.setVector(path + "/wave", w.astype("complex128"))
-                    daq.setInt(path + "/enable", 1)
-                    daq.setDouble(path + "/delay", 0)
+                    if self.pulsar.use_mcc():
+                        post_seqc_command = list()
+                        post_seqc_command.append(
+                            (daq.setVector,
+                             {"path": path + "/wave",
+                              "value": w.astype("complex128")}))
+                        post_seqc_command.append(
+                            (daq.setInt,
+                             {"path": path + "/enable", "value": 1}))
+                        post_seqc_command.append(
+                            (daq.setDouble,
+                             {"path": path + "/delay", "value": 0}))
+                        self.multi_core_compiler.post_sequencer_code_upload[
+                            f"{self.awg.name}_qa{i}"] = post_seqc_command
+                    else:
+                        daq.setVector(path + "/wave", w.astype("complex128"))
+                        daq.setInt(path + "/enable", 1)
+                        daq.setDouble(path + "/delay", 0)
                 else:
                     daq.setInt(path + "/enable", 0)
                 daq.sync()
@@ -327,12 +355,22 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                          "ignoring it")
             for element in awg_sequence:
                 playback_strings = play_element(element, playback_strings, i)
-            self.awg.set_awg_program(
-                i,
-                shfqa_sequence_string_template.format(
+
+            sequence_string = shfqa_sequence_string_template.format(
                     playback_string='\n  '.join(playback_strings),
-                    prep_string=''),
-                {hash_to_index_map[k]: v for k, v in waves_to_upload.items()})
+                    prep_string='')
+            wave_upload_dict = {hash_to_index_map[k]: v
+                                for k, v in waves_to_upload.items()}
+            if self.pulsar.use_mcc():
+                self.multi_core_compiler.sequencer_code_mcc[
+                    f"{self.awg.name}_qa{i}"] = (
+                    self.awg_mcc_qagenerators[i], sequence_string)
+                self.multi_core_compiler.post_sequencer_code_upload[
+                    f"{self.awg.name}_qa{i}"] = [
+                    (self.awg_mcc_qagenerators[i].write_to_waveform_memory,
+                     {"pulses": wave_upload_dict})]
+            else:
+                self.awg.set_awg_program(i, sequence_string, wave_upload_dict)
 
         if any(grp_has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self.awg.name)
