@@ -1182,6 +1182,11 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         task_list: see MultiTaskingExperiment
 
     FIXME should a MultiTasking-like experiment be listed in this module?
+
+    FIXME It is currently mandatory to pass sweep_points in the task_list.
+     This is because base_analysis.NDim_BaseDataAnalysis currently relies on
+     the sweep_points present in the task_list of each experiment to
+     reconstruct the N-dimensional sweep_points (see docstring).
     """
 
     def __init__(self, task_list, *args, sweep_points=None,
