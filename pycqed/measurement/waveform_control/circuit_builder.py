@@ -899,7 +899,14 @@ class CircuitBuilder:
                     else [{}]
                 # all other entries in the pulse dict are interpreted as
                 # pulse parameters that overwrite the default values
-                [pulse.update(pp) for pulse in p_list]
+                if len([k for k in pp if k != 'op_code']):
+                    if len(p_list) > 1:
+                        raise NotImplementedError(
+                            "get_pulses returned more than one pulse for "
+                            f"pulse dict {i}, and it is not clear to which "
+                            f"one the parameters passed in the pulse dict "
+                            f"should be applied.")
+                    p_list[0].update(pp)
                 pulses += p_list
         return Block(block_name, pulses)
 
