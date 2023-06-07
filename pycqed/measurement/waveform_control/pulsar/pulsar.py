@@ -15,7 +15,7 @@ import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
 from pycqed.utilities.timer import WatchdogTimer, WatchdogException
 
-from .zi_pulsar_mixin import ZIPulsarMixin, MultiCoreCompilerZhinstToolkit
+from .zi_pulsar_mixin import ZIPulsarMixin
 
 log = logging.getLogger(__name__)
 
