@@ -301,6 +301,128 @@ def transmon_resonator_levels(ec: float, ej: float, frb: float, gb: float,
     return es
 
 
+def transmon_resonator_purcell_levels(ec: float, ej: float,
+                                      frb: float, fpb: float,
+                                      gb: float, j: float, kp: float = None,
+                                      ng: float = 0., dim_charge: int = 21,
+                                      dim_resonator: int = 3,
+                                      dim_purcell: int = 3,
+                                      states: List[Tuple[int, int]] =
+                                      ((1, 0, 0), (2, 0, 0), (0, 1, 0), (1, 1, 0))):
+    """Calculate eigenfrequencies of the coupled transmon-resonator Hamiltonian.
+
+    Args:
+        ec: Charging energy of the Hamiltonian.
+        ej: Josephson energy of the Hamiltonian.
+        frb: Bare resonator frequency.
+        fpb: Bare purcell frequency
+        gb: Bare transmon-resonator coupling strength.
+        ng: Charge offset of the Hamiltonian.
+        j: coupling between the readout resonator and purcell filter
+        kp: purcell filter linewidth.
+        dim_charge: Number of charge states to use in calculations.
+        dim_resonator: Number of photon number states to use in calculations
+            for the readout resonator.
+        dim_purcell: Number of photon number states for the purcell filter.
+
+        states: A list of tuples, corresponding to the (transmon, resonator,
+            purcell filter)
+                level indices for which to calculate the energy levels.
+
+    Returns:
+        A list of eigenvalues of the coupled transmon-resonator Hamiltonian
+        for the specified states with the ground-state energy subtracted.
+    """
+
+    def kronecker(*args):
+        """
+        Compute the Kronecker product of multiple matrices.
+
+        Args:
+            *args: Variable number of input matrices.
+
+        Returns:
+            numpy.ndarray: The Kronecker product of the input matrices.
+
+        Example:
+            A = np.array([[1, 2], [3, 4]])
+            B = np.array([[5, 6], [7, 8]])
+            C = np.array([[9, 10], [11, 12]])
+
+            result = kronecker(A, B, C)
+
+        The Kronecker product of multiple matrices is obtained by taking the tensor product
+        of their vector spaces. If A, B, C, ..., are matrices with dimensions (m x n), (p x q),
+        (r x s), ..., respectively, the resulting matrix will have dimensions (m * p * r * ... x
+        n * q * s * ...). The basis elements of the resulting matrix can be represented using
+        braket notation as:
+
+        |aᵢ⟩ ⊗ |bⱼ⟩ ⊗ |cₖ⟩ ⊗ ...
+
+        where |aᵢ⟩ represents the i-th basis element of matrix A, |bⱼ⟩ represents the j-th
+        basis element of matrix B, |cₖ⟩ represents the k-th basis element of matrix C, and so on.
+
+        The resulting matrix is obtained by taking the Kronecker product of each combination
+        of basis elements from the input matrices in the given order.
+        """
+        result = args[0]
+        for i in range(1, len(args)):
+            result = np.kron(result, args[i])
+        return result
+
+    id_mon = np.diag(np.ones(dim_charge))
+    id_res = np.diag(np.ones(dim_resonator))
+    id_pur = np.diag(np.ones(dim_resonator))
+    ham_mon = transmon_hamiltonian(ec, ej, ng, dim_charge)
+    ham_res = resonator_hamiltonian(frb, dim_resonator)
+    # add loss as imaginary frequency of purcell filter
+    if kp is not None:
+        fpb = fpb + 1j * kp / 2
+    ham_pur = resonator_hamiltonian(fpb, dim_purcell)
+    n_mon = transmon_charge(ng, dim_charge)
+    a_res = resonator_destroy(dim_resonator)
+    b_pur = resonator_destroy(dim_purcell)
+    ham_qb_res_int = 1j * gb * np.kron(n_mon, a_res - a_res.T)
+    ham_res_pur_int = - j * np.kron(a_res - a_res.T, b_pur - b_pur.T)
+    ham = kronecker(ham_mon, id_res, id_pur) + kronecker(id_mon, ham_res, id_pur) + \
+          kronecker(id_mon, id_res, ham_pur) + np.kron(ham_qb_res_int, id_pur) + \
+          np.kron(id_mon, ham_res_pur_int)
+
+    # diagonalize hamiltonian
+    try:
+        levels_full, states_full = np.linalg.eig(ham)
+        levels_transmon, states_transmon = np.linalg.eig(ham_mon)
+        if any(np.isnan(levels_full)) or any(np.isnan(levels_transmon)):
+            raise np.linalg.LinAlgError('Some eigenvalues are nan.')
+    except np.linalg.LinAlgError as e:
+        log.warning(f'Eigenvalue calculation in transmon_resonator_levels '
+                    f'failed in first attempt: {e} Trying again.')
+        levels_full, states_full = np.linalg.eig(ham)
+        levels_transmon, states_transmon = np.linalg.eig(ham_mon)
+        if any(np.isnan(levels_full)) or any(np.isnan(levels_transmon)):
+            raise np.linalg.LinAlgError('Some eigenvalues are nan.')
+        log.warning('Second attempt successful.')
+
+    states_transmon = states_transmon[:, np.argsort(levels_transmon)]
+
+    return_idxs = []
+    for kt, kr, kp in states:
+        # bare state
+        bare_state = kronecker(states_transmon[:, kt],
+                               np.arange(dim_resonator) == kr,
+                               np.arange(dim_purcell) == kp)
+        # find dressed state with most overlap to bare state
+        return_idxs.append(np.argmax(np.abs(states_full.T @ bare_state)))
+    # ground state
+    bare_state = kronecker(states_transmon[:, 0],
+                           np.arange(dim_resonator) == 0,
+                           np.arange(dim_purcell) == 0)
+    gs_id = np.argmax(np.abs(states_full.T @ bare_state))
+
+    es = levels_full[return_idxs] - levels_full[gs_id]
+
+    return es
+
 def transmon_resonator_fge_anh_frg_chi(ec: float, ej: float, frb: float,
                                        gb: float, ng: float = 0.,
                                        dim_charge: int = 31,
