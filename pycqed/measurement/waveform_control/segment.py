@@ -2228,8 +2228,9 @@ class Segment:
                     op_code = op_code[:-1]
                 if op_code[:2] == 'CZ' or op_code[:4] == 'upCZ':
                     num_two_qb += 1
-                    if len(op_code) > 4:
-                        val = -float(op_code[4:])
+                    pulse_name = op_code.rstrip('0123456789.')
+                    if len(val := op_code[len(pulse_name):]):
+                        val = -float(val)
                         gate_formatted = f'{gate_type}{(factor * val):.1f}'.replace(
                             '.0', '')
                         output += f'\\draw({t / tscale:.4f},-{qb})  node[CZdot] {{}} -- ({t / tscale:.4f},-{qbt}) node[gate, minimum height={l / tscale * 100:.4f}mm] {{\\tiny {gate_formatted}}};\n'
