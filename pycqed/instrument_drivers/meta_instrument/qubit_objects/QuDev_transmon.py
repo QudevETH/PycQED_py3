@@ -944,7 +944,7 @@ class QuDev_transmon(MeasurementObject):
             # switch mode was explicitly provided by the caller (e.g.,
             # for mixer calib)
             pass
-        super().prepare(switch=switch)
+        super().prepare(drive=drive, switch=switch)
         ge_lo = self.instr_ge_lo
 
         self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
