@@ -14036,7 +14036,7 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
         super().extract_data()
 
         # Probably not needed anymore but keep it for now to avoid
-        # re-implmenting it if needed
+        # re-implmenting it if needed. Was used to calculate fit parameters
         # self.task_list = self.get_param_value('task_list')
         # self.qb_names = self.get_param_value('qb_names',
         #                                      self.get_qbs_from_task_list(
@@ -14252,26 +14252,17 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
     def prepare_plots(self):
         super().prepare_plots()
 
-        if self.do_fitting:
-            # Possibly need to fix some things still, but currently on hold
-            # since we don't fully understand the dynamics
+        if self.do_fitting and self.metadata['transition_name'] == 'ef':
+            # Fitting is only implemented for f-level at the moment
             for task in self.get_param_value('task_list'):
                 qbn = task['qb']
                 if qbn in self.qb_names:
                     # 1D fit plot
                     base_plot_name = f'Leakage_reduction_unit_fit_{qbn}_pf_1D'
                     xlabel, xunit = self.get_xaxis_label_unit(qbn)
-                    # Find name of 1st sweep point in sweep dimension 1
-                    # param_name = [p for p in self.mospm[qbn]
-                    #               if self.sp.find_parameter(p)][0]
-                    # ylabel = self.sp.get_sweep_params_property(
-                    #     'label', dimension=1, param_names=param_name)
-                    # yunit = self.sp.get_sweep_params_property(
-                    #     'unit', dimension=1, param_names=param_name)
                     xvals = self.proc_data_dict['sweep_points_dict'][qbn][
                         'msmt_sweep_points']
-                    # yvals = self.proc_data_dict['sweep_points_2D_dict'][
-                    #     qbn]['frequency']
+                    ylabel = self.get_yaxis_label(qb_name=qbn, data_key='f')
                     yvals = self.proc_data_dict['data_to_fit'][qbn]
                     if self.num_cal_points != 0:
                         if np.array(yvals).ndim > 1:
@@ -14281,20 +14272,15 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                             yvals = yvals[:-self.num_cal_points]
 
                     self.plot_dicts[f'{base_plot_name}_main'] = {
-                        # 'plotfn': self.plot_colorxy,
                         'plotfn': self.plot_line,
                         'fig_id': base_plot_name,
                         'xvals': xvals,
                         'yvals': yvals,
-                        # 'zvals': self.proc_data_dict['projected_data_dict'][
-                        #     qbn]['pe'],
                         'xlabel': xlabel,
                         'xunit': xunit,
-                        'ylabel': r'$|f\rangle$ state population',
-                        # 'yunit': yunit,
+                        'ylabel': ylabel,
                         'title': (self.raw_data_dict['timestamp'] + ' ' +
                                   self.measurement_strings[qbn]),
-                        # 'clabel': self.get_yaxis_label(qb_name=qbn, data_key='e')
                     }
                     for k, fit_dict in self.fit_dicts.items():
                         fit_res = fit_dict['fit_res']
@@ -14304,5 +14290,109 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                         'xvals': xvals,
                         'fit_res': fit_res,
                         'color': 'r',}
+
+        for task in self.get_param_value('task_list'):
+            qbn = task['qb']
+            # Find operation point(s) for each qubit
+            if 'pulse_length' and 'frequency' in self.mospm[qbn]:
+                data = self.proc_data_dict['projected_data_dict'][qbn]['pf'][
+                       :,:-3]
+                pulse_lengths = self.sp.get_values('pulse_length')
+                frequencies = self.sp.get_values('frequency')
+                # Define the boxcar filter kernel to smooth the data which
+                # avoids finding local minima at every point
+                window_size = 5 # Arbitrary choice
+                kernel = np.ones((window_size, window_size)) / (
+                        window_size ** 2)
+                # Apply the boxcar filter using convolution
+                smoothed_data = sp.signal.convolve2d(data, kernel,
+                                                     mode='same',
+                                                     boundary='symm')
+
+                # Apply 2D minimum filter to find local minimas
+                # The size of the filter in time direction is chosen to be 30ns
+                filter_size_time = np.round(2*20e-9/(pulse_lengths[1] -
+                                                   pulse_lengths[0]))
+                # The size of the filter in frequency direction is chosen to
+                # be 20MHz (arbitrary choice)
+                filter_size_freq = np.round(2*10e6/(frequencies[1] -
+                                                    frequencies[0]))
+                print(filter_size_time, filter_size_freq)
+                filtered = sp.ndimage.minimum_filter(smoothed_data,
+                                                     size=(filter_size_freq,
+                                                           filter_size_time),
+                                                     mode='mirror')
+                # Find local minima indices
+                local_minima_indices = np.where(smoothed_data == filtered)
+
+                # Find the pulse_lengths and frequencies corresponding to the
+                # minimum value(s)
+                pulse_lengths_OP = pulse_lengths[local_minima_indices[1]]
+                frequencies_OP = frequencies[local_minima_indices[0]]
+
+                # Save the operation points in the analysis_params_dict
+                if isinstance(pulse_lengths_OP, float):
+                    operation_points = [(pulse_lengths_OP, frequencies_OP)]
+                else:
+                    operation_points = [(pulse_lengths_OP[i], frequencies_OP[i])
+                                    for i in range(len(pulse_lengths_OP))]
+                if 'analysis_params_dict' not in self.proc_data_dict:
+                    self.proc_data_dict['analysis_params_dict'] = {}
+                if qbn not in self.proc_data_dict['analysis_params_dict']:
+                    self.proc_data_dict['analysis_params_dict'][qbn] = {}
+                self.proc_data_dict['analysis_params_dict'][qbn][
+                    'operation_points'] = operation_points
+
+                # Plot the data on the 2D plot
+                # TODO: could consider also plotting the smoothed data
+                self.plot_dicts[f'Leakage_reduction_unit_2D_{qbn}'] = {
+                    'plotfn': self.plot_colorxy,
+                    'fig_id': f'Leakage_reduction_unit_OPs_{qbn}',
+                    'xvals': pulse_lengths*1e9,
+                    'yvals': frequencies/1e6,
+                    'zvals': data,
+                    'xlabel': 'Pulse length',
+                    'xunit': 'ns',
+                    'ylabel': 'Frequency',
+                    'yunit': 'MHz',
+                    'colorbar': True,
+                    'clabel': self.get_yaxis_label(qb_name=qbn, data_key='f'),
+                    'title': (self.raw_data_dict['timestamp'] + ' ' +
+                              f'Leakage_reduction_unit_ef_{qbn}' + '\n' +
+                              'Operation points')
+                }
+                # Plot the operation points on the same plot
+                self.plot_dicts[f'Leakage_reduction_unit_OPs_{qbn}'] = {
+                    'plotfn': self.plot_line,
+                    'linestyle': '',
+                    'marker': 'o',
+                    'color': 'red',
+                    'fig_id': f'Leakage_reduction_unit_OPs_{qbn}',
+                    'xvals': pulse_lengths_OP*1e9,
+                    'yvals': frequencies_OP/1e6,
+                }
+
+                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'] = \
+                    deepcopy(
+                        self.plot_dicts[f'Leakage_reduction_unit_2D_{qbn}'])
+                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'][
+                    'zvals'] = smoothed_data
+                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'][
+                    'fig_id'] = f'Leakage_reduction_unit_OPs_smooth_{qbn}'
+
+                # Plot the operation points on the same plot
+                self.plot_dicts[f'Leakage_reduction_unit_OPs_smooth_{qbn}'] = \
+                    deepcopy(
+                        self.plot_dicts[f'Leakage_reduction_unit_OPs_{qbn}'])
+                self.plot_dicts[f'Leakage_reduction_unit_OPs_smooth_{qbn}'][
+                    'fig_id'] = f'Leakage_reduction_unit_OPs_smooth_{qbn}'
+
+
+
+
+
+
+
+
 
 
