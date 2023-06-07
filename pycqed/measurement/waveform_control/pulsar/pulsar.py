@@ -161,14 +161,16 @@ class PulsarAWGInterface(ABC):
                               if v else None), )
         pulsar.add_parameter(f"{name}_join_or_split_elements",
                              initial_value="default",
-                             vals=vals.Enum("default", "split", "ese"),
+                             vals=vals.MultiType(
+                                 vals.Enum("default", "split", "ese"),
+                                 vals.Dict()),
                              parameter_class=ManualParameter,
                              docstring="If ese: Group all the pulses on this "
                                        "AWG into a single element. Useful "
                                        "for making sure the master AWG has "
                                        "only one waveform per segment. If "
                                        "split: Split all pulses into individual "
-                                       "elements.")
+                                       "elements. TODO extend (dict)")
         pulsar.add_parameter(f"{name}_granularity",
                              get_cmd=lambda: self.GRANULARITY)
         pulsar.add_parameter(f"{name}_element_start_granularity",
@@ -968,6 +970,17 @@ class Pulsar(Instrument):
         else:
             group = self.get_trigger_group(ch)
             return enforce_single_element[group]
+
+    def get_join_or_split_elements(self, ch:str) -> bool:
+        awg = self.get_channel_awg(ch).name
+
+        join_or_split_elements = self.get(f"{awg}_join_or_split_elements")
+
+        if isinstance(join_or_split_elements, str):
+            return join_or_split_elements
+        else:
+            group = self.get_trigger_group(ch)
+            return join_or_split_elements[group]
 
     def clock(self, channel:str=None, awg:str=None):
         """Returns the clock rate of channel or AWG.
