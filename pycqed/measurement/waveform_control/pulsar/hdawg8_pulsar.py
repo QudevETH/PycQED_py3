@@ -23,7 +23,7 @@ from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
 
 from .pulsar import PulsarAWGInterface
 from .zi_pulsar_mixin import ZIPulsarMixin
-from .zi_pulsar_mixin import ZIGeneratorModule
+from .zi_pulsar_mixin import ZIGeneratorModule, MultiCoreCompilerZhinstToolkit
 
 
 log = logging.getLogger(__name__)
@@ -61,7 +61,16 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         super().__init__(pulsar, awg)
 
         # Set up multi-core compiler
-        self.multi_core_compiler = pulsar.multi_core_compiler
+        self.multi_core_compiler = None
+        for mcc in pulsar.multi_core_compilers:
+            if isinstance(mcc, MultiCoreCompilerZhinstToolkit):
+                self.multi_core_compiler = mcc
+                break
+        if not self.multi_core_compiler:
+            mcc = MultiCoreCompilerZhinstToolkit()
+            self.multi_core_compiler = mcc
+            pulsar.multi_core_compilers.append(mcc)
+
         try:
             # Here we instantiate a zhinst.qcodes-based HDAWG in addition to
             # the one based on the ZI_base_instrument because the parallel

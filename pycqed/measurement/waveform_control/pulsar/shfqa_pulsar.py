@@ -19,7 +19,7 @@ except Exception:
     SHFQA_core = type(None)
 
 from .pulsar import PulsarAWGInterface
-from .zi_pulsar_mixin import ZIPulsarMixin
+from .zi_pulsar_mixin import ZIPulsarMixin, MultiCoreCompilerZhinstToolkit
 
 
 log = logging.getLogger(__name__)
@@ -53,11 +53,22 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Set up multi-core compiler
+        self.multi_core_compiler = None
+        for mcc in self.pulsar.multi_core_compilers:
+            if isinstance(mcc, MultiCoreCompilerZhinstToolkit):
+                self.multi_core_compiler = mcc
+                break
+        if not self.multi_core_compiler:
+            mcc = MultiCoreCompilerZhinstToolkit()
+            self.multi_core_compiler = mcc
+            self.pulsar.multi_core_compilers.append(mcc)
+
         self.awg_mcc = self.awg
         self.awg_mcc_qagenerators = list()
         for qachannel in self.awg_mcc.qachannels:
             self.awg_mcc_qagenerators.append(qachannel.generator)
-        self.multi_core_compiler = self.pulsar.multi_core_compiler
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups

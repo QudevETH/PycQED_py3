@@ -656,9 +656,8 @@ class Pulsar(Instrument):
         self.channel_groups = {}
         self.num_channel_groups = {}
 
-        self.multi_core_compiler = MultiCoreCompilerZhinstToolkit()
-        """Wrapper class for Zurich Instruments tool kit multi-core 
-        programming function."""
+        self.multi_core_compilers = []
+        """Multi-core AWG bitstream compilers"""
 
         self._awgs_prequeried_state = False
 
@@ -1114,7 +1113,8 @@ class Pulsar(Instrument):
         self.last_sequence = sequence
 
         # resets the parallel compilation active AWG list
-        self.multi_core_compiler.reset_upload_cache()
+        for mcc in self.multi_core_compilers:
+            mcc.reset_upload_cache()
 
         if awgs == 'all':
             awgs = None  # default value for generate_waveforms_sequences
@@ -1349,7 +1349,8 @@ class Pulsar(Instrument):
         if self.use_mcc():
             # Use parallel compilation and upload if the _awgs_with_waveforms
             # support it.
-            self.multi_core_compiler.execute_mcc()
+            for mcc in self.multi_core_compilers:
+                mcc.execute_mcc()
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.

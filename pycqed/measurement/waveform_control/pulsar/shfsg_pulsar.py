@@ -9,7 +9,7 @@ from qcodes.instrument.parameter import ManualParameter
 
 from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from .zi_pulsar_mixin import ZIPulsarMixin
-from .zi_pulsar_mixin import ZIGeneratorModule
+from .zi_pulsar_mixin import ZIGeneratorModule, MultiCoreCompilerZhinstToolkit
 from .pulsar import PulsarAWGInterface
 
 from pycqed.measurement import sweep_functions as swf
@@ -70,11 +70,21 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         (off) in :meth:`start` (:meth:`stop`).
         """
 
+        # Set up multi-core compiler
+        self.multi_core_compiler = None
+        for mcc in self.pulsar.multi_core_compilers:
+            if isinstance(mcc, MultiCoreCompilerZhinstToolkit):
+                self.multi_core_compiler = mcc
+                break
+        if not self.multi_core_compiler:
+            mcc = MultiCoreCompilerZhinstToolkit()
+            self.multi_core_compiler = mcc
+            self.pulsar.multi_core_compilers.append(mcc)
+
         self.awg_mcc = self.awg
         self.awg_mcc_generators = list()
         for sgchannel in self.awg_mcc.sgchannels:
             self.awg_mcc_generators.append(sgchannel.awg)
-        self.multi_core_compiler = self.pulsar.multi_core_compiler
 
         # Each AWG channel corresponds to an SHF generator channel.
         self.awg_modules = []
