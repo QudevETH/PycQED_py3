@@ -259,6 +259,9 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         self.multi_core_compiler.sequencer_code_mcc[
                             f"{self.awg.name}_qa{i}"] = (
                             self.awg_mcc_qagenerators[i], sequence_string)
+                        self.awg._awg_program[i] = sequence_string
+                        self.awg.store_awg_source_string(
+                            qachannel, sequence_string)
                     else:
                         self.awg.set_awg_program(i, sequence_string)
                     # The acquisition modules will each be triggered by their
@@ -287,6 +290,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         post_seqc_command.append(
                             (daq.setDouble,
                              {"path": path + "/delay", "value": 0}))
+                        post_seqc_command.append((daq.sync, {}))
                         self.multi_core_compiler.post_sequencer_code_upload[
                             f"{self.awg.name}_qa{i}"] = post_seqc_command
                     else:
