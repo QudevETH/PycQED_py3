@@ -2231,7 +2231,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             numplotsx = 2
             numplotsy = len(raw_data_dict) // 2 + len(raw_data_dict) % 2
 
-        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
         fig_title = (self.raw_data_dict['timestamp'] + ' ' +
                      self.raw_data_dict['measurementstring'] +
                      '\nRaw data ' + fig_suffix + ' ' + qb_name)
@@ -2477,7 +2477,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         if data_axis_label == '':
             data_axis_label = self.get_yaxis_label(qb_name=qb_name)
-        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
         plotsize = (plotsize[0], plotsize[0]/1.25)
 
         if sweep_points is None:
@@ -4975,7 +4975,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                 base_plot_name = f'Rabi_amplitudes_{qbn}_{self.data_to_fit[qbn]}'
                 title = f'{self.raw_data_dict["timestamp"]} ' \
                         f'{self.raw_data_dict["measurementstring"]}\n{qbn}'
-                plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+                plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
                 plotsize = (plotsize[0], plotsize[0]/1.25)
                 param = [p for p in self.mospm[qbn] if 'freq' in p][0]
                 xlabel = self.sp.get_sweep_params_property('label', 1, param)
@@ -5650,7 +5650,7 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
                 base_plot_name = f'reparking_{qbn}_{self.data_to_fit[qbn]}'
                 title = f'{self.raw_data_dict["timestamp"]} ' \
                         f'{self.raw_data_dict["measurementstring"]}\n{qbn}'
-                plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+                plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
                 plotsize = (plotsize[0], plotsize[0]/1.25)
                 par_name = \
                     [p for p in self.proc_data_dict['sweep_points_2D_dict'][qbn]
@@ -6727,7 +6727,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
             sweep_dict['sweep_points'] *= np.pi/180
 
     def plot_traces(self, prob_label, data_2d, qbn):
-        plotsize = self.get_default_plot_params(set=False)[
+        plotsize = self.get_default_plot_params(set_pars=False)[
             'figure.figsize']
         plotsize = (plotsize[0], plotsize[0]/1.25)
         if data_2d.shape[1] != self.proc_data_dict[
@@ -11007,7 +11007,7 @@ class DriveAmpNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
     def prepare_plots(self):
         nonlinearity_curves = self.proc_data_dict['nonlinearity_curves']
         # Figure with 2 rows of axes
-        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
         numplotsx, numplotsy = 1, 2
         for qbn in self.qb_names:
             fig_title = f'Non-linearity curve {qbn}:\n' \
