@@ -315,7 +315,7 @@ class Segment:
             for ch in channels:
                 ch_awg = self.pulsar.get(f'{ch}_awg')
                 join_or_split = self.pulsar.get_join_or_split_elements(
-                    f"{ch_awg}")
+                    f"{ch}")
                 if join_or_split == 'ese':
                     chs_ese.add(ch)
                 elif join_or_split == 'split':
