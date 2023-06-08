@@ -356,6 +356,7 @@ class Step:
         kwargs['analyze'] = False
         kwargs['qubits'] = self.qubits
         kwargs['experiment_name'] = self.step_label
+        kwargs.update(self.get_param_value('qe_kwargs', default={}))
         return kwargs
 
     @property
