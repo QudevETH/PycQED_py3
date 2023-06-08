@@ -173,7 +173,11 @@ class Segment:
         # Makes sure that element name is unique within sequence of
         # segments by appending the segment name to the element name
         # and that RO pulses are put into an appropriate element if no
-        # element_name was provided
+        # element_name was provided. In particular, if a RO pulse for a
+        # measurement object does not have an element_name specified,
+        # the pulse will be put into the first acquisition element not yet
+        # used for this measurement object (or a new acquisition element is
+        # created if needed).
         suffix = '_' + self.name
         if pars_copy.get('operation_type', None) == 'RO':
             # get measurement object by removing first part of op_code
