@@ -4146,8 +4146,8 @@ class ActiveReset(CalibBuilder):
             # perpare correspondance between integration unit (key)
             # and uhf channel; check if only one channel is asked for
             # (not asked for all qb channels and weight type uses only 1)
-            chs = {i: ch for i, ch in enumerate([
-                qb.get_acq_int_channels(2 if all_qb_channels else None)])}
+            chs = {i: ch[1] for i, ch in enumerate(
+                qb.get_acq_int_channels(2 if all_qb_channels else None))}
 
             #get clf thresholds
             if from_clf_params:
