@@ -14317,7 +14317,6 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                 # be 20MHz (arbitrary choice)
                 filter_size_freq = np.round(2*10e6/(frequencies[1] -
                                                     frequencies[0]))
-                print(filter_size_time, filter_size_freq)
                 filtered = sp.ndimage.minimum_filter(smoothed_data,
                                                      size=(filter_size_freq,
                                                            filter_size_time),
