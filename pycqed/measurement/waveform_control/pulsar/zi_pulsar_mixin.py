@@ -24,6 +24,9 @@ class ZIPulsarMixin:
 
     WAVEDIR_SIZE_LIMIT = 10 * 1024 * 1024 * 1024  # 10 GiB
 
+    def __init__(self, *args, **kwargs):
+        self.multi_core_compiler = None
+
     @staticmethod
     def _zi_wave_dir():
         if os.name == "nt":
@@ -402,6 +405,21 @@ class ZIPulsarMixin:
 
         if has_waveforms:
             self.pulsar.add_awg_with_waveforms(self.awg.name)
+
+    def find_multi_core_compiler(self):
+        """ Set up a multi-core compiler (MCC) for programming the
+        instrument. First, this method tries to find the right compiler in
+        the list pulsar.multi_core_compilers. If it doesn't exist,
+        a new compiler will be instantiated and appended to the list.
+        """
+        for mcc in self.pulsar.multi_core_compilers:
+            if isinstance(mcc, MultiCoreCompilerZhinstToolkit):
+                self.multi_core_compiler = mcc
+                break
+        if not self.multi_core_compiler:
+            mcc = MultiCoreCompilerZhinstToolkit()
+            self.multi_core_compiler = mcc
+            self.pulsar.multi_core_compilers.append(mcc)
 
 
 class MultiCoreCompilerZhinstToolkit:

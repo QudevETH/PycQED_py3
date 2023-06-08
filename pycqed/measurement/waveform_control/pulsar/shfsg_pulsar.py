@@ -9,7 +9,7 @@ from qcodes.instrument.parameter import ManualParameter
 
 from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from .zi_pulsar_mixin import ZIPulsarMixin
-from .zi_pulsar_mixin import ZIGeneratorModule, MultiCoreCompilerZhinstToolkit
+from .zi_pulsar_mixin import ZIGeneratorModule
 from .pulsar import PulsarAWGInterface
 
 from pycqed.measurement import sweep_functions as swf
@@ -71,15 +71,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         """
 
         # Set up multi-core compiler
-        self.multi_core_compiler = None
-        for mcc in self.pulsar.multi_core_compilers:
-            if isinstance(mcc, MultiCoreCompilerZhinstToolkit):
-                self.multi_core_compiler = mcc
-                break
-        if not self.multi_core_compiler:
-            mcc = MultiCoreCompilerZhinstToolkit()
-            self.multi_core_compiler = mcc
-            self.pulsar.multi_core_compilers.append(mcc)
+        self.find_multi_core_compiler()
 
         self.awg_mcc = self.awg
         self.awg_mcc_generators = list()

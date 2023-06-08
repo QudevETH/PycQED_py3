@@ -10,7 +10,7 @@ except Exception:
     UHFQA = type(None)
 
 from .pulsar import PulsarAWGInterface
-from .zi_pulsar_mixin import ZIPulsarMixin, MultiCoreCompilerZhinstToolkit
+from .zi_pulsar_mixin import ZIPulsarMixin
 
 
 log = logging.getLogger(__name__)
@@ -57,15 +57,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         super().__init__(pulsar, awg)
 
         # Set up multi-core compiler
-        self.multi_core_compiler = None
-        for mcc in self.pulsar.multi_core_compilers:
-            if isinstance(mcc, MultiCoreCompilerZhinstToolkit):
-                self.multi_core_compiler = mcc
-                break
-        if not self.multi_core_compiler:
-            mcc = MultiCoreCompilerZhinstToolkit()
-            self.multi_core_compiler = mcc
-            self.pulsar.multi_core_compilers.append(mcc)
+        self.find_multi_core_compiler()
 
         try:
             # Here we instantiate a zhinst.qcodes-based UHFQA in addition to
