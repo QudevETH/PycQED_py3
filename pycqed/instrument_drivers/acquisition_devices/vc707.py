@@ -76,7 +76,8 @@ class VC707(VC707_core, AcquisitionDevice):
                 self.add_parameter(
                     f'acq_delay_{i}_{j}', initial_value=0,
                     vals=vals.Ints(), parameter_class=ManualParameter,
-                    docstring="TODO (in number of samples)")
+                    docstring="delay of the j-th pair of integrators in the"
+                              "i-th acquisition unit (in number of samples)")
         self._acq_progress_prev = 0
 
     @property
@@ -185,7 +186,9 @@ class VC707(VC707_core, AcquisitionDevice):
             nb_triggers_pow4_float = np.log(nb_triggers) / np.log(4)
             nb_triggers_pow4 = int(np.ceil(nb_triggers_pow4_float))
             if int(nb_triggers_pow4_float) != nb_triggers_pow4_float:
-                log.warning(f'nb_triggers_pow4 got rounded up')  # TODO
+                log.warning(
+                    f'number of triggers got rounded up from {nb_triggers} to '
+                    f'4^{nb_triggers_pow4} = {4**nb_triggers_pow4}')
             module_obj.settings.nb_triggers_pow4 = nb_triggers_pow4
             if module == 'histogrammer':
                 self.histogrammer.settings.nb_states = 1  # no state disc.
@@ -219,11 +222,13 @@ class VC707(VC707_core, AcquisitionDevice):
             # FIXME: Downscaling set to zero here: hist and state don't work
             # if downscaling is not set to zero and we don't know why exactly
             self.preprocessing_down_scaling(0)
-            # TODO does the order of configure and upload matter?
             module_obj.configure()
             # FIXME: It is inefficient to always upload even if nothing
             #  changed. We could introduce a caching mechanism (similarly to
             #  the sequence caching in pulsar) to only upload if needed.
+            #  Even if we usually first configure and then upload weights,
+            #  the VC707 also supports calling configure again without
+            #  re-uploading weights afterwards.
             self.state_discriminator.upload_weights(discriminate=(
                 module == "state_discriminator"))
 
