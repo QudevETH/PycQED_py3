@@ -385,12 +385,24 @@ class MeasurementObject(Instrument):
 
         The Acq LO freq is calculated from the acq_mod_freq (intermediate
         frequency) and the acq_freq stored in the qubit object. If any of them
-        is None, it is replaced by ro_mod_freq or ro_freq, respectively.
+        is None, it is replaced by ro_mod_freq or ro_freq, respectively. In
+        the special case that no instr_acq_lo is configured and acq_mod_freq
+        is None, the value of acq_mod_freq will be chosen such that it is
+        compatible with the LO frequency of the instr_ro_lo (assuming that
+        this LO is also used for the acquisition).
         """
         if (acq_freq := self.acq_freq()) is None:
             acq_freq = self.ro_freq()
         if (acq_mod_freq := self.acq_mod_freq()) is None:
-            acq_mod_freq = self.ro_mod_freq()
+            if self.instr_acq_lo() is None:
+                acq_mod_freq = acq_freq - self.get_ro_lo_freq()
+            else:
+                acq_mod_freq = self.ro_mod_freq()
+        elif self.instr_acq_lo() is None and np.abs(
+                (acq_freq - acq_mod_freq) - self.get_ro_lo_freq()) > 1e-3:
+            log.warning(
+                f'{self.name}: Acq LO freq and RO LO freq do not match, '
+                f'but no Acq LO instrument is configured.')
         return acq_mod_freq, acq_freq - acq_mod_freq
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
