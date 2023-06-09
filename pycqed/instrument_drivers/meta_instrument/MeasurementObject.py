@@ -82,13 +82,20 @@ class MeasurementObject(Instrument):
                       'get_closest_lo_freq.')
         self.add_parameter(
             'acq_freq', unit='Hz',
-            set_cmd=lambda f, s=self: s.configure_mod_freqs('acq', acq_freq=f),
+            set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                'acq', acq_freq=f) if f is not None else f,
+            # The separate treatment of None allows to directly set this
+            # parameter to None without further processing. This will then
+            # trigger the special behavior for acq described in the docstring
+            # of configure_mod_freqs the next time that method gets called.
             docstring='Acquitision frequency. If None, ro_freq is used.')
         self.add_parameter(
             'acq_mod_freq', initial_value=None,
             set_parser=lambda f, s=self: s.configure_mod_freqs(
-                'acq', acq_mod_freq=f),
+                'acq', acq_mod_freq=f) if f is not None else f,
+            # Separate treatment as for acq_freq (see above)
             vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
+            parameter_class=ManualParameter,
             docstring='Acquitision intermediate frequency. '
                       'If None, ro_mod_freq is used.')
         awt_docstring = 'Determines what type of integration weights to ' +\
