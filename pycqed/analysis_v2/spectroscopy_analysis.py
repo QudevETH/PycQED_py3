@@ -3307,7 +3307,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
-        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
         for qb_name in self.qb_names:
             fig_title = (self.raw_data_dict['timestamp'] + ' ' +
                          self.raw_data_dict['measurementstring'] +
@@ -3370,7 +3370,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                         'linestyle': 'dotted',
                         'marker': 'None',
                         'setlabel': '$f_{RO}$ = ' \
-                                    + f'{(frequency[argmax]/1e9):.3f} GHz',
+                                    + f'{(frequency[argmax]/1e9):.4f} GHz',
                         'do_legend': True,
                 }
 
