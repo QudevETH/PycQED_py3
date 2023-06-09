@@ -1779,25 +1779,38 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
 
 
 class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
-    """
-    Detector used for integrated single-shot acquisition.
+    """Detector used for acquiring histograms of integrated single-shots.
+
+    Remark: this class only inherits from IntegratingAveragingPollDetector
+    to avoid code replication in this class. This does not mean that the
+    averager module of the FPGA is used.
     """
 
     def __init__(self, acq_dev, nr_shots: int = 4094, nr_bins=None,
                  peak_to_peak=None, **kw):
         """
-        Init of the IntegratingSingleShotPollDetector.
+        Init of the IntegratingHistogramPollDetector.
         See the IntegratingAveragingPollDetector for the full dostring of the
         accepted input parameters.
 
         Args:
             acq_dev (instrument): data acquisition device
             nr_shots (int)     : number of acquisition shots
-            nr_bins (dict)     : TODO (index by tuples representing int channels)
-            peak_to_peak (dict): TODO (index by tuples representing int
-                channels, values are passed to BinSettings)
-                FIXME: this should be the actual value, and then caculate
-                       the setting for the VC707 in the VC707 class
+            nr_bins (dict): number of bins for each integration channel (keys
+                are tuples representing integration channels and values are
+                ints, which must be powers of 2). This arg can be None, in
+                which case the default of 8 bins per channel is used.
+            peak_to_peak (dict): Peak to peak amplitude range of the input
+                signal for each integration channel (keys are tuples
+                representing integration channels and values are the
+                exponents n defining powers of 2, i.e., 2^n. Since the range
+                is in arbitrary units, this parameter can effectively be seen
+                as a rescaling. If the range is chosen lower than some input
+                values, they will wrap around in the histogram results and
+                an overflow flag is raised by the FPGA.
+                FIXME: this should be the actual value in the detector
+                    function, and then caculate the setting for the VC707
+                    in the VC707 acq dev class
 
         Keyword args:
             passed to the init of the parent class. In addition,
