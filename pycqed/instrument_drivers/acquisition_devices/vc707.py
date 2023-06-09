@@ -219,9 +219,10 @@ class VC707(VC707_core, AcquisitionDevice):
                             nb_bins_pow2=nb_bins_pow2,
                             delay=0))
                 self.histogrammer.settings.bin_settings = bin_settings
-            # FIXME: Downscaling set to zero here: hist and state don't work
-            # if downscaling is not set to zero and we don't know why exactly
-            self.preprocessing_down_scaling(0)
+            if (dscale := self.preprocessing_down_scaling()):
+                raise NotImplementedError(
+                    f'Module {module} does not support downscaling, but '
+                    f'preprocessing_down_scaling is set to {dscale}.')
             module_obj.configure()
             # FIXME: It is inefficient to always upload even if nothing
             #  changed. We could introduce a caching mechanism (similarly to
