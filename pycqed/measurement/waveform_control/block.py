@@ -143,7 +143,7 @@ class Block:
             p_is_block_start = self._is_block_start(p, block_start)
 
             # rename ref pulse within the block if not a special name
-            escape_names = ("previous_pulse", "segment_start")
+            escape_names = ("previous_pulse", "segment_start", "init_start")
             if isinstance(ref_pulse, list):
                 p['ref_pulse'] = [name + "-|-" + rp for rp in p['ref_pulse']]
             else:
@@ -262,43 +262,21 @@ class Block:
                                 p[attr] = s.resolve(sweep_dict, ind)
 
         # resolve pulse modifiers now (they could overwrite parametric values)
-        def check_candidate(k, v, p):
-            attr = p.get(k, '')
-            if k == 'op_code':
-                return (attr + ' ').startswith(v + ' ')
-            elif k in ['name', 'ref_pulse']:
-                # make sure to also find pulse renamed by Block.build()
-                return (attr == v or attr.endswith("-|-" + v))
-            else:
-                return (attr == v)
-
         for sweep_dict, ind in zip(sweep_dicts_list, index_list):
             for param, d in sweep_dict.items():
-                if isinstance(param, int):
-                    param = f'occurrence={param}'
-                if param == 'all':
-                    modif = {}
-                elif '=' not in param:
+                if (pattern := parse_pulse_search_pattern(param)) is None:
                     continue
-                else:
-                    modif = {l[0]: l[1] for l in [s.strip().split('=') for s
-                                                  in param.split(',')]}
-                attr = modif.pop('attr', None)
-                occurrence = modif.pop('occurrence', None)
-                n_occ = 0
+                attr = pattern.pop('attr', None)
+                occ_counter = [0]
                 for p in pulses:
-                    if all([check_candidate(k, v, p) for k, v in modif.items()]):
-                        if occurrence is None or int(occurrence) == n_occ:
-                            if attr is None:
-                                p.update(d)
-                            else:
-                                p.update({attr: ParametricValue(
-                                    param).resolve(sweep_dict, ind)})
-                            if occurrence is not None:
-                                break
+                    if check_pulse_by_pattern(p, pattern, occ_counter):
+                        if attr is None:
+                            p.update(d)
                         else:
-                            n_occ += 1
-
+                            p.update({attr: ParametricValue(
+                                param).resolve(sweep_dict, ind)})
+                        if pattern.get('occurrence') is not None:
+                            break
         return pulses
 
     def prefix_parametric_values(self, prefix, params=None):
@@ -389,3 +367,73 @@ class ParametricValue:
             return v_processed, op_code
         else:
             return v_processed
+
+
+def parse_pulse_search_pattern(pattern):
+    """Parse strings/ints that represent a pulse search pattern
+
+    Args:
+        pattern (str, int): the representation of the search pattern can be:
+          - a string as described in the docstring of Block.build,
+            param sweep_dicts_list
+          - an int i, which will be interpreted as the string
+            f'occurrence={i}'
+          - the str 'all' for matching all pulses
+
+    Returns:
+        None if pattern is not a valid search pattern. Otherwise a dict,
+        where each key-value pair corresponds to a criterion that needs to
+        be fulfilled, as described in the docstring of Block.build,
+        param sweep_dicts_list.
+    """
+    if isinstance(pattern, int):
+        pattern = f'occurrence={pattern}'
+    if pattern == 'all':
+        return {}
+    elif '=' not in pattern:
+        return None
+    else:
+        return {l[0]: l[1] for l in [s.strip().split('=') for s
+                                     in pattern.split(',')]}
+
+
+def check_pulse_by_pattern(pulse, pattern, occurrence_counter):
+    """Check whether a pulse matches a search pattern
+
+    Args:
+        pulse: the pulse to be checked
+        pattern: a search pattern, provided either in the input format or in
+            the return format of parse_pulse_search_pattern
+        occurrence_counter: a single-entry list of int to count how many
+            matches to the pattern have already been found in calls to this
+            function. Note that occurence_counter is mutable and gets
+            modified by this function. (The int is wrapped in a list
+            in order to have it mutable.)
+
+    Returns:
+        a bool indicating whether the pulse matches the criteria in pattern
+    """
+    def check_candidate(k, v, p):
+        attr = p.get(k, '')
+        if k == 'op_code':
+            return (attr + ' ').startswith(v + ' ')
+        elif k in ['name', 'ref_pulse']:
+            # make sure to also find pulses renamed by Block.build()
+            return (attr == v or attr.endswith("-|-" + v))
+        else:
+            return (attr == v)
+
+    if isinstance(pattern, (str, int)):
+        pattern = parse_pulse_search_pattern(pattern)
+    if pattern is None:
+        return False
+
+    occurrence = pattern.get('occurrence')
+    pattern = {k: v for k, v in pattern.items() if k != 'occurrence'}
+    if all([check_candidate(k, v, pulse) for k, v in pattern.items()]):
+        occurrence_counter[0] += 1
+        if occurrence is None or (
+                int(occurrence) == occurrence_counter[0] - 1):
+            return True
+    return False
+

@@ -179,6 +179,7 @@ def load_settings(instrument,
             that should be set for the instrument
     '''
     from numpy import array  # DO not remove. Used in eval(array(...))
+    from collections import OrderedDict  # DO NOT remove. Used in eval()
     if folder is None:
         folder_specified = False
     else:
@@ -836,7 +837,7 @@ def find_symmetry_index(data):
     corr = []
     for iflip in np.arange(0, len(data)-0.5, 0.5):
         span = min(iflip, len(data)-1-iflip)
-        data_filtered = data[np.int(iflip-span):np.int(iflip+span+1)]
+        data_filtered = data[int(iflip-span):int(iflip+span+1)]
         corr.append((data_filtered*data_filtered[::-1]).sum())
     return np.argmax(corr), corr
 
