@@ -340,8 +340,12 @@ class ColdSwitchController(Instrument):
                 f'A cold switch was operated {timedelta.seconds}s ago, but '
                 f'the minimum time between two switching events is {interv}s.')
         if self.temperature_param:
-            if (temp := self.temperature_param()) > (
-                    max_temp := self.max_switching_temperature()):
+            temp = self.temperature_param()
+            if temp is None:
+                raise Exception(
+                    f'Cold switches can currently not be operated because '
+                    f'temperature logging data is not available.')
+            if temp > (max_temp := self.max_switching_temperature()):
                 raise Exception(
                     f'Cold switches can only be operated when the base '
                     f'temperature is below {max_temp/1e-3}mK, but it is '
