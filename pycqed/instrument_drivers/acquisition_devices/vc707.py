@@ -71,6 +71,12 @@ class VC707(VC707_core, AcquisitionDevice):
                       "AWG(s), i.e., in prepare_poll_after_AWG_start, "
                       "instead of before, i.e., "
                       "in prepare_poll_before_AWG_start.")
+        self.add_parameter(
+            'save_timetraces', initial_value=False,
+            vals=vals.Bool(), parameter_class=ManualParameter,
+            docstring="Whether time traces should be stored to"
+                      "self._last_traces and as extra data in the HDF file "
+                      "if the integration is emulated in software.")
         for i in range(self.n_acq_units):
             for j in range(self.n_acq_int_channels // 2):
                 self.add_parameter(
@@ -304,7 +310,7 @@ class VC707(VC707_core, AcquisitionDevice):
         """Emulates integrated averager in software."""
 
         dataset = {}
-
+        last_traces = {}
         for acq_unit in self._acq_units_used:  # each acq. unit (physical input)
             # channel is a tuple of physical acquisition unit index (0 or 1)
             # and index of the weighted integration channel
@@ -326,6 +332,13 @@ class VC707(VC707_core, AcquisitionDevice):
                            weights[1][:averager_results.shape[-1]])
 
                 dataset[(acq_unit, ch)] = [np.array(integration_result)]
+            if self.save_timetraces():
+                last_traces[acq_unit] = averager_results[
+                    acq_unit * 2:acq_unit * 2 + 2]
+                self.save_extra_data(f'traces/{acq_unit}',
+                                     last_traces[acq_unit])
+        if self.save_timetraces():
+            self._last_traces.append(last_traces)
 
         return dataset
 
