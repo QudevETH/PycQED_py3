@@ -5,6 +5,13 @@ class InterpolatedHamiltonianModel:
     """Provides a simple class to wrap the scipy 1D interpolation method to
     speed-up the computation of the Hamiltonian model when this is called
     several times, e.g., when called in a loop as part of a fitting routine.
+
+    Currently, this class is meant to be used by manually initiallizing an
+    instance and manually calling the instance instead of
+    `qb.calculate_frequency`.
+    TODO: In future, we might extend the qb.calculate_frequency
+    method to automatically use the interpolated model in appropriate use
+    cases.
     """
 
     def __init__(self, qb, n_steps=1001, flux=None, **kw):
