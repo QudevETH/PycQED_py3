@@ -61,8 +61,8 @@ class QuDev_transmon(MeasurementObject):
                            'GaussFilteredCosIQPulseMultiChromatic',
                            'GaussFilteredCosIQPulseWithFlux']
     _allowed_drive_modes = [None, 'continuous_spec',
-                           'continuous_spec_modulated', 'pulsed_spec',
-                           'timedomain']
+                            'continuous_spec_modulated', 'pulsed_spec',
+                            'timedomain']
 
     def __init__(self, name, transition_names=('ge', 'ef'), **kw):
         super().__init__(name, **kw)
