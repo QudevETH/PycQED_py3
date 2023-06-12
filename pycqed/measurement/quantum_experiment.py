@@ -265,6 +265,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         Args:
             save_timers (bool): whether timers should be saved to the hdf
             file at the end of the measurement (default: True).
+            kw (optional): keyword arguments, e.g.:
+                - 'mc_mode': manually set the mode argument in the call of
+                             `MC.run`.
         Returns:
 
         """

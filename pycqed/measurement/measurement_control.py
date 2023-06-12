@@ -196,6 +196,7 @@ class MeasurementControl(Instrument):
 
         self.parameter_checks = {}
 
+        # We initiallize the adaptive_function parameters
         self.af_pars = {}
 
     ##############################################
@@ -488,13 +489,13 @@ class MeasurementControl(Instrument):
             "MeasurementControl.measure_soft_adaptive.prepare.start")
         for sweep_function in self.sweep_functions:
             sweep_function.prepare()
-        self.timer.checkpoint(
-            "MeasurementControl.measure_soft_adaptive.prepare.end")
         if self.detector_function.detector_control != 'hard':
             # A hard detector requires sweep points, these will only be
             # generated later in optimization_function, which then takes care of
             # calling self.detector_function.prepare(sp).
             self.detector_function.prepare()
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.prepare.end")
         self.get_measurement_preparetime()
 
         if self.adaptive_function == 'Powell':
@@ -629,6 +630,9 @@ class MeasurementControl(Instrument):
         '''
         if np.size(x) == 1:
             x = [x]
+        if self.mode != 'adaptive' and np.size(x) != len(self.sweep_functions):
+            raise ValueError(
+                'size of x "%s" not equal to # sweep functions' % x)
         # The following will be set to True (in the second-last iteration,
         # sweep dimension 1) if the sweep point can be skipped (in the
         # last iteration, sweep dimension 0) in a filtered sweep.
@@ -728,8 +732,13 @@ class MeasurementControl(Instrument):
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        x = np.atleast_2d(x)
+        # Because x is allowed to be a list of tuples (batch sampling), we
+        # need to reshape and reformat x and vals accordingly before we can
+        # save them to the dset.
+        x = np.atleast_2d(x) # to unify format of x
         vals = vals.reshape((-1, len(self.detector_function.value_names)))
+        # the following np.concatenate ensures that the measured values are
+        # concatenated with the correct parameters in x.
         new_data = np.concatenate(
             (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
             axis=-1
@@ -755,6 +764,14 @@ class MeasurementControl(Instrument):
 
     @staticmethod
     def _default_data_processing_function(vals, dset):
+        ''' Default data processing function that is run in
+        optimization_function (mode = adaptive). Can be overwritten by setting
+        af_pars['data_processing_function'].
+
+        Args:
+            vals (array): Array with the output of measurement_function.
+            dset (array): data set self.dset
+        '''
         # This takes care of data that comes from a "single" segment of a
         # detector for a larger shape such as the UFHQC single int avg detector
         # that gives back data in the shape [[I_val_seg0, Q_val_seg0]]
@@ -2349,7 +2366,7 @@ class MeasurementControl(Instrument):
         for i, sweep_func in enumerate(sweep_functions):
             # If it is not a sweep function, assume it is a qc.parameter
             # and try to auto convert it it
-            if not isinstance(sweep_func, swf.Sweep_function):
+            if not hasattr(sweep_func, 'sweep_control'):
                 sweep_func = wrap_par_to_swf(sweep_func)
                 sweep_functions[i] = sweep_func
             sweep_function_names.append(str(sweep_func.name))
@@ -2442,7 +2459,11 @@ class MeasurementControl(Instrument):
             "f_termination" None    terminates the loop if the measured value
                                     is smaller than this value
             "par_idx": 0            If a parameter returns multiple values,
-                                    specifies which one to use.
+                                    specifies which one to use. If set to
+                                    None, there will be no selection and all
+                                    values are passed on.
+            "data_processing_function":    function. Overwrites
+                                           _default_data_processing_function
 
         Common keywords (used in python nelder_mead implementation):
             "x0":                   list of initial values
