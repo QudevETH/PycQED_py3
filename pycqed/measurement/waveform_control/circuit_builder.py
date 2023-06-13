@@ -262,14 +262,14 @@ class CircuitBuilder:
         of the corresponding pulse dictionary
 
         """
-        op_info = op.split(" ") if isinstance(op, str) else op
+        op = op.split(" ") if isinstance(op, str) else op
         if not self.fast_mode:
             # the call to get_qubits resolves qubits indices if needed
-            _, op_info[1:] = self.get_qubits(op_info[1:], strict=False)
-        simultaneous = op_info[0][0] == 's'
+            _, op[1:] = self.get_qubits(op[1:], strict=False)
+        simultaneous = op[0][0] == 's'
         # First part of the op_code, e.g. "Z:2*[theta]"
-        op_name = op_info[0][1:] if simultaneous else op_info[0]
-        qbn = op_info[1:]
+        op_name = op[0][1:] if simultaneous else op[0]
+        qbn = op[1:]
         op = op_name + ' ' + ' '.join(qbn)
 
         if op in self.operation_dict:
@@ -329,12 +329,12 @@ class CircuitBuilder:
                     cphase = float(angle)  # gate angle
                 else:  # no cphase specified: standard CZ gate (180 deg)
                     cphase = None
-                if pulse_name == 'CZ':
-                    # If the op_code only contains the generic keyword 'CZ': set
-                    # the actual CZ pulse name to the default of the experiment
-                    pulse_name = self.cz_pulse_name
-                operation = self.get_cz_operation_name(
-                    *qbn, cz_pulse_name=pulse_name)
+                # Extract the operation which is available in the device
+                # If the op_code only contains the generic keyword 'CZ',
+                # this will use the default CZ pulse name of the experiment
+                device_op = self.get_cz_operation_name(
+                    *qbn,
+                    cz_pulse_name=None if pulse_name == 'CZ' else pulse_name)
                 # If gate decomposition
                 if cphase_qubit_name := self.decompose_rotation_gates.get(
                         pulse_name, False):
@@ -347,15 +347,15 @@ class CircuitBuilder:
                     decomposed_op = [
                         f'Z180 {cphase_qubit_name}',
                         f'Y90 {cphase_qubit_name}',
-                        operation,
                         f'Z180 {cphase_qubit_name}',
                         f'Y90 {cphase_qubit_name}',
                         f'Z0 {cphase_qubit_name}',
                         f'Z180 {cphase_qubit_name}',
                         f'Y90 {cphase_qubit_name}',
-                        operation,
                         f'Z180 {cphase_qubit_name}',
                         f'Y90 {cphase_qubit_name}',
+                        device_op,
+                        device_op,
                     ]
                     p = [
                         self.copy_op(self.operation_dict[do])
@@ -368,7 +368,7 @@ class CircuitBuilder:
                     p[cphase_gate_index]['basis_rotation'] = {
                         cphase_qubit_name: cphase}
                 else:
-                    p = [self.copy_op(self.operation_dict[operation])]
+                    p = [self.copy_op(self.operation_dict[device_op])]
                     p[0]['cphase'] = cphase
 
             else:  # Single-qubit gate
