@@ -23,13 +23,14 @@ class CircuitBuilder:
              object if available, or otherwise the first operation from the
              operation_dict whose name contains 'CZ', or we fall back to
              'CZ' if no such operation is found.)
-         decompose_rotation_gates: (dict of bool or strings) whether arbitrary
-            rotation gates should be decomposed into pi rotations
-            and virtual Z gates, e.g., {'X': True, 'Y': False}.
-            False means direct implementation. For gate types not specified
-            here, the default is False. Alternatively, it is possible to
-            specify a qubit name (string) instead of True, to indicate to which
-            qubit the single-qubit gates of the decomposition should be applied.
+         decompose_rotation_gates: (dict of bool or dict of lists of lists)
+            whether arbitrary rotation gates should be decomposed into pi
+            rotations and virtual Z gates. Can either be a boolean to
+            decompose all gates of a given type, e.g. {'CZ_nztc': True},
+            or a list of all qubit pairs for which the gate should be
+            decomposed, e.g {'CZ_nztc': [['qb2', 'qb1'], ['qb3', 'qb4]]}. In
+            the latter case the single-qubit gates of the decomposition are
+            applied to the first qubit of the pair.
          prep_params: (dict) custom preparation params (default: from
             instrument settings)
          fast_mode: (bool, default: False) activate faster processing by
@@ -335,27 +336,41 @@ class CircuitBuilder:
                 device_op = self.get_cz_operation_name(
                     *qbn,
                     cz_pulse_name=None if pulse_name == 'CZ' else pulse_name)
-                # If gate decomposition
-                if cphase_qubit_name := self.decompose_rotation_gates.get(
-                        pulse_name, False):
+                # Here, we figure out if the gate should be decomposed into
+                # CZ and single-qubit gates
+                decomp_info = self.decompose_rotation_gates.get(
+                    pulse_name, False)
+                # qb_dec is the qubit on which to apply single-qubit
+                # gates in case of gate decomposition
+                qb_dec = None
+                if decomp_info==True:
+                    # If True: we decompose the gate
+                    # By default: use the first qubit involved in the gate
+                    qb_dec = qbn[0]
+                elif isinstance(decomp_info, list):
+                    # If list: we decompose the gate if it is in the list...
+                    for gate_to_decomp in decomp_info:
+                        for qbn_reordered in [qbn, qbn[::-1]]:
+                            if qbn_reordered==gate_to_decomp:
+                                # ... and apply the single-qubit gates to the
+                                # first qubit passed in decompose_rotation_gates
+                                qb_dec = gate_to_decomp[0]
+                # If qb_dec is not None, we decompose the gate
+                if qb_dec:
                     # Index of the gate whose phase sets the cphase
                     cphase_gate_index = 5
-                    # Name of the qubit on which single-qubit gates are done
-                    if not isinstance(cphase_qubit_name, str):
-                        # Defaults to second qubit if not passed explicitly
-                        cphase_qubit_name = qbn[1]
                     decomposed_op = [
-                        f'Z180 {cphase_qubit_name}',
-                        f'Y90 {cphase_qubit_name}',
-                        f'Z180 {cphase_qubit_name}',
-                        f'Y90 {cphase_qubit_name}',
-                        f'Z0 {cphase_qubit_name}',
-                        f'Z180 {cphase_qubit_name}',
-                        f'Y90 {cphase_qubit_name}',
-                        f'Z180 {cphase_qubit_name}',
-                        f'Y90 {cphase_qubit_name}',
+                        f'Z180 {qb_dec}',
+                        f'Y90 {qb_dec}',
                         device_op,
+                        f'Z180 {qb_dec}',
+                        f'Y90 {qb_dec}',
+                        f'Z0 {qb_dec}',
+                        f'Z180 {qb_dec}',
+                        f'Y90 {qb_dec}',
                         device_op,
+                        f'Z180 {qb_dec}',
+                        f'Y90 {qb_dec}',
                     ]
                     p = [
                         self.copy_op(self.operation_dict[do])
@@ -365,8 +380,7 @@ class CircuitBuilder:
                         # Update the op_split info in the ParametricValue,
                         # such that it matches the operation decomposition
                         cphase.op_split[0] = 'Z'
-                    p[cphase_gate_index]['basis_rotation'] = {
-                        cphase_qubit_name: cphase}
+                    p[cphase_gate_index]['basis_rotation'] = {qb_dec: cphase}
                 else:
                     p = [self.copy_op(self.operation_dict[device_op])]
                     p[0]['cphase'] = cphase
