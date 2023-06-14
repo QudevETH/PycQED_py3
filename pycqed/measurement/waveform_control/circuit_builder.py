@@ -357,7 +357,8 @@ class CircuitBuilder:
                                 qb_dec = gate_to_decomp[0]
                 # If qb_dec is not None, we decompose the gate
                 if qb_dec:
-                    # Index of the gate whose phase sets the cphase
+                    # Index (in the following list) of the gate whose phase
+                    # will set the cphase
                     cphase_gate_index = 5
                     decomposed_op = [
                         f'Z180 {qb_dec}',
@@ -365,7 +366,7 @@ class CircuitBuilder:
                         device_op,
                         f'Z180 {qb_dec}',
                         f'Y90 {qb_dec}',
-                        f'Z0 {qb_dec}',
+                        f'Z0 {qb_dec}',  # phase set to the cphase below
                         f'Z180 {qb_dec}',
                         f'Y90 {qb_dec}',
                         device_op,
@@ -797,9 +798,9 @@ class CircuitBuilder:
             operations = [op_format(op, **fill_values) for op in operations]
         # the shortcut if op in self.operation_dict is for speed reasons
         p_lists = [[self.copy_op(self.operation_dict[op])]
-                  if op in self.operation_dict
-                  else self.get_pulses(op, True)
-                  for op in operations]
+                   if op in self.operation_dict
+                   else self.get_pulses(op, True)
+                   for op in operations]
         pulses = [p for p_list in p_lists for p in p_list]  # flattened
 
         return Block(block_name, pulses, pulse_modifs, copy_pulses=False)
