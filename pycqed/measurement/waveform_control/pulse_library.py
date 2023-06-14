@@ -405,7 +405,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
 
     @staticmethod
     def calc_cphase_params(cphase, cphase_calib_dict, cphase_ctrl_params,
-                           target=0):
+                           target=0, interpolation_type='quadratic'):
         """Calculates pulse parameters to implement a given conditional phase
 
         During the calibration, cphase_calib_dict is measured:
@@ -453,7 +453,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
                                  max(cp_list), 360)
         # Get values of the main control parameter which yield these cphases
         f = interp1d(cp_list, cphase_calib_dict[cphase_ctrl_params[0]],
-                     kind='quadratic')
+                     kind=interpolation_type)
         possible_param_vals = f(possible_cp)
         # Choose the value of the main control param closest to target
         id_closest = np.abs(possible_param_vals-target).argmin()
@@ -469,11 +469,11 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             if isinstance(cal_data, dict):  # for 'basis_rotation'
                 param_vals_dict = {}
                 for qbn, qbn_data in cal_data.items():
-                    f = interp1d(cp_list, qbn_data)
+                    f = interp1d(cp_list, qbn_data, kind=interpolation_type)
                     param_vals_dict.update({qbn: float(f(cphase))})
                 param_vals[param_name] = param_vals_dict
             else:
-                f = interp1d(cp_list, cal_data)
+                f = interp1d(cp_list, cal_data, kind=interpolation_type)
                 param_vals[param_name] = float(f(cphase))
         return param_vals
 
