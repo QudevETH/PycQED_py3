@@ -181,7 +181,8 @@ class CircuitBuilder:
         else:
             return deepcopy(self.STD_PREP_PARAMS)
 
-    def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None, **kw):
+    def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None,
+                              cz_pulse_name=None):
         """
         Finds the name of the CZ gate between qb1-qb2 that exists in
         self.operation_dict.
@@ -197,7 +198,8 @@ class CircuitBuilder:
         assert (qb1 is None and qb2 is None and op_code is not None) or \
                (qb1 is not None and qb2 is not None and op_code is None), \
             "Provide either qb1&qb2 or op_code!"
-        cz_pulse_name = kw.get('cz_pulse_name', self.cz_pulse_name)
+        cz_pulse_name = cz_pulse_name if cz_pulse_name is not None \
+                                         else self.cz_pulse_name
         if op_code is not None:
             op_split = op_code.split(' ')
             qb1, qb2 = op_split[1:]
