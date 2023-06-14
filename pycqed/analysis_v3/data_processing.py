@@ -495,6 +495,44 @@ def normalize_qubit_subspace(data_dict, keys_in, keys_out=None, **params):
     return data_dict
 
 
+def normalize_qubit_subspace_2qb(data_dict, keys_in, keys_out=None, **params):
+    """
+    Renormalise the qubit subspace after a qutrit classification,
+    such that pg + pe = 1.
+
+    This function assumes that keys_in point to pg, pe, pf, in this order.
+
+    Args:
+        data_dict (dict): containing data to be processed and where the
+            processed data is to be stored
+        keys_in (list): key names or dictionary keys paths in
+            data_dict pointing to pg, pe, pf (in this order)
+        keys_out (list, None):  key names or dictionary keys paths in
+            data_dict where the renormalised data to be saved in data_dict.
+            If None, appends the suffix "_renormalized" to keys_in.
+        **params: keyword arguments: passed to add_param
+
+    Returns:
+        data_dict
+    """
+    data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
+    # get populations as an array with shape
+    # (nr states, nr probabilities for each state)
+    populations = np.array(list(data_to_proc_dict.values()))[0]
+    if keys_out is None:
+        keys_out = [f'{keyi}_renormalized' for keyi in keys_in]
+    if len(keys_out) != len(data_to_proc_dict):
+        raise ValueError('keys_out and keys_in do not have the same length.')
+    pop_qb = np.concatenate([populations[:, 0:2], populations[:, 3:5]], axis=1)
+    norm_factor = np.sum(pop_qb, axis=1)  # pgg + pge + peg + pee
+    populations[:, 0] /= norm_factor  # pgg
+    populations[:, 1] /= norm_factor  # pge
+    populations[:, 3] /= norm_factor  # peg
+    populations[:, 4] /= norm_factor  # pee
+    hlp_mod.add_param(keys_out[0], populations, data_dict, **params)
+    return data_dict
+
+
 def correct_readout(data_dict, keys_in, keys_out=None, state_prob_mtxs=None,
                     **params):
     """
