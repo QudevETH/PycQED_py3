@@ -334,7 +334,8 @@ class Step:
     def parse_settings(self, requested_kwargs):
         """
         Resolves the keyword arguments from get_requested_settings to calls
-        within the parameter dictionary.
+        within the parameter dictionary. This routine also adds keyword
+        arguments in qe_kwards passed in via the routine or via settings files.
 
         Args:
             requested_kwargs (dict): A dictionary containing the names and
