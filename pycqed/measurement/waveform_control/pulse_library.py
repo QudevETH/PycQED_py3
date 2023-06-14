@@ -254,8 +254,9 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
             `len(lengths) == len(channels)`.
         amplitudes (list of list of float): The amplitudes of all pulse
             segments. The shape must match that of `lengths`.
-        gaussian_filter_sigma (float): The width of the gaussian filter sigma
-            of the pulse.
+        gaussian_filter_sigma (float or list of float): The width of the
+            gaussian filter sigma of the pulse. If this is a list, indicates
+            a value for each channel in self.channels.
         codeword (int or 'no_codeword'): The codeword that the pulse belongs in.
             Defaults to 'no_codeword'.
     """
@@ -336,10 +337,35 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
     """
     A zero-area pulse shape that allows to control the accumulated phase when
     transitioning from the first pulse half to the second pulse half, by having
-    an additional, low-amplitude segment between the two main pulse-halves.
+    an additional, low-amplitude segment between the two main pulse halves.
 
-    The zero area is achieved by adjusting the lengths for the intermediate
-    pulses.
+    Pulse shape:
+            1
+        ---------
+       |         | 2
+       |          ---
+       |             | 3
+       |              ---
+       |                 |
+    ---                  |                  ---
+                         |                 |
+                          ---              |
+                           3 |             |
+                              ---          |
+                               2 |         |
+                                  ---------
+                                      1
+    1: Main pulse halves
+        - amplitude: amplitude +/- amplitude_offset
+        - duration: pulse_length/2 + offset correction to keep a zero area
+    2: (Optional) possible additional intermediate step
+        - amplitude: intermediate_amplitude
+        - duration: intermediate_length
+    3: Mid-pulse step (typically used to set the cphase via its time integral)
+        - amplitude: trans_amplitude
+        - duration: trans_length
+    This pulse is meant to be played on the flux channels of two
+    qubits in parallel; attributes ending with '2' refer to the second channel.
     """
     def __init__(self, element_name, name='NZTC pulse', **kw):
         super().__init__(name, element_name, **kw)
@@ -383,7 +409,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         """Calculates pulse parameters to implement a given conditional phase
 
         During the calibration, cphase_calib_dict is measured:
-            {control_param: [...], 'cphase': [...], 'other_param': [...]}
+            {main_control_param: [...], 'cphase': [...], 'other_param': [...]}
         The goal of this function is to interpolate between all parameter
         values, for a given value of cphase.
 
@@ -391,12 +417,14 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             cphase (float): Value of the conditional phase
             cphase_calib_dict (dict): Calibration dictionary, containing
                 measurement values of the cphase as a function of the control
-                parameter of the pulse
-            cphase_ctrl_params (list): Names of the pulse parameters to
-            interpolate
-            target (float): Target for the value of the main control
-                parameter (cphase_ctrl_params[0]), in case the calibrated
-                range is wide enough to allow several values
+                parameters of the pulse
+            cphase_ctrl_params (list): List of pulse parameter names that
+                should be interpolated to set the conditional phase
+            target (float): Since there might be several sets of parameters
+                yielding a given cphase (if the calibrated range is wide
+                enough to cover strictly more than 360 degrees), we choose
+                one main parameter, cphase_ctrl_params[0], and select the value
+                of this parameter which is closest to 'target'
 
         Returns:
             Dict of control parameters names and values
@@ -409,19 +437,33 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         param_vals = {}
 
         cp_list = cphase_calib_dict['cphase']
-        # Get all possible values for the requested cphase
-        # modulo 360 contained in the calib dict
+        # The calib dict may be calibrated over a range > 360 degrees.
+        # Here, get all possible values of cphase, contained in the range of
+        # the calib dict, which match the requested cphase modulo 360 degrees.
+        # e.g. if cp_list = [273.2, ..., 1215.1] and cphase = 10.0, then
+        # possible_cp = [370.,  730., 1090.] are all the ways one can
+        # implement 10 degrees within the range of the calibration dict.
+        # In details: min(cp_list)+(cphase-min(cp_list))%360 is the minimum
+        # value of cp_list which is equal to cphase modulo 360. We then
+        # recover all values equal to cphase modulo 360 by doing an arange.
+        # Note that the arange does not include the upper bound, but this
+        # would mean missing one possible cphase only if
+        # max(cp_list) = cphase (mod. 360).
         possible_cp = np.arange(min(cp_list)+(cphase-min(cp_list))%360,
                                  max(cp_list), 360)
-        # Get corresponding control parameter
+        # Get values of the main control parameter which yield these cphases
         f = interp1d(cp_list, cphase_calib_dict[cphase_ctrl_params[0]],
                      kind='quadratic')
         possible_param_vals = f(possible_cp)
-        # Choose the cphase with trans_amplitude2 closest to ta_target
+        # Choose the value of the main control param closest to target
         id_closest = np.abs(possible_param_vals-target).argmin()
+        # This is the cphase (not modulo 360) from the calibration dict which:
+        # - equals the requested cphase modulo 360 degrees
+        # - requires a value of the main control parameter closest to target
         cphase = possible_cp[id_closest]
 
-        # Interpolate all params at cp
+        # Now that we have chosen one point of the calib dict, interpolate all
+        # control params needed to reach this value of cphase
         for param_name in cphase_ctrl_params:
             cal_data = cphase_calib_dict[param_name]
             if isinstance(cal_data, dict):  # for 'basis_rotation'
@@ -452,6 +494,8 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
                     cphase=self.cphase,
                     cphase_calib_dict=self.cphase_calib_dict,
                     cphase_ctrl_params=self.cphase_ctrl_params,
+                    # target the main control param to be close to the
+                    # currently calibrated value for the CZ180 gate
                     target=getattr(self, self.cphase_ctrl_params[0])
                 )
             for param_name, param_value in param_dict.items():
