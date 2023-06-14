@@ -285,8 +285,8 @@ class CircuitBuilder:
             #  parse Z gates etc.
             pulse_name = op_name.split(':')[0].rstrip('0123456789.')
             angle = op_name[len(pulse_name):]
-            factor = -1 if op_name[0] == 'm' else 1
-            if factor == -1:
+            sign = -1 if op_name[0] == 'm' else 1
+            if sign == -1:
                 op_name = op_name[1:]
             allowed_ops = ['X', 'Y', 'Z', 'CZ']
             # startswith is needed to recognise all CZ gates, e.g. 'CZ_nztc'
@@ -314,16 +314,20 @@ class CircuitBuilder:
                         param_end = angle.find(']', param_start)
                         param = angle[param_start:param_end]
                         angle = angle.replace('[' + param + ']', 'x')
-                        f = eval('lambda x : ' + angle)
                     else:
                         param = angle
 
             if op_name.startswith('CZ'):  # Two-qubit gate
                 if param is not None:
+                    # FIXME: this code block is duplicated 3 times, for each
+                    #  gate type (CZ, Z, X/Y). This should be cleaned up once
+                    #  we improve or generalise further what op codes can be
+                    #  parsed by this method.
                     if param_start > 0:
-                        func = (lambda x, f=factor, fnc=f: f * fnc(x))
+                        func = (lambda x, sign=sign, fnc=
+                        eval('lambda x : ' + angle): sign * fnc(x))
                     else:
-                        func = (lambda x, f=factor: f * x)
+                        func = (lambda x, sign=sign: sign * x)
                     cphase = ParametricValue(
                         param, func=func,
                         op_split=[op_name, *qbn])
@@ -396,17 +400,17 @@ class CircuitBuilder:
                 if pulse_name == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func = (lambda x, qb=qbn[0], f=factor,
+                            func = (lambda x, qb=qbn[0], sign=sign,
                                           fnc=eval('lambda x : ' + angle):
-                                    {qb: f * fnc(x)})
+                                    {qb: sign * fnc(x)})
                         else:  # angle = parameter
-                            func = (lambda x, qbn=qbn[0], f=factor:
-                                    {qbn: f * x})
+                            func = (lambda x, qbn=qbn[0], sign=sign:
+                                    {qbn: sign * x})
                         p[0]['basis_rotation'] = ParametricValue(
                             param, func=func, op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
-                        p[0]['basis_rotation'] = {qbn[0]: factor * float(angle)}
+                        p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
                 else:
                     qb, _ = self.get_qubits(qbn[0])
                     corr_func = qb[0].calculate_nonlinearity_correction
@@ -415,18 +419,19 @@ class CircuitBuilder:
                             # combine the mathematical expression with a
                             # function that calculates the amplitude
                             func = (
-                                lambda x, a=p[0]['amplitude'], f=factor,
+                                lambda x, a=p[0]['amplitude'], sign=sign,
                                        fnc=eval('lambda x : ' + angle):
                                 a * corr_func(
-                                    ((f * fnc(x) + 180) % (-360) + 180) / 180))
+                                    ((sign * fnc(x) + 180) %
+                                     (-360) + 180) / 180))
                         else:  # angle = parameter
-                            func = lambda x, a=p[0]['amplitude'], f=factor: \
+                            func = lambda x, a=p[0]['amplitude'], sign=sign: \
                                 a * corr_func(
-                                    ((f * x + 180) % (-360) + 180) / 180)
+                                    ((sign * x + 180) % (-360) + 180) / 180)
                         p[0]['amplitude'] = ParametricValue(
                             param, func=func, op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
-                        angle = factor * float(angle)
+                        angle = sign * float(angle)
                         # configure drive pulse amplitude for this angle
                         p[0]['amplitude'] *= corr_func(
                             ((angle + 180) % (-360) + 180) / 180)
