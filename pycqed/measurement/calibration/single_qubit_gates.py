@@ -1589,6 +1589,7 @@ class ReadoutPulseScope(ParallelLOSweepExperiment):
         vals[0] = vals[0][:n_acqs]
         return seqs, vals
 
+
 class SingleQubitGateCalibExperiment(CalibBuilder):
     """
     Base class for single qubit gate tuneup measurement classes (Rabi, Ramsey,
@@ -1611,8 +1612,9 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
         Can be used to provide keyword arguments to set_update_callback,
         sweep_n_dim, autorun, and to the parent class.
 
-        The following keyword arguments will be copied as a key to tasks
-        that do not have their own value specified:
+        The following keyword arguments and their value will be copied to each
+            task which does not already contain them.
+
         - transition_name: one of the following strings "ge", "ef", "fh"
             specifying which transmon transition to tune up.
             This can be specified in the task list and can be different for
@@ -3030,159 +3032,186 @@ class QScale(SingleQubitGateCalibExperiment):
         return d
 
 
-class InPhaseAmpCalib(SingleQubitGateCalibExperiment):
+class ErrorAmplificationCalibExperiment(SingleQubitGateCalibExperiment):
     """
-    In-phase calibration measurement for finding small miscalibrations in the
-    pi-pulse amplitude associated with a transmon transition.
-    This is a SingleQubitGateCalibExperiment, see docstring there
-    for general information.
+    Base class for measurements using error amplification.
+
+    This is a multitasking experiment, see docstrings of MultiTaskingExperiment
+    and of CalibBuilder for general information. Each task corresponds to one
+    qubit specified by the key 'qb' (either name or QuDev_transmon instance),
+    i.e. multiple qubits can be measured in parallel.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
 
-        |tr_prep_pulses**| -- |X90_tr_name**| -- Nx|X180_tr_name**| -- |RO*|
-                                                     sweep N
+        qb:  preparation_pulses - [amplification_pulses] x n_repetitions - |RO|
+                                  sweep some pulse param
 
-        * = in parallel on all qubits_to_measure (key in the task)
-        ** = in parallel on all qubits_to_measure and aligned at the end
-             (i.e. ends of the last X180_tr_name are aligned with start of
-             RO pulses)
+    Expected sweep points, either global or per task:
+        - n_repetitions in dimension specified by n_repetitions_sweep_dim:
+        list or array specifying the number of times to repeat the
+        amplification_pulses
+        - (optional) some pulse parameter in the other dimension: list or array
+        specifying the values of this pulse parameter
 
-        Note: if the qubits have different drive pulse lengths, then alignment
-        at the start of RO pulse means the individual drive pulses may end up
-        not being applied in parallel between different qubits.
-        See Rabi class docstring for an example of this situation.
+    Idea behind this calibration measurement:
+        If the drive pulses are perfectly calibrated, independent of
+        n_repetitions, the qubit will remain in the state in which it is
+        prepared by the preparation_pulses. Miscalibrations in some pulse
+        parameter will be signaled by a deviation from this preparation state.
 
-        Note: depending on which transition is tuned up in each task, the
-        sequence can have different number of pulses for each qubit.
+    Args
+        See docstring of parent class for the first 3 parameters.
 
-    See docstring of parent class for the first 3 parameters.
-    :param n_pulses: (int) max number of X180_tr_name in the experiment. The
-        class will then n_pulses/2 segments with even number of pi-pulses
-        (i.e. np.arange(nr_p + 1)[::2]).
-        This parameter can be used together with "qubits" for convenience to
-        avoid having to specify a task_list.
-        If not None, n_pulses will be used to create the first dimension of
-        sweep points, which will be identical for all tasks.
-    :param kw: keyword arguments.
-        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
-        to the parent class.
+        n_repetitions (list or array): specifying the number of times to repeat
+            the amplification_pulses
+        preparation_pulses (list of str): op codes of preparation pulses
+        amplification_pulses (list of str): op codes of the group of pulses
+            that will be amplified, i.e. repeated n_repetitions times
+        pulse_modifs (dict): for the amplification_pulses. Passed to
+            block_from_ops, see docstring there for more details.
+        analysis_class (class): analysis class, typically from
+            timedomain_analysis.py. Defaults to MultiQubit_TimeDomain_Analysis.
+
+    Keyword Args
+        Can be used to provide keyword arguments to sweep_n_dim, autorun,
+        and to the parent classes.
+
+        The following keyword arguments will be copied as entries in
+        sweep_points:
+        - n_repetitions
+        - some pulse parameter (if provided)
 
         Moreover, the following keyword arguments are understood:
-            use_x90_pulses: (bool, default: False) whether apply a train of
-                pi-pulses or a train of pairs of pi/2-pulses (allows to
-                calibrate the pi/2-pulses)
-
-    The following keys in a task are interpreted by this class in
-    addition to the ones recognized by the parent classes:
-        - n_pulses
+        n_repetitions_sweep_dim (int, default: 0): dimension in which to
+            sweep the n_repetitions
     """
 
-    kw_for_sweep_points = {
-        'n_pulses': dict(param_name='n_pulses', unit='',
-                         label='Nr. $\\pi$-pulses, $N$', dimension=0,
-                         values_func=lambda nr_p:
-                         np.arange(nr_p + 1)[::2])
-    }
-    default_experiment_name = 'Inphase_amp_calib'
+    default_experiment_name = 'ErrorAmplificationCalibExperiment'
     call_parallel_sweep = False  # pulse sequence changes between segments
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 n_pulses=None, **kw):
+                 n_repetitions=None, preparation_pulses=(), pulse_modifs=None,
+                 amplification_pulses=(), analysis_class=None, **kw):
         try:
-            self.use_x90_pulses = kw.get('use_x90_pulses', False)
-            self.n_pulses = n_pulses
+            nreps_swpdim = kw.get('n_repetitions_sweep_dim', 0)
+            self.kw_for_sweep_points.update({
+                'n_repetitions': dict(param_name='n_repetitions', unit='',
+                                      label='Nr. repetitions, $N$',
+                                      dimension=nreps_swpdim),
+            })
+            self.preparation_pulses = preparation_pulses
+            self.amplification_pulses = amplification_pulses
+            self.pulse_modifs = pulse_modifs
+            self.analysis_class = analysis_class
+            if self.analysis_class is None:
+                self.analysis_class = tda.MultiQubit_TimeDomain_Analysis
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
-                             n_pulses=n_pulses, **kw)
+                             n_repetitions=n_repetitions,
+                             preparation_pulses=preparation_pulses,
+                             amplification_pulses=amplification_pulses,
+                             pulse_modifs=pulse_modifs, **kw)
         except Exception as x:
             self.exception = x
             traceback.print_exc()
 
     def update_experiment_name(self):
         """
-        Updates self.experiment_name to contain n_pulses and whether two X90
-        pulses are used instead of X180 pulses.
+        Updates self.experiment_name with the number of repetitions.
         """
-        self.experiment_name += f'_{self.n_pulses}'
-        if self.use_x90_pulses:
-            self.experiment_name += '_x90_pulses'
+        n_reps = []
+        for task in self.preprocessed_task_list:
+            n_reps += [task['sweep_points']['n_repetitions'][-1]]
+        if len(np.unique(n_reps)) == 1:
+            self.experiment_name += f'_{n_reps[0]}_repetitions'
 
     def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
         """
-        This function creates the blocks for each InPhaseCalib measurement task,
-        see the pulse sequence in the class docstring.
-        :param sp1d_idx: sweep point index in the first sweep dimension
-        :param sp2d_idx: sweep point index in the second sweep dimension
-        :param kw: keyword arguments to be provided in each task
-            qb: qubit name
-            sweep_points: SweepPoints instance
-            transition_name: transmon transition to be tuned up. Can be
+        This function creates the blocks for each task, see the pulse sequence
+        in the class docstring.
+
+        Args
+            sp1d_idx (int): sweep point index in the first sweep dimension
+            sp2d_idx (int): sweep point index in the second sweep dimension
+
+        Keyword Args: to be provided in each task
+            qb (str): qubit name
+            sweep_points (class instance): of the SweepPoints.
+                Must contain the sweep parameter 'n_repetitions'.
+            transition_name (str): transmon transition to be tuned up. Can be
                 "", "_ef", "_fh". See the docstring of parent method.
         """
+
         parallel_block_list = []
         for i, task in enumerate(self.preprocessed_task_list):
-            transition_name = task['transition_name']
+            tr_name = task['transition_name']
             sweep_points = task['sweep_points']
             qb = task['qb']
 
-            # create prepended pulses
-            prepend_blocks = super().sweep_block(**task)
-            # add inphase_calib block consisting of the number of X180_tr_name
-            # pulses indicated by sp1d_idx
-            n_pulses = sweep_points.get_sweep_params_property(
-                'values', 0, 'n_pulses')[sp1d_idx]
-            pulse_list = [f'X90{transition_name} {qb}'] + \
-                         (2*n_pulses * [f'X90{transition_name} {qb}'] if
-                          self.use_x90_pulses else
-                          n_pulses*[f'X180{transition_name} {qb}'])
-            inphase_calib_block = self.block_from_ops(
-                f'pulses_{qb}', pulse_list)
-            # gather the blocks for each task
-            parallel_block_list += [self.sequential_blocks(
-                f'inphase_calib_{qb}', prepend_blocks + [inphase_calib_block])]
+            # Get the block to prepend from the parent class
+            # (see docstring there)
+            prepend_block = super().sweep_block(qb, sweep_points, tr_name)
 
-        return self.simultaneous_blocks(f'inphase_calib_{sp2d_idx}_{sp1d_idx}',
+            # Apply self.preparation_pulses
+            pulse_list = [f'{p}{tr_name} {qb}' for p in self.preparation_pulses]
+            # Find in which sweep dimension n_repetitions are
+            nreps_dim = sweep_points.find_parameter('n_repetitions')
+            sp_idx_nreps, sp_idx_par = (sp1d_idx, sp2d_idx) if nreps_dim == 0 \
+                else (sp2d_idx, sp1d_idx)
+            # Apply n_repetitions * self.amplification_pulses
+            n_repetitions = sweep_points['n_repetitions'][sp_idx_nreps]
+            pulse_list += n_repetitions * [f'{p}{tr_name} {qb}' for
+                                           p in self.amplification_pulses]
+            # Create a block from this list of pulses
+            drive_calib_block = self.block_from_ops(
+                f'pulses_{qb}', pulse_list, pulse_modifs=self.pulse_modifs)
+
+            # If sweep_points contains pulse parameter, sweep them for
+            # all pulses.
+            for dim, sweep_dim in enumerate(sweep_points):
+                for param_name in sweep_dim:
+                    for pulse_dict in drive_calib_block.pulses:
+                        if param_name in pulse_dict:
+                            pulse_dict[param_name] = \
+                                sweep_points[param_name][sp1d_idx if  dim == 0
+                                else sp2d_idx]
+
+            # Append the final block for this task to parallel_block_list
+            parallel_block_list += [self.sequential_blocks(
+                f'err_ampl_calib_{qb}', prepend_block + [drive_calib_block])]
+
+        return self.simultaneous_blocks(f'err_ampl_calib_{sp2d_idx}_{sp1d_idx}',
                                         parallel_block_list, block_align='end')
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
-        Runs analysis and stores analysis instances in self.analysis.
-        :param analysis_kwargs: (dict) keyword argument for analysis
-        :param kw: keyword arguments
-            Passed to parent method.
+        Runs analysis and stores analysis instance in self.analysis.
+
+        Args
+            analysis_kwargs (dict): keyword arguments for analysis class
+
+        Keyword Args
+            Passed to super call.
         """
 
         super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
-
-        self.analysis = tda.InPhaseAmpCalibAnalysis(
+        self.analysis = self.analysis_class(
             qb_names=self.meas_obj_names, t_start=self.timestamp,
             **analysis_kwargs)
 
-    def run_update(self, **kw):
-        """
-        Updates the pi-pulse amplitude (tr_name_amp180) of the qubit in
-        each task with the value extracted by the analysis.
-        :param kw: keyword arguments
-        """
-        for task in self.preprocessed_task_list:
-            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
-            qubit.set(f'{task["transition_name_input"]}_amp180',
-                      self.analysis.proc_data_dict['analysis_params_dict'][
-                          qubit.name]['corrected_amp'])
 
-
-class DriveAmpCalib(SingleQubitGateCalibExperiment):
+class NPulseAmplitudeCalib(ErrorAmplificationCalibExperiment):
     """
     Calibration measurement for the qubit drive amplitude that makes use of
     error amplification from application of N subsequent pulses.
 
     This is a multitasking experiment, see docstrings of MultiTaskingExperiment
     and of CalibBuilder for general information. Each task corresponds to one
-    qubit specified by the key 'qb' (either name of QuDev_transmon instance)
-    i.e., multiple qubit can be measured in parallel.
+    qubit specified by the key 'qb' (either name or QuDev_transmon instance),
+    i.e. multiple qubits can be measured in parallel.
 
     This experiment can be run in two modes:
 
@@ -3212,22 +3241,19 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
 
         qb: |X90|---[|Rx(pi/nr_pulses_pi)|] x n_repetitions x n_pulses_pi--|RO|
 
-    Idea behind this calibration measurement:
-     If the pulses are perfectly calibrated, the qubit will remain in the
-     superposition state with 50% excited state probability independent of
-     n_repetitions and amp_scalings. Miscalibrations will be signaled by an
-     oscillation of the excited state probability around 50% with increasing N.
-     By minimizing the standard deviation of this oscillation away from the 50%
-     line as a function of the amp_scalings we can calibrate any drive amplitude
-     with high precision.
-
     For either mode, expected sweep points, either global or per task
      - n_repetitions in dimension 0: number of effective pi rotations after the
         initial pi-half pulse.
      - amp_scalings in dimension 1: dimensionless fractions of a pi rotation
         around the x-axis of the Bloch sphere.
 
-    Keyword args:
+    Idea behind this calibration measurement:
+     If the pulses are perfectly calibrated, the qubit will remain in the
+     superposition state with 50% excited state probability independent of
+     n_repetitions and amp_scalings. Miscalibrations will be signaled by an
+     oscillation of the excited state probability around 50% with increasing N.
+
+    Keyword args
         Can be used to provide keyword arguments to sweep_n_dim, autorun,
         and to the parent classes.
 
@@ -3250,31 +3276,23 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
             for_leakage (bool, default: False): if True, runs the experiment
                 without the first X90 pulse and sets cal_states to 'gef'
     """
+
+    default_experiment_name = 'NPulseAmplitudeCalib'
     kw_for_sweep_points = {
-        'n_repetitions': dict(param_name='n_repetitions', unit='',
-                         label='Nr. repetitions, $N$', dimension=0),
         'amp_scalings': dict(param_name='amp_scalings', unit='',
                              label='Amplitude Scaling, $r$', dimension=1),
     }
-
-    default_experiment_name = 'Drive_amp_calib'
-    call_parallel_sweep = False  # pulse sequence changes between segments
     kw_for_task_keys = ['n_pulses_pi', 'fixed_scaling']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 n_repetitions=None, amp_scalings=None, n_pulses_pi=1,
-                 fixed_scaling=None, **kw):
+                 amp_scalings=None, n_pulses_pi=1, fixed_scaling=None, **kw):
         try:
-            # Define experiment_name and call the parent class __init__
-            self.for_leakage = kw.get('for_leakage', False)
-            if self.for_leakage and 'cal_states' not in kw:
-                kw['cal_states'] = 'gef'
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
-                             n_repetitions=n_repetitions,
                              amp_scalings=amp_scalings,
                              n_pulses_pi=n_pulses_pi,
                              fixed_scaling=fixed_scaling,
+                             analysis_class=tda.NPulseAmplitudeCalibAnalysis,
                              **kw)
         except Exception as x:
             self.exception = x
@@ -3282,21 +3300,25 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
 
     def update_experiment_name(self):
         """
-        Updates self.experiment_name with the number of Rabi pulses n.
+        Updates self.experiment_name based on the last (largest) entry in
+        n_repetitions, and on the values of the parameters n_pulses_pi and
+        fixed_scaling.
         """
         n_reps = []
         for task in self.preprocessed_task_list:
-            n_reps += [task['sweep_points'].get_sweep_params_property(
-                'values', param_names='n_repetitions')[-1]]
+            n_reps += [task['sweep_points']['n_repetitions'][-1]]
         if len(np.unique(n_reps)) == 1:
+            # all tasks have the same n_repetitions array: append it to the
+            # experiment name
             self.experiment_name += f'_{n_reps[0]}_repetitions'
+
         nr_pi = [task['n_pulses_pi'] for task in self.preprocessed_task_list]
         fixed_sc_exp = any([task['fixed_scaling'] is not None
-                        for task in self.preprocessed_task_list])
+                            for task in self.preprocessed_task_list])
         if not fixed_sc_exp and len(np.unique(nr_pi)) == 1:
+            # fixed_scaling is not used, and all tasks have the same
+            # n_pulses_pi: append it to the experiment name
             self.experiment_name += f'_{nr_pi[0]}xpi_over_{nr_pi[0]}'
-        if self.for_leakage:
-            self.experiment_name += '_leakage'
 
     def update_sweep_points(self):
         """
@@ -3304,8 +3326,7 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
         this function will add them as np.array([1/n_pulses_pi]) or
         np.array([1 - 1/n_pulses_pi]) if fixed_scaling is not None.
         """
-        swp_dim1 = self.sweep_points.get_sweep_dimension(1)
-        if len(swp_dim1) == 0:
+        if len(self.sweep_points) == 1:
             # amp_scalings were not specified
             nr_ppi = []
             prefixes = []
@@ -3341,7 +3362,7 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
                         f'{prefixes[i]}amp_scalings', vals, unit='',
                         label='Amplitude Scaling, $r$', dimension=1)
 
-    def sweep_block(self, sp1d_idx, sp2d_idx, sweep_points, **kw):
+    def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
         """
         This function creates the block at the current iteration in sweep_n_dim,
         specified by sp1d_idx and sp2d_idx.
@@ -3349,11 +3370,16 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
         Args:
             sp1d_idx: current index in the first sweep dimension
             sp2d_idx: current index in the second sweep dimension
-            sweep_points: SweepPoints object
 
         Keyword args
-            to allow pass through kw even if it contains entries that are
+            To allow pass through kw even if it contains entries that are
             not needed
+
+            To be provided in each task
+                qb (str): qubit name
+                sweep_points (class instance): of the SweepPoints
+                transition_name (str): transmon transition to be tuned up.
+                Can be "", "_ef", "_fh". See the docstring of parent method.
 
         Returns:
             instance of Block created with simultaneous_blocks from a list
@@ -3389,11 +3415,10 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
 
             # Get the block to prepend from the parent class
             # (see docstring there)
-            prepend_block = super().sweep_block(qb, sweep_points,
-                                                transition_name)
+            prepend_block = SingleQubitGateCalibExperiment.sweep_block(
+                    self, qb, sweep_points, transition_name)
 
-            n_reps = sweep_points.get_sweep_params_property(
-                'values', 0, 'n_repetitions')[sp1d_idx]
+            n_reps = sweep_points['n_repetitions'][sp1d_idx]
             sp2d = sweep_points.get_sweep_dimension(1)
             if fixed_scaling is not None:
                 if len(sp2d) > 1:
@@ -3422,13 +3447,12 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
                     pulse_dict['amplitude'] *= fixed_scaling
             else:
                 # Apply n_repetitions * n_pulses_pi X180 pulses after the
-                # initialpi-half pulse, and scale the amplitude of these X180
+                # initial pi-half pulse, and scale the amplitude of these X180
                 # pulses by amp_scaling (specified by sp2d_idx).
 
                 n_pulses_pi = task['n_pulses_pi']
                 # Create the pulse list for n_repetitions specified by sp1d_idx
-                pulse_list = [] if self.for_leakage else \
-                    [f'X90{transition_name} {qb}']
+                pulse_list = [f'X90{transition_name} {qb}']
                 pulse_list += n_reps * n_pulses_pi * \
                               [f'X180{transition_name} {qb}']
 
@@ -3436,7 +3460,7 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
                 drive_calib_block = self.block_from_ops(f'pulses_{qb}',
                                                         pulse_list)
                 # Divide amp of all pulses after the first by amp_scaling
-                for pulse_dict in drive_calib_block.pulses[not self.for_leakage:]:
+                for pulse_dict in drive_calib_block.pulses[1:]:
                     for param_name in sp2d:
                         values = sp2d[param_name][0]
                         if param_name == 'amp_scalings':
@@ -3450,21 +3474,6 @@ class DriveAmpCalib(SingleQubitGateCalibExperiment):
 
         return self.simultaneous_blocks(f'drive_amp_calib_{sp2d_idx}_{sp1d_idx}',
                                         parallel_block_list, block_align='end')
-
-    def run_analysis(self, analysis_kwargs=None, **kw):
-        """
-        Runs analysis and stores analysis instance in self.analysis.
-        :param analysis_kwargs: (dict) keyword arguments for analysis class
-        :param kw: keyword arguments
-            Passed to parent method.
-        """
-
-        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
-        if analysis_kwargs is None:
-            analysis_kwargs = {}
-        self.analysis = tda.DriveAmpCalibAnalysis(
-            qb_names=self.meas_obj_names, t_start=self.timestamp,
-            **analysis_kwargs)
 
     def run_update(self, **kw):
         """
@@ -3850,7 +3859,7 @@ class ActiveReset(CalibBuilder):
         return thresholds
 
 
-class DriveAmpNonlinearityCurve(CalibBuilder):
+class DriveAmplitudeNonlinearityCurve(CalibBuilder):
     """
     Calibration measurement for the drive amplitude non-linearity curve.
     This class runs DriveAmpCalib for several values of n_pulses_pi. See
@@ -3958,13 +3967,14 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
                     od.update(opt_dict)
                     analysis_kwargs = {'options_dict': od}
                     analysis_kwargs.update(ana_kw)
-                    DACalib = DriveAmpCalib(task_list=self.task_list,
-                                            sweep_points=self.sweep_points,
-                                            qubits=self.qubits,
-                                            n_repetitions=self.n_repetitions,
-                                            n_pulses_pi=npp,
-                                            analysis_kwargs=analysis_kwargs,
-                                            **self.init_kwargs)
+                    DACalib = NPulseAmplitudeCalib(
+                        task_list=self.task_list,
+                        sweep_points=self.sweep_points,
+                        qubits=self.qubits,
+                        n_repetitions=self.n_repetitions,
+                        n_pulses_pi=npp,
+                        analysis_kwargs=analysis_kwargs,
+                        **self.init_kwargs)
                 self.measurements += [DACalib]
 
                 # set the corrections from this measurement as temporary values
@@ -4002,13 +4012,14 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
                 analysis_kwargs.update(ana_kw)
                 with temporary_value(*temp_vals):
                     # measure for 1/npp
-                    DACalib = DriveAmpCalib(task_list=self.task_list,
-                                            sweep_points=self.sweep_points,
-                                            qubits=self.qubits,
-                                            n_repetitions=self.n_repetitions,
-                                            n_pulses_pi=npp,
-                                            analysis_kwargs=analysis_kwargs,
-                                            **self.init_kwargs)
+                    DACalib = NPulseAmplitudeCalib(
+                        task_list=self.task_list,
+                        sweep_points=self.sweep_points,
+                        qubits=self.qubits,
+                        n_repetitions=self.n_repetitions,
+                        n_pulses_pi=npp,
+                        analysis_kwargs=analysis_kwargs,
+                        **self.init_kwargs)
                     self.measurements += [DACalib]
 
                 if run_complement:
@@ -4024,13 +4035,14 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
                         tl_dict.update(task)
                         tl += [tl_dict]
                     with temporary_value(*temp_vals):
-                        DACalib = DriveAmpCalib(task_list=tl,
-                                                sweep_points=self.sweep_points,
-                                                qubits=self.qubits,
-                                                n_repetitions=self.n_repetitions,
-                                                n_pulses_pi=npp,
-                                                analysis_kwargs=ana_kw,
-                                                **self.init_kwargs)
+                        DACalib = NPulseAmplitudeCalib(
+                            task_list=tl,
+                            sweep_points=self.sweep_points,
+                            qubits=self.qubits,
+                            n_repetitions=self.n_repetitions,
+                            n_pulses_pi=npp,
+                            analysis_kwargs=ana_kw,
+                            **self.init_kwargs)
                         self.measurements += [DACalib]
 
     def run_analysis(self, analysis_kwargs=None, **kw):
@@ -4049,7 +4061,7 @@ class DriveAmpNonlinearityCurve(CalibBuilder):
         super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        self.analysis = tda.DriveAmpNonlinearityCurveAnalysis(
+        self.analysis = tda.DriveAmplitudeNonlinearityCurveAnalysis(
             qb_names=self.meas_obj_names,
             t_start=self.measurements[0].timestamp,
             t_stop=self.measurements[-1].timestamp,
