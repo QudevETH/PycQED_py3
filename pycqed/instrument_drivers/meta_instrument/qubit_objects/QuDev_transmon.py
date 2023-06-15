@@ -179,7 +179,7 @@ class QuDev_transmon(MeasurementObject):
                                  'amplitude fit',
                            initial_value={}, parameter_class=ManualParameter)
         self.add_parameter('fit_ge_freq_from_dc_offset',
-                           label='Parameters for frequency vs flux dc '
+                           label='Parameters for frequency vs flux DC '
                                  'offset fit',
                            initial_value={}, parameter_class=ManualParameter)
         self.add_parameter(
@@ -385,9 +385,9 @@ class QuDev_transmon(MeasurementObject):
                                  vals=vals.Numbers(0),
                                  docstring="Used for NZTransitionControlledPulse")
 
-        # dc flux parameters
+        # DC flux parameters
         self.add_parameter('dc_flux_parameter', initial_value=None,
-                           label='QCoDeS parameter to sweep the dc flux',
+                           label='QCoDeS parameter to sweep the DC flux',
                            parameter_class=ManualParameter)
         self.add_parameter('flux_parking', initial_value=0,
                            label='Flux (in units of phi0) at the parking '
@@ -1442,6 +1442,33 @@ class QuDev_transmon(MeasurementObject):
 
     def measure_drive_mixer_spectrum(self, if_freqs, amplitude=0.5,
                                      trigger_sep=5e-6, align_frequencies=True):
+        """Measure the output spectrum of the drive upconversion mixer.
+
+        A square pulse with the given amplitude is generated at ge_freq.
+        The readout local oscillator is swept to resolve different frequencies.
+        To average the signal with a fixed phase, the intermediate frequencies
+        `if_freq` need to satisfy the commensurability condition that
+        `if_freq * trigger_sep` must be an integer. The `if_freqs` can be
+        automatically adjusted to satisfy this constraint using the
+        `align_frequencies` parameter.
+
+        Args:
+            if_freqs:
+                A list or array of intermediate frequencies to measure the
+                output spectrum for, in hertz.
+            amplitude:
+                amplitude of the output square pulse in volts. Defaults
+                to `0.5`.
+            trigger_sep:
+                experiment repetition period in seconds. Defaults to `5e-6`.
+            align_frequencies:
+                Boolean flag, whether to automatically satisfy the
+                commensurability constraint. Might lead to in non-uniform
+                spacing of sweep points. Defaults to `True`.
+
+        Return:
+            MeasurementAnalysis object that has plotted the output spectrum.
+        """
         MC = self.instr_mc.get_instr()
         if align_frequencies:
             if_freqs = (if_freqs*trigger_sep).astype(int)/trigger_sep
@@ -1479,6 +1506,24 @@ class QuDev_transmon(MeasurementObject):
 
     def measure_drive_mixer_spectrum_fft(self, ro_lo_freq, amplitude=0.5,
                                          trigger_sep=5e-6):
+        """Measure the output power spectrum of the drive upconversion mixer.
+
+        A square pulse with the given amplitude is generated at ge_freq.
+        The readout local oscillator is set at `ro_lo_freq`, and the power
+        spectra of individual timetraces are averaged. Makes use of the
+        `self.scope_fft_det` detector.
+        Args:
+            ro_lo_freq:
+                The frequency of the readout local oscillator in hertz.
+            amplitude:
+                amplitude of the output square pulse in volts. Defaults
+                to `0.5`.
+            trigger_sep:
+                experiment repetition period in seconds. Defaults to `5e-6`.
+
+        Return:
+            MeasurementAnalysis object that has plotted the output spectrum.
+        """
         MC = self.instr_mc.get_instr()
         s = swf.None_Sweep(
             name='UHF intermediate frequency',
@@ -1566,6 +1611,38 @@ class QuDev_transmon(MeasurementObject):
     def calibrate_drive_mixer_carrier_fft(
             self, update=True, x0=(0., 0.), initial_stepsize=0.01,
             trigger_sep=5e-6, no_improv_break=50, upload=True, plot=True):
+        """Calibrate drive upconversion mixer local oscillator leakage.
+
+        Measures the average power at the LO frequency at the output of the
+        mixer. Uses the Nelder-Mead optimization algorithm and the scope_fft_det
+        detector function.
+
+        Args:
+            update:
+                Boolean flag, whether to update the qubit parameters with the
+                optimized values. Defaults to `True`.
+            x0:
+                Initial values for the optimization algorithm.
+                Defaults to `(0., 0.)`.
+            initial_stepsize:
+                Size of the initial step of the optimization algorithm in volts.
+                Defaults to `0.01`.
+            trigger_sep:
+                Experiment repetition period in seconds. Defaults to `5e-6`.
+            no_improv_break:
+                The optimization will be stopped after this many optimization
+                cycles that lead to no improvement in the costfunction.
+                Defaults to `50`.
+            upload:
+                Boolean flag, whether to upload the waveforms for the
+                experiment. Defaults to `True`.
+            plot:
+                Boolean flag, whether to plot the analysis results. Defaults
+                to `True`.
+
+        Return:
+            Optimal DC offsets for the I and Q output channels.
+        """
 
         def detector_generator(s=self):
             d = s.scope_fft_det
@@ -1583,6 +1660,39 @@ class QuDev_transmon(MeasurementObject):
                                       initial_stepsize=0.01, trigger_sep=5e-6,
                                       no_improv_break=50, upload=True,
                                       plot=True):
+        """Calibrate drive upconversion mixer local oscillator leakage.
+
+        Measures the averaged signal at the LO frequency at the output of the
+        upconversion mixer. Uses the Nelder-Mead optimization algorithm and the
+        int_avg_det_spec detector function.
+
+        Args:
+            update:
+                Boolean flag, whether to update the qubit parameters with the
+                optimized values. Defaults to `True`.
+            x0:
+                Initial values for the optimization algorithm.
+                Defaults to `(0., 0.)`.
+            initial_stepsize:
+                Size of the initial step of the optimization algorithm in volts.
+                Defaults to `0.01`.
+            trigger_sep:
+                Experiment repetition period in seconds. Defaults to `5e-6`.
+            no_improv_break:
+                The optimization will be stopped after this many optimization
+                cycles that lead to no improvement in the costfunction.
+                Defaults to `50`.
+            upload:
+                Boolean flag, whether to upload the waveforms for the
+                experiment. Defaults to `True`.
+            plot:
+                Boolean flag, whether to plot the analysis results. Defaults
+                to `True`.
+
+        Return:
+            Optimal DC offsets for the I and Q output channels.
+        """
+
         def detector_generator(s=self):
             return det.IndexDetector(s.int_avg_det_spec, 0)
 
@@ -1813,6 +1923,32 @@ class QuDev_transmon(MeasurementObject):
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
                                        trigger_sep=5e-6, no_improv_break=50,
                                        initial_stepsize=(0.15, 10)):
+        """Calibrate drive upconversion mixer other sideband.
+
+        Measures the averaged signal of a square-pulse at the other sideband
+        frequency. Uses the Nelder-Mead optimization algorithm and the
+        int_avg_det_spec detector function.
+
+        Args:
+            update:
+                Boolean flag, whether to update the qubit parameters with the
+                optimized values. Defaults to `True`.
+            amplitude:
+                Amplitude of the square pulse used for calibration in volts.
+                Defaults to `0.5`.
+            trigger_sep:
+                Experiment repetition period in seconds. Defaults to `5e-6`.
+            no_improv_break:
+                The optimization will be stopped after this many optimization
+                cycles that lead to no improvement in the costfunction.
+                Defaults to `50`.
+            initial_stepsize:
+                Size of the initial step of the optimization algorithm in volts.
+                Defaults to `0.01`.
+
+        Return:
+            optimal IQ amplitude ratio `alpha` and phase correction `phi`.
+        """
         MC = self.instr_mc.get_instr()
         ad_func_pars = {'adaptive_function': opti.nelder_mead,
                         'x0': [self.ge_alpha(), self.ge_phi_skew()],
