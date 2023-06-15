@@ -3303,6 +3303,12 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
             distance = np.abs(S21_1-S21_2)
             argmax = np.argmax(distance)
             distances[f'{state_1}-{state_2}'] = (distance, argmax)
+
+        # generate sum of distances
+        if len(distances): # at least one distance
+            distances_sum = np.sum([v[0] for v in distances.values()], axis=0)
+            argmax = np.argmax(distances_sum)
+            distances["sum"] = (distances_sum, argmax)
         return distances
 
     def prepare_plots(self):
@@ -3366,12 +3372,13 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                         'xvals': frequency[argmax] * np.ones(2),
                         'yvals': [0.95 * np.min(distance),
                                   1.05 * np.max(distance)],
-                        'color': 'red',
+                        'color': 'red' if dkey == "sum" else 'k',
                         'linestyle': 'dotted',
                         'marker': 'None',
                         'setlabel': '$f_{RO}$ = ' \
                                     + f'{(frequency[argmax]/1e9):.4f} GHz',
                         'do_legend': True,
+                    "legend_pos": (0,-1.4)
                 }
 
     def get_state_color(self, state, cmap=plt.get_cmap('tab10')):
