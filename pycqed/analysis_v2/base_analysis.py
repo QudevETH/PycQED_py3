@@ -33,7 +33,6 @@ import copy
 import traceback
 import logging
 log = logging.getLogger(__name__)
-log.addHandler(logging.StreamHandler())
 
 class BaseDataAnalysis(object):
     """
@@ -2349,6 +2348,17 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
         to partition the timestamps into groups to reconstruct the
         N-dimensional measurements.
         See MultiTWPA_SNR_Analysis for an example.
+
+        FIXME: Currently only works for NDimMultiTaskingExperiment, since it
+         relies on sweep_points stored in the task_list of each experiment to
+         reconstruct the individual N-dim sweep_points of each measurement
+         object. This should be fixed by instead relying on the
+         meas_obj_sweep_points_map and global sweep_points stored in the
+         experimental metadata. This requires either fixing
+         NDimMultiTaskingExperiment to correctly store the entire
+         N-dimensional sweep_points in the metadata, or extending this
+         analysis to automatically reconstruct the N-dim sweep_points from
+         the 2-D sweep_points of all individual experiments.
 
         """
 

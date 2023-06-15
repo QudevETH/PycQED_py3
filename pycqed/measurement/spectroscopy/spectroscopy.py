@@ -1233,15 +1233,15 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             qb = self.get_qubit(task)
             if qb.instr_ge_lo() is None and not task['hard_sweep']:
                 # SHFSG Soft Sweep settings:
-                param, func = self._get_power_param(qb)
-                if param is not None:
-                    self.temporary_values.append(
-                        (param, func(qb.spec_power())))
                 pulsar = qb.instr_pulsar.get_instr()
                 mod_freq = pulsar.parameters[
                     f'{qb.ge_I_channel()}_direct_mod_freq']
                 self.temporary_values.append(
                     (mod_freq, self.get_mod_freq_param(qb)()))
+                param, func = self._get_power_param(qb)
+                if param is not None:
+                    self.temporary_values.append(
+                        (param, func(qb.spec_power())))
             elif self.modulated:
                 # HDAWG modulated spectroscopy settings:
                 # FIXME: HDAWG specific code, should be moved to pulsar?
