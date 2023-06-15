@@ -128,14 +128,18 @@ class SSB_DRAG_pulse(pulse.Pulse):
 
 class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
     """
-    SSB Drag pulse with quadrature scaling factor and frequency detuning.
+    SSB second-order DRAG pulse with quadrature scaling factor and
+    frequency detuning.
 
     Args:
         See parent class for docstring.
         Additional parameter recognised by this class:
-            anharmonicity (float): negative of the anharmonicity to the next
-                highest transmon transition in angular units.
-                Ex for a pulse on ge: -2pi(f_ef-f_ge).
+            cancellation_frequency_offset (float; default=0):
+                frequency offset of the spectral cancellation dip with respect
+                to the center frequency.
+            env_mod_frequency (float; default=0):
+                modulation frequency of the pulse envelope, introducing a
+                detuning from mod_frequency
     """
 
     @classmethod
@@ -150,15 +154,24 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
         half = tg / 2
         tc = self.algorithm_time() + half
 
-        a = - self.cancellation_frequency_offset
-        f = - self.env_mod_frequency
-        env_mod_freq = f
+        fc = - self.cancellation_frequency_offset
+        df = - self.env_mod_frequency
+        env_mod_freq = df
         amp_corr = 1
-        if a != 0:
-            env_mod_freq += 3 / (a * tg ** 2 * (np.pi ** 2 - 6))
-            amp_corr -= env_mod_freq ** 2 / (2 * a * (env_mod_freq - f))
+        if fc != 0:
+            # Correction factors to decouple the effects of the parameters.
+            # These correction factors ensure that:
+            # - the maximum spectral power of the pulse is at the
+            # env_mod_frequency
+            # independent of amplitude or cancellation_frequency_offset
+            # - the spectral power of the pulse at 0 is not changed by changing
+            # env_mod_frequency or cancellation_frequency_offset
+            # These corrections work in the limit
+            # abs(env_mod_freq) << 1/tg << cancellation_frequency_offset
+            env_mod_freq += 3 / (fc * tg ** 2 * (np.pi ** 2 - 6))
+            amp_corr -= env_mod_freq ** 2 / (2 * fc * (env_mod_freq - df))
 
-        # in phase quadrature
+        # in-phase component
         envi = np.cos(np.pi * (tvals - tc) / tg) ** 2
         # truncate
         envi *= (tvals - tc >= -half) * (tvals - tc < half)
@@ -166,10 +179,10 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
         envi = envi * (self.amplitude / amp_corr) * \
                np.exp(1j * 2 * np.pi * env_mod_freq * (tvals - tc))
 
-        if a != 0:
+        if fc != 0:
             # apply DRAG correction
-            # Calculate quadrature
-            q = 1 / (2 * np.pi * a * tg)
+            # Calculate quadrature component
+            q = 1 / (2 * np.pi * fc * tg)
             envq = q * tg * 0.5 * (np.diff(envi, prepend=[0]) +
                                    np.diff(envi, append=[0])) / \
                    (tvals[1]-tvals[0])
