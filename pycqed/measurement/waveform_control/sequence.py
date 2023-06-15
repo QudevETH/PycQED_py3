@@ -146,7 +146,7 @@ class Sequence:
                 element_metadata = seg.element_metadata
                 elnames = seg.elements_on_awg.get(group, [])
                 for elname in elnames:
-                    # uelname = unique element name per AWG
+                    # uelname = element name unique within the AWG
                     # If elements are shared between trigger groups of an AWG,
                     # this ensures that the following logic correctly orders
                     # waveforms within each trigger group
