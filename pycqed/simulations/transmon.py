@@ -311,8 +311,21 @@ def transmon_resonator_purcell_levels(ec: float, ej: float,
                                       states: List[Tuple[int, int]] =
                                       ((1, 0, 0), (2, 0, 0), (0, 1, 0), (1, 1, 0),
                                        (0, 0, 1))):
-    """Calculate eigenfrequencies of the coupled transmon-resonator Hamiltonian.
+    """Calculate eigenfrequencies of the coupled transmon-resonator-Purcell
+     filter Hamiltonian, i.e.:
 
+    $\hat{H} =4 E_C \hat{n}_t^2-E_J \cos \hat{\varphi}_t+
+     i g\left(\hat{a}-\hat{a}^{\dagger}\right) \hat{n}_t
+        +\omega_r \hat{a}^{\dagger} \hat{a}
+        + \omega_f \hat{f}^{\dagger} \hat{f}
+        - J\left(\hat{a}-\hat{a}^{\dagger}\right)\left(\hat{f}-\hat{f}^{\dagger}\right)$
+    with the following mapping:
+    g --> gb
+    f --> b_pur
+    a --> a_res
+    omega_f --> fpb
+    omega_r --> frb
+    n --> n_mon
     Args:
         ec: Charging energy of the Hamiltonian.
         ej: Josephson energy of the Hamiltonian.
