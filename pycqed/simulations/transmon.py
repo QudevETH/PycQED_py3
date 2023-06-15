@@ -23,6 +23,7 @@ import numpy as np
 import scipy as sp
 import scipy.optimize
 from typing import Optional, List, Tuple
+from pycqed.utilities.math import kron
 import logging
 log = logging.getLogger(__name__)
 
@@ -334,42 +335,6 @@ def transmon_resonator_purcell_levels(ec: float, ej: float,
         for the specified states with the ground-state energy subtracted.
     """
 
-    def kronecker(*args):
-        """
-        Compute the Kronecker product of multiple matrices.
-
-        Args:
-            *args: Variable number of input matrices.
-
-        Returns:
-            numpy.ndarray: The Kronecker product of the input matrices.
-
-        Example:
-            A = np.array([[1, 2], [3, 4]])
-            B = np.array([[5, 6], [7, 8]])
-            C = np.array([[9, 10], [11, 12]])
-
-            result = kronecker(A, B, C)
-
-        The Kronecker product of multiple matrices is obtained by taking the tensor product
-        of their vector spaces. If A, B, C, ..., are matrices with dimensions (m x n), (p x q),
-        (r x s), ..., respectively, the resulting matrix will have dimensions (m * p * r * ... x
-        n * q * s * ...). The basis elements of the resulting matrix can be represented using
-        braket notation as:
-
-        |aᵢ⟩ ⊗ |bⱼ⟩ ⊗ |cₖ⟩ ⊗ ...
-
-        where |aᵢ⟩ represents the i-th basis element of matrix A, |bⱼ⟩ represents the j-th
-        basis element of matrix B, |cₖ⟩ represents the k-th basis element of matrix C, and so on.
-
-        The resulting matrix is obtained by taking the Kronecker product of each combination
-        of basis elements from the input matrices in the given order.
-        """
-        result = args[0]
-        for i in range(1, len(args)):
-            result = np.kron(result, args[i])
-        return result
-
     id_mon = np.diag(np.ones(dim_charge))
     id_res = np.diag(np.ones(dim_resonator))
     id_pur = np.diag(np.ones(dim_resonator))
@@ -382,11 +347,11 @@ def transmon_resonator_purcell_levels(ec: float, ej: float,
     n_mon = transmon_charge(ng, dim_charge)
     a_res = resonator_destroy(dim_resonator)
     b_pur = resonator_destroy(dim_purcell)
-    ham_qb_res_int = 1j * gb * np.kron(n_mon, a_res - a_res.T)
-    ham_res_pur_int = - j * np.kron(a_res - a_res.T, b_pur - b_pur.T)
-    ham = kronecker(ham_mon, id_res, id_pur) + kronecker(id_mon, ham_res, id_pur) + \
-          kronecker(id_mon, id_res, ham_pur) + np.kron(ham_qb_res_int, id_pur) + \
-          np.kron(id_mon, ham_res_pur_int)
+    ham_qb_res_int = 1j * gb * kron(n_mon, a_res - a_res.T)
+    ham_res_pur_int = - j * kron(a_res - a_res.T, b_pur - b_pur.T)
+    ham = kron(ham_mon, id_res, id_pur) + kron(id_mon, ham_res, id_pur) + \
+          kron(id_mon, id_res, ham_pur) + kron(ham_qb_res_int, id_pur) + \
+          kron(id_mon, ham_res_pur_int)
 
     # diagonalize hamiltonian
     try:
@@ -408,13 +373,13 @@ def transmon_resonator_purcell_levels(ec: float, ej: float,
     return_idxs = []
     for kt, kr, kp in states:
         # bare state
-        bare_state = kronecker(states_transmon[:, kt],
+        bare_state = kron(states_transmon[:, kt],
                                np.arange(dim_resonator) == kr,
                                np.arange(dim_purcell) == kp)
         # find dressed state with most overlap to bare state
         return_idxs.append(np.argmax(np.abs(states_full.T @ bare_state)))
     # ground state
-    bare_state = kronecker(states_transmon[:, 0],
+    bare_state = kron(states_transmon[:, 0],
                            np.arange(dim_resonator) == 0,
                            np.arange(dim_purcell) == 0)
     gs_id = np.argmax(np.abs(states_full.T @ bare_state))
