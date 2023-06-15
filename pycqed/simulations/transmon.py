@@ -309,7 +309,8 @@ def transmon_resonator_purcell_levels(ec: float, ej: float,
                                       dim_resonator: int = 3,
                                       dim_purcell: int = 3,
                                       states: List[Tuple[int, int]] =
-                                      ((1, 0, 0), (2, 0, 0), (0, 1, 0), (1, 1, 0))):
+                                      ((1, 0, 0), (2, 0, 0), (0, 1, 0), (1, 1, 0),
+                                       (0, 0, 1))):
     """Calculate eigenfrequencies of the coupled transmon-resonator Hamiltonian.
 
     Args:
@@ -356,14 +357,14 @@ def transmon_resonator_purcell_levels(ec: float, ej: float,
     # diagonalize hamiltonian
     try:
         levels_full, states_full = np.linalg.eig(ham)
-        levels_transmon, states_transmon = np.linalg.eig(ham_mon)
+        levels_transmon, states_transmon = np.linalg.eigh(ham_mon)
         if any(np.isnan(levels_full)) or any(np.isnan(levels_transmon)):
             raise np.linalg.LinAlgError('Some eigenvalues are nan.')
     except np.linalg.LinAlgError as e:
         log.warning(f'Eigenvalue calculation in transmon_resonator_levels '
                     f'failed in first attempt: {e} Trying again.')
         levels_full, states_full = np.linalg.eig(ham)
-        levels_transmon, states_transmon = np.linalg.eig(ham_mon)
+        levels_transmon, states_transmon = np.linalg.eigh(ham_mon)
         if any(np.isnan(levels_full)) or any(np.isnan(levels_transmon)):
             raise np.linalg.LinAlgError('Some eigenvalues are nan.')
         log.warning('Second attempt successful.')
