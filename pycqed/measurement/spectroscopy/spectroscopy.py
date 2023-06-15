@@ -1364,13 +1364,17 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
         Updates the RO frequency of the qubit in each task with the value
         maximizing the g-e S21 distance, found in the analysis.
         :param kw: keyword arguments
+            : distance_metric (string): "sum" (default) or "{state0}-{state1}", e.g. "g-e".
+            "sum" will take the readout frequency that maximizes the sum of
+             the distances of all states in the IQ plane while "{state0}-{state1}"
+             will take the frequency that maximizes the S21 distance for the listed
+             pair of states.
         """
+        dist = kw.get('distance_metric', "sum")
         for task in self.preprocessed_task_list:
             qb = self.get_qubit(task)
             pdd = self.analysis.proc_data_dict
             ro_freq = pdd['sweep_points_dict'][qb.name]['sweep_points'][
-                pdd['projected_data_dict'][qb.name]['distance'][
-                    f'{self.states[0]}-{self.states[1]}'
-                ][1] # (distances, argmax) -> index 1
+                pdd['projected_data_dict'][qb.name]['distance'][dist][1] # (distances, argmax) -> index 1
             ]
             qb.set(f'ro_freq', ro_freq)
