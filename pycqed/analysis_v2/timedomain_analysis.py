@@ -83,6 +83,86 @@ class ArtificialDetuningMixin():
         return artificial_detuning_dict
 
 
+class PhaseErrorsAnalysisMixin():
+    """Mixin containing utility functions needed by the QScaleAnalysis and
+    NPulsePhaseErrorCalibAnalysis classes.
+
+    Classes deriving from this mixin must the following attributes
+        - sp
+        - qb_names
+        - raw_data_dict
+        - proc_data_dict
+    and the following methods:
+        - get_transition_name
+        - get_data_from_timestamp_list
+    """
+
+    @property
+    def pulse_par_name(self):
+        """
+        Pulse parameter that was swept (either motzoi or env_mod_frequency).
+        """
+        spars0 = self.sp.get_parameters(0)
+        if any(['motzoi' in e for e in spars0]):
+            # for the standard QScale measurement
+            return 'motzoi'
+        elif any(['env_mod_frequency' in e for e in spars0]):
+            # for the FrequencyDetuningCalib and NPulsePhaseErrorCalibAnalysis
+            # measurements
+            return 'env_mod_freq'
+        else:
+            raise ValueError('QScale pulse parameter not recognised. Accepted '
+                             'parameters are "motzoi" and "env_mod_frequency."')
+
+    def _extract_current_pulse_par_value(self):
+        """
+        Takes the value of self.pulse_par_name for each qubit from the HDF file
+        and stores the values in self.raw_data_dict.
+        """
+        params_dict = {}
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
+            s = 'Instrument settings.'+qbn
+            params_dict[f'{trans_name}_{self.pulse_par_name}_'+qbn] = \
+                s+f'.{trans_name}_{self.pulse_par_name}'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
+
+    def create_textstr(self, qb_name, fit_val, fit_stderr, break_lines=False):
+        """
+        Creates the text string that will show up on the plot.
+
+        Args:
+            qb_name (str): name of the qubit
+            fit_val (float): fitted value of self.pulse_par_name
+            fit_stderr (float): standard error from fit of self.pulse_par_name
+            break_lines (bool): wither to introduce line breaks before the
+                 fit_val and fit_stderr in the text string.
+
+        Returns:
+            text string
+        """
+        chr = '\n' if break_lines else ' '
+        scaling_factor = 1 if self.pulse_par_name == 'motzoi' \
+            else 1e-6
+        trans_name = self.get_transition_name(qb_name)
+        old_pulse_par_val = self.raw_data_dict[
+            f'{trans_name}_{self.pulse_par_name}_' + qb_name]
+        if old_pulse_par_val != old_pulse_par_val:
+            old_pulse_par_val = 0
+        old_pulse_par_val *= scaling_factor
+        fit_val *= scaling_factor
+        fit_stderr *= scaling_factor
+
+        if self.pulse_par_name == 'motzoi':
+            return f'Qscale ={chr}{fit_val:.4f} $\pm$ {fit_stderr:.4f}' + \
+                   f'\nold Qscale ={chr}{old_pulse_par_val:.4f}'
+        else:
+            return f'Envelope mod. freq. ={chr}' \
+                   f'{fit_val:.4f} MHz $\pm$ {fit_stderr:.4f} MHz' + \
+                   f'\nold envelope mod. freq. ={chr}{old_pulse_par_val:.4f} MHz'
+
+
 # Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
@@ -4546,6 +4626,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        self.default_options['base_plot_name'] = 'Rabi'
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -4611,7 +4692,8 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.get_amplitudes(fit_res=fit_res, sweep_points=sweep_points)
         self.save_processed_data(key='analysis_params_dict')
 
-    def get_amplitudes(self, fit_res, sweep_points):
+    @staticmethod
+    def get_amplitudes(fit_res, sweep_points):
         # Extract the best fitted frequency and phase.
         freq_fit = fit_res.best_values['frequency']
         phase_fit = fit_res.best_values['phase']
@@ -4687,14 +4769,14 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
             cov_freq_phase = 0
 
         try:
-            piPulse_std = self.calculate_pulse_stderr(
+            piPulse_std = RabiAnalysis.calculate_pulse_stderr(
                 f=freq_fit,
                 phi=phase_fit,
                 f_err=freq_std,
                 phi_err=phase_std,
                 period_const=n_pi_pulse*np.pi,
                 cov=cov_freq_phase)
-            piHalfPulse_std = self.calculate_pulse_stderr(
+            piHalfPulse_std = RabiAnalysis.calculate_pulse_stderr(
                 f=freq_fit,
                 phi=phase_fit,
                 f_err=freq_std,
@@ -4707,10 +4789,16 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
             piPulse_std = 0
             piHalfPulse_std = 0
 
+        mask1 = np.logical_and(piPulse_vals > min(sweep_points),
+                               piPulse_vals < max(sweep_points))
+        mask2 = np.logical_and(piHalfPulse_vals > min(sweep_points),
+                               piHalfPulse_vals < max(sweep_points))
         rabi_amplitudes = {'piPulse': piPulse,
                            'piPulse_stderr': piPulse_std,
                            'piHalfPulse': piHalfPulse,
-                           'piHalfPulse_stderr': piHalfPulse_std}
+                           'piHalfPulse_stderr': piHalfPulse_std,
+                           'piPulse_vals': piPulse_vals[mask1],
+                           'piHalfPulse_vals': piHalfPulse_vals[mask2]}
 
         return rabi_amplitudes
 
@@ -4724,7 +4812,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_plots(self):
         super().prepare_plots()
-
+        bpn = self.get_param_value('base_plot_name')
         if self.do_fitting:
             for k, fit_dict in self.fit_dicts.items():
                 if k.startswith('amplitude_fit'):
@@ -4757,7 +4845,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     # OneD
                     title_suffix = ''
                 fit_res = fit_dict['fit_res']
-                base_plot_name = f'Rabi_{k}_{self.data_to_fit[qbn]}'
+                base_plot_name = f'{bpn}_{k}_{self.data_to_fit[qbn]}'
                 dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
@@ -4865,6 +4953,35 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'verticalalignment': 'top',
                     'plotfn': self.plot_text,
                     'text_string': textstr}
+
+
+class NPulsePhaseErrorCalibAnalysis(RabiAnalysis, PhaseErrorsAnalysisMixin):
+
+    def extract_data(self):
+        super().extract_data()
+        self.default_options['base_plot_name'] = 'NPulsePhaseErrorCalib'
+        self._extract_current_pulse_par_value()
+
+    def prepare_plots(self):
+        super().prepare_plots()
+        if self.do_fitting:
+            # We look for the plot dicts which prepare text boxes. Their names
+            # start with text_msg_ (see RabiAnalysis.prepare_plots())
+            txt_pdns = [k for k in self.plot_dicts if k.startswith('text_msg_')]
+            for txt_pd_name in txt_pdns:
+                # take everything after text_msg_
+                suff_split = txt_pd_name.split('_')[2:]
+                suff = '_'.join(suff_split)
+                # to get the qubit name, we assume that the suffix contains the
+                # qubit name and that it is separated by '_' from the rest of
+                # the characters
+                qbn = [s for s in suff_split if s.startswith('qb')][0]
+                amplitudes = self.proc_data_dict['analysis_params_dict'][suff]
+                val = amplitudes['piPulse']
+                stderr = amplitudes['piPulse_stderr']
+                textstr = self.create_textstr(qbn, val, stderr,
+                                              break_lines=True)
+                self.plot_dicts[txt_pd_name]['text_string'] = textstr
 
 
 class RabiFrequencySweepAnalysis(RabiAnalysis):
@@ -5894,18 +6011,11 @@ class ResidualZZAnalysis(RamseyAnalysis):
                 labels_set = True
 
 
-class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
+class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
 
     def extract_data(self):
         super().extract_data()
-        params_dict = {}
-        for qbn in self.qb_names:
-            trans_name = self.get_transition_name(qbn)
-            s = 'Instrument settings.'+qbn
-            params_dict[f'{trans_name}_qscale_'+qbn] = \
-                s+f'.{trans_name}_motzoi'
-        self.raw_data_dict.update(
-            self.get_data_from_timestamp_list(params_dict))
+        self._extract_current_pulse_par_value()
 
     def process_data(self):
         for qbn in self.qb_names:
@@ -6101,23 +6211,16 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis):
                         'legend_bbox_to_anchor': (1, 0.5),
                         'legend_pos': 'center left'}
 
-                    trans_name = self.get_transition_name(qbn)
-                    old_qscale_val = self.raw_data_dict[
-                        f'{trans_name}_qscale_'+qbn]
-                    if old_qscale_val != old_qscale_val:
-                        old_qscale_val = 0
-                    textstr = 'Qscale = {:.4f} $\pm$ {:.4f}'.format(
-                        self.proc_data_dict['analysis_params_dict'][qbn][
-                            'qscale'],
-                        self.proc_data_dict['analysis_params_dict'][qbn][
-                            'qscale_stderr']) + \
-                            '\nold Qscale= {:.4f}'.format(old_qscale_val)
-
+                    val = self.proc_data_dict['analysis_params_dict'][qbn][
+                                'qscale']
+                    stderr = self.proc_data_dict['analysis_params_dict'][qbn][
+                                'qscale_stderr']
+                    textstr = self.create_textstr(qbn, val, stderr)
                     self.plot_dicts['text_msg_' + qbn] = {
                         'fig_id': base_plot_name,
                         'ypos': -0.225,
-                        'xpos': 0.5,
-                        'horizontalalignment': 'center',
+                        'xpos': 0.0,
+                        'horizontalalignment': 'left',
                         'verticalalignment': 'top',
                         'plotfn': self.plot_text,
                         'text_string': textstr}
