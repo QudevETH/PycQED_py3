@@ -125,20 +125,23 @@ class SweepPoints(list):
         while len(self) == 0 or (dimension >= 0 and dimension >= len(self)):
             self.add_sweep_dimension()
         assert self.length(dimension) in [0, len(values)], \
-            'Number of values has to match the length of existing sweep ' \
-            'points.'
+            f'Number of values ({len(values)}) has to match the length of ' \
+            f'existing sweep points ({self.length(dimension)}).'
         self[dimension].update({param_name: (values, unit, label)})
 
     def add_sweep_dimension(self):
         self.append(dict())
 
-    def get_sweep_dimension(self, dimension='all', pop=False):
+    def get_sweep_dimension(self, dimension='all', pop=False, **kw):
         """
         Returns the sweep dict of the sweep dimension specified by dimension.
-        :param dimension: int specifying a sweep dimension or
+        :param dimension (str, int): int specifying a sweep dimension or
             the string 'all'
         :param pop: bool specifying whether to pop (True) or get(False) the
             sweep dimension.
+        :param kw:
+            'default': if this key is contained in kw, its value will be
+                returned if the requested dimension does not exist.
         :return: self if dimension == 'all', else self[dimension]
         """
         if dimension == 'all':
@@ -149,9 +152,12 @@ class SweepPoints(list):
             else:
                 return self
         else:
-            if len(self) < dimension:
-                raise ValueError(f'Dimension {dimension} not found.')
-            to_return = self[dimension]
+            if len(self) < dimension + 1:
+                if 'default' not in kw:
+                    raise ValueError(f'Dimension {dimension} not found.')
+                to_return = kw['default']
+            else:
+                to_return = self[dimension]
             if pop:
                 self[dimension] = {}
             return to_return
@@ -325,7 +331,7 @@ class SweepPoints(list):
                         # Append found sweep param names to the sweep_points_map
                         # for this mobj
                         sweep_points_map[mobjn] += pars
-                        
+
                     # Collect all found pars, to be used below
                     all_pars += pars
 
@@ -356,12 +362,14 @@ class SweepPoints(list):
         if len(self) == 0 or (dimension >= 0 and dimension >= len(self)):
             return 0
         n = 0
-        for p in self[dimension].values():
+        for p, v in self[dimension].items():
             if n == 0:
-                n = len(p[0])
-            elif n != len(p[0]):
+                ref_p = p
+                n = len(v[0])
+            elif n != len(v[0]):
                 raise ValueError('The lengths of the sweep points are not '
-                                 'consistent.')
+                                 f'consistent for sweep param ({ref_p},{p}):'
+                                 f' ({n}, {len(v[0])}).')
         return n
 
     def update(self, sweep_points):
@@ -465,6 +473,19 @@ class SweepPoints(list):
         dim = self.find_parameter(param_name)
         return self.get_sweep_params_property('values', dim, param_names=param_name)
 
+    def prune_constant_values(self):
+        """
+        Removes constant sweep parameters (Note: does not delete the
+        corresponding dimensions if they are left empty)
+
+        """
+
+        param_names = [p for dim in self for p in dim]
+        for p in param_names:
+            vals = self.get_values(p)
+            if not any(vals - np.min(vals)):  # If constant
+                self.remove_sweep_parameter(p)
+
     def subset(self, i, dimension=0):
         """
         Returns a new SweepPoints object with one of the dimensions reduced
@@ -491,3 +512,109 @@ class SweepPoints(list):
                         f"{param_name} not found.")
         else:
             del self[dim][param_name]
+
+    def reduce_dim(self, target_ndim=2, reverse=False, inplace=False):
+        """
+        Reduces the dimensions of a N-dimensional sweep to a `target_ndim`-
+        dimensional sweep. Sweep values a duplicated in the lower dimensions
+        accordingly.
+        Args:
+            target_ndim (int): Number of dimensions in the reduced
+                SweepPoints object.
+            reverse (bool): Default = False. If False, then reduction of
+                dimensions starts with last dimension (see Example 1).
+                If True, then reduction of dimensions starts with first
+                dimension (see Example 2).
+            inplace (bool): Default = False. If False, a new sweep point
+                object is returned with reduced dimensions. If True, the
+                current object is modified.
+
+        Returns:
+            self
+
+        Examples:
+            Example 1:
+            >>> sp = SweepPoints()
+            >>> sp.add_dict_list([{'initialize': (('g', 'e'), '', '')},
+            >>>    {'second_dim': (np.array([1, 2]), '', '')},
+  '         >>>    {'third_dim': (np.array([3, 4, 5]), '', '')}])
+            >>>    sp.reduce_dim(target_ndim=2)
+
+            # third dimension is now incorporated in the second one:
+            [{'initialize': (('g', 'e'), '', 'initialize')},
+                {'second_dim': (array([1, 1, 1, 2, 2, 2]), '', ''),
+                'third_dim': (array([3, 4, 5, 3, 4, 5]), '', 'third_dim')}]
+
+            Example 2:
+            >>> sp = SweepPoints()
+            >>> sp.add_dict_list([{'initialize': (('g', 'e'), '', '')},
+            >>>    {'second_dim': (np.array([1, 2]), '', '')},
+  '         >>>    {'third_dim': (np.array([3, 4, 5]), '', '')}])
+            >>>    sp.reduce_dim(target_ndim=2, reverse=True)
+
+            # first dimension is now incorporated in the second one:
+            [{'second_dim': (array([1, 1, 2, 2]), '', ''),
+              'initialize': (array(['g', 'e', 'g', 'e'], dtype='<U1'), '', '')},
+             {'third_dim': ([3, 4, 5], '', 'third_dim')}]
+
+        """
+        if inplace:
+            obj = self
+        else:
+            obj = deepcopy(self)
+        if reverse:
+            obj._reversed = True
+            obj.reverse()
+
+        # compare the current number of dimensions to the target and ends
+        # the recursion if ndim <= target_ndim.
+        ndim = len(obj)
+        if ndim <= target_ndim:
+            # if sweep points were reversed for reducing the dimensions,
+            # reverse back to get the original dimension order after reduction
+            if hasattr(obj, "_reversed") and obj._reversed:
+                obj.reverse()
+                delattr(obj, "_reversed")
+            return obj
+
+        # remove last dimension
+        nvals_last_dim = obj.number_sweep_points(-1)
+        last_dim = obj.get_sweep_dimension(-1, True)
+        del obj[-1]
+        nvals_prev_dim = obj.number_sweep_points(-1)
+
+        # repeat sweep points of the previous dimension as many times as there
+        # are values in the last dimension
+        sweep_params = list(obj.get_sweep_dimension(-1).keys())
+        values = [obj[sp] for sp in sweep_params]
+        if nvals_last_dim:
+            obj.update_property(sweep_params,
+                values=[np.repeat(vals, nvals_last_dim) for vals in values])
+
+        # add sweep parameters of the last dimension in the previous one, tiled
+        # as many times as there were sweep values in the previous dimension
+        for k, (vals, label, unit) in last_dim.items():
+            obj.add_sweep_parameter(k, np.tile(vals, max(1, nvals_prev_dim)),
+                                     label, unit)
+
+        # recursive call to go through all other dimensions
+        # this call can always use inplace=True to avoid deepcopying at all
+        # layers (the copying can be done once in the beginning).
+        return obj.reduce_dim(target_ndim=target_ndim, inplace=True)
+
+    def number_sweep_points(self, dimension=-1):
+        """
+        Gets the number of sweep values for `dimension`.
+        Args:
+            dimension (int): Dimension from which the number of sweep values
+                should be retrieved.
+
+
+        """
+        sweep_params = list(self.get_sweep_dimension(dimension).keys())
+        if len(sweep_params) != 0:
+            return len(self[sweep_params[0]])
+        else:
+            return 0
+
+

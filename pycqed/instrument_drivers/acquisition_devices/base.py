@@ -54,7 +54,7 @@ class AcquisitionDevice():
     acq_weights_n_samples = None
     acq_Q_sign = 1
     allowed_modes = []
-    allowed_weights_types = ['optimal', 'optimal_qutrit', 'SSB',
+    allowed_weights_types = ['custom', 'custom_2D', 'SSB',
                              'DSB', 'DSB2', 'square_rot']
 
     def __init__(self, *args, **kwargs):
@@ -75,16 +75,9 @@ class AcquisitionDevice():
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
         self.timer = None
-        self.extra_data_callback = None
-        if 'timeout' not in self.parameters:
-            # The underlying qcodes driver has not created a parameter
-            # timeout. In that case, we add the parameter here.
-            self.add_parameter(
-                'timeout',
-                unit='s',
-                initial_value=30,
-                parameter_class=ManualParameter,
-                vals=validators.Ints())
+        self.extra_data = []
+        """List of dicts representing additional data to be stored. Keys
+        in the dicts correspond to kwargs of save_extra_data."""
 
     def set_lo_freq(self, acq_unit, lo_freq):
         """Set the local oscillator frequency used for an acquisition unit.
@@ -163,10 +156,9 @@ class AcquisitionDevice():
         """Finalize the acquisition device.
 
         Performs cleanup at the end of an experiment (i.e., not repeatedly in
-        sweeps). By default, only removes the extra_data_callback and the
-        timer. Can be overridden in child classes to add further functionality.
+        sweeps). By default, only removes the timer. Can be overridden in
+        child classes to add further functionality.
         """
-        self.extra_data_callback = None
         self.timer = None
 
     def _reset_n_acquired(self):
@@ -208,22 +200,38 @@ class AcquisitionDevice():
         repetitions for averaging), i.e., 100% progress corresponds to the
         this method reporting self._acq_n_results * self._acq_loop_cnt.
 
-        The method always returns 0 indicating that no intermediate progress
+        The method always returns None indicating that no intermediate progress
         information is available. If the child class does not overwrite the
         method with a concrete implementation, progress will be stuck during
         hard sweeps and will only be updated by MC after the hard sweep.
         """
-        return 0
+        return None
 
-    def prepare_poll(self):
-        """Final preparations for an acquisition.
+    def prepare_poll_before_AWG_start(self):
+        """Final preparations for an acquisition before starting AWGs.
 
         This function is called by PollDetector.poll_data right before
         starting the AWGs (i.e., we can rely on that the AWGs have already
         been stopped in case this is needed) for final preparations. This is
         the place to arm the acquisition device (i.e., let it wait for
-        triggers). Unlike acquisition_initialize, this function is called
-        multiple times in a soft sweep.
+        triggers) if it does not rely on first-trigger detection. Unlike
+        acquisition_initialize, this function is called multiple times in a
+        soft sweep.
+
+        The method in this base class resets self.extra_data, which can then
+        be filled by calling save_extra_data from the poll method of child
+        classes.
+        """
+        self.pop_extra_data()
+
+    def prepare_poll_after_AWG_start(self):
+        """Final preparations for an acquisition after starting AWGs.
+
+        This function is called by PollDetector.poll_data right after
+        starting the AWGs for final preparations. This is the place to arm
+        the acquisition device when starting it after the AWGs, relying on
+        first-trigger detection. Unlike acquisition_initialize,
+        this function is called multiple times in a soft sweep.
         """
         pass
 
@@ -246,13 +254,7 @@ class AcquisitionDevice():
                                   f'for {self.__class__.__name__}')
 
     def save_extra_data(self, dataset_name, data, column_names=None):
-        """Store additional data via self.extra_data_callback
-
-        This method calls self.extra_data_callback if it is not None. It is
-        expected that the callback function accepts the arguments described
-        in the docstring of MC.save_extra_data, see therein for details
-        about the args. The name of the acquisition device is passed
-        group_name.
+        """Store additional data to provide it to the detector function
 
         Args:
             dataset_name (str): The name of the dataset in which the data
@@ -261,9 +263,15 @@ class AcquisitionDevice():
             column_names (None or list of str): names of the columns of the
                 data array.
         """
-        if self.extra_data_callback is not None:
-            self.extra_data_callback(self.name, dataset_name, data,
-                                     column_names=column_names)
+        self.extra_data.append(dict(
+            dataset_name=dataset_name, data=data, column_names=column_names))
+
+    def pop_extra_data(self):
+        """Return stored additional data and reset extra data storage
+        """
+        ed = self.extra_data
+        self.extra_data = []
+        return ed
 
     def start(self, **kw):
         """ Start the built-in AWG (if present).
@@ -324,7 +332,8 @@ class AcquisitionDevice():
         """
         return data
 
-    def get_lo_sweep_function(self, acq_unit, ro_mod_freq):
+    def get_lo_sweep_function(self, acq_unit, ro_mod_freq,
+                              get_closest_lo_freq=(lambda x: x)):
         """Return a sweep function for sweeping the internal LO
 
         Needs to be implemented in the child class for acquisition devices
@@ -341,6 +350,10 @@ class AcquisitionDevice():
                 sweep of LO and IF in a way that the IF is as close as
                 possible to the provided value, while accounting for
                 hardware limitations of the internal LO.
+            get_closest_lo_freq (function): a function that takes an LO
+                frequency as argument and returns the closest allowed LO
+                frequency. This can be used to provide limitations imposed
+                by higher-layer settings to the driver.
 
         Returns:
             A sweep function object for the frequency sweep.
@@ -428,6 +441,19 @@ class AcquisitionDevice():
         for ch, w in zip(channels, weights):
             self._acquisition_set_weight(ch, w)
 
+    def get_awg_control_object(self):
+        """
+        To be overloaded by children to return the AWG control object and its
+        name. The AWG control object will be passed as the AWG parameters of
+        the PollingDetector functions, and it will be called in poll to start
+        and stop acquisition.
+
+        Returns:
+            class instance, name of class instance (or None, None if no
+            awg control is needed for the acquisition device)
+        """
+        return None, None
+
     def _acquisition_generate_weights(self, weights_type, mod_freq=None,
                                       acq_IQ_angle=0,
                                       weights_I=(), weights_Q=()):
@@ -436,9 +462,9 @@ class AcquisitionDevice():
         :param weights_type: (str) the type of weights can be:
             - manual: do not set any weights (keep what is configured in the
                 acquisition device)
-            - optimal: use the optimal weights for single-channel integration
+            - custom: use the weights for single-channel integration
                 provided in weights_I[0], weights_Q[0].
-            - optimal_qutrit: use the optimal weights for two-channel
+            - custom_2D: use the weights for two-channel
                 integration provided in weights_I[:2], weights_Q[:2]
             - SSB: single-sideband demodulation using two integration
                 channels and both physical input channels.
@@ -460,8 +486,8 @@ class AcquisitionDevice():
         :param weights_I: (list/tuple of np.array or None) The i-th entry of
             the list defines the weights for first physical input channel
             used in the i-th integration channel. Must have (at least) one
-            entry if weights type is optimal and two entries if weights type
-            is optimal_qutrit. Unneeded entries are ignored, and the whole
+            entry if weights type is custom and two entries if weights type
+            is custom_2D. Unneeded entries are ignored, and the whole
             list is ignored for other weights types.
         :param weights_Q: (list of np.array or None) Like weights_I,
             but for the second physical input channel.
@@ -472,7 +498,7 @@ class AcquisitionDevice():
             raise ValueError(f'Weights type {weights_type} not supported by '
                              f'{self.name}.')
         aQs = self.acq_Q_sign
-        for wt, n_chan in [('optimal', 1), ('optimal_qutrit', 2)]:
+        for wt, n_chan in [('custom', 1), ('custom_2D', 2)]:
             if weights_type == wt:
                 if (len(weights_I) < n_chan or len(weights_Q) < n_chan
                         or any([w is None for w in weights_I[:n_chan]])

@@ -1,0 +1,56 @@
+{
+    "General":{
+        "update": true,
+        "use_prior_model": true,
+        "get_parameters_from_qubit_object": true,
+        "include_mixer_calib_carrier": false,
+        "autorun": false,
+        "delegate_plotting": false,
+        "Ej_max": 30e9,
+        "E_c": 175e6,
+        "asymmetry": 0.5,
+        "coupling": 250e6,
+        "fr": 7e9,
+        "measurements": {
+            "{designated}": ["ge", "ef"],
+            "{opposite}": ["ge"],
+            "{mid}": ["ge"]
+        }
+    },
+    "Ramsey": {
+        "delta_t": 150.0e-9,
+        "n_periods": 8,
+        "t0": 60e-9
+    },
+    "FindFrequency": {
+        "General": {
+            "allowed_delta_f": 0.5e6,
+            "max_iterations": 2
+        }
+    },
+    "find_frequency_ge_2": {
+                "AdaptiveQubitSpectroscopy": {
+                    "qubit_spectroscopy_1": {
+                        "freq_range": 400e6,
+                        "pts": 800
+                    }
+                }
+    },
+    "DetermineModel": {
+        "method": "Nelder-Mead",
+        "include_reparkings": true,
+        "include_resonator": true,
+        "use_prior_model": true
+    },
+    "determine_model_final": {
+        "use_prior_model": true
+    },
+    "UpdateFrequency": {
+        "frequencies": null,
+        "fluxes": null,
+        "voltages": null
+    },
+    "UpdateFluxToVoltage": {
+        "flux": null
+    }
+}

@@ -22,7 +22,6 @@ from matplotlib import cm
 
 latest_data_match_whole_words = False
 datadir = get_default_datadir()
-print('Data directory set to:', datadir)
 fetch_data_dir = None
 ignore_delegate_plotting = False
 
@@ -290,6 +289,9 @@ def measurement_filename(directory=os.getcwd(), file_id=None, ext='hdf5', **kw):
     if os.path.exists(os.path.join(directory, fn)):
         return os.path.join(directory, fn)
     else:
+        if kw.get('raise_errors', False):
+            raise FileNotFoundError("Data path '%s' does not exist" %
+                        os.path.join(directory, fn))
         log.warning("Data path '%s' does not exist" %
                         os.path.join(directory, fn))
         return None
@@ -354,7 +356,8 @@ def get_qb_channel_map_from_hdf(qb_names, file_path, value_names, h5mode='r'):
             qbchs = [str(eval(instr_settings[qbn].attrs['acq_I_channel']))]
             ro_acq_weight_type = eval(instr_settings[qbn].attrs[
                                           'acq_weights_type'])
-            if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'optimal_qutrit']:
+            if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'custom_2D',
+                                      'optimal_qutrit']:
                 qbchs += [str(eval(instr_settings[qbn].attrs['acq_Q_channel']))]
             if acq_unit is None:
                 vn_string = uhf+'_'+ro_type
@@ -1493,6 +1496,33 @@ def predict_gm_proba_from_clf(X, clf_params):
         X_to_use = X.reshape(1, -1) if len(X) == 1 else X.reshape(-1, 1)
     probas = gm.predict_proba(X_to_use)
     return probas
+
+
+def threshold_shots(data):
+    """
+        Assign each classified shot to a given state by thresholding the
+        probabilities. For example:
+
+        [[0.01, 0.98, 0.01],            [[0, 1, 0],  (classify as e-state)
+         [0.02, 0.03, 0.95],    -->      [0, 0, 1],  (classify as f-state)
+         ...                             ...
+         [0.87, 0.06, 0.07]]             [1, 0, 0]]  (classify as g-state)
+
+        Args:
+            data (numpy array): data classified into state probabilities,
+            should have shape (n_shots, n_states), i.e. for a qutrit
+            n_states = 3
+
+        Returns:
+            thresholded data that has the same shape as data
+        """
+    if np.ndim(data) != 2:
+        raise ValueError(
+            f"Expected 2 dimensions for input data (n_shots, n_states) but "
+            f"received array with {np.ndim(data)} dimensions: {data.shape}")
+    thresholded_data = np.zeros(data.shape, dtype=int)
+    thresholded_data[np.arange(len(data)), data.argmax(axis=1)] = 1
+    return thresholded_data
 
 
 def datetime_from_timestamp(timestamp):

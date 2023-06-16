@@ -1,0 +1,38 @@
+{
+    "General":{
+        "transition_name": "ge",
+        "adaptive": false,
+        "allowed_delta_f": 1e6,
+        "max_iterations": 3,
+        "f_factor": 1e9,
+        "f_unit": "GHz",
+        "delta_f_factor": 1e6,
+        "delta_f_unit": "MHz",
+        "use_T2_star": false,
+        "max_waiting_seconds":1
+    },
+    "PiPulseCalibration": {
+            "Ramsey": {
+                "delta_t": 150e-9,
+                "t0": 60e-9,
+                "n_periods": 6,
+                "pts_per_period": 5
+        }
+    },
+    "AdaptiveQubitSpectroscopy": {
+            "General": {
+                "n_spectroscopies": 1,
+                "max_iterations": 2
+            },
+            "qubit_spectroscopy_1": {
+                "spec_power": -20,
+                "freq_range": 200e6,
+                "pts": 400
+            },
+            "qubit_spectroscopy_1_repetition_2": {
+                "spec_power": -10,
+                "freq_range": 800e6,
+                "pts": 1500
+            }
+    }
+}

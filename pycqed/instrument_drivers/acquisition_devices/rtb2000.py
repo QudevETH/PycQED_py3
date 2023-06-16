@@ -21,7 +21,7 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
                                  ],
                      # 'scope': [],
                      }
-    allowed_weights_types = ['optimal', 'DSB']
+    allowed_weights_types = ['custom', 'DSB']
     _MODEL_IDENTIFIER = '::0x01D6::'
 
     def __init__(self, name, address=None, *args, **kwargs):
@@ -43,8 +43,8 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
         return [units[i] for i in range(len(units))]
 
     def find_address(self):
-        import visa
-        rm = visa.ResourceManager()
+        import pyvisa
+        rm = pyvisa.ResourceManager()
         res = [r for r in rm.list_resources() if self._MODEL_IDENTIFIER in r]
         if len(res) == 0:
             raise Exception(f'{self.__class__.__name__}: Could not find a VISA '
@@ -74,8 +74,8 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
         self._last_traces = []
 
-    def prepare_poll(self):
-        super().prepare_poll()
+    def prepare_poll_before_AWG_start(self):
+        super().prepare_poll_before_AWG_start()
         for i in self._acq_units_used:
             acq_unit = self.acq_units[i]
             # turn the channels on
@@ -110,7 +110,11 @@ class RTB2000(RTB2000Core, AcquisitionDevice):
                     integration_result[0] = np.matrix.dot(
                         res[:len(weights[0])], weights[0][:len(res)])
                     dataset[(i, ch)] = [integration_result]
-                self.save_extra_data(f'traces/{i}', np.atleast_2d(last_traces[i]))
+                self.save_extra_data(
+                    f'{i}/traces', np.atleast_2d(last_traces[i]))
+                self.save_extra_data(
+                    f'{i}/times',
+                    np.array(self.acq_units[i].trace.setpoints[0]))
         self._last_traces.append(last_traces)
         return dataset
 
