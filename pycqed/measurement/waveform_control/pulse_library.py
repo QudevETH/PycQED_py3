@@ -143,6 +143,19 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
             env_mod_frequency (float; default=0):
                 modulation frequency of the pulse envelope, introducing a
                 detuning from mod_frequency
+
+        When cancellation_frequency_offset is not None, this class applies
+        correction factors to the amplitude and env_mod_frequency in order to
+        decouple the effects of the three parameters amplitude,
+        env_mod_frequency and cancellation_frequency_offset.
+        These correction factors work in the limit
+        abs(env_mod_freq) << 1/tg << cancellation_frequency_offset
+        and ensure that:
+            - the maximum spectral power of the pulse is at the
+        env_mod_frequency independent of the value for amplitude or
+        cancellation_frequency_offset;
+            - the spectral power of the pulse at 0 is not changed by changing
+        env_mod_frequency or cancellation_frequency_offset.
     """
 
     @classmethod
@@ -157,42 +170,28 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
         half = tg / 2
         tc = self.algorithm_time() + half
 
-        # The cancellation dip in the pulse spectrum should be to the left of
-        # the center frequency. We add a minus sign here to allow the parameter
-        # cancellation_frequency_offset to take a user-intuitive value of the
-        # transmon anharmonicity, which is negative.
-        fc = - self.cancellation_frequency_offset
-        # Positive value for self.env_mod_frequency should shift the pulse
-        # spectrum to the right, so we add a minus sign here
-        env_mod_freq = - self.env_mod_frequency
-        env_mod_freq_corrected = env_mod_freq
-        amp_correction = 1
-        if fc is not None:
-            # Correction factors to decouple the effects of the parameters.
-            # These correction factors ensure that:
-            # - the maximum spectral power of the pulse is at the
-            # env_mod_frequency independent of the value for amplitude or
-            # cancellation_frequency_offset;
-            # - the spectral power of the pulse at 0 is not changed by changing
-            # env_mod_frequency or cancellation_frequency_offset.
-            # These corrections work in the limit
-            # abs(env_mod_freq) << 1/tg << cancellation_frequency_offset
-            env_mod_freq_corrected += 3 / (fc * tg ** 2 * (np.pi ** 2 - 6))
-            amp_correction -= env_mod_freq_corrected ** 2 / \
-                              (2 * fc * (env_mod_freq_corrected - env_mod_freq))
+        env_mod_freq_corr = self.env_mod_frequency
+        amplitude_corr = self.amplitude
+        if self.cancellation_frequency_offset is not None:
+            # Apply correction factors to decouple the effects of the
+            # pulse parameters.
+            env_mod_freq_corr += 3 / (self.cancellation_frequency_offset *
+                                      tg ** 2 * (np.pi ** 2 - 6))
+            amplitude_corr /= 1 + (np.pi ** 2 - 6) * \
+                              (tg * env_mod_freq_corr) ** 2 / 6
 
         # in-phase component
         envi = np.cos(np.pi * (tvals - tc) / tg) ** 2
         # truncate
         envi *= (tvals - tc >= -half) * (tvals - tc < half)
         # apply envelope modulation
-        envi = envi * (self.amplitude / amp_correction) * \
-               np.exp(2j * np.pi * env_mod_freq_corrected * (tvals - tc))
+        envi = envi * amplitude_corr * \
+               np.exp(-2j * np.pi * env_mod_freq_corr * (tvals - tc))
 
-        if fc is not None:
+        if self.cancellation_frequency_offset is not None:
             # Apply DRAG correction
             # Calculate quadrature component
-            q = 1 / (2 * np.pi * fc * tg)
+            q = -1 / (2 * np.pi * self.cancellation_frequency_offset * tg)
             envq = q * tg * 0.5 * (np.diff(envi, prepend=[0]) +
                                    np.diff(envi, append=[0])) / \
                    (tvals[1]-tvals[0])
