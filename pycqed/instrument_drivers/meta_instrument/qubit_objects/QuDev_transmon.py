@@ -270,10 +270,22 @@ class QuDev_transmon(MeasurementObject):
                                      vals=vals.Dict())
             self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_env_mod_freq',
                                      'env_mod_frequency',
-                                     initial_value=0, vals=vals.Numbers())
-            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_cancellation_freq_offset',
+                                     initial_value=0, vals=vals.Numbers(),
+                                     docstring='Modulation frequency of the '
+                                               'pulse envelope, introducing '
+                                               'a frequency shift of the pulse '
+                                               'spectrum by the value of this '
+                                               'parameter.')
+            self.add_pulse_parameter(f'X180{tn}',
+                                     f'{tr_name}_cancellation_freq_offset',
                                      'cancellation_frequency_offset',
-                                     initial_value=0, vals=vals.Numbers())
+                                     initial_value=None,
+                                     vals=vals.MultiType(
+                                         vals.Enum(None), vals.Strings()),
+                                     docstring='Frequency offset of the '
+                                               'cancellation dip of the DRAG '
+                                               'pulse with respect to the '
+                                               'center frequency of the pulse.')
             self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
                                      'phi_skew',
                                      initial_value=0,
