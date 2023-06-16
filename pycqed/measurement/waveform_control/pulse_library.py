@@ -177,7 +177,7 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
             # pulse parameters.
             env_mod_freq_corr += 3 / (self.cancellation_frequency_offset *
                                       tg ** 2 * (np.pi ** 2 - 6))
-            amplitude_corr /= 1 + (np.pi ** 2 - 6) * \
+            amplitude_corr /= 1 - (np.pi ** 2 - 6) * \
                               (tg * env_mod_freq_corr) ** 2 / 6
 
         # in-phase component
