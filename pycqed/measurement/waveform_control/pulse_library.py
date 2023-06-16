@@ -134,9 +134,12 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
     Args:
         See parent class for docstring.
         Additional parameter recognised by this class:
-            cancellation_frequency_offset (float; default=0):
-                frequency offset of the spectral cancellation dip with respect
-                to the center frequency.
+            cancellation_frequency_offset (float; default=None):
+                frequency offset of the cancellation dip in the pulse spectrum
+                with respect to the center frequency. This parameter typically
+                takes the value of the transmon anharmonicity (ex: -170e6).
+                The quadrature correction is not applied if this parameter
+                is None (no cancellation dip in the pulse spectrum).
             env_mod_frequency (float; default=0):
                 modulation frequency of the pulse envelope, introducing a
                 detuning from mod_frequency
@@ -145,7 +148,7 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
     @classmethod
     def pulse_params(cls):
         params = super().pulse_params()
-        params.update({'cancellation_frequency_offset': 0,
+        params.update({'cancellation_frequency_offset': None,
                        'env_mod_frequency': 0})
         return params
 
@@ -154,33 +157,40 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
         half = tg / 2
         tc = self.algorithm_time() + half
 
+        # The cancellation dip in the pulse spectrum should be to the left of
+        # the center frequency. We add a minus sign here to allow the parameter
+        # cancellation_frequency_offset to take a user-intuitive value of the
+        # transmon anharmonicity, which is negative.
         fc = - self.cancellation_frequency_offset
-        df = - self.env_mod_frequency
-        env_mod_freq = df
-        amp_corr = 1
-        if fc != 0:
+        # Positive value for self.env_mod_frequency should shift the pulse
+        # spectrum to the right, so we add a minus sign here
+        env_mod_freq = - self.env_mod_frequency
+        env_mod_freq_corrected = env_mod_freq
+        amp_correction = 1
+        if fc is not None:
             # Correction factors to decouple the effects of the parameters.
             # These correction factors ensure that:
             # - the maximum spectral power of the pulse is at the
-            # env_mod_frequency
-            # independent of amplitude or cancellation_frequency_offset
+            # env_mod_frequency independent of the value for amplitude or
+            # cancellation_frequency_offset;
             # - the spectral power of the pulse at 0 is not changed by changing
-            # env_mod_frequency or cancellation_frequency_offset
+            # env_mod_frequency or cancellation_frequency_offset.
             # These corrections work in the limit
             # abs(env_mod_freq) << 1/tg << cancellation_frequency_offset
-            env_mod_freq += 3 / (fc * tg ** 2 * (np.pi ** 2 - 6))
-            amp_corr -= env_mod_freq ** 2 / (2 * fc * (env_mod_freq - df))
+            env_mod_freq_corrected += 3 / (fc * tg ** 2 * (np.pi ** 2 - 6))
+            amp_correction -= env_mod_freq_corrected ** 2 / \
+                              (2 * fc * (env_mod_freq_corrected - env_mod_freq))
 
         # in-phase component
         envi = np.cos(np.pi * (tvals - tc) / tg) ** 2
         # truncate
         envi *= (tvals - tc >= -half) * (tvals - tc < half)
         # apply envelope modulation
-        envi = envi * (self.amplitude / amp_corr) * \
-               np.exp(1j * 2 * np.pi * env_mod_freq * (tvals - tc))
+        envi = envi * (self.amplitude / amp_correction) * \
+               np.exp(2j * np.pi * env_mod_freq_corrected * (tvals - tc))
 
-        if fc != 0:
-            # apply DRAG correction
+        if fc is not None:
+            # Apply DRAG correction
             # Calculate quadrature component
             q = 1 / (2 * np.pi * fc * tg)
             envq = q * tg * 0.5 * (np.diff(envi, prepend=[0]) +
@@ -192,6 +202,9 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
             envq = np.zeros_like(envi)
 
         envc = envi + 1j * envq
+        # envi is complex if env_mod_frequency != 0, so we re-calculate the
+        # real (envi) and imaginary (envq) components from the full complex
+        # waveform envc
         envi, envq = np.real(envc), np.imag(envc)
 
         if self.mod_frequency is not None:
@@ -200,8 +213,9 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
                 phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
                 tval_phaseref=0 if self.phaselock else tc)
         else:
-            # Ignore the Q component and program the I component to both
-            # channels. See HDAWG8Pulsar._hdawg_mod_setter
+            # Do not apply modulation at mod_frequency, and set the I and Q
+            # components to the real and imaginary components of the pulse
+            # envelope (which may still be modulated at env_mod_frequency).
             I_mod, Q_mod = envi, envq
 
         if channel == self.I_channel:
