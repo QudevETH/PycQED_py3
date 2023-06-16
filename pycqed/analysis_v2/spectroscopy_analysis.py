@@ -3289,6 +3289,28 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                 self._compute_s21_distance(raw_data, states)
 
     def _compute_s21_distance(self, data, states):
+        """
+        Computes the distance between S21 transmission measurements for different states.
+
+        Args:
+            data (dict): A dictionary containing I and Q components of the measured
+                data.
+            states (list): A list of states for which to compute the distance.
+
+        Returns:
+            dict: A dictionary containing the computed distances between states
+                and the argmax of the array, e.g. {"g-e": (distance_array, argmax)}
+
+
+        Raises:
+            ValueError: If fewer than two states are provided.
+
+        Notes:
+            - The distance between two states is calculated as the absolute difference
+              between their corresponding S21 transmission measurements.
+            - The distances are computed for all combinations of two states.
+            - The computed distances also include the sum of distances across all states.
+        """
         distances = dict()
         if len(states) < 2:
             log.error('At least two states need to be measured to compute a'
@@ -3306,6 +3328,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
 
         # generate sum of distances
         if len(distances): # at least one distance
+            # each distance is a tuple (distance, argmax), so take first entry
             distances_sum = np.sum([v[0] for v in distances.values()], axis=0)
             argmax = np.argmax(distances_sum)
             distances["sum"] = (distances_sum, argmax)
