@@ -281,7 +281,7 @@ class QuDev_transmon(MeasurementObject):
                                      'cancellation_frequency_offset',
                                      initial_value=None,
                                      vals=vals.MultiType(
-                                         vals.Enum(None), vals.Strings()),
+                                         vals.Enum(None), vals.Numbers()),
                                      docstring='Frequency offset of the '
                                                'cancellation dip of the DRAG '
                                                'pulse with respect to the '
