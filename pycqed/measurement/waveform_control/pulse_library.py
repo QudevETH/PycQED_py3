@@ -212,10 +212,9 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
                 phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
                 tval_phaseref=0 if self.phaselock else tc)
         else:
-            # Do not apply modulation at mod_frequency, and set the I and Q
-            # components to the real and imaginary components of the pulse
-            # envelope (which may still be modulated at env_mod_frequency).
-            I_mod, Q_mod = envi, envq
+            # Ignore the Q component and program the I component to both
+            # channels. See HDAWG8Pulsar._hdawg_mod_setter
+            I_mod, Q_mod = envi, envi
 
         if channel == self.I_channel:
             return I_mod
