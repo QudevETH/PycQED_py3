@@ -584,7 +584,7 @@ class Pulsar(Instrument):
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
                            parameter_class=ManualParameter)
-        self.add_parameter('flux_channels', initial_value=[],
+        self.add_parameter('flux_channels', initial_value={},
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_mtx',
                            initial_value=None, parameter_class=ManualParameter)
@@ -627,8 +627,25 @@ class Pulsar(Instrument):
                                      '{channel}_first to provide different '
                                      'parameters for the first trigger pulse '
                                      'on that channel in a sequence.')
-
-
+        self.add_parameter(
+            'main_trigger_time', initial_value='auto',
+            parameter_class=ManualParameter, unit='s',
+            vals=vals.MultiType(vals.Numbers(), vals.Enum('auto')),
+            docstring="The time (relative to algorithm time) at which the "
+                      "first waveform (triggered by the main trigger) "
+                      "starts. Can be a float (in seconds) or 'auto', "
+                      "in which case the minimal possible delay between main "
+                      "trigger and algorithm time 0 is determined "
+                      "individually for each segement.")
+        self.add_parameter(
+            'algorithm_start', initial_value='segment_start',
+            parameter_class=ManualParameter, vals=vals.Strings(),
+            docstring="Defines which pulse should be treated as the 0 point "
+                      "of the algorithm time axis. Can be 'segment_start' "
+                      "(first pulse in the main part of the segement, "
+                      "default), 'init_start' (first pulse in the init part "
+                      "of the segment), or a search pattern as described in "
+                      "the docstring of Block.build, param sweep_dicts_list.")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names
@@ -1153,7 +1170,16 @@ class Pulsar(Instrument):
             settings_to_check = ['{}_use_placeholder_waves',
                                  '{}_minimize_sequencer_memory',
                                  '{}_prepend_zeros',
+                                 '{}_use_command_table',
+                                 '{}_join_or_split_elements',
                                  'prepend_zeros']
+            # Some of the settings are specified for each generator AWG module.
+            # We should check these parameters as well.
+            generator_settings_to_check = [
+                "{}_use_placeholder_waves",
+                "{}_use_command_table",
+                "{}_use_internal_modulation",
+            ]
             settings = {}
             metadata = {}
             for awg, seq in awg_sequences.items():
@@ -1162,6 +1188,19 @@ class Pulsar(Instrument):
                         self.get(s.format(awg))
                         if s.format(awg) in self.parameters else None)
                     for s in settings_to_check}
+
+                # check channel-specific parameters
+                awg_interface = self.awg_interfaces[awg]
+                if hasattr(awg_interface, "awg_modules"):
+                    for awg_module in awg_interface.awg_modules:
+                        for s in generator_settings_to_check:
+                            i_channel = awg_module.i_channel_name
+                            setting_name = s.format(i_channel)
+                            settings[awg][setting_name] = \
+                                self.get(setting_name) \
+                                if setting_name in self.parameters \
+                                else None
+
                 metadata[awg] = {
                     elname: (
                         el.get('metadata', {}) if el is not None else None)
@@ -1519,3 +1558,89 @@ class Pulsar(Instrument):
         awg_name = self.get(f'{ch}_awg')
         return self.awg_interfaces[awg_name] \
             .get_centerfreq_generator(ch)
+
+    def is_channel_pair(
+            self,
+            cname1: str,
+            cname2: str,
+            require_ordered: bool,
+    ):
+        """Returns if the two input channels belongs to the same channel
+        pair. Returns False if is_channel_pair method is not implemented in the
+        corresponding awg interface.
+
+        Args:
+            cname1 (str): name of an analog channel.
+            cname2 (str): name of another analog channel.
+            require_ordered (bool): whether (ch1, ch2) is required to be the
+                (first, second) analog generator of this channel pair.
+
+        Returns:
+            is_channel_pair (str): whether these two AWG channels belongs to
+                the same channel pair.
+        """
+        awg_1 = self.get(f'{cname1}_awg')
+        awg_2 = self.get(f'{cname2}_awg')
+
+        if awg_1 != awg_2:
+            return False
+
+        if hasattr(self.awg_interfaces[awg_1], 'is_channel_pair'):
+            return self.awg_interfaces[awg_1].is_channel_pair(
+                cname1=cname1,
+                cname2=cname2,
+                require_ordered=require_ordered
+            )
+        else:
+            return False
+
+    def is_i_channel(
+            self,
+            cname: str,
+    ):
+        """Returns if this channel is the I (smaller number) channel in its
+        channel pair. Returns False if is_i_channel method is not implemented
+        in the corresponding awg interface.
+
+        Args:
+            cname (str): channel of an AWG.
+
+        Returns:
+            is_i_channel (bool): Boolean variable indicating if this channel
+                is the I channel in its channel pair.
+        """
+        awg = self.get(f'{cname}_awg')
+        if hasattr(self.awg_interfaces[awg], 'is_i_channel'):
+            return self.awg_interfaces[awg].is_i_channel(cname=cname)
+        else:
+            return False
+
+    def check_channel_parameter(self, awg, channel, parameter_suffix):
+        """Check whether one parameter is set to True for the specified channel
+        on the specified AWG. If the awg-level parameter is set to True,
+        this function will return True and the channel-specific parameter
+        will be omitted. In the awg-level parameter is False or does not exist,
+        this method will try to return the channel-specific parameter,
+        and returns False if that does not exist.
+
+        Args:
+            awg: (str) AWG name.
+            channel: (str) Channel name.
+            parameter_suffix: (str) parameter name, in the form of suffix
+                after an AWG name or channel name.
+
+        Returns:
+            parameter: (bool) value of the parameter.
+        """
+
+        for name in [awg, channel]:
+            parameter = name + parameter_suffix
+            if hasattr(self, parameter):
+                if not isinstance(self.get(parameter), bool):
+                    raise RuntimeError(f"Please do not use this method for "
+                                       f"checking non-boolean parameter "
+                                       f"pulsar.{parameter}")
+                elif self.get(parameter):
+                    return True
+
+        return False
