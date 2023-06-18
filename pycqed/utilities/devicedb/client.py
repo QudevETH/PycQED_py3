@@ -894,7 +894,8 @@ class Client:
         return device_property_type
 
     def get_device_property_value_by_name(self, device_name:str=None, qubit_num:int=None, property_name:str=None):
-        """Get the asymmetry of the specified qubit on the specified device.
+        """Generic function which returns the device property value with name
+        `property_name` for the specified qubit on the specified device.
 
         Args:
             device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
@@ -918,21 +919,16 @@ class Client:
             "component": str(component.id)
         }
 
-        try:
-            search_kwargs = utils.noneless(**search_kwargs)
-            device_property_values_list = self.get_api_instance().list_device_property_values(
-                **search_kwargs)
-        except device_db_client.exceptions.NotFoundException:
-            log.debug(f"No value for the property {property_name} for qubit "
-                      f"{qubit_num} on device {device_name} found.")
-            return None
+        search_kwargs = utils.noneless(**search_kwargs)
+        device_property_values_list = self.get_api_instance().list_device_property_values(
+            **search_kwargs)
 
         if len(device_property_values_list) == 0:
-            log.debug(f"No value for the property {property_name} for qubit "
+            log.warning(f"No value for the property {property_name} for qubit "
                       f"{qubit_num} on device {device_name} found.")
             return None
         elif len(device_property_values_list) > 1:
-            log.debug(f"Found {len(device_property_values_list)} values "
+            log.warning(f"Found {len(device_property_values_list)} values "
                       f"for the property {property_name} for qubit {qubit_num} "
                       f"on device {device_name}. Just return the first one.")
 
@@ -956,7 +952,7 @@ class Client:
                 )
 
     def get_device_design_property_value_by_name(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None, property_name:str=None):
-        """Get the value of the qubit parameter specifiec in `property_name`
+        """Get the value of the qubit parameter specified in `property_name`
         of the specified qubit on the specified device design.
         Only one of `device_name` and `device_design_name` should be passed.
         If `device_name` is passed, the associated `device_design_name` is
@@ -990,30 +986,26 @@ class Client:
             "component": str(component.id)
         }
 
-        try:
-            search_kwargs = utils.noneless(**search_kwargs)
-            device_design_property_values_list = self.get_api_instance().list_device_design_property_values(
-                **search_kwargs)
-        except device_db_client.exceptions.NotFoundException:
-            log.debug(f"No value for the property {property_name} for qubit "
-                      f"{qubit_num} on device {device_name} found.")
-            return None
+        search_kwargs = utils.noneless(**search_kwargs)
+        device_design_property_values_list = self.get_api_instance().list_device_design_property_values(
+            **search_kwargs)
 
         if len(device_design_property_values_list) == 0:
-            log.debug(f"No value for the property {property_name} for qubit "
+            log.warning(f"No value for the property {property_name} for qubit "
                       f"{qubit_num} on device {device_name} found.")
             return None
         elif len(device_design_property_values_list) > 1:
-            log.debug(f"Found {len(device_design_property_values_list)} values "
-                      f"for the property {property_name} for qubit {qubit_num} "
-                      f"on device {device_name}. Just return the first one.")
+            log.warning(f"Found {len(device_design_property_values_list)} "
+                      f"values for the property {property_name} for qubit "
+                      f"{qubit_num} on device {device_name}. Just return the "
+                      f"first one.")
 
         return device_design_property_values_list[0]["value"]
 
-    def get_Ec_for(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None):
-        """Get the charging energy E_c in Hz of the specified qubit on the
-        specified device. Only one of `device_name` and `device_design_name`
-        should be passed.
+    def get_design_Ec_for(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None):
+        """Get the design value for the charging energy E_c in Hz of the
+        specified qubit on the specified device. Only one of `device_name` and
+        `device_design_name` should be passed.
 
         Args:
             device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
@@ -1074,7 +1066,7 @@ class Client:
                 property_name="nsr"
                 )
 
-        return device.E_J_conversion_factor * 1e6 / nsr # E_J_conversion_factor
+        return device.e_j_conversion_factor * 1e6 / nsr # the conversion factor
             # is in GHz/kOhm and nsr is in Ohm, so multiply by 10^6 to get the
             # result in Hz
 
@@ -1093,7 +1085,7 @@ class Client:
         Returns:
             ham_fit_dict(dict): dict of E_c in Hz, Ej_max in Hz and asymmetry
         """
-        return dict(E_c=self.get_Ec_for(
+        return dict(E_c=self.get_design_Ec_for(
                         device_name = device_name,
                         qubit_num = qubit_num
                     ),
