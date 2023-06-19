@@ -992,12 +992,12 @@ class Client:
 
         if len(device_design_property_values_list) == 0:
             log.warning(f"No value for the property {property_name} for qubit "
-                      f"{qubit_num} on device {device_name} found.")
+                      f"{qubit_num} found.")
             return None
         elif len(device_design_property_values_list) > 1:
             log.warning(f"Found {len(device_design_property_values_list)} "
                       f"values for the property {property_name} for qubit "
-                      f"{qubit_num} on device {device_name}. Just return the "
+                      f"{qubit_num}. Just return the "
                       f"first one.")
 
         return device_design_property_values_list[0]["value"]
@@ -1631,25 +1631,25 @@ class Client:
         return device_property_values
 
     @decorators.only_one_not_none(['id', 'name'])
-    def get_device_design_connectivity_graph(self, name=None, id=None, return_strings=False, return_tuples=True):
-        """Returns the connectivity graph of a device design.
+    def get_device_design_connectivity_graph(self, name=None, id=None):
+        """Returns the connectivity graph of a device design as a list of lists
+        with the qubit names as strings.
 
         For example for the S17v2 design, it will return
-        [(1, 2), (1, 3), (4, 2), (4, 3), (4, 5), (4, 9), (6, 5),
-        (6, 11), (8, 3), (8, 7), (8, 9), (8, 13), (10, 5), (10, 9),
-        (10, 11), (10, 15), (12, 7), (12, 13), (14, 9), (14, 13),
-        (14, 15), (14, 16), (17, 15), (17, 16)]
+        [['qb1', 'qb2'],  ['qb1', 'qb3'],  ['qb4', 'qb2'],  ['qb4', 'qb3'],
+        ['qb4', 'qb5'],  ['qb4', 'qb9'],  ['qb6', 'qb5'],  ['qb6', 'qb11'],
+        ['qb8', 'qb3'],  ['qb8', 'qb7'],  ['qb8', 'qb9'],  ['qb8', 'qb13'],
+        ['qb10', 'qb5'],  ['qb10', 'qb9'],  ['qb10', 'qb11'],  ['qb10', 'qb15'],
+        ['qb12', 'qb7'],  ['qb12', 'qb13'],  ['qb14', 'qb9'],  ['qb14', 'qb13'],
+        ['qb14', 'qb15'],  ['qb14', 'qb16'],  ['qb17', 'qb15'],
+        ['qb17', 'qb16']]
 
         Args:
             id (int|str): id of the device design
             name (str): name of the device design
-            return_strings (bool):  True: return strings, e.g. 'qb7',
-                                    False: return integers, e.g. 7
-            return_tuples (bool):   True: return tuples, e.g. [(1, 2), ...]
-                                    False: return lists, e.g. [[1, 2], ...]
 
         Returns:
-            connectivity_graph (list): list of tuples or lists, representing the
+            connectivity_graph (list): list of lists, representing the
                 connectivity graph of the device design
         """
         api = self.get_api_instance()
@@ -1657,37 +1657,17 @@ class Client:
         # if id == None, a name has to be provided instead and we can find
         # the id over the name
         if id==None:
-            try:
-                device_design = self.get_device_design_for(name=name)
-                id = device_design.id
-            except Exception as e:
-                raise SystemError(
-                    'Could not find the device design related to the name '
-                    f'{name}. Exception: {e}'
-                )
+            device_design = self.get_device_design_for(name=name)
+            id = device_design.id
 
         # Get the id of the component type for qubit qubit coupling resonators
-        try:
-            component_type = self.get_component_type_for(py_name="qb_qb_coupl_res")
-        except Exception as e:
-            raise SystemError(
-                'Could not find the qubit-qubit coupling resonator component '
-                f'type in the database. Exception: {e}'
-            )
-            return False
+        component_type = self.get_component_type_for(py_name="qb_qb_coupl_res")
 
         # Get the list of all the qubit qubit coupling resonators on that design
-        try:
-            component_list = api.list_components(
-                type=str(component_type.id),
-                devicedesign=str(id)
-            )
-        except Exception as e:
-            raise SystemError(
-                'Could not get the component list of qubit-qubit coupling '
-                f'resonators. Exception: {e}'
-            )
-            return False
+        component_list = api.list_components(
+            type=str(component_type.id),
+            devicedesign=str(id)
+        )
 
         connectivity_graph = [] # Array which stores qubit connections
 
@@ -1724,19 +1704,7 @@ class Client:
                     qb_id_on_design = api.retrieve_component(id=str(qb))
                     qbs_list.append(qb_id_on_design.number)
 
-                # Append the two qubits as tuples. If tuples are not required,
-                # one can also just use connectivity_graph.append(qbs_list)
-                if return_strings:
-                    qb1 = f"qb{qbs_list[0]}"
-                    qb2 = f"qb{qbs_list[1]}"
-                else:
-                    qb1 = qbs_list[0]
-                    qb2 = qbs_list[1]
-
-                if return_tuples:
-                    connectivity_graph.append((qb1, qb2))
-                else:
-                    connectivity_graph.append([qb1, qb2])
+                connectivity_graph.append([f"qb{qbs_list[0]}", f"qb{qbs_list[1]}"])
 
         return connectivity_graph
 
