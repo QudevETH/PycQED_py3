@@ -337,6 +337,7 @@ def read_dict_from_hdf5(data_dict: dict, h5_group):
                 h5_group.attrs['list_type']))
     return data_dict
 
+
 def decode_attribute_value(param_value):
     """
        Converts byte type to the true type of a parameter loaded from a file.
