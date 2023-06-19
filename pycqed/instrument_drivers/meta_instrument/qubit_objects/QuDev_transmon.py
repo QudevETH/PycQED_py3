@@ -5391,13 +5391,29 @@ class QuDev_transmon(Qubit):
                          parametric_flux_reset=True,
                          feedback_reset=True):
         from pycqed.measurement.waveform_control import reset_schemes as reset
+        msg = "{} submodule already in {}.reset.submodules. " \
+              "Submodule won't be created again. "
         if preselection:
-            self.reset.add_submodule("preselection", reset.Preselection(self.reset))
+            submodule_name = 'preselection'
+            if submodule_name in self.reset.submodules:
+                log.error(msg.format(submodule_name, self.name))
+            else:
+                self.reset.add_submodule("preselection",
+                                         reset.Preselection(self.reset))
         if parametric_flux_reset:
-            self.reset.add_submodule("parametric_flux",
-                                    reset.ParametricFluxReset(self.reset))
+            submodule_name = 'parametric_flux'
+            if submodule_name in self.reset.submodules:
+                log.error(msg.format(submodule_name, self.name))
+            else:
+                self.reset.add_submodule(submodule_name,
+                                        reset.ParametricFluxReset(self.reset))
         if feedback_reset:
-            self.reset.add_submodule("feedback", reset.FeedbackReset(self.reset))
+            submodule_name = 'feedback'
+            if submodule_name in self.reset.submodules:
+                log.error(msg.format(submodule_name, self.name))
+            else:
+                self.reset.add_submodule(submodule_name,
+                                         reset.FeedbackReset(self.reset))
 
     def add_parametric_flux_modulation(self, op_name="PFM",
                                   parameter_prefix='parametric_flux_modulation',
