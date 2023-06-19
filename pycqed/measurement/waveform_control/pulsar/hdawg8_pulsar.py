@@ -79,6 +79,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         return 8 / self.clock()  # 80 / self.clock() # 0 / self.clock()
 
     def __init__(self, pulsar, awg):
+        # Store clock at init to warn users changing clocks after the init,
+        # which is currently not supported
+        self._clock_at_init = awg.clock_freq()
+
         super().__init__(pulsar, awg)
         try:
             # Here we instantiate a zhinst.qcodes-based HDAWG in addition to
@@ -567,7 +571,12 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
                     if self.awg._awg_program[awg_nr] is not None])
 
     def clock(self):
-        return self.awg.clock_freq()
+        clock = self.awg.clock_freq()
+        if clock != self._clock_at_init:
+            raise NotImplementedError(self.__class__ +
+                                      ': changing the sampling rate after ' +
+                                      'initialization is not supported.')
+        return clock
 
     def _hdawg_active_awgs(self):
         return [0,1,2,3]
