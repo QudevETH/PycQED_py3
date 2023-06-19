@@ -18,12 +18,12 @@ class InterpolatedHamiltonianModel:
         """
         Args:
             qb (QuDev_transmon): Qb to which the Hamiltonian model corresponds
-            flux (array): Initial flux points to compute the data points used in
-                the interpolation. Will be mapped to domain [0, 1]. If None one
-                needs to specify n_steps instead. Defaults to None.
-            n_steps (int, optional): Number of linear spaced points within
+            n_steps (int): Number of linear spaced points within
                 [0, 1] to be used as flux points for the interpolation data
                 points. Defaults to 1001.
+            flux (array, optional): Initial flux points to compute the data
+                points used in the interpolation. In units of phi_0. If None
+                one needs to specify n_steps instead. Defaults to None.
             kw (optional):
                 - kind: Specifies the interpolation type, see `scipy.interp1d`.
                         Defaults to 'cubic'.
@@ -32,21 +32,21 @@ class InterpolatedHamiltonianModel:
         self._qb = qb
         self._flux = np.linspace(0, 1.0, n_steps) if flux is None else flux
         self._data_points = []
-        self.update_data_points()
+        self.update_frequency_points()
         self.model = interp1d(self._flux, self._data_points,
                               kind=kw.pop('kind', 'cubic'),
                               copy=False,
                               **kw)
 
-    def update_data_points(self, flux=None):
+    def update_frequency_points(self, flux=None):
         """Update the data points used for interpolation.
 
         Needs to be called if the actual Hamiltonian model in the qubit changed
 
         Args:
             flux (array, optional): New flux points that should be used for
-                computing th einterpolation data. If None, the previously
-                specified flux points will be used. Defaults to None.
+                computing the interpolation data. If None, the old flux
+                points (self._flux) will be used. Defaults to None.
         """
         if flux is not None:
             self._flux = flux
@@ -64,7 +64,10 @@ class InterpolatedHamiltonianModel:
             flux (array, optional): Flux points to be evaluated.
                 Defaults to None.
             bias (array, optional): Bias points to be evaluated. Overwrites flux
-                if specified. Defaults to None.
+                if specified. Defaults to None. In case flux and bias are both
+                None (default), the method will assume the parking position
+                and make flux excursion around this flux point according to
+                the amplitudes.
             amplitude (array, optional): Flux pulse amplitudes that are added
                 ontop of the specified flux or dc bias points. Needs to have the
                 same length as flux or bias. Defaults to None.
@@ -73,10 +76,6 @@ class InterpolatedHamiltonianModel:
             return_ge_and_ef (bool, optional): Whether to return both
                 transitions, 'ge' and 'ef'. Overwrites the choice taken in
                 argument transition. Defaults to False.
-
-        In case flux and bias are both None (default), the method will assume
-        the parking position and make flux excursion around this flux point
-        according to amplitudes.
 
         Note: Before calling the interpolation, the flux-bias-amplitude points
         will be mapped to the [0, 1] flux domain.

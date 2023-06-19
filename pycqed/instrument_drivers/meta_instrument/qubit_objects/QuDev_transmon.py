@@ -558,6 +558,10 @@ class QuDev_transmon(MeasurementObject):
             If True, the transition frequency will not be updated in the qubit
             object.
         :return: calculated transition frequency/frequencies
+
+        TODO: Add feature to automatically make use of
+              `InterpolatedHamiltonianModel` to speed up the computation in
+              certain use cases.
         """
 
         if transition not in ['ge', 'ef'] or (transition == 'ef' and
