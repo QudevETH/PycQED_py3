@@ -569,9 +569,13 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     def clock(self):
         clock = self.awg.clock_freq()
         if clock != self._clock_at_init:
-            raise NotImplementedError(self.__class__ +
-                                      ': changing the sampling rate after ' +
-                                      'initialization is not supported.')
+            raise NotImplementedError('HDAWG8Pulsar: detected a change of ' +
+                                      'sampling rate from ' +
+                                      f'{self._clock_at_init} to {clock}. ' +
+                                      'Changing the sampling rate after ' +
+                                      'initialization is not supported. ' +
+                                      'Make sure to set the correct sampling '
+                                      'rate before initializing Pulsar.')
         return clock
 
     def _hdawg_active_awgs(self):
