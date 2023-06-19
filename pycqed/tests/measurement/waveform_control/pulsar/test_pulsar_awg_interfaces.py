@@ -9,7 +9,7 @@ from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.measurement.waveform_control.segment import Segment
 from pycqed.measurement.waveform_control.pulsar.pulsar import PulsarAWGInterface
 from pycqed.measurement.waveform_control.pulsar.awg5014_pulsar import AWG5014Pulsar
-from pycqed.measurement.waveform_control.pulsar.hdwag8_pulsar import HDAWG8Pulsar
+from pycqed.measurement.waveform_control.pulsar.hdawg8_pulsar import HDAWG8Pulsar
 from pycqed.measurement.waveform_control.pulsar.shfqa_pulsar import SHFQAPulsar
 from pycqed.measurement.waveform_control.pulsar.uhfqc_pulsar import UHFQCPulsar
 
@@ -98,8 +98,8 @@ class TestPulsarAWGInterface(TestCase):
                 # Common params defined in PulsarAWGInterface.create_awg_parameters()
                 parameters = [
                     "_active",
-                    "_minimize_sequencer_memory",
                     "_enforce_single_element",
+                    "_join_or_split_element",
                     "_granularity",
                     "_element_start_granularity",
                     "_min_length",

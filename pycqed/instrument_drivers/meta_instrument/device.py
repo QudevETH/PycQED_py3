@@ -35,6 +35,7 @@ from qcodes.utils import validators as vals
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis_v3 import plotting as plot_mod
+from collections import OrderedDict
 
 log = logging.getLogger(__name__)
 
@@ -219,6 +220,10 @@ class Device(Instrument):
         # add sqb operations
         for qb in self.get_qubits(qubits):
             operation_dict.update(qb.get_operation_dict())
+
+        # add meas_obj operations
+        for mobj in self.TWPAs:
+            operation_dict.update(mobj.get_operation_dict())
 
         return operation_dict
 
@@ -564,9 +569,14 @@ class Device(Instrument):
                 f'names are: {self._two_qb_gates}')
         return gate_name
 
-    def get_channel_delays(self):
+    def get_channel_delays(self, qb_used=None):
         """
         Get AWG channel delays
+
+        Args:
+            qb_used (list of string): names of qubits whose delays should be
+            set to the AWG channels (useful e.g. for shared AWG channels).
+            If None, all qubits are used.
 
         Returns:
             Dictionary of delay values for the AWG channels of the system to
@@ -574,27 +584,47 @@ class Device(Instrument):
             `self.relative_delay_graph()`.
         """
         object_delays = self.relative_delay_graph().get_absolute_delays()
+        if qb_used is not None:
+            object_delays = {
+                (qbn, obj_type): delay
+                for (qbn, obj_type), delay in object_delays.items()
+                if qbn in qb_used
+            }
         channel_delays = {}
         for (qbn, obj_type), v in object_delays.items():
             qb = self.get_qb(qbn)
             if obj_type == 'drive':
-                channel_delays[qb.ge_I_channel()] = v
-                channel_delays[qb.ge_Q_channel()] = v
+                ch_to_set = [qb.ge_I_channel(), qb.ge_Q_channel()]
             elif obj_type == 'flux':
-                channel_delays[qb.flux_pulse_channel()] = v
+                ch_to_set = [qb.flux_pulse_channel()]
+            else:
+                raise ValueError(f"Unrecognized channel type: {obj_type}!")
+            for ch in ch_to_set:
+                if ch in channel_delays and channel_delays[ch] != v:
+                    log.warning(f"Delay of channel {ch} has conflicting "
+                                f"values! This happens if several qubits "
+                                f"share the same channel. Please pass qb_used "
+                                f"to get_channel_delays in order to set "
+                                f"AWG channel delays only for a subset of "
+                                f"qubits measured in parallel.")
+                if ch:  # If channel exists for this qubit
+                    channel_delays[ch] = v
         return channel_delays
 
-    def configure_pulsar(self):
+    def configure_pulsar(self, qb_used=None):
         """
         Configure pulse generation instrument settings.
 
         For now, only sets AWG channel delays.
+
+        Args:
+            qb_used: see get_channel_delays
         """
 
         pulsar = self.instr_pulsar.get_instr()
 
         # configure channel delays
-        channel_delays = self.get_channel_delays()
+        channel_delays = self.get_channel_delays(qb_used=qb_used)
         for ch, v in channel_delays.items():
             awg = pulsar.get_channel_awg(ch)
             chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
@@ -822,6 +852,63 @@ class Device(Instrument):
         else:
             return fig
 
+    def __getattr__(self, item):
+        """Attribute getter function
+
+        This function is overloaded such that if an attribute is not found in
+        the device it is fetched from self.qubits instead.
+
+        Args:
+            item: name of the attribute to fetch
+
+        Returns:
+            func: function equivalent to a qcodes parameter for all qubits,
+            see docstring
+        """
+        try:
+            # Normal behaviour (the requested attribute exists)
+            return super().__getattr__(item)
+        except AttributeError as e:
+            # If the requested attribute does not exist, try to fetch
+            # it instead from all the qubits
+            # Example:
+            # dev.ge_freq() ---> Returns {'qb1': 6.02e9, ...}
+            # dev.ge_freq(5.0e9) ---> Sets the ge_freq of all qubits
+            qbs_with_attr = [qb for qb in self.qubits if hasattr(qb, item)]
+            if qbs_with_attr:
+                def func(p=None, common_value_all_qubits=False):
+                    """Effective qcodes parameter acting on several qubits
+
+                    Args:
+                        p: Value to set to the qubits. If None, the function
+                            acts as a getter instead.
+                            p can be formatted in two ways:
+                            - case 1: a value v to set to the qubits
+                            - case 2: a dict of values to set to each qubit,
+                                e.g. {'qb1': v1, ...}
+                        common_value_all_qubits: If p is a dict, indicates that
+                            this whole dict should be set to each qubit. In
+                            other words, it should be recognized as case 1
+                            and not case 2.
+                    """
+                    if p is None:
+                        # No value passed: getter
+                        return {qb.name: qb.__getattr__(item)() for qb in
+                                qbs_with_attr}
+                    elif isinstance(p, dict) and not common_value_all_qubits:
+                        # Parse p to set p[qbn] to each qubit
+                        [qb.__getattr__(item)(p[qb.name])
+                         for qb in qbs_with_attr if qb.name in p]
+                    else:
+                        # Directly set p to each qubit
+                        # (p can be a value, or a dict if whole_dict)
+                        [qb.__getattr__(item)(p)
+                            for qb in qbs_with_attr]
+                return func
+            else:
+                # If the attribute does not exist in the qubits either
+                raise e
+
 
 class RelativeDelayGraph:
     """
@@ -923,7 +1010,7 @@ class RelativeDelayGraph:
             such that the relative delays are satisfied.
         """
         # determine root of the tree
-        abs_delays = {}
+        abs_delays = OrderedDict()
         min_delay = np.inf
         refs = set()
         children = set()

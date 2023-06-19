@@ -7,8 +7,8 @@ from pycqed.measurement.calibration import two_qubit_gates
 from pycqed.measurement.calibration import single_qubit_gates
 import numpy as np
 from collections import OrderedDict as odict
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object \
-    import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 from pycqed.measurement.waveform_control.circuit_builder import CircuitBuilder
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.gui import qt_compat as qt
@@ -31,6 +31,7 @@ class ExperimentTypes(Enum):
     QSCALE = single_qubit_gates.QScale
     T1 = single_qubit_gates.T1
     CHEVRON = two_qubit_gates.Chevron
+    THERMAL_POPULATION = single_qubit_gates.ThermalPopulation
 
 
 def get_members_by_experiment_class_name(experiment_class_name):
@@ -542,12 +543,12 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
             widget = QLineEditInitStateSelection()
             if field_information[1] is not None:
                 widget.insert(str(field_information[1]))
-        elif field_information[0] == (Qubit, "multi_select"):
+        elif field_information[0] == (QuDev_transmon, "multi_select"):
             widget = MultiQubitSelectionWidget(
                 [qb.name for qb in self.device.get_qubits()])
             # TODO: think about implementing default value (same for
             #  SweepPointsWidget)
-        elif field_information[0] == (Qubit, "single_select"):
+        elif field_information[0] == (QuDev_transmon, "single_select"):
             widget = SingleQubitSelectionWidget(
                 [qb.name for qb in self.device.get_qubits()])
             if field_information[1] is not None:

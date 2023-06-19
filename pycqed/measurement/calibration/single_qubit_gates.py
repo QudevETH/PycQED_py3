@@ -14,7 +14,8 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -59,6 +60,8 @@ class T1FrequencySweep(CalibBuilder):
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
          - the entry "qb" in each task should contain one qubit name.
+         - if force_2D_sweep is False and the first sweep dim is empty or has
+           only 1 point, the flux pulse amplitude will be swept as a 1D sweep.
 
         """
         try:
@@ -83,6 +86,9 @@ class T1FrequencySweep(CalibBuilder):
                 [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
+                self.sweep_points.reduce_dim(1, inplace=True)
+                self._num_sweep_dims = 1
             self.sequences, self.mc_points = \
                 self.parallel_sweep(self.preprocessed_task_list,
                                     self.t1_flux_pulse_block, **kw)
@@ -213,6 +219,9 @@ class T1FrequencySweep(CalibBuilder):
             all_fits (bool, default: True): whether to do all fits
         """
 
+        if len(self.sweep_points) == 1:
+            self.analysis = tda.MultiQubit_TimeDomain_Analysis()
+            return
         self.all_fits = kw.get('all_fits', True)
         self.do_fitting = kw.get('do_fitting', True)
         self.analysis = tda.T1FrequencySweepAnalysis(
@@ -1694,7 +1703,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
                 # For these experiments the pulse sequence is not identical for
                 # each all sweep points so the block function must be called
                 # at each iteration in sweep_n_dim.
-                if len(self.sweep_points[1]) == 0:
+                if self._num_sweep_dims == 2 and len(self.sweep_points[1]) == 0:
                     # This dummy sweep param is added in parallel_sweep of
                     # MultiTaskingExperiment, but since we do not call that
                     # method in this case, we need to add it here to the
@@ -1876,7 +1885,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
             })
         d['task_list_fields'].update({
             SingleQubitGateCalibExperiment.__name__: odict({
-                'qb': ((Qubit, 'single_select'), None),
+                'qb': ((QuDev_transmon, 'single_select'), None),
                 'transition_name': (['ge', 'ef', 'fh'], 'ge'),
             })
         })
@@ -1964,7 +1973,8 @@ class Rabi(SingleQubitGateCalibExperiment):
                 # experiment name
                 self.experiment_name += f'{n_list[0]}'
 
-    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+    def sweep_block(self, qb, sweep_points, transition_name,
+                    prep_transition=True, **kw):
         """
         This function creates the blocks for a single Rabi measurement task,
         see the pulse sequence in the class docstring.
@@ -1972,14 +1982,18 @@ class Rabi(SingleQubitGateCalibExperiment):
         :param sweep_points: SweepPoints instance
         :param transition_name: transmon transition to be tuned up. Can be
             "", "_ef", "_fh". See the docstring of parent method.
+        :param prep_transition: Whether to prepare the initial state of the
+            transition or not. This feature is required, e.g. by the thermal
+            population measurement which is sweeping the pulse amplitude of
+            the preparation pulse. Defaults to True.
         :param kw: keyword arguments
             n: (int, default: 1) number of Rabi pulses (X180_tr_name in the
                 pulse sequence). Amplitude of all these pulses will be swept.
         """
 
         # create prepended pulses
-        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
-                                             **kw)
+        prepend_blocks = super().sweep_block(qb, sweep_points,
+            transition_name=transition_name if prep_transition else '', **kw)
         n = kw.get('n', 1)
         # add rabi block of n x X180_tr_name pulses
         rabi_block = self.block_from_ops(f'rabi_pulses_{qb}',
@@ -2040,6 +2054,83 @@ class Rabi(SingleQubitGateCalibExperiment):
                     'sigma': 's',
                 },
             }
+        })
+        return d
+
+
+class ThermalPopulation(Rabi):
+    """
+    Experiment to determine the residual thermal population in the e state by
+    performing two subsequent Rabi experiments on the ef transition. For one of
+    them we prepare the e state before each ef Rabi pulse and for the other,
+    the qubit starts out in the thermal equilibrium state. By comparing the
+    amplitudes of the two Rabi oscillations, one can infer the thermal e
+    state population.
+
+    Args:
+        amps (list): Amplitude sweep points, see docstring of the parent class.
+        In this QuantumExperiment they are used as amplitude of the X180_ef
+        pulse, while the amplitude of the X180_ge pulse is set by qb.ge_amp180.
+
+    TODO: extend to states other than the e state
+    """
+    default_experiment_name = 'Thermal Population'
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 amps=None, **kw):
+        try:
+            transition_name = kw.pop('transition_name', 'ef')
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             transition_name=transition_name,
+                             amps=amps, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def update_sweep_points(self):
+        for qbn in self.qb_names:
+            ge_amp = self.dev.get_operation_dict()[f'X180 {qbn}']['amplitude']
+            self.sweep_points.add_sweep_parameter(
+                param_name=f'{qbn}_amplitude_ge',
+                values=np.array([0.0, ge_amp]),
+                unit='V',
+                label='amplitude ge',
+                dimension=1,
+            )
+        return super().update_sweep_points()
+
+    def sweep_block(self, qb, sweep_points, **kw):
+        prepend_pulse_dicts = kw.pop('prepend_pulse_dicts', list())
+        prepend_pulse_dicts += [{'op_code': f'X180 {qb}',
+                    'amplitude': ParametricValue(f'{qb}_amplitude_ge')}]
+
+        transition_name = kw.pop('transition_name', '_ef')
+
+        return super().sweep_block(qb, sweep_points, transition_name,
+            prep_transition=False, prepend_pulse_dicts=prepend_pulse_dicts,
+            **kw)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis class
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.ThermalPopulationAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['task_list_fields'].update({
+            ThermalPopulation.__name__: odict({
+                'transition_name': (['ge', 'ef', 'fh'], 'ef'),
+            })
         })
         return d
 
@@ -2154,7 +2245,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
 
         return task
 
-    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+    def sweep_block(self, qb, sweep_points, transition_name, center_block=None,
+                    **kw):
         """
         This function creates the blocks for a single Ramsey/Echo measurement
         task, see the pulse sequence in the class docstring.
@@ -2162,6 +2254,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
         :param sweep_points: SweepPoints instance
         :param transition_name: transmon transition to be tuned up. Can be
             "", "_ef", "_fh". See the docstring of parent method.
+        :param center_block: Block instance. This block is executed in the
+            center of the Ramsey sequence. Ignored if None. Defaults to None.
         :param kw: keyword arguments
             artificial_detuning: (float, default: 0) detuning of second pi-half
             pulse (X90_tr_name in the pulse sequence). Will be used to calculate
@@ -2200,6 +2294,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
             ramsey_block = self.simultaneous_blocks(f'main_{qb}',
                                                     [ramsey_block, echo_block],
                                                     block_align='center')
+        if center_block is not None:
+            ramsey_block = self.simultaneous_blocks(f'main_with_center_{qb}',
+                                                [ramsey_block, center_block],
+                                                block_align='center')
 
         return self.sequential_blocks(f'ramsey_{qb}',
                                       prepend_blocks + [ramsey_block])
@@ -2249,6 +2347,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
                     'exp_decay']['T2_star']
                 qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
                 qubit.set(f'T2_star{task["transition_name"]}', T2_star)
+                if task["transition_name_input"] == 'ef':
+                    qubit.set('anharmonicity', qb_freq - qubit.get('ge_freq'))
 
     @classmethod
     def gui_kwargs(cls, device):
@@ -2439,7 +2539,6 @@ class ReparkingRamsey(Ramsey):
             Passed to parent method.
         """
 
-        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
         options_dict = analysis_kwargs.pop('options_dict', {})
@@ -2471,6 +2570,156 @@ class ReparkingRamsey(Ramsey):
             # set new voltage
             fluxline(apd['reparking_params'][qubit.name]['new_ss_vals'][
                          'ss_volt'])
+
+
+class ResidualZZ(Ramsey):
+    """Measurement of the residual ZZ coupling between two qubits.
+
+    This is done by measuring two subsequent Ramsey experiments on the target
+    qubit, one of the Ramsey experiments leaves the control qubit in the ground
+    state and the other one excites it to the e state. The time at which the
+    second qubit is excited depends on whether one chooses to perform an echo
+    pulse as part of the Ramsey sequence or not. Without the echo pulse the
+    control qb is excited before the Ramsey sequence starts. In the echo case
+    the centers of the two X180 gates line up at the middle between the two
+    Ramsey X90 pulses. By comparing the detuning between the two Ramsey
+    experiments one can infer the residual coupling between the two qubits.
+
+    No echo:
+        qbc:    |X180| - ... -
+        qbt:     ... - |X90| - ... - |X90| -- |RO|
+                              sweep
+                            delay tau
+
+    Including echo:
+        qbc:          - ... - |X180| - ... -
+        qbt:    |X90| - ... - |X180| - ... - |X90| -- |RO|
+                       sweep          sweep
+                    delay tau/2    delay tau/2
+
+    See parent classes for parameters of the class and the task_list.
+    In addition to the target qubit (param name "qb") one needs to specify the
+    control qubit with the key "qbc".
+
+    Note: IT IS NOT RECOMMENDED TO RUN RESIDUAL ZZ MEASUREMENTS IN PARALLEL!
+    because of the influence between the individual measurments. Parallel
+    experiments are only supported for disjoint pairs of qubits,
+    e.g.    task1 = {'qb': qb1, 'qbc': qb2, ...} and
+            task2 = {'qb': qb7, 'qbc': qb8, ...}
+    but not task1 = {'qb': qb1, 'qbc': qb2, ...} and
+            task2 = {'qb': qb2, 'qbc': qb4, ...}
+    or      task1 = {'qb': qb1, 'qbc': qb2, ...} and
+            task2 = {'qb': qb3, 'qbc': qb2, ...}
+    """
+    task_mobj_keys = ['qb', 'qbc']
+
+    default_experiment_name = 'ResidualZZ'
+
+    def __init__(self, task_list=None, **kw):
+        try:
+            super().__init__(task_list, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def preprocess_task_list(self, **kw):
+        """Calls super method and in addition checks whether the different tasks
+        are compatible with each other.
+
+        Raises:
+            NotImplementedError: Raised if one qubit is involved in more than
+                one task.
+
+        Returns:
+            list: preprocessed task list
+        """
+        preprocessed_task_list =  super().preprocess_task_list(**kw)
+
+        # Warn the user when he is trying to run parallel measurments
+        if len(preprocessed_task_list) > 1:
+            log.warning('It is not recommended to run residual ZZ measurements '
+                        'in parallel! Use at your own risk.')
+        # Check that the involved qubits are pairwise dijoint between tasks:
+        all_involved_qubits = []
+        for task in preprocessed_task_list:
+            if task['qb'] in all_involved_qubits \
+                    or task['qbc'] in all_involved_qubits:
+                raise NotImplementedError(f'Either {task["qb"]} or '
+                                          f'{task["qbc"]} is contained in more '
+                                          f'than one task. This is not '
+                                          f'supported by this experiment.')
+            else:
+                all_involved_qubits.append(task['qb'])
+                all_involved_qubits.append(task['qbc'])
+        return preprocessed_task_list
+
+    def get_meas_objs_from_task(self, task):
+        """
+        Returns a list of all measure objects (e.g., qubits) of a task. Here we
+        overwrite the method to exclude the control qubit from the measure
+        objects.
+        :param task: a task dictionary
+        :return: list of all qubit objects (if available) or names
+        """
+        qbc = task.pop('qbc')
+        qubits = self.find_qubits_in_tasks(self.qb_names, [task])
+        task['qbc'] = qbc
+        return qubits
+
+    def update_sweep_points(self):
+        """Adds sweep point snecessary to turn on and of the pi-pulse of the
+        control qubits. Calls super method afterwards.
+        """
+        for task in self.preprocessed_task_list:
+            qbc = task['qbc']
+            ge_amp = self.dev.get_operation_dict()[f'X180 {qbc}']['amplitude']
+            self.sweep_points.add_sweep_parameter(
+                param_name=f'{qbc}_amplitude_ge',
+                values=np.array([0.0, ge_amp]),
+                unit='V',
+                label='amplitude ge',
+                dimension=1)
+        return super().update_sweep_points()
+
+    def sweep_block(self, qbc, qb, sweep_points, **kw):
+        """Adds the pi-pulse used to excite the control qubit by either creating
+        a center block (echo) or by passing the correct prepend_pulse_dict to
+        the super method.
+
+        Args:
+            qbc (str): name of the control qubit.
+            qb (str): name of the target qubit.
+            sweep_points (SweepPoints): sweep points to be passes to Ramsey
+                method.
+        """
+        center_block = None
+        prepend_pulse_dicts = kw.pop('prepend_pulse_dicts', list())
+        if self.echo:
+            center_block = self.block_from_pulse_dicts([{'op_code': f'X180 {qbc}',
+                        'amplitude': ParametricValue(f'{qbc}_amplitude_ge')}],
+                                         block_name=f'excitation_{qbc}')
+        else:
+            prepend_pulse_dicts += [{'op_code': f'X180 {qbc}',
+                        'amplitude': ParametricValue(f'{qbc}_amplitude_ge')}]
+
+        return super().sweep_block(qb, sweep_points,
+            center_block=center_block,
+            prepend_pulse_dicts=prepend_pulse_dicts,
+            **kw)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.ResidualZZAnalysis(
+            qb_names=[task['qb'] for task in self.preprocessed_task_list],
+            t_start=self.timestamp, echo=self.echo, **analysis_kwargs)
+
 
 class T1(SingleQubitGateCalibExperiment):
     """
@@ -3582,12 +3831,8 @@ class ActiveReset(CalibBuilder):
             # perpare correspondance between integration unit (key)
             # and uhf channel; check if only one channel is asked for
             # (not asked for all qb channels and weight type uses only 1)
-            if not all_qb_channels and qb.acq_weights_type() \
-                    in ('square_root', 'optimal'):
-                chs = {0: qb.acq_I_channel()}
-            else:
-                # other weight types have 2 channels
-                chs = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+            chs = {i: ch for i, ch in enumerate([
+                qb.get_acq_int_channels(2 if all_qb_channels else None)])}
 
             #get clf thresholds
             if from_clf_params:

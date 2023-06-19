@@ -375,6 +375,22 @@ class ParametricValue:
 
 
 def parse_pulse_search_pattern(pattern):
+    """Parse strings/ints that represent a pulse search pattern
+
+    Args:
+        pattern (str, int): the representation of the search pattern can be:
+          - a string as described in the docstring of Block.build,
+            param sweep_dicts_list
+          - an int i, which will be interpreted as the string
+            f'occurrence={i}'
+          - the str 'all' for matching all pulses
+
+    Returns:
+        None if pattern is not a valid search pattern. Otherwise a dict,
+        where each key-value pair corresponds to a criterion that needs to
+        be fulfilled, as described in the docstring of Block.build,
+        param sweep_dicts_list.
+    """
     if isinstance(pattern, int):
         pattern = f'occurrence={pattern}'
     if pattern == 'all':
@@ -387,6 +403,21 @@ def parse_pulse_search_pattern(pattern):
 
 
 def check_pulse_by_pattern(pulse, pattern, occurrence_counter):
+    """Check whether a pulse matches a search pattern
+
+    Args:
+        pulse: the pulse to be checked
+        pattern: a search pattern, provided either in the input format or in
+            the return format of parse_pulse_search_pattern
+        occurrence_counter: a single-entry list of int to count how many
+            matches to the pattern have already been found in calls to this
+            function. Note that occurence_counter is mutable and gets
+            modified by this function. (The int is wrapped in a list
+            in order to have it mutable.)
+
+    Returns:
+        a bool indicating whether the pulse matches the criteria in pattern
+    """
     def check_candidate(k, v, p):
         attr = p.get(k, '')
         if k == 'op_code':
@@ -397,7 +428,7 @@ def check_pulse_by_pattern(pulse, pattern, occurrence_counter):
         else:
             return (attr == v)
 
-    if isinstance(pattern, str):
+    if isinstance(pattern, (str, int)):
         pattern = parse_pulse_search_pattern(pattern)
     if pattern is None:
         return False

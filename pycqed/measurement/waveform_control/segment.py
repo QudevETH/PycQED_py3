@@ -37,6 +37,23 @@ class Segment:
     trigger_pulse_amplitude = 0.5
     trigger_pulse_start_buffer = 25e-9
 
+    # When internal modulation of a channel is turned on, the following
+    # parameters should be the same for all pulses on this channel.
+    internal_mod_pulse_params_to_check = [
+        "phi_skew",
+        "alpha"
+    ]
+
+    PHASE_ROUNDING_DIGITS = 5
+    """Specifies the rounding precision when processing phases 
+    in resolve_Z_gates method. If this parameter has value n, then the 
+    waveform phase will be rounded to the n-th digit of degree."""
+
+    FREQUENCY_ROUNDING_DIGITS = 3
+    """Specifies the rounding precision when processing frequencies 
+    in _internal_mod_update_params method. If this parameter has value n, then 
+    the waveform frequency will be rounded to the n-th digit of Hz."""
+
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
                  fast_mode=False, **kw):
         """
@@ -95,6 +112,8 @@ class Segment:
         self.elements = odict()
         self.element_start_end = {}
         self.elements_on_awg = {}
+        self.elements_on_channel = {}
+        self.element_metadata = {}
         self.distortion_dicts = {}
         # The sweep_params dict is processed by generate_waveforms_sequences
         # and allows to sweep values of nodes of ZI HDAWGs in a hard sweep.
@@ -104,7 +123,7 @@ class Segment:
         # sweep values given in this property.
         # FIXME: This is an experimental feature and needs to be further
         #  cleaned up and documented in the future.
-        self.sweep_params = {}
+        self.sweep_params = kw.pop('sweep_params', dict())
         # allow_filter specifies whether the segment can be filtered out in
         # a FilteredSweep
         self.allow_filter = False
@@ -116,8 +135,7 @@ class Segment:
         self.trigger_pars['length'] = self.trigger_pars['pulse_length'] + \
                                       self.trigger_pars['buffer_length_start']
         self._pulse_names = set()
-        self._acquisition_counter = {}
-        self.acquisition_elements = set()
+        self.acquisition_elements = dict()
         self.acquisition_mode = acquisition_mode
         self.mod_config = kw.pop('mod_config', dict())
         self.sine_config = kw.pop('sine_config', dict())
@@ -125,13 +143,11 @@ class Segment:
         self.pulse_pars = []
         self.is_first_segment = False
         self.fast_mode = fast_mode
-
-        for pulse_pars in pulse_pars_list:
-            self.add(pulse_pars)
-
         self.resolve_overlapping_elements = \
             kw.pop('resolve_overlapping_elements',
                    self.pulsar.resolve_overlapping_elements())
+        for pulse_pars in pulse_pars_list:
+            self.add(pulse_pars)
 
     def add(self, pulse_pars):
         """
@@ -156,36 +172,34 @@ class Segment:
 
         # Makes sure that element name is unique within sequence of
         # segments by appending the segment name to the element name
-        # and that RO pulses have their own elements if no element_name
-        # was provided. Note that Readout elements are numbered by default
-        # by counting the number of acquisition that occur for each measurement
-        # object (obtained from op code). In that way, the first readout
-        # of two different qubits which are on the same acquisition unit
-        # will be in the same element. This assumes that the readout on these
-        # qubits happens simultaneously and that they have the same number of
-        # readouts! At the moment, this is a constraint
-        # of the ZI acquisition device in any case. To relax this constraint
-        # once the hardware is more flexible, we could name the elements
-        # by their starting time, see pycqed OneNote/DevNotes/221004
-        if pars_copy.get('element_name', None) == None:
-            if pars_copy.get('operation_type', None) == 'RO':
-                mobj = pars_copy['op_code'].split(' ')[-1]
-                self._acquisition_counter.setdefault(mobj, 0)
-                pars_copy['element_name'] = \
-                    'RO_element_{}_{}'.format(
-                        self._acquisition_counter[mobj], self.name)
-                self._acquisition_counter[mobj] += 1
-            else:
-                pars_copy['element_name'] = 'default_{}'.format(self.name)
-        else:
-            pars_copy['element_name'] += '_' + self.name
-
-
-        # add element to set of acquisition elements
+        # and that RO pulses are put into an appropriate element if no
+        # element_name was provided. In particular, if a RO pulse for a
+        # measurement object does not have an element_name specified,
+        # the pulse will be put into the first acquisition element not yet
+        # used for this measurement object (or a new acquisition element is
+        # created if needed).
+        suffix = '_' + self.name
         if pars_copy.get('operation_type', None) == 'RO':
-            if pars_copy['element_name'] not in self.acquisition_elements:
-                self.acquisition_elements.add(pars_copy['element_name'])
-
+            # get measurement object by removing first part of op_code
+            mobj = ' '.join(pars_copy.get('op_code', '').split(' ')[1:])
+            if (elname := pars_copy.get('element_name')) is None:
+                if not mobj:
+                    log.warning(f"RO pulse {pars_copy['name']} has neither "
+                                f"element_name nor op_code. This can lead to "
+                                f"unexpected behavior.")
+                # find the first acquisition element not yet used for this mobj
+                for i in range(len(self.acquisition_elements) + 1):
+                    elname = f'RO_element_{i + 1}'
+                    if mobj not in self.acquisition_elements.get(
+                            elname + suffix, []):
+                        break
+                pars_copy['element_name'] = elname
+            # add element to dict of acquisition elements
+            self.acquisition_elements.setdefault(elname + suffix, [])
+            self.acquisition_elements[elname + suffix].append(mobj)
+        elif pars_copy.get('element_name') is None:
+            pars_copy['element_name'] = 'default'
+        pars_copy['element_name'] += suffix
 
         new_pulse = UnresolvedPulse(pars_copy)
 
@@ -209,7 +223,6 @@ class Segment:
             # generate name to automatically detect the end of the init block
             self._init_end_name = new_pulse.pulse_obj.name[:-len('start')] + \
                                    'end'
-        # print("adding", new_pulse.pulse_obj.name)
         if self._algo_start['search'] is not None:
             if block_mod.check_pulse_by_pattern(
                     pars_copy, self._algo_start['search'],
@@ -256,7 +269,8 @@ class Segment:
         :param store_segment_length_timer: (bool, default: True) whether
             the segment length should be stored in the segment's Timer object
         """
-        self.enforce_single_element()
+        self._check_acquisition_elements()
+        self.join_or_split_elements()
         self.resolve_timing()
         self.resolve_mirror()
         self.resolve_Z_gates()
@@ -264,6 +278,7 @@ class Segment:
         if self.resolve_overlapping_elements:
             self.resolve_overlap()
         self.extra_pulses = []
+        self.resolve_internal_modulation()
         self.gen_trigger_el(allow_overlap=allow_overlap)
         self.add_charge_compensation()
         if store_segment_length_timer:
@@ -279,50 +294,105 @@ class Segment:
                 # storing segment length is not crucial for the measurement
                 log.warning(f"Could not store segment length timer: {e}")
 
-    def enforce_single_element(self):
+    def _check_acquisition_elements(self):
+        mobjs = [set(m) for m in self.acquisition_elements.values()]
+        if len(mobjs) and any([m != mobjs[0] for m in mobjs]):
+            log.warning(
+                'Inconsistent acquisition elements can lead to unexpected '
+                'behavior. Usually, all acquisition elements should contain '
+                'pulses for the same set of measurement objects.')
+
+    def join_or_split_elements(self):
         self.resolved_pulses = []
         default_ese_element = f'default_ese_{self.name}'
+        index = 1
         for p in self.unresolved_pulses:
             channels = p.pulse_obj.masked_channels()
             chs_ese = set()
+            chs_split = set()
+            chs_def = set()
+            is_RO = (p.operation_type == "RO")
             for ch in channels:
                 ch_awg = self.pulsar.get(f'{ch}_awg')
-                if self.pulsar.get(f'{ch_awg}_enforce_single_element'):
+                join_or_split = self.pulsar.get(
+                    f"{ch_awg}_join_or_split_elements")
+                if join_or_split == 'ese':
                     chs_ese.add(ch)
-            if len(channels - chs_ese) == 0 and len(chs_ese) != 0:
-                p = deepcopy(p)
-                p.pulse_obj.element_name = default_ese_element
-                if p.pulse_obj.codeword == "no_codeword":
-                    self.resolved_pulses.append(p)
+                elif join_or_split == 'split':
+                    if is_RO:
+                        log.info(f'Splitting elements is not implemented'
+                                    f'with RO pulses. Not splitting '
+                                    f'{p.pulse_obj.name} on channel {ch}.')
+                        chs_def.add(ch)
+                    else:
+                        chs_split.add(ch)
+                else:
+                    chs_def.add(ch)
+
+            # add the pulses as default pulse if it has a default channel or
+            # if it is not part of any channel (i.e. only used as a flag)
+            if len(chs_def) != 0 or \
+                len(chs_def) == 0 and len(chs_ese) == 0 and len(chs_split) == 0:
+                p_def = deepcopy(p)
+                channel_mask = channels - chs_def
+                p_def.pulse_obj.channel_mask |= channel_mask
+                self.resolved_pulses.append(p_def)
+
+            if len(chs_ese) != 0:
+                p_ese = deepcopy(p)
+                channel_mask = channels - chs_ese
+                p_ese.pulse_obj.channel_mask |= channel_mask
+
+                el_name = default_ese_element
+                p_ese.pulse_obj.element_name = el_name
+
+                # modify p_ese in case there are already non-ese pulses added
+                # to have ese pulse start at the same time
+                if len(chs_def) != 0:
+                    p_ese.ref_pulse = p.pulse_obj.name
+                    p_ese.ref_point = 0
+                    p_ese.ref_point_new = 0
+                    p_ese.basis_rotation = {}
+                    p_ese.delay = 0
+                    p_ese.pulse_obj.name += '_ese'
+                    p_ese.is_ese_copy = True
+
+                if p_ese.pulse_obj.codeword == "no_codeword":
+                    self.resolved_pulses.append(p_ese)
                 else:
                     log.warning('enforce_single_element cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(list(channels))}')
 
-            elif len(chs_ese) != 0:
-                p0 = deepcopy(p)
-                p0.pulse_obj.channel_mask |= chs_ese
-                self.resolved_pulses.append(p0)
+            if len(chs_split) != 0:
+                p_split = deepcopy(p)
+                channel_mask = channels - chs_split
+                p_split.pulse_obj.channel_mask |= channel_mask
 
-                p1 = deepcopy(p)
-                p1.pulse_obj.element_name = default_ese_element
-                p1.pulse_obj.channel_mask |= channels - chs_ese
-                p1.ref_pulse = p.pulse_obj.name
-                p1.ref_point = 0
-                p1.ref_point_new = 0
-                p1.basis_rotation = {}
-                p1.delay = 0
-                p1.pulse_obj.name += '_ese'
-                p1.is_ese_copy = True
-                if p1.pulse_obj.codeword == "no_codeword":
-                    self.resolved_pulses.append(p1)
+                el_name = f'default_split_{index}_{self.name}'
+                index += 1
+                p_split.pulse_obj.element_name = el_name
+
+                if len(chs_def) != 0:
+                    p_split.ref_pulse = p.pulse_obj.name
+                    p_split.ref_point = 0
+                    p_split.ref_point_new = 0
+                    p_split.basis_rotation = {}
+                    p_split.delay = 0
+                    p_split.pulse_obj.name += '_split'
+                    p_split.is_ese_copy = True
+                elif len(chs_ese) != 0:
+                    raise NotImplementedError(f'Having pulse {p.pulse_obj.name}'
+                                              f' distributed over only ese and '
+                                              f'split channles is not '
+                                              f'implemented.')
+
+                if p_split.pulse_obj.codeword == "no_codeword":
+                    self.resolved_pulses.append(p_split)
                 else:
-                    log.warning('enforce_single_element cannot use codewords, '
+                    log.warning('Split pulses cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
-                                f'{", ".join(list(channels & chs_ese))}')
-            else:
-                p = deepcopy(p)
-                self.resolved_pulses.append(p)
+                                f'{", ".join(list(channels))}')
 
     def resolve_timing(self, resolve_block_align=True):
         """
@@ -340,7 +410,7 @@ class Segment:
 
         self.elements = odict()
         if self.resolved_pulses == []:
-            self.enforce_single_element()
+            self.join_or_split_elements()
 
         visited_pulses = []
         t_shift = 0
@@ -536,6 +606,302 @@ class Segment:
                         p.pulse_obj.crosstalk_cancellation_shift_mtx\
                             .get(calibration_key, None)
 
+    def resolve_internal_modulation(self):
+        """Processes internal-modulation-relevant information for this
+        segment. For every channel (AWG module) that this segment distributes
+        over, this method will:
+        1. Check if internal modulation for this channel is turned on in PycQED.
+        2. Check if all pulses types on this channel are compatible with
+        internal modulation.
+        3. Check if the configurations of all pulses on this channel are
+        compatible with each other for internal modulation.
+        4. If all checks above pass, updates pulse parameter and pass
+        modulation parameters to element metadata."""
+
+        # Update dictionary {channel: element_name} to attribute
+        # self.elements_on_channel
+        self.update_channel_elements()
+        # Create metadata dictionary entries for all element in this segment
+        self._initialize_element_metadata()
+
+        for channel in self.elements_on_channel.keys():
+            # Only look at I channel internal modulation configurations. Q
+            # channel configurations will be the corresponding I channel
+            # configurations.
+            if not self.pulsar.is_i_channel(cname=channel):
+                continue
+
+            # Check if this channel supports internal modulation, and if
+            # internal modulation is turned on for this channel. If not,
+            # we will skip this channel.
+            if not self.pulsar.check_channel_parameter(
+                awg=self.pulsar.get_channel_awg(channel).name,
+                channel=channel,
+                parameter_suffix="_internal_modulation"
+            ):
+                continue
+
+            # check if all pulses types on this channel are compatible with
+            # internal modulation. If not, we will print a warning message
+            # and disable internal modulation on this channel.
+            if not self._internal_mod_check_pulse_type(channel=channel):
+                logging.warning(
+                    f"In segment {self.name}: not all pulses supports "
+                    f"internal modulation on channel {channel}. This channel "
+                    f"will not be internally modulated in the current "
+                    f"sequence."
+                )
+                continue
+
+            # Check if the configurations of all pulses are compatible with
+            # each other when we turn on internal modulation. If not, we will
+            # print a warning message and not configure internal modulation on
+            # this channel.
+            pulse_params_allow_internal_mod, check_values = \
+                self._internal_mod_check_pulse_params(channel=channel)
+            if not pulse_params_allow_internal_mod:
+                logging.warning(
+                    f"In segment {self.name}: internal modulation "
+                    f"parameters are not compatible among the pulses. This "
+                    f"channel will not be internally modulated in the current "
+                    f"sequence."
+                )
+                continue
+
+            # We have made sure that internal modulation is applicable to
+            # this channel. We will change pulse settings and pass modulation
+            # configuration to element metadata.
+            self._internal_mod_update_params(
+                channel=channel,
+                check_values=check_values,
+            )
+
+    def update_channel_elements(self):
+        """Updates attribute self.elements_on_channel to a dictionary {
+        channel: set(element_name on this channel)}"""
+        self.elements_on_channel = {}
+        for elname in self.elements:
+            channels = self.get_element_channels(elname)
+            for channel in channels:
+                if channel not in self.elements_on_channel.keys():
+                    self.elements_on_channel[channel] = set()
+                self.elements_on_channel[channel].add(elname)
+
+    def _internal_mod_check_pulse_type(self, channel: str,):
+        """Check if all pulse types on this channel are compatible with
+        internal modulation.
+
+        Args:
+            channel (str): name of the channel to check.
+
+        Returns:
+            pulse_type_allow_internal_mod (bool): Boolean value indication
+                whether all pulses on this channel falls within the category
+                where internal modulation is supported.
+        """
+        # Check all pulses in all elements on this channel.
+        for element_name in self.elements_on_channel[channel]:
+            for pulse in self.elements[element_name]:
+                # An element can include pulses that are played in different
+                # AWG channels. Here we only process the pulses that are
+                # played on the current channel.
+                if channel not in pulse.channels:
+                    continue
+                if not pulse.SUPPORT_INTERNAL_MOD:
+                    return False
+        return True
+
+    def _internal_mod_check_pulse_params(
+            self,
+            channel: str,
+    ):
+        """Check if pulse parameters on this channel allows internal
+        modulation. This requires (1) I and Q channel of each pulse come
+        from the same channel pair, and the index of I channel is smaller.
+        (2) parameters in the class variable internal_mod_pulse_params_to_check
+        are the same for all pulses.
+
+        Args:
+            channel: name of the channel to check.
+
+        Returns:
+            pulse_parameter_allow_internal_mod (tuple): A tuple of 2. The
+                first value is a Boolean indicating whether all pulse
+                parameters are compatible with internal modulation. If the
+                first value is True, the second value will be a dictionary 
+                of check parameter values. If the first value is False,
+                the second value will be an empty dictionary.
+        """
+
+        # Create a dict with entries to record check parameter values for
+        # pulses on this channel.
+        check_values = {}
+        for param in self.internal_mod_pulse_params_to_check:
+            check_values[param] = None
+
+        # Check all pulses in all elements on this channel.
+        for element_name in self.elements_on_channel[channel]:
+            for pulse in self.elements[element_name]:
+                # An element can include pulses that are played in different
+                # AWG channels. Here we only process the pulses that are
+                # played on the current channel.
+                if channel not in pulse.channels:
+                    continue
+
+                # Records check parameter values of the first pulse on this
+                # channel, and compare the following pulse parameters with
+                # this value.
+                for param in self.internal_mod_pulse_params_to_check:
+                    if check_values[param] is None:
+                        check_values[param] = getattr(pulse, param)
+                    elif check_values[param] != getattr(pulse, param):
+                        return False, {}
+
+                # Check if I and Q channel of this pulse belong to the
+                # same channel pair and if they are in the correct order (the Q
+                # channel index being larger than the I channel index).
+                if not self.pulsar.is_channel_pair(
+                        cname1=pulse.I_channel,
+                        cname2=pulse.Q_channel,
+                        require_ordered=True,
+                ):
+                    return False, {}
+        return True, check_values
+
+    def _internal_mod_update_params(
+            self,
+            channel: str,
+            check_values: dict,
+    ):
+        """Pass modulation-relevant pulse parameters to element metadata and
+        resets pulse parameters.
+
+        Args:
+            channel: (str) name of the channel to check.
+            check_values: (dict) valid values collected from pulse parameter
+                check.
+        """
+        if not (hasattr(self.mod_config, channel) or len(check_values)):
+            # No internal modulation configuration for this channel.
+            return
+
+        mod_frequency = self._internal_mod_find_maximum_frequency(
+            channel=channel)
+        for elname in self.elements_on_channel[channel]:
+            channel_metadata = dict()
+            channel_metadata["mod_frequency"] = mod_frequency
+
+            # Find the phase of the first pulse on this channel. Pass this
+            # channel initial phase to element metadata.
+            channel_metadata["phase"] = self._internal_mod_update_init_phase(
+                channel=channel,
+                elname=elname,
+            )
+
+            # Write internal modulation settings collected from pulses to
+            # element metadata.
+            for param in self.internal_mod_pulse_params_to_check:
+                if param in check_values.keys():
+                    channel_metadata[param] = check_values[param]
+
+            # Write internal modulation settings passed from segment
+            # initialization parameters to element metadata.
+            for param, value in self.mod_config.get(channel, {}).items():
+                if param in channel_metadata.keys():
+                    raise RuntimeError(
+                        f"In segment {self.name}: modulation configuration "
+                        f"'{param}' has repetitive definition from segment "
+                        f"initialization parameters and from pulse "
+                        f"parameters. This may be caused by enabling"
+                        f"'{channel}_internal_modulation' "
+                        f"while doing spectroscopy measurement. Please "
+                        f"disable the parameter when doing spectroscopy "
+                        f"measurements."
+                    )
+                else:
+                    channel_metadata[param] = value
+
+            # Resets pulse parameters that are already passed to element
+            # metadata.
+            for pulse in self.elements[elname]:
+                if channel in pulse.channels:
+                    pulse.mod_frequency = round(
+                        pulse.mod_frequency - mod_frequency,
+                        self.FREQUENCY_ROUNDING_DIGITS)
+                    pulse.alpha = 1
+                    pulse.phi_skew = 0
+
+            self.element_metadata[elname]["mod_config"][channel] = \
+                channel_metadata
+
+    def _internal_mod_update_init_phase(
+            self,
+            channel: str,
+            elname: str,
+    ):
+        """Find the phase of the first pulse on the given channel within the
+        given element. Pass this initial phase to element metadata and
+        subtract this value from all pulses in this element.
+
+        Args:
+            channel (str): channel name.
+            elname (str): element name.
+
+        Return:
+            init_phase (float): initial phase of the first pulse. If there is no
+                actual pulse on the channel within this element, returns 0.
+        """
+        init_phase = 0.0
+        for pulse in self.elements[elname]:
+            if channel in pulse.channels:
+                init_phase = pulse.phase
+                break
+
+        # init_phase will be included in the command table entries when internal
+        # modulation is on.
+        for pulse in self.elements[elname]:
+            if channel in pulse.channels:
+                pulse.phase = round(pulse.phase - init_phase,
+                                    self.PHASE_ROUNDING_DIGITS)
+
+        return init_phase
+
+    def _internal_mod_find_maximum_frequency(
+            self,
+            channel: str,
+    ):
+        """Find the maximum pulse modulation frequency on this channel. For
+        typical qubit/qutrit drive pulses, this frequency is the
+        ge-transition modulation frequency.
+
+        Args:
+            channel (str): channel name.
+
+        Returns:
+            max_freq (float): max modulation frequency.
+        """
+        # Use a dictionary as a counter for modulation frequencies
+        frequency_bin = dict()
+        for elname in self.elements_on_channel[channel]:
+            for pulse in self.elements[elname]:
+                # Round frequency to avoid duplicates due to floating
+                # point rounding granularity.
+                if channel in pulse.channels:
+                    rounded_freq = round(pulse.mod_frequency,
+                                         self.FREQUENCY_ROUNDING_DIGITS)
+                    if rounded_freq in frequency_bin.keys():
+                        frequency_bin[rounded_freq] += 1
+                    else:
+                        frequency_bin[rounded_freq] = 1
+        return max(frequency_bin.keys())
+
+    def _initialize_element_metadata(self):
+        """Create metadata dictionary entries for all elements in this
+        segment."""
+
+        for elname in self.elements.keys():
+            self.element_metadata[elname] = {"mod_config": {}}
+
     def add_charge_compensation(self):
         """
         Adds charge compensation pulse to channels with pulsar parameter
@@ -559,8 +925,8 @@ class Segment:
         for element in self.element_start_end.keys():
             # finds the channels of AWGs with that element
             awg_channels = set()
-            for awg in self.element_start_end[element]:
-                chan = set(self.pulsar.find_awg_channels(awg))
+            for group in self.element_start_end[element]:
+                chan = set(self.pulsar.get_trigger_group_channels(group))
                 awg_channels = awg_channels.union(chan)
 
             # Calculate the tvals dictionary for the element
@@ -573,8 +939,8 @@ class Segment:
                 for c in pulse.masked_channels():
                     if c not in compensation_chan:
                         continue
-                    awg = self.pulsar.get('{}_awg'.format(c))
-                    element_start_time = self.get_element_start(element, awg)
+                    group = self.pulsar.get_trigger_group(c)
+                    element_start_time = self.get_element_start(element, group)
                     pulse_start = self.time2sample(
                         pulse.element_time(element_start_time), channel=c)
                     pulse_end = self.time2sample(
@@ -624,8 +990,8 @@ class Segment:
             last_element = pulse_area[c][1]
             # for RO elements create a seperate element for compensation pulses
             if last_element in self.acquisition_elements:
-                RO_awg = self.pulsar.get('{}_awg'.format(c))
-                if RO_awg not in comp_dict:
+                RO_group = self.pulsar.get_trigger_group(c)
+                if RO_group not in comp_dict:
                     # FIXME We create a segment here, but it will never get
                     #  triggered because trigger pulses are generated before
                     #  calling add_charge_compensation. This bug causes
@@ -639,13 +1005,13 @@ class Segment:
                         'for the flux AWG?')
                     last_element = 'compensation_el{}_{}'.format(
                         comp_i, self.name)
-                    comp_dict[RO_awg] = last_element
+                    comp_dict[RO_group] = last_element
                     self.elements[last_element] = []
-                    self.element_start_end[last_element] = {RO_awg: [t_end, 0]}
-                    self.elements_on_awg[RO_awg].append(last_element)
+                    self.element_start_end[last_element] = {RO_group: [t_end, 0]}
+                    self.elements_on_awg[RO_group].append(last_element)
                     comp_i += 1
                 else:
-                    last_element = comp_dict[RO_awg]
+                    last_element = comp_dict[RO_group]
 
             kw = {
                 'amplitude': amp,
@@ -664,23 +1030,25 @@ class Segment:
             pulse.algorithm_time(t_end)
 
             # Save the length of the longer pulse in longest_pulse dictionary
+            group = self.pulsar.get_trigger_group(c)
             total_length = 2 * comp_delay + length
-            longest_pulse[(last_element,awg)] = \
-                    max(longest_pulse.get((last_element,awg),0), total_length)
+            longest_pulse[(last_element,group)] = \
+                    max(longest_pulse.get((last_element,group),0), total_length)
 
             self.elements[last_element].append(pulse)
 
-        for (el, awg) in longest_pulse:
-            length_comp = longest_pulse[(el, awg)]
-            el_start = self.get_element_start(el, awg)
+        for (el, group) in longest_pulse:
+            length_comp = longest_pulse[(el, group)]
+            el_start = self.get_element_start(el, group)
             new_end = t_end + length_comp
+            awg = self.pulsar.get_awg_from_trigger_group(group)
             new_samples = self.time2sample(new_end - el_start, awg=awg)
             # make sure that element length is multiple of
             # sample granularity
             gran = self.pulsar.get('{}_granularity'.format(awg))
             if new_samples % gran != 0:
                 new_samples += gran - new_samples % gran
-            self.element_start_end[el][awg][1] = new_samples
+            self.element_start_end[el][group][1] = new_samples
 
     def gen_refpoint_dict(self):
         """
@@ -714,51 +1082,49 @@ class Segment:
         for element in self.elements:
             for pulse in self.elements[element]:
                 for channel in pulse.masked_channels():
-                    awg = self.pulsar.get(channel + '_awg')
-                    if awg in self.elements_on_awg and \
-                        element not in self.elements_on_awg[awg]:
-                        self.elements_on_awg[awg].append(element)
-                    elif awg not in self.elements_on_awg:
-                        self.elements_on_awg[awg] = [element]
+                    group = self.pulsar.get_trigger_group(channel)
+                    if group not in self.elements_on_awg:
+                        self.elements_on_awg[group] = [element]
+                    elif element not in self.elements_on_awg[group]:
+                        self.elements_on_awg[group].append(element)
 
-    def find_awg_hierarchy(self):
-        masters = {awg for awg in self.pulsar.awgs
-            if len(self.pulsar.get('{}_trigger_channels'.format(awg))) == 0}
+    def find_trigger_group_hierarchy(self):
+        masters = {group for group in self.pulsar.trigger_groups
+            if len(self.pulsar.get_trigger_channels(group)) == 0}
 
-        # generate dictionary triggering_awgs (keys are trigger AWGs and
-        # values triggered AWGs) and tirggered_awgs (keys are triggered AWGs
-        # and values triggering AWGs)
-        triggering_awgs = {}
-        triggered_awgs = {}
-        awgs = set(self.pulsar.awgs) - masters
-        for awg in awgs:
-            for channel in self.pulsar.get('{}_trigger_channels'.format(awg)):
-                trigger_awg = self.pulsar.get('{}_awg'.format(channel))
-                if trigger_awg in triggering_awgs:
-                    triggering_awgs[trigger_awg].append(awg)
-                else:
-                    triggering_awgs[trigger_awg] = [awg]
-                if awg in triggered_awgs:
-                    triggered_awgs[awg].append(trigger_awg)
-                else:
-                    triggered_awgs[awg] = [trigger_awg]
+        # generate dictionary triggering_groups (keys are trigger
+        # groups of triggering AWG and values are trigger groups
+        # of triggered AWGs) and triggered_groups (keys are triggered
+        # groups of AWGs and values are trigger groups of triggering AWGs)
+        triggering_groups = {}
+        triggered_groups = {}
+        groups = self.pulsar.trigger_groups - masters
+        for group in groups:
+            for channel in self.pulsar.get_trigger_channels(group):
+                trigger_group = self.pulsar.get_trigger_group(channel)
+                if trigger_group not in triggering_groups:
+                    triggering_groups[trigger_group] = []
+                triggering_groups[trigger_group].append(group)
+                if group not in triggered_groups:
+                    triggered_groups[group] = []
+                triggered_groups[group].append(trigger_group)
 
-        # impletment Kahn's algorithm to sort the AWG by hierarchy
-        trigger_awgs = masters
-        awg_hierarchy = []
+        # implement Kahn's algorithm to sort the trigger groups by hierarchy
+        trigger_groups = masters
+        group_hierarchy = []
 
-        while len(trigger_awgs) != 0:
-            awg = trigger_awgs.pop()
-            awg_hierarchy.append(awg)
-            if awg not in triggering_awgs:
+        while len(trigger_groups) != 0:
+            group = trigger_groups.pop()
+            group_hierarchy.append(group)
+            if group not in triggering_groups:
                 continue
-            for triggered_awg in triggering_awgs[awg]:
-                triggered_awgs[triggered_awg].remove(awg)
-                if len(triggered_awgs[triggered_awg]) == 0:
-                    trigger_awgs.add(triggered_awg)
+            for triggered_group in triggering_groups[group]:
+                triggered_groups[triggered_group].remove(group)
+                if len(triggered_groups[triggered_group]) == 0:
+                    trigger_groups.add(triggered_group)
 
-        awg_hierarchy.reverse()
-        return awg_hierarchy
+        group_hierarchy.reverse()
+        return group_hierarchy
 
     def gen_trigger_el(self, allow_overlap=False):
         """
@@ -773,8 +1139,8 @@ class Segment:
                   taking AWG delay into account.
                 * adds the trigger pulse to the elements list 
 
-        For debugging, self.skip_trigger can be set to a list of AWG names
-        for which the triggering should be skipped (by using a 0-amplitude
+        For debugging, self.skip_trigger can be set to a list of trigger group
+        names for which the triggering should be skipped (by using a 0-amplitude
         trigger pulse).
 
         Note the Pulsar parameters {AWG}_trigger_channels and
@@ -795,16 +1161,16 @@ class Segment:
             trig_pulse_params = self.pulsar.trigger_pulse_parameters()
 
             for ch, trigger_pulse_time, pars in trigger_pulses:
-                trigger_awg = self.pulsar.get('{}_awg'.format(ch))
+                trigger_group = self.pulsar.get_trigger_group(ch)
                 # Find the element to play the trigger pulse in.
                 # If there is no element on that AWG create a new element
-                if self.elements_on_awg.get(trigger_awg, None) is None:
+                if self.elements_on_awg.get(trigger_group, None) is None:
                     trigger_element = f'trigger_element_{self.name}'
                 # else find the element that is closest to the
                 # trigger pulse
                 else:
                     trigger_element = self.find_trigger_element(
-                            trigger_awg, trigger_pulse_time)
+                            trigger_group, trigger_pulse_time)
 
                 # Get the default trigger pulse parameters
                 kw = deepcopy(self.trigger_pars)
@@ -844,14 +1210,14 @@ class Segment:
                 else:
                     self.elements[trig_pulse.element_name] = [trig_pulse]
 
-                # Add the trigger_element to elements_on_awg[trigger_awg]
-                if trigger_awg not in self.elements_on_awg:
-                    self.elements_on_awg[trigger_awg] = [trigger_element]
-                elif trigger_element not in self.elements_on_awg[trigger_awg]:
-                    self.elements_on_awg[trigger_awg].append(trigger_element)
+                # Add the trigger_element to elements_on_awg[trigger_group]
+                if trigger_group not in self.elements_on_awg:
+                    self.elements_on_awg[trigger_group] = [trigger_element]
+                elif trigger_element not in self.elements_on_awg[trigger_group]:
+                    self.elements_on_awg[trigger_group].append(trigger_element)
 
                 trigger_el_set = trigger_el_set | {
-                    (trigger_awg, trigger_element)}
+                    (trigger_group, trigger_element)}
 
             # For all trigger elements update the start and length
             # after having added the trigger pulses
@@ -879,65 +1245,81 @@ class Segment:
         # Find the AWG hierarchy. Needed to add the trigger pulses first to
         # the AWG that do not trigger any other AWGs, then the AWGs that
         # trigger these AWGs and so on.
-        awg_hierarchy = self.find_awg_hierarchy()
+        trigger_group_hierarchy = self.find_trigger_group_hierarchy()
+        # Initialize variables for resolving the main trigger time
+        masters, delays = {}, {}
+        t_main_trig = np.inf
 
-        for awg in awg_hierarchy:
-            if awg not in self.elements_on_awg:
+        for group in trigger_group_hierarchy:
+            if group not in self.elements_on_awg:
                 continue
-            if len(self.pulsar.get('{}_trigger_channels'.format(awg))) == 0:
+            if len(self.pulsar.get_trigger_channels(group)) == 0:
                 # master AWG directly triggered by main trigger
-                t_main_trig = self.pulsar.main_trigger_time()
-                if t_main_trig != 'auto':
-                    # find first element on AWG
-                    el = self.find_trigger_element(awg, -np.inf)
-                    start_end = self.element_start_end[el][awg]
-                    if start_end[0] < t_main_trig:
-                        raise ValueError(
-                            f'Fixed main trigger time {t_main_trig} is too '
-                            f'late for this segment, which starts at '
-                            f'{start_end[0]}.')
-                    # update element start such that the waveforms start at
-                    # the requested fixed main trigger time.
-                    self.element_start_length(el, awg, t_start=t_main_trig)
+                # find and store the first element
+                masters[group] = self.find_trigger_element(group, -np.inf)
+                # determine required main trigger timer, taking into account
+                # the delay settings of this master trigger group
+                delays[group] = self.pulsar.get_trigger_delay(group)
+                start_end = self.element_start_end[masters[group]][group]
+                t_main_trig = min(start_end[0] + delays[group], t_main_trig)
                 continue  # for master AWG no trigger_pulse has to be added
 
             trigger_pulses = []
-            for element in self.elements_on_awg[awg]:
+            for element in self.elements_on_awg[group]:
                 # Calculate the trigger pulse time
-                [el_start, _] = self.element_start_length(element, awg)
+                [el_start, _] = self.element_start_length(element, group)
 
                 trigger_pulse_time = el_start - \
-                                     - self.pulsar.get('{}_delay'.format(awg))\
+                                     - self.pulsar.get_trigger_delay(group)\
                                      - self.trigger_pars['buffer_length_start']
 
                 # Find the trigger channels that trigger the AWG
-                for channel in self.pulsar.get(
-                        '{}_trigger_channels'.format(awg)):
+                for channel in self.pulsar.get_trigger_channels(group):
                     trigger_pulses.append(
                         (channel, trigger_pulse_time,
                          {'amplitude': 0}
-                         if awg in getattr(self, 'skip_trigger', []) else {}))
+                         if group in getattr(self, 'skip_trigger', []) else {}))
 
             add_trigger_pulses(trigger_pulses)
+
+        # if a fixed main trigger time is set: check compatibility and
+        # overwrite with fixed value
+        t_main_trig_setting = self.pulsar.main_trigger_time()
+        if t_main_trig_setting != 'auto':
+            if t_main_trig < t_main_trig_setting:
+                raise ValueError(
+                    f'Fixed main trigger time {t_main_trig_setting} is too '
+                    f'late for this segment, which starts at {t_main_trig}.')
+            t_main_trig = t_main_trig_setting
+        for group in masters:
+            # update element start such that the waveforms start at the
+            # main trigger time determined above, taking into account the
+            # delay settings (subtract a positive/negative delay from the
+            # start time = waveform gets more/less zeros at the start =
+            # original waveform starts later/earlier)
+            self.element_start_length(
+                masters[group], group, t_start=t_main_trig - delays[group])
 
         # checks if elements on AWGs overlap
         self._test_overlap(allow_overlap=allow_overlap)
         # checks if there is only one element on the master AWG
         self._test_trigger_awg()
 
-    def find_trigger_element(self, trigger_awg, trigger_pulse_time):
+    def find_trigger_element(self, trigger_group, trigger_pulse_time):
         """
-        For a trigger_AWG that is used for generating triggers as well as 
-        normal pulses, this method returns the name of the element to which the 
-        trigger pulse is closest.
+        For a trigger_group of an AWG that is used for generating triggers
+        as well as normal pulses, this method returns the name of the
+        element to which the trigger pulse is closest.
         """
 
         time_distance = []
 
-        for element in self.elements_on_awg[trigger_awg]:
+        for element in self.elements_on_awg[trigger_group]:
             [el_start, samples] = self.element_start_length(
-                element, trigger_awg)
-            el_end = el_start + self.sample2time(samples, awg=trigger_awg)
+                element, trigger_group)
+            el_end = el_start + self.sample2time(
+                samples,
+                awg=self.pulsar.get_awg_from_trigger_group(trigger_group))
             distance_start_end = [
                 [
                     abs(trigger_pulse_time + self.trigger_pars['length'] / 2 -
@@ -955,20 +1337,22 @@ class Segment:
 
         return trigger_element
 
-    def get_element_end(self, element, awg):
+    def get_element_end(self, element, group):
         """
         This method returns the end of an element on an AWG in algorithm_time 
         """
 
-        samples = self.element_start_end[element][awg][1]
+        samples = self.element_start_end[element][group][1]
+        awg = self.pulsar.get_awg_from_trigger_group(group)
         length = self.sample2time(samples, awg=awg)
-        return self.element_start_end[element][awg][0] + length
+        return self.element_start_end[element][group][0] + length
 
-    def get_element_start(self, element, awg):
+    def get_element_start(self, element, group):
         """
-        This method returns the start of an element on an AWG in algorithm_time 
+        This method returns the start of an element on an AWG trigger group
+        in algorithm_time
         """
-        return self.element_start_end[element][awg][0]
+        return self.element_start_end[element][group][0]
 
     def get_segment_start_end(self):
         """
@@ -976,9 +1360,9 @@ class Segment:
         """
         for i in range(2):
             start_end_times = np.array(
-                [[self.get_element_start(el, awg),
-                  self.get_element_end(el, awg)]
-                 for awg, v in self.elements_on_awg.items() for el in v])
+                [[self.get_element_start(el, group),
+                  self.get_element_end(el, group)]
+                 for group, v in self.elements_on_awg.items() for el in v])
             if len(start_end_times) > 0:
                 # the segment has been resolved before
                 break
@@ -1006,28 +1390,30 @@ class Segment:
         self.gen_elements_on_awg()
         overlapping_elements = []
 
-        for awg in self.elements_on_awg:
+        for group in self.elements_on_awg:
             el_list = []
             i = 0
-            for el in self.elements_on_awg[awg]:
-                if el not in self.element_start_end or awg not in \
+            for el in self.elements_on_awg[group]:
+                # add element and or group to element_start_end
+                if el not in self.element_start_end or group not in \
                         self.element_start_end[el]:
-                    self.element_start_length(el, awg)
-                el_list.append([self.element_start_end[el][awg][0], i, el])
+                    self.element_start_length(el, group)
+                el_list.append([self.element_start_end[el][group][0], i, el])
                 i += 1
 
             el_list.sort()
 
             for i in range(len(el_list) - 1):
                 prev_el = el_list[i][2]
-                el_prev_start = self.get_element_start(prev_el, awg)
-                el_prev_end = self.get_element_end(prev_el, awg)
+                el_prev_start = self.get_element_start(prev_el, group)
+                el_prev_end = self.get_element_end(prev_el, group)
                 el_length = el_prev_end - el_prev_start
 
                 # If element length is shorter than min length, 0s will be
                 # appended by pulsar. Test for elements with at least
                 # min_el_len if they overlap.
-                min_el_len = self.pulsar.get('{}_min_length'.format(awg))
+                min_el_len = self.pulsar.get('{}_min_length'.format(
+                    self.pulsar.get_awg_from_trigger_group(group)))
                 if el_length < min_el_len:
                     el_prev_end = el_prev_start + min_el_len
 
@@ -1053,7 +1439,7 @@ class Segment:
                         msg = f'{prev_el} (ends at {el_prev_end*1e6:.4f}us) ' \
                               f'and {el_list[i + 1][2]} (' \
                               f'starts at {el_new_start*1e6:.4f}us) overlap ' \
-                              f'on {awg}'
+                              f'on {group}'
                         if allow_overlap:
                             log.warning(msg)
                         else:
@@ -1073,7 +1459,6 @@ class Segment:
         one another. At the end the code combines all elements of each
         list into a new element.
         """
-
         self.gen_elements_on_awg()
         overlapping_elements = self._test_overlap(track_and_ignore=True)
 
@@ -1133,8 +1518,8 @@ class Segment:
         self.gen_elements_on_awg()
 
         # update element_start_end
-        for awg in self.pulsar.awgs:
-            self.element_start_length(combined_el_name, awg)
+        for group in self.pulsar.trigger_groups:
+            self.element_start_length(combined_el_name, group)
 
 
     def _test_trigger_awg(self):
@@ -1144,12 +1529,13 @@ class Segment:
         """
         self.gen_elements_on_awg()
 
-        for awg in self.elements_on_awg:
-            if len(self.pulsar.get('{}_trigger_channels'.format(awg))) != 0:
+        for group in self.elements_on_awg:
+            if len(self.pulsar.get_trigger_channels(group)) != 0:
                 continue
-            if len(self.elements_on_awg[awg]) > 1:
+            if len(self.elements_on_awg[group]) > 1:
                 raise ValueError(
-                    'There is more than one element on {}'.format(awg))
+                    'There is more than one element on trigger '
+                    'group {}'.format(group))
 
     def resolve_mirror(self):
         """
@@ -1161,7 +1547,7 @@ class Segment:
         decides which pulses within a category get mirrored. The mirroring
         is performed by multiplying all pulse parameters that contain
         'amplitude' in their name by -1 (and adding a mirror_correction if
-        it is provided).
+        it is provided), see Pulse.mirror_amplitudes().
 
         mirror_pattern:
         - 'none'/'all': no/all pulses are mirrored
@@ -1186,7 +1572,7 @@ class Segment:
             if pulse_category not in op_counts:
                 op_counts[pulse_category] = 0
             op_counts[pulse_category] += 1
-            pattern = getattr(p.pulse_obj, 'mirror_pattern', None)
+            p_obj, pattern = p.pulse_obj.get_mirror_pulse_obj_and_pattern()
             # interpret string pattern ('none'/'all'/'odd'/'even')
             if pattern is None or pattern == 'none':
                 continue  # do not mirror
@@ -1202,23 +1588,7 @@ class Segment:
                 continue  # do not mirror
             # mirror all parameters that have 'amplitude' in their name
             # (and apply mirror correction if applicable)
-            mirror_correction = getattr(p.pulse_obj, 'mirror_correction', None)
-            if mirror_correction is None:
-                mirror_correction = {}
-            if "fp" in p.pulse_obj.__dict__:
-                for kk in p.pulse_obj.fp.__dict__:
-                    if 'amplitude' in kk:
-                        amp = - p.pulse_obj.flux_amplitude
-                        if kk in mirror_correction:
-                            amp += mirror_correction[kk]
-                        setattr(p.pulse_obj.fp, kk, amp)
-            else:
-                for k in p.pulse_obj.__dict__:
-                    if 'amplitude' in k:
-                        amp = -getattr(p.pulse_obj, k)
-                        if k in mirror_correction:
-                            amp += mirror_correction[k]
-                        setattr(p.pulse_obj, k, amp)
+            p_obj.mirror_amplitudes()
 
     def resolve_Z_gates(self):
         """
@@ -1238,10 +1608,17 @@ class Segment:
                 pulse.pulse_obj.phase = pulse.original_phase - \
                                         basis_phases.get(pulse.basis, 0)
 
-    def element_start_length(self, element, awg, t_start=np.inf):
+            # Avoid creating repetitive waveforms due to small rounding errors
+            if hasattr(pulse.pulse_obj, "phase"):
+                pulse.pulse_obj.phase = round(
+                    round(pulse.pulse_obj.phase,
+                          self.PHASE_ROUNDING_DIGITS) % 360.0,
+                    self.PHASE_ROUNDING_DIGITS)
+
+    def element_start_length(self, element, trigger_group, t_start=np.inf):
         """
-        Finds and saves the start and length of an element on AWG awg
-        in self.element_start_end.
+        Finds and saves the start and length of an element on an AWG
+        trigger group in self.element_start_end.
         """
         if element not in self.element_start_end:
             self.element_start_end[element] = {}
@@ -1251,7 +1628,7 @@ class Segment:
 
         for pulse in self.elements[element]:
             for ch in pulse.masked_channels():
-                if self.pulsar.get(f'{ch}_awg') == awg:
+                if self.pulsar.get_trigger_group(ch) == trigger_group:
                     break
             else:
                 continue
@@ -1267,14 +1644,15 @@ class Segment:
         # aspects of the self.element_start_length.
         if t_start == np.inf or t_end == -np.inf:
             log.debug(f'Asked to find start of element {element} on AWG '
-                      f'{awg}, but element not on AWG.')
+                      f'trigger group {trigger_group}, but element not '
+                      f'on AWG.')
             return
         # make sure that element start is a multiple of element
         # start granularity
         # we allow rounding up of the start time by half a sample, otherwise
         # we round the start time down
-        start_gran = self.pulsar.get(
-            '{}_element_start_granularity'.format(awg))
+        awg = self.pulsar.get_awg_from_trigger_group(trigger_group)
+        start_gran = self.pulsar.get_element_start_granularity(trigger_group)
         sample_time = 1/self.pulsar.clock(awg=awg)
         if start_gran is not None:
             t_start = math.floor((t_start + 0.5*sample_time) / start_gran) \
@@ -1287,12 +1665,12 @@ class Segment:
         if samples % gran != 0:
             samples += gran - samples % gran
 
-        self.element_start_end[element][awg] = [t_start, samples]
+        self.element_start_end[element][trigger_group] = [t_start, samples]
 
         return [t_start, samples]
 
     def waveforms(self, awgs=None, elements=None, channels=None,
-                        codewords=None):
+                  codewords=None, trigger_groups=None):
         """
         After all the pulses have been added, the timing resolved and the 
         trigger pulses added, the waveforms of the segment can be compiled.
@@ -1310,29 +1688,39 @@ class Segment:
             }
         """
         if awgs is None:
-            awgs = set(self.elements_on_awg)
+            awgs = set(self.pulsar.get_awg_from_trigger_group(group)
+                       for group in self.elements_on_awg)
         if channels is None:
             channels = set(self.pulsar.channels)
         if elements is None:
             elements = set(self.elements)
+        if trigger_groups is None:
+            trigger_groups = set(self.elements_on_awg)
 
         awg_wfs = {}
-        for awg in awgs:
+        for group in trigger_groups:
             # only procede for AWGs with waveforms
-            if awg not in self.elements_on_awg:
+            if group not in self.elements_on_awg:
                 continue
-            awg_wfs[awg] = {}
-            channel_list = set(self.pulsar.find_awg_channels(awg)) & channels
+            awg = self.pulsar.get_awg_from_trigger_group(group)
+            if awg not in awgs:
+                continue
+            if awg not in awg_wfs:
+                awg_wfs[awg] = {}
+            channel_list = set(self.pulsar.get_trigger_group_channels(
+                group)) & set(channels)
             if channel_list == set():
                 continue
             channel_list = list(channel_list)
-            for i, element in enumerate(self.elements_on_awg[awg]):
+            for i, element in enumerate(self.elements_on_awg[group]):
                 if element not in elements:
                     continue
-                awg_wfs[awg][(i, element)] = {}
+                if (i, element) not in awg_wfs[awg]:
+                    awg_wfs[awg][(i, element)] = {}
+
                 tvals = self.tvals(channel_list, element)
                 wfs = {}
-                element_start_time = self.get_element_start(element, awg)
+                element_start_time = self.get_element_start(element, group)
                 for pulse in self.elements[element]:
                     # checks whether pulse is played on AWG
                     pulse_channels = set(pulse.masked_channels()) & set(channel_list)
@@ -1434,12 +1822,12 @@ class Segment:
                         if self.pulsar.get('{}_type'.format(c)) == 'analog':
                             if np.max(wfs[codeword][c], initial=0) > amp:
                                 logging.warning(
-                                    'Clipping waveform {} > {}'.format(
-                                        np.max(wfs[codeword][c]), amp))
+                                    'Clipping waveform {}: {} > {}'.format(
+                                        c, np.max(wfs[codeword][c]), amp))
                             if np.min(wfs[codeword][c], initial=0) < -amp:
                                 logging.warning(
-                                    'Clipping waveform {} < {}'.format(
-                                        np.min(wfs[codeword][c]), -amp))
+                                    'Clipping waveform {}: {} < {}'.format(
+                                        c, np.min(wfs[codeword][c]), -amp))
                             np.clip(
                                 wfs[codeword][c],
                                 -amp,
@@ -1450,11 +1838,12 @@ class Segment:
                         # marker channels have to be 1 or 0
                         elif self.pulsar.get('{}_type'.format(c)) == 'marker':
                             wfs[codeword][c] = (wfs[codeword][c] > 0)\
-                                .astype(np.int)
+                                .astype(int)
 
                 # save the waveforms in the dictionary
                 for codeword in wfs:
-                    awg_wfs[awg][(i, element)][codeword] = {}
+                    if codeword not in awg_wfs[awg][(i, element)]:
+                        awg_wfs[awg][(i, element)][codeword] = {}
                     for channel in wfs[codeword]:
                         awg_wfs[awg][(i, element)][codeword][self.pulsar.get(
                             '{}_id'.format(channel))] = (
@@ -1462,25 +1851,59 @@ class Segment:
 
         return awg_wfs
 
-    def get_element_codewords(self, element, awg=None):
+    def get_element_codewords(self, element, awg=None, trigger_group=None):
+        """
+        Return all codewords for pulses in an element. Use awg or
+        group to filter for specific awg or group.
+
+        Args:
+            element (str): name of element to get codewords for
+            awg (str): name of awg which to consider for finding codewords
+            trigger_group (str): name of trigger group which to consider
+                for finding codewords
+
+        Returns:
+            set of codewords
+        """
         codewords = set()
         if awg is not None:
-            channels = set(self.pulsar.find_awg_channels(awg))
+            awg_channels = set(self.pulsar.find_awg_channels(awg))
+        if trigger_group is not None:
+            group_channels = set(self.pulsar.get_trigger_group_channels(
+                trigger_group))
+
         for pulse in self.elements[element]:
-            if awg is not None and len(set(pulse.masked_channels()) & channels) == 0:
+            channels = set(pulse.masked_channels())
+            if awg is not None:
+                channels = channels & awg_channels
+            if trigger_group is not None:
+                channels = channels & group_channels
+            if len(channels) == 0:
                 continue
             codewords.add(pulse.codeword)
         return codewords
 
-    def get_element_channels(self, element, awg=None):
-        channels = set()
+    def get_element_channels(self, element, awg=None, trigger_group=None):
+        """
+        Return all channels an element is distributed over. Use awg or
+        group to filter for specific awg or group.
+
+        Args:
+        element (str): name of element to get channels for
+        awg (str): name of awg which to consider for finding channels
+        trigger_group (str): name of trigger group which to consider
+            for finding channels
+
+        Returns:
+            set of channels
+        """
+        channels = set([ch for pulse in self.elements[element] for ch in
+                        pulse.masked_channels()])
         if awg is not None:
-            awg_channels = set(self.pulsar.find_awg_channels(awg))
-        for pulse in self.elements[element]:
-            if awg is not None:
-                channels |= set(pulse.masked_channels()) & awg_channels
-            else:
-                channels |= set(pulse.masked_channels())
+            channels &= set(self.pulsar.find_awg_channels(awg))
+        if trigger_group is not None:
+            channels &= set(self.pulsar.get_trigger_group_channels(
+                trigger_group))
         return channels
 
     def calculate_hash(self, elname, codeword, channel):
@@ -1495,8 +1918,8 @@ class Segment:
         else:
             hashlist = []
 
-        awg = self.pulsar.get(f'{channel}_awg')
-        tstart, length = self.element_start_end[elname][awg]
+        group = self.pulsar.get_trigger_group(channel)
+        tstart, length = self.element_start_end[elname][group]
         hashlist.append(length)  # element length in samples
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
                 self.pulsar.get(f'{channel}_distortion') == 'precalculate':
@@ -1567,26 +1990,25 @@ class Segment:
 
         for channel in channel_list:
             samples = self.get_element_samples(element, channel)
-            awg = self.pulsar.get('{}_awg'.format(channel))
+            group = self.pulsar.get_trigger_group(channel)
             tvals[channel] = np.arange(samples) / self.pulsar.clock(
-                channel=channel) + self.get_element_start(element, awg)
+                channel=channel) + self.get_element_start(element, group)
 
         return tvals
 
-    def get_element_samples(self, element, instrument_ref):
+    def get_element_samples(self, element, channel):
         """
-        Returns the number of samples the element occupies for the channel or
-        AWG.
+        Returns the number of samples the element occupies for the channel.
+
+        Args:
+            element (str): name of element to get samples for
+            channel (str): name of channel for which to get number of
+                samples for
+        Returns:
+            number of samples
         """
-
-        if instrument_ref in self.pulsar.channels:
-            awg = self.pulsar.get('{}_awg'.format(instrument_ref))
-        elif instrument_ref in self.pulsar.awgs:
-            awg = instrument_ref
-        else:
-            raise Exception('instrument_ref has to be channel or AWG name!')
-
-        return self.element_start_end[element][awg][1]
+        group = self.pulsar.get_trigger_group(channel)
+        return self.element_start_end[element][group][1]
 
     def time2sample(self, t, **kw):
         """
@@ -1604,7 +2026,8 @@ class Segment:
              delays=None, savefig=False, prop_cycle=None, frameon=True,
              channel_map=None, plot_kwargs=None, axes=None, demodulate=False,
              show_and_close=True, col_ind=0, normalized_amplitudes=True,
-             save_kwargs=None, figtitle_kwargs=None, sharex=True):
+             save_kwargs=None, figtitle_kwargs=None, sharex=True,
+             trigger_groups=None):
         """
         Plots a segment. Can only be done if the segment can be resolved.
         :param instruments (list): instruments for which pulses have to be
@@ -1638,9 +2061,12 @@ class Segment:
         :param figtitle_kwargs (dict): figure.title kwargs passed on to fig.suptitle if
         not None
         :param sharex (bool): whether the xaxis is shared between the subfigures or not
+        :param trigger_groups (list): trigger groups for which pulses have to be
+            plotted. Defaults to all.
         :return: The figure and axes objects if show_and_close is False,
             otherwise no return value.
         """
+
         import matplotlib.pyplot as plt
         if delays is None:
             delays = dict()
@@ -1657,7 +2083,8 @@ class Segment:
                             pulse.mod_frequency = 0
                         if hasattr(pulse, "phase"):
                             pulse.phase = 0
-            wfs = self.waveforms(awgs=instruments, channels=None)
+            wfs = self.waveforms(awgs=instruments, channels=None,
+                                 trigger_groups=trigger_groups)
             n_instruments = len(wfs) if channel_map is None else \
                 len(channel_map)
             if axes is not None:
@@ -1886,13 +2313,13 @@ class Segment:
                     + new_name
 
         # rebuild acquisition elements that used the old segment name
-        new_acq_elements = set()
-        for el in self.acquisition_elements:
+        new_acq_elements = dict()
+        for el, v in self.acquisition_elements.items():
             if el.endswith(f"_{old_name}"):
-                new_acq_elements.add(el[:-(len(old_name) + 1)] + '_' \
-                                     + new_name)
+                new_acq_elements[el[:-(len(old_name) + 1)] + '_'
+                                 + new_name] = v
             else:
-                new_acq_elements.add(el)
+                new_acq_elements[el] = v
                 log.warning(f'Acquisition element name: {el} not ending'
                             f' with "_segmentname": {old_name}. Keeping '
                             f'current element name when renaming '
@@ -1925,6 +2352,10 @@ class UnresolvedPulse:
     pulse_pars: dictionary containing pulse parameters
     ref_pulse: 'segment_start', 'init_start', 'previous_pulse', pulse.name,
         or a list of multiple pulse.name.
+        If the beginning of a block (virtual pulse whose name ends with
+        "-|-start") is referenced to init_start, this block will be considered
+        as an initialization block and will be placed before pulses that
+        reference segment_start
     ref_point: 'start', 'end', 'middle', reference point of the reference pulse
     ref_point_new: 'start', 'end', 'middle', reference point of the new pulse
     ref_function: 'max', 'min', 'mean', specifies how timing is chosen if

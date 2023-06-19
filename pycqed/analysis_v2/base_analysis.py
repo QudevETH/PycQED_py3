@@ -33,7 +33,6 @@ import copy
 import traceback
 import logging
 log = logging.getLogger(__name__)
-log.addHandler(logging.StreamHandler())
 
 class BaseDataAnalysis(object):
     """
@@ -970,7 +969,12 @@ class BaseDataAnalysis(object):
             fit_yvals = fit_dict['fit_yvals']
             fit_xvals = fit_dict['fit_xvals']
             method = fit_dict.get('method', 'leastsq')
-            steps = fit_dict.get('steps', None)
+            fit_kwargs = {}
+            if 'steps' in fit_dict:
+                # We add this to the kwargs only if it is explicitly provided
+                # because we have observed recent lmfit versions showing a
+                # warning when passing this parameter.
+                fit_kwargs['steps'] = fit_dict['steps']
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -1003,7 +1007,7 @@ class BaseDataAnalysis(object):
                         model.set_param_hint(key, **val)
                     guess_pars = model.make_params()
             fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals, method=method,
-                                            params=guess_pars, steps=steps)
+                                            params=guess_pars, **fit_kwargs)
 
             self.fit_res[key] = fit_dict['fit_res']
 
@@ -1216,7 +1220,8 @@ class BaseDataAnalysis(object):
                     pdict.get('numplotsy', 1), pdict.get('numplotsx', 1),
                     sharex=pdict.get('sharex', False),
                     sharey=pdict.get('sharey', False),
-                    figsize=pdict.get('plotsize', None)
+                    figsize=pdict.get('plotsize', None),
+                    gridspec_kw=pdict.get('gridspec_kw', None),
                     # plotsize None uses .rc_default of matplotlib
                 )
                 if pdict.get('3d', False):
@@ -1226,6 +1231,16 @@ class BaseDataAnalysis(object):
                         azim=pdict.get('3d_azim', -35),
                         elev=pdict.get('3d_elev', 35))
                     self.axs[pdict['fig_id']].patch.set_alpha(0)
+
+        # Allows to specify a cax (axis for plotting a colorbar) by its
+        # index, instead of the axis object itself (since the axes are not
+        # created yet in the plot_dicts)
+        ax_keys = ['cax']
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            for ak in ax_keys:
+                if isinstance(i := pdict.get(ak + '_id'), int):
+                    pdict[ak] = self.axs[pdict['fig_id']].flatten()[i]
 
     def _plot(self, key_list, transparent_background=False):
         """
@@ -1916,7 +1931,9 @@ class BaseDataAnalysis(object):
 
         # FIXME Ignores thranspose option. Is it ok?
         if plot_xtick_labels is not None:
-            axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
+            axs.xaxis.set_ticklabels(plot_xtick_labels,
+                                     rotation=pdict.get(
+                                         'xlabels_rotation', 90))
         if plot_ytick_labels is not None:
             axs.yaxis.set_ticklabels(plot_ytick_labels)
         if plot_xtick_loc is not None:
@@ -2300,6 +2317,220 @@ class BaseDataAnalysis(object):
             if  instrument_class == instr_class:
                 dev_names.append(instrument)
         return dev_names
+
+
+class NDim_BaseDataAnalysis(BaseDataAnalysis):
+
+    def __init__(self, mobj_names=None, auto=True, **kwargs):
+        """
+        Basic analysis class for NDimQuantumExperiment and child classes.
+        Processes the data of several QuantumExperiment to reconstruct one or
+        multiple N-dimensional datasets and corresponding SweepPoints.
+
+        The idea is that running n N-dimensional measurements will yield in
+        total M=M1+M2+...+Mn measurement timestamps, where N-dimensional
+        measurement i consists of Mi data timestamps. For example,
+        MultiTWPA_SNR_Analysis expects n=4 groups with M=num_ts+num_ts+1+1
+        timestamps. By default this base class expects n=1 group (M=num_ts).
+        Starting from a list of M timestamps, this class partitions them back
+        into lists of M1+M2+...+Mn as indicated in get_measurement_groups,
+        then calls tile_data_ndim to reconstruct n groups of N-dimensional data.
+
+        The N-dimensional SweepPoints extracted for each group are saved in
+        pdd['group_sweep_points'][group], and global SweepPoints are saved in
+        pdd['sweep_points'] (should be overriden in child classes). That the
+        SweepPoints are extracted in the pdd does not matter for the processing
+        and is only meant as a convenience for the user and for plotting,
+        so this could be modified.
+
+        This class does not take more arguments than BaseDataAnalysis.
+        Child classes should override get_measurement_groups to indicate how
+        to partition the timestamps into groups to reconstruct the
+        N-dimensional measurements.
+        See MultiTWPA_SNR_Analysis for an example.
+
+        FIXME: Currently only works for NDimMultiTaskingExperiment, since it
+         relies on sweep_points stored in the task_list of each experiment to
+         reconstruct the individual N-dim sweep_points of each measurement
+         object. This should be fixed by instead relying on the
+         meas_obj_sweep_points_map and global sweep_points stored in the
+         experimental metadata. This requires either fixing
+         NDimMultiTaskingExperiment to correctly store the entire
+         N-dimensional sweep_points in the metadata, or extending this
+         analysis to automatically reconstruct the N-dim sweep_points from
+         the 2-D sweep_points of all individual experiments.
+
+        """
+
+        self.mobj_names = mobj_names
+        super().__init__(**kwargs)
+        if auto:
+            self.run_analysis()
+
+    def extract_data(self):
+        super().extract_data()
+        if isinstance(self.raw_data_dict, dict):
+            self.raw_data_dict = (self.raw_data_dict,)
+
+    def process_data(self):
+        super().process_data()
+        pdd = self.proc_data_dict
+        pdd['group_sweep_points'] = {}
+        measurement_groups = self.get_measurement_groups()
+        for group, kwargs in measurement_groups.items():
+            pdd[group], pdd['group_sweep_points'][group] = self.tile_data_ndim(
+                **kwargs)
+        pdd['sweep_points'] = pdd['group_sweep_points'][
+            list(measurement_groups)[0]]  # default
+        self.save_processed_data()
+
+    def get_measurement_groups(self):
+        """
+        Returns:
+            a dictionary indicating how the measured timestamps should be
+            combined into groups (key), each group being one N-dimensional
+            measurement. The value for each group name should be a dictionary
+            containing kwargs for tile_data_ndim.
+        """
+
+        default_proc = lambda data_dict, ch_map: np.sqrt(
+            data_dict[ch_map[0]] ** 2 + data_dict[ch_map[1]] ** 2)
+        # We have a set of num_ts experiments in total
+        num_ts = len(self.raw_data_dict)
+        measurement_groups = {
+            'ndim_data': dict(
+                ana_ids=range(0, num_ts),
+                post_proc_func=default_proc,
+            ),
+        }
+        return measurement_groups
+
+    def tile_data_ndim(self, ana_ids, post_proc_func):
+        """
+        Creates an N-dimensional dataset from separate timestamps each
+        containing 2-dimensional data, and returns the corresponding
+        N-dim SweepPoints. Additionally, performs possible post-processing on
+        the data as specified by post_proc_func.
+
+        Args:
+            ana_ids (list of tuple): indices of timestamps whose data should be
+                used
+            post_proc_func (function): specifies how to convert the raw data
+                per channel
+        into a value in the N-dim dataset (by default: sqrt(I**2+Q**2) )
+
+        """
+
+        data_ndim = {}
+        sweep_points_ndim = {}
+
+        for mobjn in self.mobj_names:
+            data_ndim[mobjn] = {}
+            sweep_points_ndim[mobjn] =\
+                self.get_ndim_sweep_points_from_mobj_name(ana_ids, mobjn)
+            sweep_lengths = sweep_points_ndim[mobjn].length()
+            data_ndim[mobjn] = np.nan * np.ones(sweep_lengths)
+            for ana_id in ana_ids:
+                # idxs: see NDimQuantumExperiment
+                # idxs are for now the same for all tasks, they are just stored
+                # in the task list for convenience
+                idxs = \
+                self.raw_data_dict[ana_id]['exp_metadata']['task_list'][0][
+                    'ndim_current_idxs']
+                ch_map = self.raw_data_dict[ana_id]['exp_metadata'][
+                    'meas_obj_value_names_map'][mobjn]
+                ana_data_dict = self.raw_data_dict[ana_id]['measured_data']
+                data_2D = post_proc_func(ana_data_dict, ch_map)
+                for i in range(sweep_lengths[0]):
+                    for j in range(sweep_lengths[1]):
+                        data_ndim[mobjn][(i, j, *idxs)] = data_2D[i, j]
+        return data_ndim, sweep_points_ndim
+
+    def get_meas_objs_from_task(self, task):
+        """
+        FIXME there are now several such functions with slightly different
+         functionalities, this should be cleaned up and unified after
+         refactoring QuDev_Transmon to inherit from MeasurementObject
+        """
+        return [task.get('mobj', task.get('qb'))]
+
+    def get_ndim_sweep_points_from_mobj_name(self, ana_ids, mobjn):
+        """
+        Convenience method to reconstruct SweepPoints. Here we simply take
+        the N-dim SweepPoints originally passed in the task_list, and add the
+        2-dim SweepPoints from the experiment, since these can get overriden
+        before running e.g. in spectroscopy.
+
+        Note: This behaviour could be improved or extended once there are
+        more complicated use cases, e.g. by really extracting each
+        SweepPoints values in dimensions >=2 from the corresponding
+        QuantumExperiment instead of getting those saved in the task list.
+        This would provide flexibility by avoiding to hardcode the experiment
+        structure in get_measurement_groups.
+        """
+
+        task_list = self.raw_data_dict[ana_ids[0]]['exp_metadata']['task_list']
+        # Find task containing this mobj
+        tasks = \
+        [t for t in task_list if mobjn in self.get_meas_objs_from_task(t)]
+        if len(tasks)!=1:
+            raise ValueError(f"{len(tasks)} tasks found containing"
+                             f" {mobjn} in experiments {ana_ids}")
+        task = tasks[0]
+        sweep_points_ndim = SweepPoints(task['sweep_points'],
+                                               min_length=2)
+        # Cleanup swept SP in dim>=2 which contain only one value
+        sweep_points_ndim.prune_constant_values()
+        sweep_points_ndim.update(task['ndim_sweep_points'])
+        return sweep_points_ndim
+
+    @staticmethod
+    def get_slice(data, sp, sliceat):
+        """
+        Slices an N-dim numpy array indexed by SweepPoints, based on a list
+        of values to give to the SweepPoints. For example:
+            data: a 3-D array
+            sp: SweepPoints([
+                {"RO_freq": ...},
+                {"TWPA_pump_freq": ...},
+                {"TWPA_pump_power": ...},
+            ])
+            sliceat: {"RO_freq": 7.1e9, "TWPA_pump_power": 3.2}
+            -> returns 1-D data sliced at these values of the SweepPoints, and
+            remaining SweepPoints([{"RO_freq": ...}]) that index the data
+        If sliceat doesn't exactly match one value of the SweepPoints,
+        the closest row of data is returned
+
+        Args:
+            data (np.array): data to slice, with same dimensions as sp
+            sp (SweepPoints): sweep points indexing the data array
+            sliceat (dict): (list of tuples: (str, float)): list of sp names and
+            corresponding values at which to slice the data
+
+        Returns:
+            sliced data (with len(sliceat) less dimensions) and corresponding sp
+        """
+
+        data = copy.deepcopy(data)
+        sp = copy.deepcopy(sp)
+
+        for key, val in sliceat.items():
+            # Determine in which dimension to slice
+            id_of_slice = sp.find_parameter(key)
+            # Determine at what value to slice
+            sp_vals = sp.get_values(key)
+            id_in_slice = (np.abs(sp_vals - val)).argmin()
+            # Slice data, and prune sp accordingly
+            data = np.take(data, [id_in_slice],
+                                    axis=id_of_slice)
+            sp.pop(sp.find_parameter(key))
+            # Clean up unused dimensions
+            shape = np.array(data.shape)
+            useless_dims = np.where(shape == 1)
+            shape = np.delete(shape, useless_dims)
+            data = np.reshape(data, shape)
+
+        return data, sp
 
 
 def plot_scatter_errorbar(self, ax_id, xdata, ydata, xerr=None, yerr=None, pdict=None):
