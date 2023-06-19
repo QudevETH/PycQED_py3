@@ -11,10 +11,16 @@ from copy import deepcopy
 from collections import OrderedDict
 from more_itertools import unique_everseen
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.utilities.io.hdf5 import read_dict_from_hdf5
+from pycqed.utilities.io.hdf5 import read_dict_from_hdf5, decode_attribute_value
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement import sweep_points as sp_mod
 import pycqed.utilities.settings_manager as setman
+
+
+def convert_attribute(attr_val):
+    log.warning("Deprecated function, will be removed in a future MR;"
+                " Please use utilities.io.hdf5.decode_attribute_value instead.")
+    return decode_attribute_value(attr_val)
 
 
 def decode_parameter_value(param_value):
@@ -28,18 +34,20 @@ def decode_parameter_value(param_value):
     Returns:
         the converted parameter value
     """
-    # log.warning("Deprecated function, will be removed in a future MR;"
-    #             " Please use utilities.io.hdf5.decode_attribute_value instead.")
-    if isinstance(param_value, bytes):
-        param_value = param_value.decode('utf-8')
-    # If it is an array of value decodes individual entries
-    if isinstance(param_value, np.ndarray) or isinstance(param_value, list):
-        param_value = [av.decode('utf-8') if isinstance(av, bytes)
-                       else av for av in param_value]
-    try:
-        return eval(param_value)
-    except Exception:
-        return param_value
+    log.warning("Deprecated function, will be removed in a future MR;"
+                " Please use utilities.io.hdf5.decode_attribute_value instead.")
+    return decode_attribute_value(param_value)
+
+
+def get_hdf_param_value(group, param_name):
+    """
+    Function will be removed in future MR.
+    Returns an attribute "key" of the group "Experimental Data"
+    in the hdf5 datafile.
+    """
+    log.warning("Deprecated function, will be removed in a future MR;")
+    s = group.attrs[param_name]
+    return convert_attribute(s)
 
 
 def get_value_names_from_timestamp(timestamp, **params):
@@ -57,7 +65,7 @@ def get_value_names_from_timestamp(timestamp, **params):
 
     data_file = a_tools.open_hdf_file(timestamp, **params)
     try:
-        channel_names = decode_parameter_value(
+        channel_names = decode_attribute_value(
             data_file['Experimental Data'].attrs['value_names'])
         data_file.close()
         return channel_names
@@ -124,7 +132,7 @@ def get_param_from_group(group_name, param_name=None, timestamp=None,
         for key_paths in all_matches:
             split_kp = key_paths.split('.')
             if param_name == split_kp[-1]:
-                param_value[key_paths] = decode_parameter_value(
+                param_value[key_paths] = decode_attribute_value(
                     all_matches[key_paths])
 
         if len(param_value) > 1 and not find_all_matches:
@@ -211,6 +219,14 @@ def get_param_from_fit_res(param, fit_res, split_char='.'):
                          raise_error=True)
 
 
+def get_data_from_hdf_file(timestamp=None, data_file=None, close_file=True,
+                           **params):
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use hlp_mod.get_dataset_from_hdf_file() instead.")
+    return get_dataset_from_hdf_file(timestamp=timestamp, data_file=data_file,
+                                     close_file=close_file, **params)
+
+
 def get_dataset_from_hdf_file(timestamp=None, data_file=None, close_file=True,
                               **params):
     """
@@ -242,6 +258,32 @@ def get_dataset_from_hdf_file(timestamp=None, data_file=None, close_file=True,
         data_file.close()
         raise e
     return dataset
+
+
+def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
+                  file_id=None, **params):
+    """
+    Opens an HDF file.
+
+    Args:
+        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
+        folder (str): path to file location without the filename + extension
+        filepath (str): path to HDF file, including the filename + extension.
+            Overwrites timestamp and folder.
+        mode (str): mode in which to open the file ('r' for read,
+            'w' for write, 'r+' for read/write).
+        file_id (str): suffix of the file name
+        **params: keyword arguments passed to measurement_filename,
+            see docstring there for acceptable input parameters
+
+    Returns:
+        open HDF file
+    """
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use a_tools.open_hdf_file() instead.")
+    return a_tools.open_hdf_file(timestamp=timestamp, folder=folder,
+                                 filepath=filepath, mode=mode, file_id=file_id,
+                                 **params)
 
 
 def get_qb_channel_map_from_file(qb_names, file_path, value_names, **kw):
@@ -301,6 +343,28 @@ def get_qb_channel_map_from_file(qb_names, file_path, value_names, **kw):
         raise ValueError('Did not find any channels. '
                          'qb_channel_map is empty.')
     return channel_map
+
+
+def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
+                                    acq_dev_name=None, th_path=None,
+                                    th_scaling=1, **params):
+    """
+    Extracts the state classification threshold value for the qubits in
+    meas_obj_names.
+    :param meas_obj_names: list of measured object names
+    :param timestamp: timestamp string of an HDF file from which to extract
+    :param acq_dev_name: name of acquisition device
+    :param th_path: path inside HDF file to the threshold attribute of acq dev
+    :param th_scaling: float by which to scale the threshold values
+    :param params: passed to get_instr_param_from_hdf_file. See docstring there.
+    :return: thresholds of the form
+        {meas_obj_name: classification threshold value).
+    """
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use a_tools.open_hdf_file() instead.")
+    return get_qb_thresholds_from_file(meas_obj_names, timestamp=timestamp,
+                                    acq_dev_name=acq_dev_name, th_path=th_path,
+                                    th_scaling=th_scaling, **params)
 
 
 def get_qb_thresholds_from_file(meas_obj_names, timestamp=None,
@@ -442,6 +506,55 @@ def get_state_prob_mtxs_from_hdf_file(timestamp, meas_obj_names,
     return state_prob_mtxs
 
 
+def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
+                                  folder=None, **params):
+    """
+    Extracts the value for the parameter specified by param_name for the
+    instrument specified by instr_name from an HDF file.
+    :param instr_name: str specifying the instrument name in the HDF file
+    :param param_name: str specifyin the name of the parameter to extract
+    :param timestamp: str of the form YYYYMMDD_hhmmss.
+    :param folder: path to HDF file
+    :param params: keyword arguments
+    :return: value corresponding to param_name
+    """
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use hlp_mod.get_instr_param_from_file() instead.")
+    return get_instr_param_from_file(instr_name, param_name=param_name,
+                                     timestamp=timestamp, folder=folder,
+                                     **params)
+
+
+def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
+                             add_param_method=None, folder=None, **params):
+    """
+    Extracts the parameter provided in params_dict from an HDF file
+    and saves them in data_dict.
+    :param data_dict: OrderedDict where parameters and their values are saved
+    :param params_dict: OrderedDict with key being the parameter name that will
+        be used as key in data_dict for this parameter, and value being a
+        parameter name or a path + parameter name indie the HDF file.
+    :param numeric_params: list of parameter names from amount the keys of
+        params_dict. This specifies that those parameters are numbers and will
+        be converted to floats.
+    :param folder: path to file from which data will be read
+    :param params: keyword arguments:
+        append_value (bool, default: True): whether to append an
+            already-existing key
+        update_value (bool, default: False): whether to replace an
+            already-existing key
+        h5mode (str, default: 'r+'): reading mode of the HDF file
+        close_file (bool, default: True): whether to close the HDF file(s)
+    """
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use hlp_mod.get_params_from_files() instead.")
+    return get_params_from_files(data_dict, params_dict=params_dict,
+                                 numeric_params=numeric_params,
+                                 add_param_method=add_param_method,
+                                 folder=folder,
+                                 **params)
+
+
 def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
                           add_param_method=None, folder=None, **params):
     """
@@ -570,7 +683,7 @@ def extract_from_hdf_file(file, path_to_param):
         attrs = list(group.attrs)
 
     if par_name in attrs:
-        param_value = decode_parameter_value(group.attrs[par_name])
+        param_value = decode_attribute_value(group.attrs[par_name])
     elif par_name in list(group.keys()) or path_to_param == '':
         par = group[par_name] if par_name != '' else group
         if isinstance(par, h5py._hl.dataset.Dataset):
@@ -603,7 +716,7 @@ def extract_from_hdf_file(file, path_to_param):
                     param_value = read_dict_from_hdf5(
                         {}, file[group_name][par_name])
             if par_name in list(file[group_name].attrs):
-                param_value = decode_parameter_value(
+                param_value = decode_attribute_value(
                     file[group_name].attrs[par_name])
     return param_value
 
@@ -1437,7 +1550,7 @@ def read_from_hdf(data_dict, hdf_group, split_char='.', raise_exceptions=False):
                 if path[-2] == path[-1]:
                     path = path[:-1]
                 was_array = isinstance(val_to_store, np.ndarray)
-                val_to_store = decode_parameter_value(val_to_store)
+                val_to_store = decode_attribute_value(val_to_store)
                 if was_array:
                     val_to_store = np.array(val_to_store)
                 try:
@@ -1461,7 +1574,7 @@ def read_from_hdf(data_dict, hdf_group, split_char='.', raise_exceptions=False):
             if temp_path[-1] != key:
                 temp_path += [key]
             if 'list_type' not in hdf_group.attrs:
-                value = decode_parameter_value(value)
+                value = decode_attribute_value(value)
                 if key == 'cal_points' and not isinstance(value, str):
                     value = repr(value)
             try:
