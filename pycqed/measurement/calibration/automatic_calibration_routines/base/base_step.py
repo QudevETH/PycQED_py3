@@ -41,7 +41,9 @@ class Step:
                 the step.
             settings_user (dict): A dictionary from the user to update the
                 configuration parameters. The structure of the dictionary must
-                be compatible with that of a general settings dictionary.
+                be compatible with that of a general settings dictionary. See
+                docstring of parse_settings() of Step class for information on
+                how settings are passed to the routines and the QuantumExperiment.
 
         Keyword args:
             Shouldn't be any, this is here for backwards compatibility.
