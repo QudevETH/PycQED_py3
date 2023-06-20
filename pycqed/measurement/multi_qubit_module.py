@@ -368,30 +368,6 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
             for uhf in uhfs])
 
 
-def get_multi_qubit_prep_params(qubits):
-    """
-    Create the preparation parameters dict from the preparation_params of each
-    qubit.
-
-    Args:
-        qubits (list): instances of QuDev_transmon
-
-    Returns:
-        preparation parameters dict for a measurement on qubits
-    """
-    prep_params_list = [qb.preparation_params() for qb in qubits]
-    if len(prep_params_list) == 0:
-        raise ValueError('prep_params_list is empty.')
-
-    thresh_map = {}
-    for i, prep_params in enumerate(prep_params_list):
-        if 'threshold_mapping' in prep_params:
-            thresh_map.update({qubits[i].name:
-                                   prep_params['threshold_mapping']})
-
-    prep_params = deepcopy(prep_params_list[0])
-    prep_params['threshold_mapping'] = thresh_map
-    return prep_params
 
 
 def get_meas_obj_value_names_map(mobjs, multi_uhf_det_func):
@@ -425,21 +401,17 @@ def get_meas_obj_value_names_map(mobjs, multi_uhf_det_func):
 
 def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
                                 thresholds=None, thresholded=False,
-                                analyse=True, upload=True):
+                                analyse=True, upload=True,
+                                preselection=True, ro_separation=None):
     for qb in qubits:
         MC = qb.instr_mc.get_instr()
 
     for qb in qubits:
         qb.prepare(drive='timedomain')
 
-    prep_params = \
-        get_multi_qubit_prep_params([qb.preparation_params() for qb in qubits])
-    preselection = prep_params.get(
-        'preparation_type', 'preselection') == 'preselection'
-    RO_spacing = prep_params.get('ro_separation', None)
-    if prep_params and RO_spacing is None:
+    if preselection and ro_separation is None:
         log.warning('This measurement will do preselection but ro_separation '
-                    'is not specified in the prep_params.')
+                    'is not specified.')
 
     operation_dict = dev.get_operation_dict(qubits=qubits)
     sf = awg_swf2.n_qubit_off_on(
@@ -447,7 +419,7 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
         [operation_dict['RO ' + qb.name] for qb in qubits],
         preselection=preselection,
         parallel_pulses=True,
-        RO_spacing=RO_spacing,
+        RO_spacing=ro_separation,
         upload=upload)
 
     m = 2 ** (len(qubits))
@@ -479,9 +451,10 @@ def measure_multiplexed_readout(dev, qubits, liveplot=False, shots=5000,
         ))
 
 def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
-                 preselection=True, all_states_combinations=False, upload=True,
+                 preselection=None, all_states_combinations=False, upload=True,
                  exp_metadata=None, analyze=True, analysis_kwargs=None,
-                 delegate_plotting=False, update=True, df_name='int_log_det'):
+                 delegate_plotting=False, update=True, df_name='int_log_det',
+                 reset_params=None):
     """
     Measures in single shot readout the specified states and performs
     a Gaussian mixture fit to calibrate the state classfier and provide the
@@ -497,10 +470,13 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
             in the ith segment. In the latter case, all_state_combinations is ignored.
         n_shots (int): number of shots
         label (str): measurement label
-        preselection (bool, None): If True, force preselection even if not
-            in preparation params. If False, then removes preselection even if in prep_params.
-            if None, then takes prep_param of first qubit.
-
+        preselection (bool, None): Deprecated. Use reset_params instead.
+            If True, force preselection.
+            if None, uses reset_param.
+        reset_param (str, dict):
+            Reset parameters which overwrite the ones taken from the
+        qubit objects (default is taken from qubit.reset.steps()). See doc string of
+        `CircuitBuider._parse_reset()` for all possible input.
         all_states_combinations (bool): if False, then all qubits are prepared
             simultaneously in the first state and then read out, then all qubits
             are prepared in the second state, etc. If True, then all combinations
@@ -528,14 +504,13 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
     qubits = dev.get_qubits(qubits)
     qb_names = dev.get_qubits(qubits, "str")
     operation_dict = dev.get_operation_dict(qubits=qubits)
-    prep_params = dev.get_prep_params(qubits)
+    reset_params = None
 
-    if preselection is None:
-        pass
-    elif preselection: # force preselection for this measurement if desired by user
-        prep_params['preparation_type'] = "preselection"
-    else:
-        prep_params['preparation_type'] = "wait"
+    if preselection:
+        log.warning("Using `preselection` keyword agrument is deprecated and"
+                    " will be removed in a future MR. Please use `reset_params"
+                    "='preselection'` instead.")
+        reset_params = "preselection"
 
     # create and set sequence
     if np.ndim(states) == 2: # list of custom states provided
@@ -548,7 +523,8 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         cp = CalibrationPoints.multi_qubit(qb_names, states, n_per_state=1,
                                        all_combinations=all_states_combinations)
     seq = sequence.Sequence("SSRO_calibration",
-                            cp.create_segments(operation_dict, **prep_params))
+                            cp.create_segments(operation_dict,
+                                               reset_params=reset_params))
 
     # prepare measurement
     for qb in qubits:
@@ -561,7 +537,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
     if exp_metadata is None:
         exp_metadata = {}
     exp_metadata.update({"cal_points": repr(cp),
-                         "preparation_params": prep_params,
+                         "preparation_params": reset_params,
                          "all_states_combinations": all_states_combinations,
                          "n_shots": n_shots,
                          "channel_map": channel_map,
@@ -579,9 +555,6 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
     # run measurement
     temp_values = [(MC.soft_avg, 1)]
 
-    # required to ensure having original prep_params after mmnt
-    # in case preselection=True
-    temp_values += [(qb.preparation_params, prep_params) for qb in qubits]
     with temporary_value(*temp_values):
         MC.run(name=label, exp_metadata=exp_metadata)
 
@@ -620,7 +593,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                          analyze=True, analysis_kwargs=None,
                          acq_weights_basis=None, orthonormalize=True,
                          update=True, measure=True, operation_dict=None,
-                         df_kwargs=None):
+                         df_kwargs=None, reset_params=None):
     """
     Measures time traces for specified states and
     Args:
@@ -655,7 +628,9 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
             and) qubits. Will be obtained from the dev object if it is None
             (default).
         df_kwargs (dict or None): keyword arguments for the detector function
-
+        reset_params (str, dict): Reset parameters which overwrite the ones taken from the
+        qubit objects (default is taken from qubit.reset.steps()). See doc string of
+        `CircuitBuider._parse_reset()` for all possible input.
     Returns:
         The analysis object if analze is True, and None otherwise.
     """
@@ -676,7 +651,6 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         # combine operations and preparation dictionaries
         if operation_dict is None:
             operation_dict = dev.get_operation_dict(qubits=qubits)
-        prep_params = dev.get_prep_params(qubits)
         MC = qubits[0].instr_mc.get_instr()
 
         if exp_metadata is None:
@@ -726,7 +700,7 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 exp_metadata.update({'cal_points': repr(cp)})
                 seq = sequence.Sequence("timetrace",
                                         cp.create_segments(operation_dict,
-                                                           **prep_params))
+                                                           reset_params=reset_params))
                 # set sweep function and run measurement
                 if len(set(qb.instr_acq() for qb in qubits)) == 1:
                     # No synchronization between AWGs is needed if only a single
@@ -1104,7 +1078,7 @@ def measure_fluxline_crosstalk(
         crosstalk_qubits_amplitudes=None, phases=None,
         target_fluxpulse_length=500e-9, crosstalk_fluxpulse_length=None,
         skip_qb_freq_fits=False, n_cal_points_per_state=2,
-        cal_states='auto', prep_params=None, label=None, upload=True,
+        cal_states='auto', reset_params=None, label=None, upload=True,
         analyze=True, delegate_plotting=False):
     """
     Applies a flux pulse on the target qubit with various amplitudes.
@@ -1129,8 +1103,9 @@ def measure_fluxline_crosstalk(
             calibration state. Defaults to 2.
         cal_states:
             List of qubit states to use for calibration. Defaults to 'auto'.
-        prep_params: Perparation parameters dictionary specifying the type
-            of state preparation.
+        reset_params: Reset parameters which overwrite the ones taken from the
+        qubit objects (default is taken from qubit.reset.steps()). See doc string of
+        `CircuitBuider._parse_reset()` for all possible input.
         label: Overwrite the default measuremnt label.
         upload: Whether the experimental sequence should be uploaded.
             Defaults to True.
@@ -1156,8 +1131,6 @@ def measure_fluxline_crosstalk(
         label = f'fluxline_crosstalk_{target_qubit_name}_' + \
                 ''.join(crosstalk_qubits_names)
 
-    if prep_params is None:
-        prep_params = dev.get_prep_params(crosstalk_qubits)
 
     sweep_points = SweepPoints('phase', phases, 'deg', 'Ramsey phase')
     sweep_points.add_sweep_dimension()
@@ -1185,7 +1158,7 @@ def measure_fluxline_crosstalk(
         crosstalk_qubits_amplitudes, sweep_points, operation_dict,
         crosstalk_fluxpulse_length=crosstalk_fluxpulse_length,
         target_fluxpulse_length=target_fluxpulse_length,
-        reset_params=prep_params, cal_points=cp, upload=False)
+        reset_params=reset_params, cal_points=cp, upload=False)
 
     [seq.repeat_ro(f"RO {qbn}", operation_dict)
      for qbn in crosstalk_qubits_names]
@@ -1212,7 +1185,7 @@ def measure_fluxline_crosstalk(
         'target_fluxpulse_length': target_fluxpulse_length,
         'crosstalk_fluxpulse_length': crosstalk_fluxpulse_length,
         'skip_qb_freq_fits': skip_qb_freq_fits,
-        'preparation_params': prep_params,
+        'preparation_params': reset_params,
         'cal_points': repr(cp),
         'sweep_points': sweep_points,
         'meas_obj_sweep_points_map': meas_obj_sweep_points_map,
