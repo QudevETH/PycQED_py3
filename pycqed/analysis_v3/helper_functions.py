@@ -45,9 +45,10 @@ def get_hdf_param_value(group, param_name):
     Returns an attribute "key" of the group "Experimental Data"
     in the hdf5 datafile.
     """
-    log.warning("Deprecated function, will be removed in a future MR;")
+    log.warning("Deprecated function, will be removed in a future MR; "
+                "Please use get_param_from_group() instead.")
     s = group.attrs[param_name]
-    return convert_attribute(s)
+    return decode_attribute_value(s)
 
 
 def get_value_names_from_timestamp(timestamp, **params):
@@ -78,7 +79,7 @@ def get_param_from_group(group_name, param_name=None, timestamp=None,
                          folder=None, file=None, find_all_matches=True,
                          **params):
     """
-    Extract the value of a parameter from any group in the data or config files.
+    Extract the value of a parameter from any group in the data files.
 
     This functions returns the value of the parameters whose paths in the
     file end with param_name, i.e. 'Analysis.group1.group2.param_name'.
@@ -171,7 +172,7 @@ def get_param_from_analysis_group(timestamp=None, param_name=None,
 def get_instr_param_from_file(instr_name, param_name=None, timestamp=None,
                               folder=None, **params):
     """
-    Returns the value of an instrument parameter.
+    Returns the value of an instrument parameter of an hdf file.
 
     Args
         instr_name (str): name of a instrument, ex: qb1, Pulsar, TWPA
@@ -361,7 +362,7 @@ def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
         {meas_obj_name: classification threshold value).
     """
     log.warning("Deprecated function, will be removed in a future MR;"
-                "use a_tools.open_hdf_file() instead.")
+                "use get_qb_thresholds_from_file() instead.")
     return get_qb_thresholds_from_file(meas_obj_names, timestamp=timestamp,
                                     acq_dev_name=acq_dev_name, th_path=th_path,
                                     th_scaling=th_scaling, **params)
