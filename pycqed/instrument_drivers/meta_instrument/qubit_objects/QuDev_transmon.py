@@ -1320,49 +1320,6 @@ class QuDev_transmon(MeasurementObject):
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
                                    TwoD=(mode == '2D'))
 
-    def measure_transients(self, states=('g', 'e'), upload=True,
-                           analyze=True, acq_length=4096/1.8e9,
-                           prep_params=None, exp_metadata=None, **kw):
-        """
-        If the resulting transients will be used to caclulate the optimal
-        weight functions, then it is important that the UHFQC iavg_delay and
-        wint_delay are calibrated such that the weights and traces are
-        aligned: iavg_delay = 2*wint_delay.
-
-        """
-        MC = self.instr_mc.get_instr()
-        name_extra = kw.get('name_extra', None)
-
-        if prep_params is None:
-            prep_params = self.preparation_params()
-        if exp_metadata is None:
-            exp_metadata = dict()
-        exp_metadata.update(
-            {'sweep_name': 'time',
-             'sweep_unit': ['s']})
-
-        with temporary_value(self.acq_length, acq_length):
-            self.prepare(drive='timedomain')
-            swpts = self.instr_acq.get_instr().get_sweep_points_time_trace(
-                acq_length)
-            for state in states:
-                if state not in ['g', 'e', 'f']:
-                    raise ValueError("Unrecognized state: {}. Must be 'g', 'e' "
-                                     "or 'f'.".format(state))
-                base_name = 'timetrace_{}'.format(state)
-                name = base_name + "_" + name_extra if name_extra is not None \
-                    else base_name
-                seq, _ = sq.single_state_active_reset(
-                    operation_dict=self.get_operation_dict(),
-                    qb_name=self.name, state=state, prep_params=prep_params,
-                    upload=False)
-                # set sweep function and run measurement
-                MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
-                                                               upload=upload))
-                MC.set_sweep_points(swpts)
-                MC.set_detector_function(self.inp_avg_det)
-                exp_metadata.update(dict(sweep_points_dict=swpts))
-                MC.run(name=name + self.msmt_suffix, exp_metadata=exp_metadata)
 
     def measure_readout_pulse_scope(self, delays, freqs, RO_separation=None,
                                     prep_pulses=None, comm_freq=225e6,
