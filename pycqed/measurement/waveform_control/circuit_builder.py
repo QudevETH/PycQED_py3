@@ -231,13 +231,20 @@ class CircuitBuilder:
         qubits, qb_names = self.get_qubits(qb_names)
         # collect steps and ensure they are lists, and deepcopy them to allow
         # modification within this function without affecting original object
-        if steps is None:
+        if qubits is None:
+            # no qubits objects passed, so no reset possible
+            log.warning(f"Failed to retrieve reset"
+                      f" steps from qb.reset.steps() because no qubits objects "
+                        f"were found (self.qubits is None)."
+                        f"No reset steps will be added.")
+            reset_steps = {qbn: [] for qbn in qb_names}
+        elif steps is None:
             try:
                 reset_steps = {qb.name: deepcopy(qb.reset.steps()) for qb in qubits}
             except AttributeError as e:
-                log.error(f"Failed to retrieve preparation"
-                          f" steps from qb.init.steps(): {e}."
-                          f"No initialization steps will be added.")
+                log.error(f"Failed to retrieve reset"
+                          f" steps from qb.reset.steps(): {e}."
+                          f"No reset steps will be added.")
                 reset_steps = {qb.name: [] for qb in qubits}
         else:
             if isinstance(steps, str):
@@ -584,7 +591,12 @@ class CircuitBuilder:
                 if steps[qb.name][i] == "padding":
                     step_blocks.append(Block(f'padding_step_{i}_{qb.name}', []))
                 else:
-                    reset_scheme = qb.reset.instrument_modules[steps[qb.name][i]]
+                    try:
+                        reset_scheme = qb.reset.instrument_modules[steps[qb.name][i]]
+                    except KeyError as e:
+                        log.error(f'Reset Step "{steps[qb.name][i]}" not known for {qb.name}.'
+                                  f' Available steps are: {qb.reset.instrument_modules.keys()}')
+                        raise e
                     step_blocks.append(reset_scheme.reset_block(f'step_{i}_{qb.name}'))
             prep.append(self.simultaneous_blocks(f"Reset_step_{i}", step_blocks,
                                       set_end_after_all_pulses=True,
