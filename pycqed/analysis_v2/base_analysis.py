@@ -1562,6 +1562,7 @@ class BaseDataAnalysis(object):
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
+        plot_grid = pdict.get('plot_grid', None)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         if pdict.get('color', False):
             plot_linekws['color'] = pdict.get('color')
@@ -1657,6 +1658,8 @@ class BaseDataAnalysis(object):
             axs.set_yscale(plot_yscale)
         if plot_xscale is not None:
             axs.set_xscale(plot_xscale)
+        if plot_grid:
+            axs.grid(True)
 
         if self.tight_fig:
             axs.figure.tight_layout()
