@@ -128,73 +128,6 @@ def Ramsey_with_flux_pulse_meas_seq(thetas, qb, X90_separation, verbose=False,
         return seq_name
 
 
-def fluxpulse_scope_sequence(
-        delays, freqs, qb_name, operation_dict, cz_pulse_name,
-        ro_pulse_delay=None, cal_points=None, prep_params=None, upload=True):
-    '''
-    Performs X180 pulse on top of a fluxpulse
-
-    Timings of sequence
-
-       |          ----------           |X180|  ----------------------------  |RO|
-       |        ---      | --------- fluxpulse ---------- |
-                         <-  delay  ->
-
-        :param ro_pulse_delay: Can be 'auto' to start out the readout after
-            the end of the flux pulse or a delay in seconds to start a fixed
-            amount of time after the drive pulse. If not provided or set to
-            None, a default fixed delay of 100e-9 is used.
-    '''
-    if prep_params is None:
-        prep_params = {}
-    if ro_pulse_delay is None:
-        ro_pulse_delay = 100e-9
-
-    seq_name = 'Fluxpulse_scope_sequence'
-    ge_pulse = deepcopy(operation_dict['X180 ' + qb_name])
-    ge_pulse['name'] = 'FPS_Pi'
-    ge_pulse['element_name'] = 'FPS_Pi_el'
-
-    flux_pulse = deepcopy(operation_dict[cz_pulse_name])
-    flux_pulse['name'] = 'FPS_Flux'
-    flux_pulse['ref_pulse'] = 'FPS_Pi'
-    flux_pulse['ref_point'] = 'middle'
-    flux_pulse_delays = -np.asarray(delays) - flux_pulse.get(
-        'buffer_length_start', 0)
-
-    ro_pulse = deepcopy(operation_dict['RO ' + qb_name])
-    ro_pulse['name'] = 'FPS_Ro'
-    ro_pulse['ref_pulse'] = 'FPS_Pi'
-    ro_pulse['ref_point'] = 'end'
-    ro_pulse['pulse_delay'] = ro_pulse_delay
-    if ro_pulse_delay == 'auto':
-        ro_pulse['ref_point'] = 'middle'
-        ro_pulse['pulse_delay'] = \
-            flux_pulse['pulse_length'] - np.min(delays) + \
-            flux_pulse.get('buffer_length_end', 0) + \
-            flux_pulse.get('trans_length', 0)
-
-    pulses = [ge_pulse, flux_pulse, ro_pulse]
-    swept_pulses = sweep_pulse_params(
-        pulses, {'FPS_Flux.pulse_delay': flux_pulse_delays})
-
-    swept_pulses_with_prep = \
-        [add_preparation_pulses(p, operation_dict, [qb_name], **prep_params)
-         for p in swept_pulses]
-
-    seq = pulse_list_list_seq(swept_pulses_with_prep, seq_name, upload=False)
-
-    if cal_points is not None:
-        # add calibration segments
-        seq.extend(cal_points.create_segments(operation_dict, **prep_params))
-
-    seq.repeat_ro(f"RO {qb_name}", operation_dict)
-
-    log.debug(seq)
-    if upload:
-        ps.Pulsar.get_instance().program_awgs(seq)
-
-    return seq, np.arange(seq.n_acq_elements()), freqs
 
 
 def fluxpulse_amplitude_sequence(amplitudes,
@@ -377,69 +310,7 @@ def T2_freq_sweep_seq(amplitudes,
     return seq, np.arange(seq.n_acq_elements())
 
 
-def T1_freq_sweep_seq(amplitudes,
-                   qb_name,
-                   operation_dict,
-                   cz_pulse_name,
-                   flux_lengths,
-                   cal_points=None,
-                   upload=True,
-                   prep_params=None):
-    '''
-    Performs a X180 pulse before changing the qubit frequency with the flux
 
-    Timings of sequence
-
-       |          ---|X180|  ------------------------------|RO|
-       |          --------| --------- fluxpulse ---------- |
-    '''
-    if prep_params is None:
-        prep_params = {}
-
-    len_amp = len(amplitudes)
-    amplitudes = np.repeat(amplitudes, len(flux_lengths))
-    flux_lengths = np.tile(flux_lengths, len_amp)
-
-    seq_name = 'T1_freq_sweep_sequence'
-    ge_pulse = deepcopy(operation_dict['X180 ' + qb_name])
-    ge_pulse['name'] = 'DF_Pi'
-    ge_pulse['element_name'] = 'DF_Pi_el'
-
-    flux_pulse = deepcopy(operation_dict[cz_pulse_name])
-    flux_pulse['name'] = 'DF_Flux'
-    flux_pulse['ref_pulse'] = 'DF_Pi'
-    flux_pulse['ref_point'] = 'end'
-    flux_pulse['pulse_delay'] = 0  #-flux_pulse.get('buffer_length_start', 0)
-
-    ro_pulse = deepcopy(operation_dict['RO ' + qb_name])
-    ro_pulse['name'] = 'DF_Ro'
-    ro_pulse['ref_pulse'] = 'DF_Flux'
-    ro_pulse['ref_point'] = 'end'
-
-    ro_pulse['pulse_delay'] = flux_pulse.get('buffer_length_end', 0)
-
-    pulses = [ge_pulse, flux_pulse, ro_pulse]
-
-    swept_pulses = sweep_pulse_params(pulses, {
-        'DF_Flux.amplitude': amplitudes,
-        'DF_Flux.pulse_length': flux_lengths
-    })
-
-    swept_pulses_with_prep = \
-        [add_preparation_pulses(p, operation_dict, [qb_name], **prep_params)
-         for p in swept_pulses]
-    seq = pulse_list_list_seq(swept_pulses_with_prep, seq_name, upload=False)
-
-    if cal_points is not None:
-        # add calibration segments
-        seq.extend(cal_points.create_segments(operation_dict, **prep_params))
-
-    seq.repeat_ro('RO ' + qb_name, operation_dict)
-
-    if upload:
-        ps.Pulsar.get_instance().program_awgs(seq)
-
-    return seq, np.arange(seq.n_acq_elements())
 
 
 def add_suffix(operation_list, suffix):
