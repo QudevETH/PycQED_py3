@@ -917,13 +917,11 @@ def measure_tomography(dev, qubits, prep_sequence, state_name,
 def measure_measurement_induced_dephasing(qb_dephased, qb_targeted, phases, amps,
                                           readout_separation, nr_readouts=1,
                                           label=None, n_cal_points_per_state=1,
-                                          cal_states='auto', prep_params=None,
+                                          cal_states='auto', reset_params=None,
                                           exp_metadata=None, analyze=True,
                                           upload=True, **kw):
     classified = kw.get('classified', False)
     predictive_label = kw.pop('predictive_label', False)
-    if prep_params is None:
-        prep_params = get_multi_qubit_prep_params(qb_dephased)
 
     if label is None:
         label = 'measurement_induced_dephasing_x{}_{}_{}'.format(
@@ -949,7 +947,7 @@ def measure_measurement_induced_dephasing(qb_dephased, qb_targeted, phases, amps
     operation_dict = get_operation_dict(list(set(qb_dephased + qb_targeted)))
     seq, sweep_points = mqs.measurement_induced_dephasing_seq(
         [qb.name for qb in qb_targeted], [qb.name for qb in qb_dephased], operation_dict,
-        amps, phases, pihalf_spacing=readout_separation, prep_params=prep_params,
+        amps, phases, pihalf_spacing=readout_separation, reset_params=reset_params,
         cal_points=cp, upload=False, sequence_name=label)
 
     hard_sweep_func = awg_swf.SegmentHardSweep(
@@ -968,7 +966,7 @@ def measure_measurement_induced_dephasing(qb_dephased, qb_targeted, phases, amps
         exp_metadata = {}
     exp_metadata.update({'qb_dephased': [qb.name for qb in qb_dephased],
                          'qb_targeted': [qb.name for qb in qb_targeted],
-                         'preparation_params': prep_params,
+                         'preparation_params': reset_params,
                          'cal_points': repr(cp),
                          'classified_ro': classified,
                          'rotate': len(cal_states) != 0 and not classified,
@@ -983,44 +981,45 @@ def measure_measurement_induced_dephasing(qb_dephased, qb_targeted, phases, amps
 def measure_drive_cancellation(
         dev, driven_qubit, ramsey_qubits, sweep_points,
         phases=None, n_pulses=1, pulse='X180',
-        n_cal_points_per_state=2, cal_states='auto', prep_params=None,
+        n_cal_points_per_state=2, cal_states='auto', reset_params=None,
         exp_metadata=None, label=None, upload=True, analyze=True):
-        """
-        Sweep pulse cancellation parameters and measure Ramsey on qubits the
-        cancellation is for.
+    """
+    Sweep pulse cancellation parameters and measure Ramsey on qubits the
+    cancellation is for.
 
-        Args:
-            dev: The Device object used for the measurement
-            driven_qubit: The qubit object corresponding to the desired
-                target of the pulse that is being cancelled.
-            ramsey_qubits: A list of qubit objects corresponding to the
-                undesired targets of the pulse that is being cancelled.
-            sweep_points: A SweepPoints object that describes the pulse
-                parameters to sweep. The sweep point keys should be of the form
-                `qb.param`, where `qb` is the name of the qubit the cancellation
-                is for and `param` is a parameter in the pulses
-                cancellation_params dict. For example to sweep the amplitude of
-                the cancellation pulse on qb1, you could configure the sweep
-                points as `SweepPoints('qb1.amplitude', np.linspace(0, 1, 21))`.
-            phases: An array of Ramsey phases in degrees.
-            n_pulses: Number of pulse repetitions done between the Ramsey
-                pulses. Useful for amplification of small errors. Defaults to 1.
-            pulse: Operation name (without qb name) that will be done between
-                the Ramsey pulses. Defaults to 'X180'.
-            n_cal_points_per_state: Number of calibration measurements per
-                calibration state. Defaults to 2.
-            cal_states:
-                List of qubit states to use for calibration. Defaults to 'auto'.
-            prep_params: Perparation parameters dictionary specifying the type
-                of state preparation.
-            exp_metadata: A dictionary of extra metadata to save with the
-                experiment.
-            label: Overwrite the default measuremnt label.
-            upload: Whether the experimental sequence should be uploaded.
-                Defaults to true.
-            analyze: Whether the analysis will be run. Defaults to True.
+    Args:
+        dev: The Device object used for the measurement
+        driven_qubit: The qubit object corresponding to the desired
+            target of the pulse that is being cancelled.
+        ramsey_qubits: A list of qubit objects corresponding to the
+            undesired targets of the pulse that is being cancelled.
+        sweep_points: A SweepPoints object that describes the pulse
+            parameters to sweep. The sweep point keys should be of the form
+            `qb.param`, where `qb` is the name of the qubit the cancellation
+            is for and `param` is a parameter in the pulses
+            cancellation_params dict. For example to sweep the amplitude of
+            the cancellation pulse on qb1, you could configure the sweep
+            points as `SweepPoints('qb1.amplitude', np.linspace(0, 1, 21))`.
+        phases: An array of Ramsey phases in degrees.
+        n_pulses: Number of pulse repetitions done between the Ramsey
+            pulses. Useful for amplification of small errors. Defaults to 1.
+        pulse: Operation name (without qb name) that will be done between
+            the Ramsey pulses. Defaults to 'X180'.
+        n_cal_points_per_state: Number of calibration measurements per
+            calibration state. Defaults to 2.
+        cal_states:
+            List of qubit states to use for calibration. Defaults to 'auto'.
+        reset_params: Reset parameters which overwrite the ones taken from the
+        qubit objects (default is taken from qubit.reset.steps()). See doc string of
+        `CircuitBuider._parse_reset()` for all possible input.
+        exp_metadata: A dictionary of extra metadata to save with the
+            experiment.
+        label: Overwrite the default measuremnt label.
+        upload: Whether the experimental sequence should be uploaded.
+            Defaults to true.
+        analyze: Whether the analysis will be run. Defaults to True.
 
-        """
+    """
         if phases is None:
             phases = np.linspace(0, 360, 3, endpoint=False)
 
@@ -1035,8 +1034,6 @@ def measure_drive_cancellation(
             label = f'drive_{driven_qubit.name}_cancel_'\
                     f'{list(sweep_points[0].keys())}'
 
-        if prep_params is None:
-            prep_params = dev.get_prep_params(ramsey_qubits)
 
         sweep_points = deepcopy(sweep_points)
         sweep_points.add_sweep_dimension()
@@ -1062,7 +1059,7 @@ def measure_drive_cancellation(
         # sequence.compress_2D_sweep
         seq, sweep_vals = mqs.drive_cancellation_seq(
             drive_op_code, ramsey_qubit_names, operation_dict, sweep_points,
-            n_pulses=n_pulses, prep_params=prep_params, cal_points=cp,
+            n_pulses=n_pulses, reset_params=reset_params, cal_points=cp,
             upload=False)
 
         [seq.repeat_ro(f"RO {qbn}", operation_dict)
@@ -1085,7 +1082,7 @@ def measure_drive_cancellation(
             [qb.name for qb in ramsey_qubits])
         exp_metadata.update({
             'ramsey_qubit_names': ramsey_qubit_names,
-            'preparation_params': prep_params,
+            'preparation_params': reset_params,
             'cal_points': repr(cp),
             'sweep_points': sweep_points,
             'meas_obj_sweep_points_map': meas_obj_sweep_points_map,
@@ -1188,7 +1185,7 @@ def measure_fluxline_crosstalk(
         crosstalk_qubits_amplitudes, sweep_points, operation_dict,
         crosstalk_fluxpulse_length=crosstalk_fluxpulse_length,
         target_fluxpulse_length=target_fluxpulse_length,
-        prep_params=prep_params, cal_points=cp, upload=False)
+        reset_params=prep_params, cal_points=cp, upload=False)
 
     [seq.repeat_ro(f"RO {qbn}", operation_dict)
      for qbn in crosstalk_qubits_names]
@@ -1237,7 +1234,7 @@ def measure_fluxline_crosstalk(
 
 
 def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
-                       label=None, cal_points=False, prep_params=None,
+                       label=None, cal_points=False, reset_params=None,
                        cal_states='auto', n_cal_points_per_state=1,
                        freq_s=None, f_offset=0, exp_metadata=None,
                        upload=True, analyze=True):
@@ -1252,7 +1249,9 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
     :param cz_pulse_name:
     :param label:
     :param cal_points:
-    :param prep_params:
+    :param reset_params: Reset parameters which overwrite the ones taken from the
+        qubit objects (default is taken from qubit.reset.steps()). See doc string of
+        `CircuitBuider._parse_reset()` for all possible input.
     :return:
     """
 
@@ -1277,8 +1276,6 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
             qbm.name, cal_states, n_per_state=n_cal_points_per_state)
     else:
         cp = None
-    if prep_params is None:
-        prep_params = dev.get_prep_params([qbm, qbs])
 
     operation_dict = dev.get_operation_dict()
 
@@ -1314,7 +1311,7 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
             amplitudes=amplitudes, freqs=freqs, qb_name=qbm.name,
             operation_dict=operation_dict,
             cz_pulse_name=cz_pulse_name, cal_points=cp,
-            prep_params=prep_params, upload=False)
+            reset_params=reset_params, upload=False)
 
     MC.set_sweep_function(awg_swf.SegmentHardSweep(
         sequence=seq, upload=upload, parameter_name='Amplitude', unit='V'))
@@ -1336,7 +1333,7 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
     exp_metadata.update({'sweep_points_dict': {qbm.name: amplitudes},
                          'sweep_points_dict_2D': {qbm.name: freqs},
                          'use_cal_points': cal_points,
-                         'preparation_params': prep_params,
+                         'preparation_params': reset_params,
                          'cal_points': repr(cp),
                          'rotate': cal_points,
                          'data_to_fit': {qbm.name: 'pe'},
@@ -1352,8 +1349,8 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
 def measure_ramsey_add_pulse(measured_qubit, pulsed_qubit, times=None,
                              artificial_detuning=0, label='', analyze=True,
                              cal_states="auto", n_cal_points_per_state=2,
-                             n=1, upload=True,  last_ge_pulse=False, for_ef=False,
-                             classified_ro=False, prep_params=None,
+                             n=1, upload=True, last_ge_pulse=False, for_ef=False,
+                             classified_ro=False, reset_params=None,
                              exp_metadata=None):
     if times is None:
         raise ValueError("Unspecified times for measure_ramsey")
@@ -1369,8 +1366,6 @@ def measure_ramsey_add_pulse(measured_qubit, pulsed_qubit, times=None,
     for qb in [pulsed_qubit, measured_qubit]:
         qb.prepare(drive='timedomain')
     MC = measured_qubit.instr_mc.get_instr()
-    if prep_params is None:
-        prep_params = measured_qubit.preparation_params()
 
     # Define the measurement label
     if label == '':
@@ -1387,7 +1382,7 @@ def measure_ramsey_add_pulse(measured_qubit, pulsed_qubit, times=None,
         pulsed_qubit_name=pulsed_qubit.name,
         operation_dict=get_operation_dict([measured_qubit, pulsed_qubit]),
         cal_points=cp, n=n, artificial_detunings=artificial_detuning,
-        upload=False, for_ef=for_ef, last_ge_pulse=False, prep_params=prep_params)
+        upload=False, for_ef=for_ef, last_ge_pulse=False, reset_params=reset_params)
 
     MC.set_sweep_function(awg_swf.SegmentHardSweep(
         sequence=seq, upload=upload, parameter_name='Delay', unit='s'))
@@ -1404,7 +1399,7 @@ def measure_ramsey_add_pulse(measured_qubit, pulsed_qubit, times=None,
          'sweep_name': 'Delay',
          'sweep_unit': 's',
          'cal_points': repr(cp),
-         'preparation_params': prep_params,
+         'preparation_params': reset_params,
          'last_ge_pulses': [last_ge_pulse],
          'artificial_detuning': artificial_detuning,
          'rotate': len(cp.states) != 0,

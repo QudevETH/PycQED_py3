@@ -315,7 +315,7 @@ def echo_seq(times, pulse_pars, RO_pars,
 
 
 def single_state_active_reset(operation_dict, qb_name,
-                              state='e', upload=True, prep_params={}):
+                              state='e', upload=True, reset_params=None):
     '''
     OffOn sequence for a single qubit using the tektronix.
     SSB_Drag pulse is used for driving, simple modualtion used for RO
@@ -342,7 +342,8 @@ def single_state_active_reset(operation_dict, qb_name,
 
     #add preparation pulses
     pulses_with_prep = \
-        add_preparation_pulses(pulses, operation_dict, [qb_name], **prep_params)
+        add_preparation_pulses(pulses, operation_dict, [qb_name],
+                               reset_params=reset_params)
 
     seg = segment.Segment('segment_{}_level'.format(state), pulses_with_prep)
     seq.add(seg)
@@ -430,10 +431,19 @@ def prepend_pulses(pulse_list, pulses_to_prepend):
 
 
 def add_preparation_pulses(pulse_list, operation_dict, qb_names,
-                           **prep_params):
+                           reset_params=None):
     from pycqed.measurement.waveform_control import circuit_builder as cb_mod
-    cb = cb_mod.CircuitBuilder(qubits=qb_names, operation_dict=operation_dict,
-                               prep_params=prep_params)
+    from pycqed.instrument_drivers.instrument import Instrument
+    # evil breaking of abstraction layers: But used only as a hack for
+    # functions which are not yet refactored to use the CircuitBuilder
+    # and QuantumExperiment framework
+    try:
+        qubits = [Instrument.find_instrument(qbn) for qbn in qb_names]
+    except Exception:
+        # in that scenario, CircuitBuilder will not be able to add a reset block
+        qubits = qb_names
+    cb = cb_mod.CircuitBuilder(qubits=qubits, operation_dict=operation_dict,
+                               reset_params=reset_params)
     init_pulses = cb.initialize().build()
     init_pulses[0]['ref_pulse'] = 'init_start'
     return init_pulses + pulse_list

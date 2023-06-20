@@ -24,7 +24,7 @@ class CalibrationPoints:
 
     def create_segments(self, operation_dict, pulse_modifs=None,
                         segment_prefix='calibration_',
-                        **prep_params):
+                        reset_params=None):
         segments = []
         if pulse_modifs is None:
             pulse_modifs = dict()
@@ -62,7 +62,7 @@ class CalibrationPoints:
             pulse_list = add_preparation_pulses(pulse_list,
                                                 operation_dict,
                                                 [qbn for qbn in self.qb_names],
-                                                **prep_params)
+                                                reset_params=reset_params)
 
             ro_pulses = generate_mux_ro_pulse_list(self.qb_names,
                                                      operation_dict)

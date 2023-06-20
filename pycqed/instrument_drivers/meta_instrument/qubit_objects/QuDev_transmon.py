@@ -2397,7 +2397,7 @@ class QuDev_transmon(MeasurementObject):
 
 
     def measure_dispersive_shift(self, freqs, analyze=True, close_fig=True,
-                                 upload=True, states=('g','e'), prep_params=None):
+                                 upload=True, states=('g','e'), reset_params=None):
         """ Varies the frequency of the microwave source to the resonator and
         measures the transmittance """
 
@@ -2407,8 +2407,6 @@ class QuDev_transmon(MeasurementObject):
         if np.any(freqs < 500e6):
             log.warning(('Some of the values in the freqs array '
                          'might be too small. The units should be Hz.'))
-        if prep_params is None:
-            prep_params = self.preparation_params()
 
         assert isinstance(states, tuple), \
             "states should be a tuple, not {}".format(type(states))
@@ -2420,7 +2418,7 @@ class QuDev_transmon(MeasurementObject):
             sq.single_state_active_reset(
                     operation_dict=self.get_operation_dict(),
                     qb_name=self.name,
-                    state=state, prep_params=prep_params, upload=upload)
+                    state=state, reset_params=reset_params, upload=upload)
 
             MC.set_sweep_function(self.swf_ro_freq_lo())
             MC.set_sweep_points(freqs)
