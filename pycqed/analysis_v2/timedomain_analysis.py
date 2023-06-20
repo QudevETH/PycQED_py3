@@ -8691,6 +8691,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'ylabel': 'Population, $P$',
                                 'yunit': '',
                                 'yscale': self.get_param_value("yscale", "log"),
+                                'yrange': self.get_param_value("yrange", None),
+                                'plot_grid': True,
                                 'setlabel': self._get_pop_label(state, k,
                                                                 not self._has_reset_pulses(seq_nr),
                                                                 ),
