@@ -2433,20 +2433,6 @@ class QuDev_transmon(MeasurementObject):
                 ma.MeasurementAnalysis(auto=True, close_fig=close_fig,
                                     qb_name=self.name)
 
-    def measure_flux_pulse_timing(self, delays, analyze, label=None, **kw):
-        if self.instr_ge_lo() is None:
-            raise NotImplementedError("qb.measure_flux_pulse_timing is not "
-                                      "implemented for setups without ge LO. "
-                                      "Use quantum experiment FluxPulseTiming "
-                                      "instead.")
-        if label is None:
-            label = 'Flux_pulse_timing_{}'.format(self.name)
-        self.measure_flux_pulse_scope([self.ge_freq()], delays,
-                                      label=label, analyze=False, **kw)
-        if analyze:
-            tda.FluxPulseTimingAnalysis(qb_names=[self.name])
-
-
     def measure_T2_freq_sweep(self, flux_lengths=None, n_pulses=None,
                               cz_pulse_name=None,
                               freqs=None, amplitudes=None, phases=[0,120,240],
