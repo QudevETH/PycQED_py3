@@ -5514,8 +5514,14 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 guess_pars = fit_mods.exp_damp_osc_guess(
                     model=exp_damped_decay_mod, data=data, t=sweep_points,
                     n_guess=i+1)
-                guess_pars['amplitude'].vary = False
                 guess_pars['amplitude'].value = 0.5
+                if len(self.options_dict.get('cal_states', [])):
+                    # If there are cal states, we expect a 0.5 amplitude
+                    guess_pars['amplitude'].vary = False
+                else:
+                    # If no cal states, the oscillation amplitude in the IQ
+                    # plane depends on readout
+                    guess_pars['amplitude'].vary = True
                 guess_pars['frequency'].vary = True
                 guess_pars['tau'].vary = True
                 guess_pars['tau'].min = 0
