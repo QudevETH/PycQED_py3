@@ -1849,7 +1849,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
                 ge --> ''
                 ef --> '_ef'
                 fh --> '_fh'
-        :param prepend_pulse_dicts: (dict) prepended pulses, see
+        :param prepend_pulse_dicts: (list of dict) prepended pulses, see
             block_from_pulse_dicts
         :param kw: keyword arguments
         :return: list with prepended block and prepended transition block
