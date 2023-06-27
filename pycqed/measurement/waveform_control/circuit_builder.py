@@ -924,18 +924,19 @@ class CircuitBuilder:
         if pulse_dicts is not None:
             for i, pp in enumerate(pulse_dicts):
                 # op_code determines which pulse to use
-                p_list = self.get_pulses(pp.pop('op_code')) if 'op_code' in pp \
+                p_list = self.get_pulses(pp['op_code']) if 'op_code' in pp \
                     else [{}]
                 # all other entries in the pulse dict are interpreted as
                 # pulse parameters that overwrite the default values
-                if len([k for k in pp if k != 'op_code']):
+                pp_add_entries = {k: v for k, v in pp.items() if k != 'op_code'}
+                if len(pp_add_entries):
                     if len(p_list) > 1:
                         raise NotImplementedError(
                             "get_pulses returned more than one pulse for "
                             f"pulse dict {i}, and it is not clear to which "
                             f"one the parameters passed in the pulse dict "
                             f"should be applied.")
-                    p_list[0].update(pp)
+                    p_list[0].update(pp_add_entries)
                 pulses += p_list
         return Block(block_name, pulses)
 
