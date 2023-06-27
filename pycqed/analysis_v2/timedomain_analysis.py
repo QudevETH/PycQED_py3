@@ -7292,15 +7292,18 @@ class DynamicPhaseAnalysis(MultiCZgate_Calib_Analysis):
         self.legend_label_func = lambda qbn, row: 'no FP' \
             if row % 2 != 0 else 'with FP'
 
+
 class SingleRowChevronAnalysis(MultiQubit_TimeDomain_Analysis):
+    """Analysis for 1-dimensional Chevron QuantumExperiment
+
+    This is used for instance for the 1-D measurements performed as part of
+    CZ gate calibration
+    """
+
     def extract_data(self):
+        self.default_options['TwoD'] = True
         super().extract_data()
-        # Set some default values specific to this class if the
-        # respective options have not been set by the user or in the metadata.
-        # (We do not do this in the init since we have to wait until
-        # metadata has been extracted.)
-        if self.get_param_value('TwoD', default_value=None) is None:
-            self.options_dict['TwoD'] = True
+
     def prepare_plots(self):
         for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
             for k, v in dd.items():
@@ -7316,9 +7319,10 @@ class SingleRowChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                         data=v[0],
                         data_axis_label=f'|{k[1:]}> state population',
                         qb_name=qbn, TwoD=False, plot_cal_points=True,
-                        yrange=(min(0, np.min(v[0][:-self.num_cal_points])) - 0.01,
-                                max(0, np.max(v[0][:-self.num_cal_points])) + 0.01 )
+                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
+                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
                     )
+
 
 class CryoscopeAnalysis(DynamicPhaseAnalysis):
 
