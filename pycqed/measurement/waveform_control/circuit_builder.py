@@ -395,6 +395,8 @@ class CircuitBuilder:
                 if self.decompose_rotation_gates.get(op_type, False):
                     raise NotImplementedError(
                         'Single qb decomposed rotations not implemented yet.')
+                if angle == '':
+                    angle = 180
                 p = self.get_pulses(f"{op_type}180 {qbn[0]}")
                 if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
