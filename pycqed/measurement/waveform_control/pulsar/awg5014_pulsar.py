@@ -27,6 +27,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
     ELEMENT_START_GRANULARITY = 4 / 1.2e9
     MIN_LENGTH = 256 / 1.2e9  # Cannot be triggered faster than 210 ns.
     INTER_ELEMENT_DEADTIME = 0.0
+    WARN_CUT = 1e-3  # Cutoff for non-zero element start warning
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.01, 2.25),
         "marker": (-5.4, 5.4),
@@ -240,7 +241,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
                 packed_waveforms[wfname] = self.awg.pack_waveform(*grp_wfs)
                 wfname_l[-1].append(wfname)
                 # Exponentially small starting value is fine
-                if any([abs(wf[0]) > 1e-3 for wf in grp_wfs]):
+                if any([abs(wf[0]) > self.WARN_CUT for wf in grp_wfs]):
                     log.warning(f'Element {element} starts with non-zero '
                                 f'entry on {self.awg.name}.')
 
