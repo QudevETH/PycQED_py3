@@ -434,9 +434,15 @@ class CircuitBuilder:
                         # configure drive pulse amplitude for this angle
                         p[0]['amplitude'] *= corr_func(
                             ((angle + 180) % (-360) + 180) / 180)
-                p[0]['op_code'] = op
         else:
             raise KeyError(f"Operation {op} not found.")
+        if len(p) == 1:
+            # If only one pulse: set its op_code to the initially requested one
+            # in order to keep information provided there (e.g. 2qb gate type).
+            # If more than one pulse: the operation has been decomposed into
+            # several pulses, so these should keep their separate op_code.
+            p[0]['op_code'] = op
+
         if simultaneous:
             p[0]['ref_point'] = 'start'
 
