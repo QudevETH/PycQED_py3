@@ -283,14 +283,14 @@ class CircuitBuilder:
             # FIXME: This parsing is format dependent and is far from ideal but
             #  to generate parametrized pulses it is helpful to be able to
             #  parse Z gates etc.
-            pulse_name = op_name.split(':')[0].rstrip('0123456789.')
-            angle = op_name[len(pulse_name):]
+            op_type = op_name.split(':')[0].rstrip('0123456789.')
+            angle = op_name[len(op_type):]
             sign = -1 if op_name[0] == 'm' else 1
             if sign == -1:
                 op_name = op_name[1:]
             allowed_ops = ['X', 'Y', 'Z', 'CZ']
             # startswith is needed to recognise all CZ gates, e.g. 'CZ_nztc'
-            if not any([pulse_name.startswith(g) for g in allowed_ops]):
+            if not any([op_type.startswith(g) for g in allowed_ops]):
                 raise KeyError(f'Gate "{op}" not found.')
             param = None  # e.g. 'theta' if angle = '2*[theta]'
             if angle:
@@ -341,11 +341,10 @@ class CircuitBuilder:
                 # this will use the default CZ pulse name of the experiment
                 device_op = self.get_cz_operation_name(
                     *qbn,
-                    cz_pulse_name=None if pulse_name == 'CZ' else pulse_name)
+                    cz_pulse_name=None if op_type == 'CZ' else op_type)
                 # Here, we figure out if the gate should be decomposed into
                 # CZ and single-qubit gates
-                decomp_info = self.decompose_rotation_gates.get(
-                    pulse_name, False)
+                decomp_info = self.decompose_rotation_gates.get(op_type, False)
                 # qb_dec is the qubit on which to apply single-qubit
                 # gates in case of gate decomposition
                 qb_dec = None
@@ -393,11 +392,11 @@ class CircuitBuilder:
                     p[0]['cphase'] = cphase
 
             else:  # Single-qubit gate
-                if self.decompose_rotation_gates.get(pulse_name, False):
+                if self.decompose_rotation_gates.get(op_type, False):
                     raise NotImplementedError(
                         'Single qb decomposed rotations not implemented yet.')
-                p = self.get_pulses(f"{pulse_name}180 {qbn[0]}")
-                if pulse_name == 'Z':
+                p = self.get_pulses(f"{op_type}180 {qbn[0]}")
+                if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
                             func = (lambda x, qb=qbn[0], sign=sign,
