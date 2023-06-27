@@ -3,12 +3,14 @@ from qcodes.utils import validators as vals
 from qcodes.utils.helpers import create_on_off_val_mapping
 try:
     from qcodes.instrument_drivers.agilent import Agilent_E8257D
+    mwg_class = Agilent_E8257D.AgilentE8257D
 except (ImportError, ModuleNotFoundError):
     # older qcodes versions (pre 0.37)
-    from qcodes.instrument_drivers.agilent import E8257D as Agilent_E8257D
+    from qcodes.instrument_drivers.agilent import E8527D
+    mwg_class = E8527D.Agilent_E8527D
 
 
-class Agilent_E8527D(Agilent_E8257D.AgilentE8257D):
+class Agilent_E8527D(mwg_class):
     """
     Modified version of the QCoDeS Agilent_E8527D driver with higher maximal
     power and with parameter pulsemod_state for using Pulse Modulation.
