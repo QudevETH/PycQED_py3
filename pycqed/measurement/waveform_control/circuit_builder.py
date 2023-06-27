@@ -182,7 +182,7 @@ class CircuitBuilder:
             return deepcopy(self.STD_PREP_PARAMS)
 
     def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None,
-                              cz_pulse_name=None):
+                              cz_pulse_name=None, **kw):
         """
         Finds the name of the CZ gate between qb1-qb2 that exists in
         self.operation_dict.
