@@ -7301,18 +7301,26 @@ class SingleRowChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     """
 
     def extract_data(self):
+        # Necessary for data processing and plotting since sweep_points are 2D
         self.default_options['TwoD'] = True
         super().extract_data()
 
-    def prepare_plots(self):
+    def prepare_projected_data_plots(self):
+        # FIXME this overrides the super method but does almost the same. One
+        #  should clean up the logic in the super to get rid of this, see below.
         for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
             for k, v in dd.items():
+                # FIXME this plot is almost the same as in the super method,
+                #  but with plot_cal_points=True. The problem is that TwoD is
+                #  True, meaning that the super does not plot the cal points,
+                #  even though it correctly resolves that the data is really 1D.
                 self.prepare_projected_data_plot(
                     fig_name=f'SingleRowChevron_{qbn}_{k}',
                     data=v[0],
                     data_axis_label=f'|{k[1:]}> state population',
                     qb_name=qbn, TwoD=False, plot_cal_points=True,
                 )
+                # FIXME this is the same as the projected plot, just rescaled.
                 if k == 'pf':
                     self.prepare_projected_data_plot(
                         fig_name=f'Leakage_{qbn}',
