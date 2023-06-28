@@ -358,9 +358,9 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
     1: Main pulse halves
         - amplitude: amplitude +/- amplitude_offset
         - duration: pulse_length/2 + offset correction to keep a zero area
-    2: (Optional) possible additional intermediate step
-        - amplitude: intermediate_amplitude
-        - duration: intermediate_length
+    2: (Optional) secondary transition step
+        - amplitude: trans2_amplitude
+        - duration: trans2_length
     3: Mid-pulse step (typically used to set the cphase via its time integral)
         - amplitude: trans_amplitude
         - duration: trans_length
@@ -389,9 +389,9 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'trans_amplitude': 0,
             'trans_amplitude2': 0,
             'trans_length': 0,
-            'intermediate_amplitude': 0,
-            'intermediate_amplitude2': 0,
-            'intermediate_length': 0,
+            'trans2_amplitude': 0,
+            'trans2_amplitude2': 0,
+            'trans2_length': 0,
             'buffer_length_start': 30e-9,
             'buffer_length_end': 30e-9,
             'channel_relative_delay': 0,
@@ -515,16 +515,16 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         for ma, ta, ao, d, c, ia in [
             (self.amplitude, self.trans_amplitude, self.amplitude_offset,
              -self.channel_relative_delay/2, self.channel,
-             self.intermediate_amplitude),
+             self.trans2_amplitude),
             (self.amplitude2, self.trans_amplitude2, self.amplitude_offset2,
              self.channel_relative_delay/2, self.channel2,
-             self.intermediate_amplitude2),
+             self.trans2_amplitude2),
         ]:
             if c is None:
                 continue
             ml = self.pulse_length
             tl = self.trans_length
-            il = self.intermediate_length
+            il = self.trans2_length
             bs = self.buffer_length_start
             be = self.buffer_length_end
             ca0 = ma + ao
