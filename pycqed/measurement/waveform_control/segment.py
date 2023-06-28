@@ -135,7 +135,7 @@ class Segment:
         self.trigger_pars['length'] = self.trigger_pars['pulse_length'] + \
                                       self.trigger_pars['buffer_length_start']
         self._pulse_names = set()
-        self.acquisition_elements = set()
+        self.acquisition_elements = dict()
         self.acquisition_mode = acquisition_mode
         self.mod_config = kw.pop('mod_config', dict())
         self.sine_config = kw.pop('sine_config', dict())
@@ -172,24 +172,34 @@ class Segment:
 
         # Makes sure that element name is unique within sequence of
         # segments by appending the segment name to the element name
-        # and that RO pulses have their own elements if no element_name
-        # was provided
-        i = len(self.acquisition_elements) + 1
-
-        if pars_copy.get('element_name', None) == None:
-            if pars_copy.get('operation_type', None) == 'RO':
-                pars_copy['element_name'] = \
-                    'RO_element_{}'.format(i)
-            else:
-                pars_copy['element_name'] = 'default'
-        pars_copy['element_name'] += '_' + self.name
-
-
-        # add element to set of acquisition elements
+        # and that RO pulses are put into an appropriate element if no
+        # element_name was provided. In particular, if a RO pulse for a
+        # measurement object does not have an element_name specified,
+        # the pulse will be put into the first acquisition element not yet
+        # used for this measurement object (or a new acquisition element is
+        # created if needed).
+        suffix = '_' + self.name
         if pars_copy.get('operation_type', None) == 'RO':
-            if pars_copy['element_name'] not in self.acquisition_elements:
-                self.acquisition_elements.add(pars_copy['element_name'])
-
+            # get measurement object by removing first part of op_code
+            mobj = ' '.join(pars_copy.get('op_code', '').split(' ')[1:])
+            if (elname := pars_copy.get('element_name')) is None:
+                if not mobj:
+                    log.warning(f"RO pulse {pars_copy['name']} has neither "
+                                f"element_name nor op_code. This can lead to "
+                                f"unexpected behavior.")
+                # find the first acquisition element not yet used for this mobj
+                for i in range(len(self.acquisition_elements) + 1):
+                    elname = f'RO_element_{i + 1}'
+                    if mobj not in self.acquisition_elements.get(
+                            elname + suffix, []):
+                        break
+                pars_copy['element_name'] = elname
+            # add element to dict of acquisition elements
+            self.acquisition_elements.setdefault(elname + suffix, [])
+            self.acquisition_elements[elname + suffix].append(mobj)
+        elif pars_copy.get('element_name') is None:
+            pars_copy['element_name'] = 'default'
+        pars_copy['element_name'] += suffix
 
         new_pulse = UnresolvedPulse(pars_copy)
 
@@ -259,6 +269,7 @@ class Segment:
         :param store_segment_length_timer: (bool, default: True) whether
             the segment length should be stored in the segment's Timer object
         """
+        self._check_acquisition_elements()
         self.join_or_split_elements()
         self.resolve_timing()
         self.resolve_mirror()
@@ -282,6 +293,14 @@ class Segment:
             except Exception as e:
                 # storing segment length is not crucial for the measurement
                 log.warning(f"Could not store segment length timer: {e}")
+
+    def _check_acquisition_elements(self):
+        mobjs = [set(m) for m in self.acquisition_elements.values()]
+        if len(mobjs) and any([m != mobjs[0] for m in mobjs]):
+            log.warning(
+                'Inconsistent acquisition elements can lead to unexpected '
+                'behavior. Usually, all acquisition elements should contain '
+                'pulses for the same set of measurement objects.')
 
     def join_or_split_elements(self):
         self.resolved_pulses = []
@@ -1809,12 +1828,12 @@ class Segment:
                         if self.pulsar.get('{}_type'.format(c)) == 'analog':
                             if np.max(wfs[codeword][c], initial=0) > amp:
                                 logging.warning(
-                                    'Clipping waveform {} > {}'.format(
-                                        np.max(wfs[codeword][c]), amp))
+                                    'Clipping waveform {}: {} > {}'.format(
+                                        c, np.max(wfs[codeword][c]), amp))
                             if np.min(wfs[codeword][c], initial=0) < -amp:
                                 logging.warning(
-                                    'Clipping waveform {} < {}'.format(
-                                        np.min(wfs[codeword][c]), -amp))
+                                    'Clipping waveform {}: {} < {}'.format(
+                                        c, np.min(wfs[codeword][c]), -amp))
                             np.clip(
                                 wfs[codeword][c],
                                 -amp,
@@ -2301,13 +2320,13 @@ class Segment:
                     + new_name
 
         # rebuild acquisition elements that used the old segment name
-        new_acq_elements = set()
-        for el in self.acquisition_elements:
+        new_acq_elements = dict()
+        for el, v in self.acquisition_elements.items():
             if el.endswith(f"_{old_name}"):
-                new_acq_elements.add(el[:-(len(old_name) + 1)] + '_' \
-                                     + new_name)
+                new_acq_elements[el[:-(len(old_name) + 1)] + '_'
+                                 + new_name] = v
             else:
-                new_acq_elements.add(el)
+                new_acq_elements[el] = v
                 log.warning(f'Acquisition element name: {el} not ending'
                             f' with "_segmentname": {old_name}. Keeping '
                             f'current element name when renaming '
