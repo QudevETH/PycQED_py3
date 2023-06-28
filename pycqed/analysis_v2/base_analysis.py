@@ -470,6 +470,40 @@ class BaseDataAnalysis(object):
         return recursive_search(param_name, search_attrs[0])
 
     def get_reset_params(self, qbn=None, default_value=None):
+        """Retrieves the reset parameters for the analysis.
+
+        This method retrieves the reset parameters to be used for the analysis. It
+        first checks if the legacy way of specifying reset parameters is used by
+        checking the value of 'preparation_params' and 'reset_params' attributes.
+        If 'reset_params' is not specified while 'preparation_params' is present,
+        a warning is logged indicating the deprecation of using 'preparation_params'
+        and suggests using 'reset_params' instead. The method assumes that the
+        provided 'preparation_params' are in the adequate format (legacy format)
+        for the analysis and returns 'preparation_params' in this case.
+
+        If 'reset_params' is provided, the method calls the
+        'translate_reset_to_prep_params' method to translate the reset parameters
+        to preparation parameters required by the analysis framework.
+
+        Args:
+            qbn (Optional[str]): Qubit name of which the reset parameters
+            should be extracted. In the new framework, each qubit
+             can have its own type of reset and thus the
+             returned analysis instructions can depend on the qubit.
+             In the old framework, there is only one global set of preparation
+             parameters. `qbn` indicates the reset parameters of which are used
+             as global preparation parameters for the legacy analysis code.
+             Defaults to the first qubit listed in reset_params['analysis_instructions'].
+            default_value (Optional): Default value to be returned if the reset
+                parameters do not match any known patterns. Defaults to None.
+
+        Returns:
+            dict or default_value: Dictionary containing the translated preparation
+                parameters if the reset parameters match a known pattern or
+                'preparation_params' if the legacy format is used. Otherwise,
+                returns the default_value.
+
+        """
         # check if legacy way of specifying reset parameters is used
         prep_params = self.get_param_value("preparation_params", None)
         reset_params = self.get_param_value("reset_params", None)
@@ -486,16 +520,48 @@ class BaseDataAnalysis(object):
     @staticmethod
     def translate_reset_to_prep_params(reset_params, qbn=None,
                                        default_value=None):
-        # in case of legacy code where the reset params stored in the
-        # experimental metadata or as provided to the analysis is only
-        # a string summarizing the reset type for all qubits, perform
-        # manually the translation to the dictionary required by the
-        # analysis framework.
-        # Note: could also use the reset.get_analysis_instructions()
-        # for each reset type which would avoid hard coding and
-        # duplication of code but this would introduce a (local)
-        # dependency on the reset modules, which itself import qcodes etc. Not
-        # sure what is best.
+        """
+        This static method performs the translation of reset parameters
+        (new framework for performing reset, used on the control measurement side)
+        to a preparation parameters dict (old framework)
+        required by the analysis framework. It handles cases
+        where the reset parameters are either a string or a dictionary.
+
+        Args:
+            reset_params (str or dict): The reset parameters to be translated.
+            qbn (Optional[str]): Qubit name of which the reset parameters
+            should be extracted. In the new framework, each qubit
+             can have its own type of reset and thus the
+             returned analysis instructions can depend on the qubit.
+             In the old framework, there is only one global set of preparation
+             parameters. `qbn` indicates the reset parameters of which are used
+             as global preparation parameters for the legacy analysis code.
+             Defaults to the first qubit listed in reset_params['analysis_instructions'].
+            default_value (Optional): Default value to be returned if the reset
+                parameters do not match any known patterns. Defaults to None.
+
+        Returns:
+            dict or default_value: Dictionary containing the translated preparation
+                parameters if the reset parameters match a known pattern. Otherwise,
+                returns the default_value.
+
+        Note:
+            In case of legacy code where the reset parameters stored in the
+            experimental metadata or provided to the analysis is only a string
+            summarizing the reset type for all qubits, this method manually performs
+            the translation to the dictionary required by the analysis framework.
+
+            If the reset parameters are a string, the method maps specific values of
+            the string to the corresponding dictionary format. If the reset
+            parameters are a dictionary, it checks for the presence of
+            "analysis_instructions" and returns the last step of the analysis
+            instructions for the specified qubit.
+
+            If the reset parameters do not match any known patterns or if there is
+            missing data, appropriate warning messages are logged, and the
+            default_value is returned.
+
+            """
         if isinstance(reset_params, str):
             if reset_params == "preselection":
                 return dict(preparation_type="preselection")
