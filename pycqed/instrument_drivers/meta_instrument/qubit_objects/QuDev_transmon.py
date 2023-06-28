@@ -405,15 +405,9 @@ class QuDev_transmon(MeasurementObject):
                            vals=vals.Dict())
 
 
-        # Pulse preparation parameters
-        DEFAULT_PREP_PARAMS = dict(preparation_type='wait',
-                                   post_ro_wait=1e-6, reset_reps=1,
-                                   final_reset_pulse=True,
-                                   threshold_mapping={
-                                       self.name: {0: 'g', 1: 'e'}})
 
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
-                            initial_value=DEFAULT_PREP_PARAMS, vals=vals.Dict())
+                            set_parser=self._validate_preparation_params)
 
         self.add_submodule('reset', instrument.InstrumentModule(self, 'reset'))
 
@@ -464,6 +458,14 @@ class QuDev_transmon(MeasurementObject):
 
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
+
+    def _validate_preparation_params(self, preparation_params):
+        log.error('specifying `preparation_params` in the qubit object is '
+                  'deprecated and will have  no effect. Please use `qb.reset.steps()` '
+                  'to specify your reset type or directly specify the '
+                  '`reset_params` as a keyword argument to the `QuantumExperiment`'
+                  'child measurement class.')
+        return preparation_params
 
     def _drive_mixer_calibration_tmp_vals(self):
         """Convert drive_mixer_calib_settings to temporary values format.
@@ -2690,21 +2692,21 @@ class QuDev_transmon(MeasurementObject):
         msg = "{} submodule already in {}.reset.submodules. " \
               "Submodule won't be created again. "
         if preselection:
-            submodule_name = 'preselection'
+            submodule_name = reset.Preselection.DEFAULT_INSTANCE_NAME
             if submodule_name in self.reset.submodules:
                 log.error(msg.format(submodule_name, self.name))
             else:
                 self.reset.add_submodule("preselection",
                                          reset.Preselection(self.reset))
         if parametric_flux_reset:
-            submodule_name = 'parametric_flux'
+            submodule_name = reset.ParametricFluxReset.DEFAULT_INSTANCE_NAME
             if submodule_name in self.reset.submodules:
                 log.error(msg.format(submodule_name, self.name))
             else:
                 self.reset.add_submodule(submodule_name,
                                         reset.ParametricFluxReset(self.reset))
         if feedback_reset:
-            submodule_name = 'feedback'
+            submodule_name = reset.FeedbackReset.DEFAULT_INSTANCE_NAME
             if submodule_name in self.reset.submodules:
                 log.error(msg.format(submodule_name, self.name))
             else:

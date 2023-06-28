@@ -35,7 +35,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
     """
     TIMED_METHODS = ["run_analysis"]
-    _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
+    _metadata_params = {'cal_points', 'sweep_points',
                         'channel_map', 'meas_objs'}
     # The following string can be overwritten by child classes to provide a
     # default value for the kwarg experiment_name. None means that the name
