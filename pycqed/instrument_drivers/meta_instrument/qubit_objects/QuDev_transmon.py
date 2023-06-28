@@ -957,7 +957,6 @@ class QuDev_transmon(MeasurementObject):
         ge_lo = self.instr_ge_lo
 
         self.configure_offsets(set_ge_offsets=(drive == 'timedomain'))
-        self.set_distortion_in_pulsar()
 
         # configure qubit drive local oscillator
         if ge_lo() is not None:
