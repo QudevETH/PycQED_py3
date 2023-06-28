@@ -202,16 +202,16 @@ class CircuitBuilder:
             reset_params (dict): deep copy of preparation parameters
 
         """
-
         if self.reset_params is None:
             reset_params = {}
         else:
             reset_params = deepcopy(self.reset_params)
 
-        reset_params.update(dict(steps=self._get_reset_steps(
+        steps, analysis_instructions = self._get_reset_steps(
             qb_names=reset_params.get('qb_names', qb_names),
-            steps=reset_params.get('steps', None)
-        )))
+            steps=reset_params.get('steps', None))
+        reset_params.update(dict(steps=steps, analysis_instructions=
+                                 analysis_instructions))
         return reset_params
 
     def _get_reset_steps(self, qb_names="all", steps=None):
@@ -238,19 +238,31 @@ class CircuitBuilder:
                         f"were found (self.qubits is None)."
                         f"No reset steps will be added.")
             reset_steps = {qbn: [] for qbn in qb_names}
+            analysis_instructions = {qbn: [dict(preparation_type="wait")]
+                                     for qbn in qb_names}
         elif steps is None:
             try:
                 reset_steps = {qb.name: deepcopy(qb.reset.steps()) for qb in qubits}
+                analysis_instructions = \
+                    {qb.name: [qb.reset.submodules.get(s).get_analysis_instructions()
+                               for s in qb.reset.steps()]
+                     for qb in qubits}
             except AttributeError as e:
                 log.error(f"Failed to retrieve reset"
                           f" steps from qb.reset.steps(): {e}."
                           f"No reset steps will be added.")
-                reset_steps = {qb.name: [] for qb in qubits}
+                reset_steps = {qbn: [] for qbn in qb_names}
+                analysis_instructions = {qbn: [dict(preparation_type="wait")]
+                                         for qbn in qb_names}
         else:
             if isinstance(steps, str):
                 steps = [steps]
             reset_steps = {qb.name: deepcopy(steps) for qb in qubits}
-        return reset_steps
+            analysis_instructions =\
+                {qb.name: [qb.reset.submodules.get(s).get_analysis_instructions()
+                           for s in steps]
+                for qb in qubits}
+        return reset_steps, analysis_instructions
 
     def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None, **kw):
         """
@@ -518,7 +530,7 @@ class CircuitBuilder:
 
     def reset(self, qb_names='all', steps=None,
               step_alignment='start', alignment="end",
-              block_name=None):
+              block_name=None, **kws):
         """
         Resets a list of qubits using a sequence of steps (globally provided
         as argument to this function or individually specified from qubit.init.steps).

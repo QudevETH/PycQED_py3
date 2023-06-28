@@ -1,7 +1,8 @@
 from copy import deepcopy
 
 from pycqed.instrument_drivers.instrument import InstrumentModule
-from pycqed.measurement.waveform_control.block import Block
+import pycqed.measurement.waveform_control.block as block_mod
+
 from qcodes import ManualParameter
 from qcodes.utils import validators
 
@@ -105,7 +106,7 @@ class ResetScheme(InstrumentModule):
     def reset_block(self, name=None, **block_kwargs):
         if name is None:
             name = self.short_name
-        init = Block(block_name=name, pulse_list=[])
+        init = block_mod.Block(block_name=name, pulse_list=[])
         self._rep = 0 # set repetition counter to 0
         for i in range(self.repetitions()):
             # build block with buffers for repetition i
@@ -123,7 +124,7 @@ class ResetScheme(InstrumentModule):
         return init
 
     def _reset_block(self, name, **kwargs):
-        return Block(name, [], **kwargs)
+        return block_mod.Block(name, [], **kwargs)
 
     # FIXME: this is a duplicate of the one in qubit_object; find where
     #   we can put in hierarchy such that we can access it without dupplication
@@ -167,8 +168,15 @@ class ResetScheme(InstrumentModule):
             instr = self.instr_ref
         return operation + f"_{self.short_name} {instr.name}"
 
+    def get_analysis_instructions(self):
+        # instructions such that the analysis knows how to process the data
+        # likely to change when analysis is refactored /enhanced to be able
+        # to handle more complex reset types (e.g. combinations etc)
+        return dict(preparation_type='wait')
+
 
 class Preselection(ResetScheme):
+    DEFAULT_INSTANCE_NAME = "preselection"
 
     def __init__(self, parent, **kwargs):
 
@@ -185,16 +193,24 @@ class Preselection(ResetScheme):
         preselection_ro.update(self.get_init_specific_params()['RO'])
 
         # additional changes
-        return Block(name, [preselection_ro], copy_pulses=False, **kwargs)
+        return block_mod.Block(name, [preselection_ro], copy_pulses=False, **kwargs)
+
+    def get_analysis_instructions(self):
+        # instructions such that the analysis knows how to process the data
+        # likely to change when analysis is refactored / enhanced to be able
+        # to handle more complex reset types (e.g. combinations etc).
+        # for now, the legacy naming conventions are used in the analysis
+        return dict(preparation_type='preselection')
 
 
 class FeedbackReset(ResetScheme):
     # Calculate the length of a ge pulse, assumed the same for all qubits
     state_ops = dict(g=["I"], e=["X180"], f=["X180_ef", "X180"])
+    DEFAULT_INSTANCE_NAME = "feedback"
 
     def __init__(self, parent, **kwargs):
 
-        super().__init__(parent, name="feedback",
+        super().__init__(parent, name=self.DEFAULT_INSTANCE_NAME,
                          operations=('RO', 'X180', 'X180_ef'), **kwargs)
 
         self.add_parameter('codeword_state_map',
@@ -245,7 +261,7 @@ class FeedbackReset(ResetScheme):
                     reset_pulses[-1]['ref_pulse'] = active_reset_ro['name']
                     reset_pulses[-1]['pulse_delay'] = self.ro_feedback_delay()
                     reset_pulses[-1]['ref_point'] = "start"
-        return Block(name, reset_pulses, copy_pulses=False, **kwargs)
+        return block_mod.Block(name, reset_pulses, copy_pulses=False, **kwargs)
 
     def _validate_ro_feedback_delay(self, ro_feedback_delay):
         # FIXME: assume reference instrument has acq_length,
@@ -268,8 +284,18 @@ class FeedbackReset(ResetScheme):
 
         return codeword_state_map
 
+    def get_analysis_instructions(self):
+        # instructions such that the analysis knows how to process the data
+        # likely to change when analysis is refactored / enhanced to be able
+        # to handle more complex reset types (e.g. combinations etc).
+        # for now, the legacy naming conventions are used in the analysis
+        return dict(preparation_type='active_reset',
+                    post_ro_wait=self.ro_feedback_delay(),
+                    reset_reps=self.repetitions()
+                    )
 
 class ParametricFluxReset(ResetScheme):
+    DEFAULT_INSTANCE_NAME = "parametric_flux"
 
     def __init__(self, parent, operations=None, **kwargs):
         if operations is None:
@@ -282,7 +308,7 @@ class ParametricFluxReset(ResetScheme):
                                  f" in the root instrument "
                                  f"{parent.root_instrument}.")
 
-        super().__init__(parent, name="parametric_flux",
+        super().__init__(parent, name=self.DEFAULT_INSTANCE_NAME,
                          operations=operations, **kwargs)
 
     def _reset_block(self, name, **kwargs):
@@ -291,4 +317,4 @@ class ParametricFluxReset(ResetScheme):
         reset_pulses = [deepcopy(op_dict[self.get_opcode(op)])
                         for op in self.operations()]
 
-        return Block(name, reset_pulses, copy_pulses=False, **kwargs)
+        return block_mod.Block(name, reset_pulses, copy_pulses=False, **kwargs)
