@@ -469,6 +469,70 @@ class BaseDataAnalysis(object):
                                                          1])
         return recursive_search(param_name, search_attrs[0])
 
+    def get_reset_params(self, qbn=None, default_value=None):
+        # check if legacy way of specifying reset parameters is used
+        prep_params = self.get_param_value("preparation_params", None)
+        reset_params = self.get_param_value("reset_params", None)
+
+        if reset_params is None and prep_params is not None:
+            log.warning("Using 'preparation_params' to specify reset"
+                        " parameters is deprecated. Please use 'reset_params'"
+                        " instead. The code will assume that the provided"
+                        "'preparation_params' is using the adequate"
+                        "format (i.e. legacy format) for the analysis. ")
+            return prep_params
+        return self.translate_reset_to_prep_params(reset_params, qbn,
+                                                   default_value)
+    @staticmethod
+    def translate_reset_to_prep_params(reset_params, qbn=None,
+                                       default_value=None):
+        # in case of legacy code where the reset params stored in the
+        # experimental metadata or as provided to the analysis is only
+        # a string summarizing the reset type for all qubits, perform
+        # manually the translation to the dictionary required by the
+        # analysis framework.
+        # Note: could also use the reset.get_analysis_instructions()
+        # for each reset type which would avoid hard coding and
+        # duplication of code but this would introduce a (local)
+        # dependency on the reset modules, which itself import qcodes etc. Not
+        # sure what is best.
+        if isinstance(reset_params, str):
+            if reset_params == "preselection":
+                return dict(preparation_type="preselection")
+            elif reset_params == "feedback":
+                return dict(preparation_type="active_reset")
+            elif reset_params == "parametric_flux":
+                return dict(preparation_type="wait")
+            else:
+                log.warning(f"Reset parameters : '{reset_params}'"
+                            f"unknown for legacy analysis code. Analysis will"
+                            f"assume that the analysis can be performed "
+                            f"with the default behavior i.e. "
+                            f"preparation_type='wait' in the legacy code.")
+                return dict(preparation_type="wait")
+        # in most QE based measurements the stored reset params is a dict which
+        # stores instructions for the analysis.
+        elif isinstance(reset_params, dict):
+            print(reset_params)
+            if "analysis_instructions" not in reset_params:
+                log.warning(f'Reset params dictionary does not contain '
+                            f'"analysis_instructions": {reset_params}.'
+                            f' Analysis will proceed without any specific'
+                            f' reset-specific data processing.')
+                return dict(preparation_type="wait")
+            else:
+                if qbn is None:
+                    qbn = list(reset_params['analysis_instructions'].keys())[0]
+                if len(reset_params['analysis_instructions'][qbn]) > 1:
+                    log.warning(f'Reset params dictionary contains several'
+                                f' steps: {reset_params["steps"]}, '
+                                f'currently the analysis will consider'
+                                f' only the last step for data '
+                                f'processing/filtering'
+                                )
+                return reset_params['analysis_instructions'][qbn][-1]
+        return default_value
+
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):
         if timestamps is None:
@@ -741,8 +805,7 @@ class BaseDataAnalysis(object):
                 self.raw_data_dict,
                 self.get_param_value('compression_factor', 1),
                 SweepPoints(self.get_param_value('sweep_points')),
-                cp, self.get_param_value('preparation_params',
-                                         default_value=dict()),
+                cp, self.get_reset_params(),
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
 

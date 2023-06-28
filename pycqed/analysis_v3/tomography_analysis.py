@@ -136,8 +136,11 @@ def state_tomography_analysis(data_dict, keys_in,
     do_preselection = hlp_mod.get_param('do_preselection', data_dict,
                                         **params)
     if do_preselection is None:
-        prep_params = hlp_mod.get_param('preparation_params', data_dict,
-                                        default_value={}, **params)
+        import pycqed.analysis_v2.base_analysis as ba
+        # translate new reset params format to legacy format that the analysis
+        # understands
+        prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
+            hlp_mod.get_param('reset_params', data_dict, **params))
         do_preselection = \
             prep_params.get('preparation_type', 'wait') == 'preselection'
         hlp_mod.add_param(f'{keys_out_container}.do_preselection',
@@ -295,11 +298,14 @@ def all_msmt_ops_results_omegas(data_dict, observables, probability_table=None,
         prob_table_filter = hlp_mod.get_param('prob_table_filter', data_dict,
                                               **params)
         if prob_table_filter is None:
+            import pycqed.analysis_v2.base_analysis as ba
+            # translate new reset params format to legacy format that the analysis
+            # understands
+            prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
+                hlp_mod.get_param('reset_params', data_dict, **params))
             do_preselection = hlp_mod.get_param(
                 'do_preselection', data_dict, default_value=
-                 hlp_mod.get_param('preparation_params', data_dict,
-                                   default_value={}, **params).get(
-                     'preparation_type', 'wait') == 'preselection', **params)
+                 prep_params.get('preparation_type', 'wait') == 'preselection', **params)
             def prob_table_filter(prob_table, pre=do_preselection,
                                   basis_rots=basis_rots, n=len(meas_obj_names)):
                 prob_table = np.array(list(prob_table.values())).T
@@ -1231,8 +1237,11 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
 
     data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
 
-    prep_params = hlp_mod.get_param('preparation_params', data_dict,
-                                    default_value={}, **params)
+    import pycqed.analysis_v2.base_analysis as ba
+    # translate new reset params format to legacy format that the analysis
+    # understands
+    prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
+        hlp_mod.get_param('reset_params', data_dict, **params))
     preselection = prep_params.get('preparation_type', 'wait') == 'preselection'
     n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True,
                                    **params)
@@ -1254,8 +1263,8 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
                       hlp_mod.get_param('meas_obj_value_names_map',
                                         data_dict, **params),
                       data_dict_temp)
-    hlp_mod.add_param('preparation_params',
-                      hlp_mod.get_param('preparation_params',
+    hlp_mod.add_param('reset_params',
+                      hlp_mod.get_param('reset_params',
                                         data_dict, **params),
                       data_dict_temp)
     hlp_mod.add_param('rho_target',

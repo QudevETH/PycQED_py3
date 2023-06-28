@@ -314,8 +314,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             qbn: self.raw_data_dict['measurementstring'] for qbn in
             self.qb_names}
 
-        self.prep_params = self.get_param_value('preparation_params',
-                                                default_value=dict())
+        self.prep_params = self.get_reset_params(default_value=dict())
 
         # creates self.channel_map
         self.get_channel_map()
@@ -2131,27 +2130,26 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 # plot slices of the 2D raw data
                 self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
                                                   slice_idxs_list)
-
-            if 'preparation_params' in self.metadata:
-                if 'active' in self.metadata['preparation_params'].get(
-                        'preparation_type', 'wait') or \
-                        not self.data_with_reset:
-                    # Plot raw data without the active reset readouts
-                    key = 'meas_results_per_qb'
-                    raw_data_dict = self.proc_data_dict[key][qb_name]
-                    fig_suffix = 'filtered' if self.data_with_reset else ''
-                    sweep_points = self.proc_data_dict[
-                        'sweep_points_dict'][qb_name]['sweep_points']
-                    if plot_raw_data:
-                        # standard raw data plot
-                        self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                                     xvals=sweep_points,
-                                                     fig_suffix=fig_suffix)
-                    if TwoD and len(slice_idxs_list) > 0:
-                        # plot slices of the 2D raw data
-                        self._prepare_raw_1d_slices_plots(qb_name,
-                                                          raw_data_dict,
-                                                          slice_idxs_list)
+            prep_params = self.get_reset_params(qb_name, {})
+            if 'active' in prep_params.get(
+                    'preparation_type', 'wait') or \
+                    not self.data_with_reset:
+                # Plot raw data without the active reset readouts
+                key = 'meas_results_per_qb'
+                raw_data_dict = self.proc_data_dict[key][qb_name]
+                fig_suffix = 'filtered' if self.data_with_reset else ''
+                sweep_points = self.proc_data_dict[
+                    'sweep_points_dict'][qb_name]['sweep_points']
+                if plot_raw_data:
+                    # standard raw data plot
+                    self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                                 xvals=sweep_points,
+                                                 fig_suffix=fig_suffix)
+                if TwoD and len(slice_idxs_list) > 0:
+                    # plot slices of the 2D raw data
+                    self._prepare_raw_1d_slices_plots(qb_name,
+                                                      raw_data_dict,
+                                                      slice_idxs_list)
 
     def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
                                      slice_idxs_list):
@@ -7776,8 +7774,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.preselection = \
-            self.get_param_value("preparation_params",
-                                 {}).get("preparation_type", "wait") == "preselection"
+            self.get_reset_params(default_value={})\
+                                .get("preparation_type", "wait") == "preselection"
         default_states_info = defaultdict(dict)
         default_states_info.update({"g": {"label": r"$|g\rangle$"},
                                "e": {"label": r"$|e\rangle$"},
@@ -8377,9 +8375,9 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        if "ro_separation" in self.get_param_value("preparation_params"):
-            ro_sep = \
-                self.get_param_value("preparation_params")["ro_separation"]
+
+        if "ro_separation" in self.prep_params:
+            ro_sep = self.prep_params["ro_separation"]
         else:
             return
 
@@ -8623,9 +8621,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         from matplotlib.ticker import MaxNLocator
         for axname, ax in self.axs.items():
             if "populations" in axname:
-                if "ro_separation" in self.get_param_value("preparation_params"):
-                    ro_sep = \
-                        self.get_param_value("preparation_params")["ro_separation"]
+                if "ro_separation" in self.prep_params:
+                    ro_sep = self.prep_params["ro_separation"]
                     timeax = ax.twiny()
                     timeax.set_xlabel(r"Time ($\mu s$)")
                     timeax.set_xlim(0, ax.get_xlim()[1] * ro_sep * 1e6)

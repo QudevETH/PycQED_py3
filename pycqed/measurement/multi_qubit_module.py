@@ -504,7 +504,6 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
     qubits = dev.get_qubits(qubits)
     qb_names = dev.get_qubits(qubits, "str")
     operation_dict = dev.get_operation_dict(qubits=qubits)
-    reset_params = None
 
     if preselection:
         log.warning("Using `preselection` keyword agrument is deprecated and"
@@ -537,7 +536,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
     if exp_metadata is None:
         exp_metadata = {}
     exp_metadata.update({"cal_points": repr(cp),
-                         "preparation_params": reset_params,
+                         "reset_params": reset_params,
                          "all_states_combinations": all_states_combinations,
                          "n_shots": n_shots,
                          "channel_map": channel_map,
@@ -940,7 +939,7 @@ def measure_measurement_induced_dephasing(qb_dephased, qb_targeted, phases, amps
         exp_metadata = {}
     exp_metadata.update({'qb_dephased': [qb.name for qb in qb_dephased],
                          'qb_targeted': [qb.name for qb in qb_targeted],
-                         'preparation_params': reset_params,
+                         'reset_params': reset_params,
                          'cal_points': repr(cp),
                          'classified_ro': classified,
                          'rotate': len(cal_states) != 0 and not classified,
@@ -988,89 +987,89 @@ def measure_drive_cancellation(
         `CircuitBuider._parse_reset()` for all possible input.
         exp_metadata: A dictionary of extra metadata to save with the
             experiment.
-        label: Overwrite the default measuremnt label.
+        label: Overwrite the default measurement label.
         upload: Whether the experimental sequence should be uploaded.
             Defaults to true.
         analyze: Whether the analysis will be run. Defaults to True.
 
     """
-        if phases is None:
-            phases = np.linspace(0, 360, 3, endpoint=False)
+    if phases is None:
+        phases = np.linspace(0, 360, 3, endpoint=False)
 
-        if isinstance(driven_qubit, str):
-            driven_qubit = dev.get_qb(driven_qubit)
-        ramsey_qubits = [dev.get_qb(qb) if isinstance(qb, str) else qb
-                         for qb in ramsey_qubits]
-        ramsey_qubit_names = [qb.name for qb in ramsey_qubits]
+    if isinstance(driven_qubit, str):
+        driven_qubit = dev.get_qb(driven_qubit)
+    ramsey_qubits = [dev.get_qb(qb) if isinstance(qb, str) else qb
+                     for qb in ramsey_qubits]
+    ramsey_qubit_names = [qb.name for qb in ramsey_qubits]
 
-        MC = dev.instr_mc.get_instr()
-        if label is None:
-            label = f'drive_{driven_qubit.name}_cancel_'\
-                    f'{list(sweep_points[0].keys())}'
+    MC = dev.instr_mc.get_instr()
+    if label is None:
+        label = f'drive_{driven_qubit.name}_cancel_'\
+                f'{list(sweep_points[0].keys())}'
 
 
-        sweep_points = deepcopy(sweep_points)
-        sweep_points.add_sweep_dimension()
-        sweep_points.add_sweep_parameter('phase', phases, 'deg', 'Ramsey phase')
+    sweep_points = deepcopy(sweep_points)
+    sweep_points.add_sweep_dimension()
+    sweep_points.add_sweep_parameter('phase', phases, 'deg', 'Ramsey phase')
 
-        if exp_metadata is None:
-            exp_metadata = {}
+    if exp_metadata is None:
+        exp_metadata = {}
 
-        for qb in [driven_qubit] + ramsey_qubits:
-            qb.prepare(drive='timedomain')
+    for qb in [driven_qubit] + ramsey_qubits:
+        qb.prepare(drive='timedomain')
 
-        cal_states = CalibrationPoints.guess_cal_states(cal_states,
-                                                        for_ef=False)
-        cp = CalibrationPoints.multi_qubit(
-            [qb.name for qb in ramsey_qubits], cal_states,
-            n_per_state=n_cal_points_per_state)
-        operation_dict = dev.get_operation_dict()
+    cal_states = CalibrationPoints.guess_cal_states(cal_states,
+                                                    for_ef=False)
+    cp = CalibrationPoints.multi_qubit(
+        [qb.name for qb in ramsey_qubits], cal_states,
+        n_per_state=n_cal_points_per_state)
+    operation_dict = dev.get_operation_dict()
 
-        drive_op_code = pulse + ' ' + driven_qubit.name
-        # We get sweep_vals for only one dimension since drive_cancellation_seq
-        # turns 2D sweep points into 1D-SegmentHardSweep.
-        # FIXME: in the future, this should rather be implemented via
-        # sequence.compress_2D_sweep
-        seq, sweep_vals = mqs.drive_cancellation_seq(
-            drive_op_code, ramsey_qubit_names, operation_dict, sweep_points,
-            n_pulses=n_pulses, reset_params=reset_params, cal_points=cp,
-            upload=False)
+    drive_op_code = pulse + ' ' + driven_qubit.name
+    # We get sweep_vals for only one dimension since drive_cancellation_seq
+    # turns 2D sweep points into 1D-SegmentHardSweep.
+    # FIXME: in the future, this should rather be implemented via
+    # sequence.compress_2D_sweep
+    seq, sweep_vals = mqs.drive_cancellation_seq(
+        drive_op_code, ramsey_qubit_names, operation_dict, sweep_points,
+        n_pulses=n_pulses, reset_params=reset_params, cal_points=cp,
+        upload=False)
 
-        [seq.repeat_ro(f"RO {qbn}", operation_dict)
-         for qbn in ramsey_qubit_names]
+    [seq.repeat_ro(f"RO {qbn}", operation_dict)
+     for qbn in ramsey_qubit_names]
 
-        sweep_func = awg_swf.SegmentHardSweep(
-                sequence=seq, upload=upload,
-                parameter_name='segment_index')
-        MC.set_sweep_function(sweep_func)
-        MC.set_sweep_points(sweep_vals)
+    sweep_func = awg_swf.SegmentHardSweep(
+            sequence=seq, upload=upload,
+            parameter_name='segment_index')
+    MC.set_sweep_function(sweep_func)
+    MC.set_sweep_points(sweep_vals)
 
-        det_func = get_multiplexed_readout_detector_functions(
-            'int_avg_det', ramsey_qubits,
-            nr_averages=max([qb.acq_averages() for qb in ramsey_qubits]))
-        MC.set_detector_function(det_func)
+    det_func = get_multiplexed_readout_detector_functions(
+        'int_avg_det', ramsey_qubits,
+        nr_averages=max([qb.acq_averages() for qb in ramsey_qubits]))
+    MC.set_detector_function(det_func)
 
-        # !!! Watch out with the call below. See docstring for this function
-        # to see the assumptions it makes !!!
-        meas_obj_sweep_points_map = sweep_points.get_meas_obj_sweep_points_map(
-            [qb.name for qb in ramsey_qubits])
-        exp_metadata.update({
-            'ramsey_qubit_names': ramsey_qubit_names,
-            'preparation_params': reset_params,
-            'cal_points': repr(cp),
-            'sweep_points': sweep_points,
-            'meas_obj_sweep_points_map': meas_obj_sweep_points_map,
-            'meas_obj_value_names_map':
-                get_meas_obj_value_names_map(ramsey_qubits, det_func),
-            'rotate': len(cp.states) != 0,
-            'data_to_fit': {qbn: 'pe' for qbn in ramsey_qubit_names}
-        })
+    # !!! Watch out with the call below. See docstring for this function
+    # to see the assumptions it makes !!!
+    meas_obj_sweep_points_map = sweep_points.get_meas_obj_sweep_points_map(
+        [qb.name for qb in ramsey_qubits])
+    exp_metadata.update({
+        'ramsey_qubit_names': ramsey_qubit_names,
+        'reset_params': reset_params,
+        'cal_points': repr(cp),
+        'sweep_points': sweep_points,
+        'meas_obj_sweep_points_map': meas_obj_sweep_points_map,
+        'meas_obj_value_names_map':
+            get_meas_obj_value_names_map(ramsey_qubits, det_func),
+        'rotate': len(cp.states) != 0,
+        'data_to_fit': {qbn: 'pe' for qbn in ramsey_qubit_names}
+    })
 
-        MC.run(label, exp_metadata=exp_metadata)
+    MC.run(label, exp_metadata=exp_metadata)
 
-        if analyze:
-            return tda.DriveCrosstalkCancellationAnalysis(
-                qb_names=ramsey_qubit_names, options_dict={'TwoD': True})
+    if analyze:
+        return tda.DriveCrosstalkCancellationAnalysis(
+            qb_names=ramsey_qubit_names, options_dict={'TwoD': True})
 
 
 def measure_fluxline_crosstalk(
@@ -1185,7 +1184,7 @@ def measure_fluxline_crosstalk(
         'target_fluxpulse_length': target_fluxpulse_length,
         'crosstalk_fluxpulse_length': crosstalk_fluxpulse_length,
         'skip_qb_freq_fits': skip_qb_freq_fits,
-        'preparation_params': reset_params,
+        'reset_params': reset_params,
         'cal_points': repr(cp),
         'sweep_points': sweep_points,
         'meas_obj_sweep_points_map': meas_obj_sweep_points_map,
@@ -1306,7 +1305,7 @@ def measure_J_coupling(dev, qbm, qbs, freqs, cz_pulse_name,
     exp_metadata.update({'sweep_points_dict': {qbm.name: amplitudes},
                          'sweep_points_dict_2D': {qbm.name: freqs},
                          'use_cal_points': cal_points,
-                         'preparation_params': reset_params,
+                         'reset_params': reset_params,
                          'cal_points': repr(cp),
                          'rotate': cal_points,
                          'data_to_fit': {qbm.name: 'pe'},
@@ -1372,7 +1371,7 @@ def measure_ramsey_add_pulse(measured_qubit, pulsed_qubit, times=None,
          'sweep_name': 'Delay',
          'sweep_unit': 's',
          'cal_points': repr(cp),
-         'preparation_params': reset_params,
+         'reset_params': reset_params,
          'last_ge_pulses': [last_ge_pulse],
          'artificial_detuning': artificial_detuning,
          'rotate': len(cp.states) != 0,

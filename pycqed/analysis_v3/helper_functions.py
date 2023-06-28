@@ -996,10 +996,15 @@ def get_cal_sweep_points(sweep_points_array, cal_points, qb_name):
 def get_reset_reps_from_data_dict(data_dict):
     reset_reps = 0
     metadata = data_dict.get('exp_metadata', {})
-    if 'preparation_params' in metadata:
-        if 'active' in metadata['preparation_params'].get(
+    if 'reset_params' in metadata:
+        import pycqed.analysis_v2.base_analysis as ba
+        # translate new reset params format to legacy format that the analysis
+        # understands
+        prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
+            metadata['reset_params'], default_value={})
+        if 'active' in prep_params.get(
                 'preparation_type', 'wait'):
-            reset_reps = metadata['preparation_params'].get(
+            reset_reps = prep_params.get(
                 'reset_reps', 3)
     return reset_reps
 

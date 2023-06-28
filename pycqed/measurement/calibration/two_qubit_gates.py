@@ -160,7 +160,7 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
-            'preparation_params': self.get_reset_params(),
+            'reset_params': self.get_reset_params(),
             'rotate': len(self.cal_states) != 0 and not self.classified,
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
@@ -1627,7 +1627,7 @@ class Chevron(CalibBuilder):
             self.sequences, self.mc_points = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block,
                 block_align = ['center', 'end', 'center'], **kw)
-
+            print('kws chev', kw)
             self.autorun(**kw)  # run measurement & analysis if requested in kw
         except Exception as x:
             self.exception = x
