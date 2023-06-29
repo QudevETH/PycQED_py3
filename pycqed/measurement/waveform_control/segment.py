@@ -1201,7 +1201,8 @@ class Segment:
                 i += 1
                 trig_pulse.algorithm_time(trigger_pulse_time
                                           + kw.get('pulse_delay', 0)
-                                          - 0.25/self.pulsar.clock(ch))
+                                          - 0.25/self.pulsar.clock(ch)
+                                          - kw['buffer_length_start'])
 
                 # Add trigger element and pulse to seg.elements
                 if trig_pulse.element_name in self.elements:
@@ -1269,9 +1270,8 @@ class Segment:
                 # Calculate the trigger pulse time
                 [el_start, _] = self.element_start_length(element, group)
 
-                trigger_pulse_time = el_start - \
-                                     - self.pulsar.get_trigger_delay(group)\
-                                     - self.trigger_pars['buffer_length_start']
+                trigger_pulse_time = el_start \
+                                     + self.pulsar.get_trigger_delay(group)
 
                 # Find the trigger channels that trigger the AWG
                 for channel in self.pulsar.get_trigger_channels(group):
