@@ -30,6 +30,7 @@ class AWG70kPulsar(PulsarAWGInterface):
     MIN_LENGTH_SAMPLES = 2400  # Changed in accordance with the qcodes driver
     MIN_LENGTH = MIN_LENGTH_SAMPLES / 25e9
     INTER_ELEMENT_DEADTIME = 0.0
+    WARN_CUT = 1e-3  # Cutoff for non-zero element start warning
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.125, 0.25),
         "marker": (-1.4,1.4),
@@ -195,7 +196,8 @@ class AWG70kPulsar(PulsarAWGInterface):
                                   'constant', constant_values=0) for h in wave]
                 packed_waveforms[wfname] = np.array(grp_wfs[0])
                 wfname_l[-1].append(wfname)
-                if any([wf[0] != 0 for wf in grp_wfs]):
+                # Exponentially small starting value is fine
+                if any([abs(wf[0]) > self.WARN_CUT for wf in grp_wfs]):
                     log.warning(f'Element {element} starts with non-zero '
                                 f'entry on {self.awg.name}.')
 
