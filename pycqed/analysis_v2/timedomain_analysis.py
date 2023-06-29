@@ -14344,9 +14344,11 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 # Plot the data on the 2D plot
                 # TODO: could consider also plotting the smoothed data
+                fig_id_OP = f'Leakage_reduction_unit_OPs_{qbn}'
+                fig_id_OP_smooth = f'Leakage_reduction_unit_OPs_smooth_{qbn}'
                 self.plot_dicts[f'Leakage_reduction_unit_2D_{qbn}'] = {
                     'plotfn': self.plot_colorxy,
-                    'fig_id': f'Leakage_reduction_unit_OPs_{qbn}',
+                    'fig_id': fig_id_OP,
                     'xvals': pulse_lengths*1e9,
                     'yvals': frequencies/1e6,
                     'zvals': data,
@@ -14355,6 +14357,7 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                     'ylabel': 'Frequency',
                     'yunit': 'MHz',
                     'colorbar': True,
+                    'zrange': self.get_param_value('zrange', None),
                     'clabel': self.get_yaxis_label(qb_name=qbn, data_key='f'),
                     'title': (self.raw_data_dict['timestamp'] + ' ' +
                               f'Leakage_reduction_unit_ef_{qbn}' + '\n' +
@@ -14366,10 +14369,30 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                     'linestyle': '',
                     'marker': 'o',
                     'color': 'red',
-                    'fig_id': f'Leakage_reduction_unit_OPs_{qbn}',
+                    'fig_id': fig_id_OP,
                     'xvals': pulse_lengths_OP*1e9,
                     'yvals': frequencies_OP/1e6,
                 }
+
+                textstr = ''
+                if isinstance(pulse_lengths_OP, float):
+                    pulse_lengths_OP = [pulse_lengths_OP]
+                    frequencies_OP = [frequencies_OP]
+                for k in range(len(pulse_lengths_OP)):
+                    textstr += ('  $t_\mathrm{LRU}$ = '+'{:.1f} ns'.format(
+                        pulse_lengths_OP[k]*1e9)  + '$\quad$' +
+                                '$f_\mathrm{LRU}$ = '+'{:.1f} MHz'.format(
+                        frequencies_OP[k]/1e6))
+                    textstr += '\n' if k < len(pulse_lengths_OP)-1 else ''
+
+                self.plot_dicts['OP'] = {
+                    'fig_id': fig_id_OP,
+                    'ypos': -0.2,
+                    'xpos': 0,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr}
 
                 self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'] = \
                     deepcopy(
@@ -14377,14 +14400,18 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'][
                     'zvals'] = smoothed_data
                 self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'][
-                    'fig_id'] = f'Leakage_reduction_unit_OPs_smooth_{qbn}'
+                    'fig_id'] = fig_id_OP_smooth
 
                 # Plot the operation points on the same plot
                 self.plot_dicts[f'Leakage_reduction_unit_OPs_smooth_{qbn}'] = \
                     deepcopy(
                         self.plot_dicts[f'Leakage_reduction_unit_OPs_{qbn}'])
                 self.plot_dicts[f'Leakage_reduction_unit_OPs_smooth_{qbn}'][
-                    'fig_id'] = f'Leakage_reduction_unit_OPs_smooth_{qbn}'
+                    'fig_id'] = fig_id_OP_smooth
+
+                self.plot_dicts['OP_smooth'] = deepcopy(
+                    self.plot_dicts['OP'])
+                self.plot_dicts['OP_smooth']['fig_id'] = fig_id_OP_smooth
 
 
 
