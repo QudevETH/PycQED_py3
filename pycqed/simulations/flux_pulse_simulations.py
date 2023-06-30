@@ -45,7 +45,7 @@ def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states,
     # compute evolution of ge and ef transition frequencies for all qubits:
     qb_freqs = np.reshape(np.array([np.reshape(calculate_frequency[i](
                                                     amplitude=wf[i],
-                                                    transitions=['ge', 'ef']),
+                                                    transition=['ge', 'ef']),
                                                (2, -1))
                                     * np.ones((2, len(t)))
                                     for i, qb in enumerate(qubits)]),
