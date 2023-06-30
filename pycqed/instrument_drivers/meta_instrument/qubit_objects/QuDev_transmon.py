@@ -566,7 +566,7 @@ class QuDev_transmon(MeasurementObject):
             return_list = False
 
         for t in transition:
-            if t not in ['ge', 'ef']\
+            if t not in ['ge', 'ef', 'gf']\
                     or (t != 'ge' and model not in ['transmon_res']):
                 raise NotImplementedError(
                     f'calculate_frequency: Currently, transition {t} '
@@ -608,7 +608,9 @@ class QuDev_transmon(MeasurementObject):
                 bias + (0 if np.all(amplitude == 0)
                         else amplitude / flux_amplitude_bias_ratio),
                 return_ef=True, **vfc)
-            freqs = [freqs[{'ge': 0, 'ef': 1}[t]] for t in transition]
+            freqs = [
+                {'ge': freqs[0], 'ef': freqs[1], 'gf': freqs[0]+freqs[1]}[t]
+                for t in transition]
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx', 'transmon', and"
