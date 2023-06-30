@@ -519,8 +519,7 @@ class QuDev_transmon(MeasurementObject):
         return x * (a * (x ** 4 - 1) + b * (x ** 2 - 1) + 1)
 
     def calculate_frequency(self, bias=None, amplitude=0, transition='ge',
-                            model='transmon_res', flux=None, update=False,
-                            return_ge_and_ef=False):
+                            model='transmon_res', flux=None, update=False):
         """
         Calculates the transition frequency for a given DC bias and flux
         pulse amplitude using fit parameters stored in the qubit object.
@@ -553,10 +552,6 @@ class QuDev_transmon(MeasurementObject):
             the flux value from self.flux_parking() is used.
         :param update: (bool, default False) whether the result should be
             stored as {transition}_freq parameter of the qubit object.
-        :param return_ge_and_ef: (bool, default False) compute 'ge' as well as
-            'ef' transition frequency. This only works for model 'transmon_res'.
-            If True, the transition frequency will not be updated in the qubit
-            object.
         :return: calculated transition frequency/frequencies
 
         TODO: Add feature to automatically make use of
@@ -564,15 +559,18 @@ class QuDev_transmon(MeasurementObject):
               certain use cases.
         """
 
-        if transition not in ['ge', 'ef'] or (transition == 'ef' and
-                                              model not in ['transmon_res']):
-            raise NotImplementedError(
-                f'calculate_frequency: Currently, transition {transition} is '
-                f'not implemented for model {model}.')
-        if return_ge_and_ef and model not in ['transmon_res']:
-            raise NotImplementedError(
-                f'calculate_frequency: Currently, return_ge_and_ef is '
-                f'not implemented for model {model}.')
+        if isinstance(transition, (list, tuple)):
+            return_list = True
+        else:
+            transition = [transition]
+            return_list = False
+
+        for t in transition:
+            if t not in ['ge', 'ef']\
+                    or (t != 'ge' and model not in ['transmon_res']):
+                raise NotImplementedError(
+                    f'calculate_frequency: Currently, transition {t} '
+                    f'is not implemented for model {model}.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
         if flux_amplitude_bias_ratio is None:
             if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
@@ -592,9 +590,9 @@ class QuDev_transmon(MeasurementObject):
                 amplitude = self.calculate_voltage_from_flux(flux, model)
 
         if model == 'approx':
-            freq = fit_mods.Qubit_dac_to_freq(
+            freqs = [fit_mods.Qubit_dac_to_freq(
                 amplitude + (0 if bias is None or np.all(bias == 0) else
-                             bias * flux_amplitude_bias_ratio), **vfc)
+                             bias * flux_amplitude_bias_ratio), **vfc)]
         elif model == 'transmon':
             kw = deepcopy(vfc)
             kw.pop('coupling', None)
@@ -602,27 +600,26 @@ class QuDev_transmon(MeasurementObject):
             #  this is not a very descriptive name. Should it be changed to
             #  'bare_ro_res_freq'? This is relevant to the device database.
             kw.pop('fr', None)
-            freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+            freqs = [fit_mods.Qubit_dac_to_freq_precise(bias + (
                 0 if np.all(amplitude == 0)
-                else amplitude / flux_amplitude_bias_ratio), **kw)
+                else amplitude / flux_amplitude_bias_ratio), **kw)]
         elif model == 'transmon_res':
             freqs = fit_mods.Qubit_dac_to_freq_res(
                 bias + (0 if np.all(amplitude == 0)
                         else amplitude / flux_amplitude_bias_ratio),
                 return_ef=True, **vfc)
-            if return_ge_and_ef:
-                return freqs
-            if transition == 'ge':
-                freq = freqs[0]
-            if transition == 'ef':
-                freq = freqs[1]
+            freqs = [freqs[{'ge': 0, 'ef': 1}[t]] for t in transition]
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx', 'transmon', and"
                 "'transmon_res' are implemented.")
         if update:
-            self.parameters[f'{transition}_freq'](freq)
-        return freq
+            for t, f in zip(transition, freqs):
+                self.parameters[f'{t}_freq'](f)
+        if return_list:
+            return freqs
+        else:
+            return freqs[0]
 
     def calculate_flux_voltage(self, frequency=None, bias=None,
                                amplitude=None, transition='ge',
