@@ -22,8 +22,8 @@ class FluxDecoupler(Instrument):
         if dc_source is not None:
             self.dc_source(dc_source.name)
 
-        self._couplings = np.zeros((0, 0), dtype=np.float)
-        self._offsets = np.zeros((0,), dtype=np.float)
+        self._couplings = np.zeros((0, 0), dtype=float)
+        self._offsets = np.zeros((0,), dtype=float)
 
         self._target_names = []
         self._target_active = []

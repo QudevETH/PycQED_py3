@@ -3,7 +3,6 @@
         "transition_name": "ge"
 
     },
-
     "Ramsey": {
         "delta_t": 300.0e-9,
         "t0": 60e-9,

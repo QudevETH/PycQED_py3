@@ -2,19 +2,22 @@ import logging
 from typing import List, Tuple
 
 import numpy as np
+import json
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
 
 from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
-from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
+from .zi_pulsar_mixin import ZIPulsarMixin
 from .zi_pulsar_mixin import ZIGeneratorModule
-from .zi_pulsar_mixin import diff_and_combine_dicts
 from .pulsar import PulsarAWGInterface
 
 from pycqed.measurement import sweep_functions as swf
 from pycqed.measurement import mc_parameter_wrapper
 import zhinst
+
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
+    .ZI_base_instrument import MockDAQServer
 
 try:
     import zhinst.toolkit
@@ -26,8 +29,7 @@ except Exception:
 log = logging.getLogger(__name__)
 
 
-class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
-                                ZIMultiCoreCompilerMixin):
+class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI SHFSG and SHFQC signal generator module support for the Pulsar class.
 
     Supports :class:`pycqed.measurement.waveform_control.segment.Segment`
@@ -63,23 +65,29 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._init_mcc()
         self._sgchannel_sine_enable = [False] * len(self.awg.sgchannels)
         """Determines the sgchannels for which the sine generator is turned on
         (off) in :meth:`start` (:meth:`stop`).
         """
 
-        self._awg_modules = []
+        # Set up multi-core compiler
+        self.find_multi_core_compiler()
+
+        self.awg_mcc = self.awg
+        self.awg_mcc_generators = list()
+        for sgchannel in self.awg_mcc.sgchannels:
+            self.awg_mcc_generators.append(sgchannel.awg)
+
+        # Each AWG channel corresponds to an SHF generator channel.
+        self.awg_modules = []
         for awg_nr in range(len(self.awg.sgchannels)):
             channel = SHFGeneratorModule(
                 awg=self.awg,
                 awg_interface=self,
                 awg_nr=awg_nr
             )
-            self._awg_modules.append(channel)
 
-    def _get_awgs_mcc(self) -> list:
-        return [sgc.awg for sgc in self.awg.sgchannels]
+            self.awg_modules.append(channel)
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
@@ -131,6 +139,65 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                 docstring="Configure and turn on direct output of a sine tone "
                           "of the specified frequency. If set to None the sine "
                           "generators will be turned off."
+            )
+
+            self.pulsar.add_parameter(
+                f"{ch_name}_use_placeholder_waves",
+                initial_value=False,
+                vals=vals.Bool(),
+                parameter_class=ManualParameter,
+                docstring="Configures whether to use placeholder waves and "
+                          "binary upload on this AWG module. Note that this "
+                          "parameter will be ignored if the device-level "
+                          "{dev_name}_use_placeholder_waves is set to "
+                          "True. In that case, all AWG modules on the "
+                          "device will use placeholder waves irrespective"
+                          "of the channel-specific setting."
+            )
+
+            self.pulsar.add_parameter(
+                f"{ch_name}_use_command_table",
+                initial_value=False,
+                vals=vals.Bool(),
+                parameter_class=ManualParameter,
+                docstring="Configures whether to use command table for wave"
+                          "sequencing on this AWG module. Note that this "
+                          "parameter will be ignored if the device-level "
+                          "{dev_name}_use_command_table is set to "
+                          "True. In that case, all AWG modules on the "
+                          "device will use command table irrespective "
+                          "of the channel-specific setting."
+            )
+            param_name = f"{ch_name}_harmonize_amplitude"
+            self.pulsar.add_parameter(
+                param_name,
+                initial_value=False,
+                vals=vals.Bool(),
+                parameter_class=ManualParameter,
+                docstring="Configures whether to rescale waveform amplitudes "
+                          "before uploading and retrieve the original values "
+                          "with hardware playback commands. This allows "
+                          "reusing waveforms and reduces the number of "
+                          "waveforms to be uploaded. "
+                          "Note that this parameter will be ignored if the "
+                          "device-level {dev_name}_harmonize_amplitude is set "
+                          "to True. In that case, all AWG modules on the "
+                          "device will try to harmonize pulse amplitudes "
+                          "irrespective of the channel-specific setting."
+            )
+            param_name = f"{ch_name}_internal_modulation"
+            self.pulsar.add_parameter(
+                param_name,
+                initial_value=False,
+                vals=vals.Bool(),
+                parameter_class=ManualParameter,
+                docstring="Configures whether to use internal modulation for "
+                          "waveform generation on this device. Note that this "
+                          "parameter will be ignored if the device-level "
+                          "{dev_name}_internal_modulation is set to "
+                          "True. In that case, all AWG modules on the "
+                          "device will use internal modulation irrespective "
+                          "of the channel-specific setting."
             )
 
         # TODO: Not all AWGs provide an initial value. Should it be the case?
@@ -318,15 +385,52 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                         'supported by pulsar. Cannot retrieve amplitude.')
         return g
 
-    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
-        # This method is needed because 'finalize_upload_after_mcc' method in
-        # 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms' method
-        # from device interfaces instead of from channel interfaces.
-        self._awg_modules[awg_nr].upload_waveforms(
-            wave_idx=wave_idx,
-            waveforms=waveforms,
-            wave_hashes=wave_hashes
-        )
+    def is_channel_pair(
+            self,
+            cname1: str,
+            cname2: str,
+            require_ordered: bool,
+    ):
+        """Checks if the two input channels belongs to the same channel pair.
+
+        Args:
+            cname1 (str): name of an analog channel
+            cname2 (str): name of another analog channel
+            require_ordered (bool): whether ch1(ch2) is required to represent
+                I(Q) generator of this channel.
+
+        Returns:
+            is_channel_pair (str): whether these two AWG channels belongs to
+                the same channel pair.
+        """
+        ch1id = self.pulsar.get(f"{cname1}_id")
+        ch2id = self.pulsar.get(f"{cname2}_id")
+
+        # Note that alphabetically 'i' is smaller than 'q'
+        if require_ordered and ch1id > ch2id:
+            return False
+
+        channel_index_smaller = min(ch1id, ch2id)
+        channel_index_larger = max(ch1id, ch2id)
+        if channel_index_smaller[-1] == 'i' and \
+                channel_index_larger[-1] == 'q' and \
+                channel_index_smaller[0:-1] == channel_index_larger[0:-1]:
+            return True
+        else:
+            return False
+
+    def is_i_channel(self, cname: str):
+        """Returns if this channel is the I channel (AWG 1) of this signal
+        generator module.
+
+        Args:
+            cname: channel of an SHFSG.
+
+        Returns:
+            is_i_channel (str): whether this channel is the I channel.
+        """
+        chid = self.pulsar.get(f"{cname}_id")
+        return chid[-1] == 'i'
 
 
 class SHFSGPulsar(SHFGeneratorModulesPulsar):
@@ -345,7 +449,57 @@ class SHFSGPulsar(SHFGeneratorModulesPulsar):
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
-                             parameter_class=ManualParameter)
+                             parameter_class=ManualParameter,
+                             docstring="Configures whether to use placeholder "
+                                       "waves and binary "
+                                       "waveform upload on this device. If set "
+                                       "to True, placeholder waves "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and enable placeholder waves on a "
+                                       "per-AWG-module basis.")
+        pulsar.add_parameter(f"{name}_use_command_table",
+                             initial_value=False, vals=vals.Bool(),
+                             parameter_class=ManualParameter,
+                             docstring="Configures whether to use command table"
+                                       "for waveform sequencing on this "
+                                       "device. If set to True, command table "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and configures command table on a "
+                                       "per-sub-AWG basis.")
+        pulsar.add_parameter(f"{name}_harmonize_amplitude",
+                             initial_value=False,
+                             vals=vals.Bool(), parameter_class=ManualParameter,
+                             docstring="Configures whether to rescale "
+                                       "waveform amplitudes before uploading "
+                                       "and retrieve the original values with "
+                                       "hardware playback commands. This "
+                                       "allows reusing waveforms and "
+                                       "reduces the number of waveforms "
+                                       "to be uploaded. "
+                                       "If set to True, this feature "
+                                       "will be enabled on all AWG modules on "
+                                       "this device. If set to False, pulsar "
+                                       "will check channel-specific settings "
+                                       "and executes on a "
+                                       "per-AWG-module basis. Note that "
+                                       "this feature has to be used in "
+                                       "combination with command table.")
+        pulsar.add_parameter(f"{name}_internal_modulation",
+                             initial_value=False, vals=vals.Bool(),
+                             parameter_class=ManualParameter,
+                             docstring="Configures whether to use internal "
+                                       "modulation for waveform generation on "
+                                       "this  device. If set to True, internal "
+                                       "modulation will be enabled on all AWG "
+                                       "modules on this device. If set to "
+                                       "False, pulsar will check "
+                                       "channel-specific settings and enables "
+                                       "internal modulation on a per-sub-AWG "
+                                       "basis.")
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
                              vals=vals.Enum("Dig1", "DIO", "ZSync"),
@@ -404,99 +558,53 @@ class SHFGeneratorModule(ZIGeneratorModule):
         # FIXME: deactivated until implemented for QA
         self._use_filter = False
 
-    def _update_internal_mod_config(
+    def _upload_modulation_config(
             self,
-            awg_sequence,
+            mod_config,
     ):
-        """Collects and combines internal modulation generation settings
-        specified in awg_sequence. If settings from different elements are
-        coherent with each other, the combined setting will be programmed to
-        the channel.
+        """ Uploads digital modulation configurations to the AWG module.
 
         Args:
-            awg_sequence: A list of elements. Each element consists of a
-                waveform-hash for each codeword and each channel.
+            mod_config: digital modulation configurations passed from
+                element metadata. Note that only configurations with this
+                module's I-channel name as the key will be uploaded and all
+                other configurations will be ignored.
         """
-        channels = [self.pulsar._id_channel(chid, self._awg.name)
-                    for chid in self.analog_channel_ids]
-        channel_mod_config = {ch: {} for ch in channels}
+        enable = True if mod_config else False
+        self._awg.configure_internal_mod(
+            chid=self.pulsar.get(self.i_channel_name + '_id'),
+            enable=enable,
+            osc_index=mod_config.get('osc', 0),
+            osc_frequency=mod_config.get('mod_frequency', None),
+            sine_generator_index=mod_config.get('sine', 0),
+            gains=mod_config.get('gains', (1.0, - 1.0, 1.0, 1.0)),
+        )
 
-        # Combine internal modulation configurations from all elements in
-        # the sequence into one and check if they are compatible with each other
-        for element in awg_sequence:
-            awg_sequence_element = awg_sequence[element]
-            if awg_sequence_element is None:
-                continue
-            metadata = awg_sequence_element.get('metadata', {})
-            element_mod_config = metadata.get('mod_config', {})
-            if not diff_and_combine_dicts(
-                    element_mod_config,
-                    channel_mod_config,
-                    excluded_keys=['mod_freq', 'mod_phase']
-            ):
-                raise Exception('Modulation config in metadata is incompatible'
-                                'between different elements in same sequence.')
+        self._mod_config = mod_config
 
-        # Configure internal modulation for each channel. For the SG modules we
-        # take config of the I channel and ignore the Q channel configuration
-        for ch, config in channel_mod_config.items():
-            if ch.endswith('q'):
-                continue
-            self._awg.configure_internal_mod(
-                chid=self.pulsar.get(ch + '_id'),
-                enable=config.get('internal_mod', False),
-                osc_index=config.get('osc', 0),
-                sine_generator_index=config.get('sine', 0),
-                gains=config.get('gains', (1.0, - 1.0, 1.0, 1.0))
-            )
-
-        self._mod_config = channel_mod_config
-
-    def _update_sine_generation_config(
+    def _upload_sine_generation_config(
             self,
-            awg_sequence,
+            sine_config,
     ):
-        """Collects and combines sine wave generation settings specified in
-        awg_sequence. If settings from different elements are coherent with
-        each other, the combined setting will be programmed to the channel.
+        """ Uploads sine wave generator configurations to the AWG
+        module.
 
         Args:
-            awg_sequence: A list of elements. Each element consists of a
-            waveform-hash for each codeword and each channel.
+            sine_config: sine wave generator configurations passed from
+                element metadata. Note that only configurations with this
+                module's I-channel name as the key will be uploaded and all
+                other configurations will be ignored.
         """
-        channels = [self._awg_interface.pulsar._id_channel(chid, self._awg.name)
-                    for chid in self.analog_channel_ids]
-        channel_sine_config = {ch: {} for ch in channels}
+        config = sine_config.get(self.i_channel_name, dict())
+        self._awg.configure_sine_generation(
+            chid=self.pulsar.get(self.i_channel_name + '_id'),
+            enable=config.get('continuous', False),
+            osc_index=config.get('osc', 0),
+            sine_generator_index=config.get('sine', 0),
+            gains=config.get('gains', (0.0, 1.0, 1.0, 0.0))
+        )
 
-        # Combine sine generation configurations from all elements in
-        # the sequence into one and check if they are compatible with each other
-        for element in awg_sequence:
-            awg_sequence_element = awg_sequence[element]
-            if awg_sequence_element is None:
-                continue
-            metadata = awg_sequence_element.get('metadata', {})
-            element_sine_config = metadata.get('sine_config', {})
-            if not diff_and_combine_dicts(
-                    element_sine_config,
-                    channel_sine_config
-            ):
-                raise Exception('Sine config in metadata is incompatible'
-                                'between different elements in same sequence.')
-
-        # Configure sine output for each channel. For the SG modules we
-        # take config of the I channel and ignore the Q channel configuration
-        for ch, config in channel_sine_config.items():
-            if ch.endswith('q'):
-                continue
-            self._awg.configure_sine_generation(
-                chid=self.pulsar.get(ch + '_id'),
-                enable=config.get('continuous', False),
-                osc_index=config.get('osc', 0),
-                sine_generator_index=config.get('sine', 0),
-                gains=config.get('gains', (0.0, 1.0, 1.0, 0.0))
-            )
-
-        self._sine_config = channel_sine_config
+        self._sine_config = sine_config
 
     def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
         awg_nr = self._awg_nr
@@ -538,25 +646,27 @@ class SHFGeneratorModule(ZIGeneratorModule):
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         assert mc is None # marker not yet supported on SG
 
-        # Q channel sign needs to be flipped for SHFSG/QC
-        if a2 is not None:
-            a2 = -a2
-
         waveforms = zhinst.toolkit.waveform.Waveforms()
         waveforms.assign_waveform(wave_idx, a1, a2)
 
-        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
-            # Parallel seqc compilation is used, which must take place before
-            # waveform upload. Waveforms are added to self.wfms_to_upload and
-            # will be uploaded to device in pulsar._program_awgs.
-            self._awg_interface.wfms_to_upload[(awg_nr, wave_idx)] = \
-                (waveforms, wave_hashes)
+        if self.pulsar.use_mcc() and self.multi_core_compiler:
+            # Waveforms are added to mcc.post_sequencer_code_upload and will
+            # be uploaded to device in pulsar._program_awgs after multi-core
+            # compiler is executed.
+            upload_info = (
+                self.upload_waveforms,
+                {"wave_idx": wave_idx,
+                 "waveforms": waveforms,
+                 "wave_hashes": wave_hashes}
+            )
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name].append(upload_info)
         else:
             self.upload_waveforms(wave_idx, waveforms, wave_hashes)
 
     def upload_waveforms(self, wave_idx, waveforms, wave_hashes):
         """
-        Upload a wavefor to this awg module.
+        Upload a waveform to this awg module.
 
         Args:
             wave_idx (int): index of wave upload (0 or 1)
@@ -581,14 +691,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
             self.waveform_cache[wave_idx] = wave_hashes
 
     def _generate_oscillator_seq_code(self):
-        i_channel = self.pulsar._id_channel(
-            cid=self.analog_channel_ids[0],
-            awg=self._awg.name
-        )
-        mod_config = self._mod_config[i_channel]
-        sine_config = self._sine_config[i_channel]
-        if mod_config.get('internal_mod', False) \
-                or sine_config.get('continuous', False):
+        if self._mod_config.get('internal_mod', False) \
+                or self._sine_config.get('continuous', False):
             # Reset the starting phase of all oscillators at the beginning
             # of a sequence using the resetOscPhase instruction. This
             # ensures that the carrier-envelope offset, and thus the final
@@ -604,6 +708,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             wave,
             codeword,
             use_placeholder_waves,
+            command_table_index,
             metadata,
             first_element_of_segment
     ):
@@ -615,7 +720,9 @@ class SHFGeneratorModule(ZIGeneratorModule):
             codeword=codeword,
             prepend_zeros=prepend_zeros,
             placeholder_wave=use_placeholder_waves,
-            allow_filter=metadata.get('allow_filter', False)
+            command_table_index=command_table_index,
+            internal_mod=self._use_internal_mod,
+            allow_filter=metadata.get('allow_filter', False),
         )
 
     def _check_ignore_waveforms(self):
@@ -623,7 +730,10 @@ class SHFGeneratorModule(ZIGeneratorModule):
             cid=self.analog_channel_ids[0],
             awg=self._awg.name
         )
-        return self._sine_config[i_channel].get("ignore_waveforms", False)
+        if i_channel not in self._sine_config.keys():
+            return False
+        else:
+            return self._sine_config[i_channel].get("ignore_waveforms", False)
 
     def _configure_awg_str(
             self,
@@ -644,6 +754,92 @@ class SHFGeneratorModule(ZIGeneratorModule):
         sgchannel = self._awg.sgchannels[self._awg_nr]
         if hasattr(self._awg, 'store_awg_source_string'):
             self._awg.store_awg_source_string(sgchannel, awg_str)
+
+    def _generate_command_table_entry(
+            self,
+            entry_index: int,
+            wave_index: int,
+            amplitude: float = 1.0,
+            phase: float = 0.0,
+    ):
+        """Generates a command table entry in the format specified
+        by ZI. Details of the command table can be found in
+        https://docs.zhinst.com/shfqc_user_manual/tutorials/tutorial_command_table.html
+
+        Args:
+            entry_index (int): index of the command table entry.
+            wave_index(int): index of the waveform to play.
+            amplitude (float or array-like): output amplitude with respect to
+                the specified waveform. If a scalar is provided, amplitudes
+                of both analog channels are scaled to this value. If an
+                array of length 4 is provided, the array will be used to
+                configure the gain matrix directly. Each amplitude accepts
+                input range [-1,1].
+            phase (float or array-like): phase of the carrier wave.
+
+        Returns:
+            command_table_entry (dict): A command table entry for SHF
+                generator channels.
+        """
+
+        if isinstance(amplitude, float) or isinstance(amplitude, int):
+            # if 'amplitude' is a scalar, the same scaling is used for all
+            # amplitude factors in the digital up-conversion unit.
+            amplitude = [float(amplitude)] * 4
+            amplitude[1] *= -1
+
+        elif not ((isinstance(amplitude, np.ndarray) or
+                   isinstance(amplitude, list)) and len(amplitude) == 4):
+            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+                             f"receives inappropriate command table amplitude "
+                             f"value. Accepts float or array-like object with "
+                             f"length 4.")
+
+        shfsg_command_table_entry = {
+            "index": entry_index,
+            "waveform": {"index": wave_index},
+            "amplitude00": {"value": amplitude[0]},
+            "amplitude01": {"value": amplitude[1]},
+            "amplitude10": {"value": amplitude[2]},
+            "amplitude11": {"value": amplitude[3]},
+            "phase": {"value": phase}
+        }
+
+        return shfsg_command_table_entry
+
+    def _upload_command_table(self):
+        """Uploads the command table saved in self._command_table attribute
+        to the AWG module."""
+        # ZI data acquisition server
+        daq = self._awg.session.daq_server
+        device_id = self._awg.get_idn()['serial']
+
+        # add a wrapper outside the command table list
+        command_table_list_upload = {
+            "$schema": "https://docs.zhinst.com/shfsg/commandtable/v1_0/schema",
+            "header": {"version": "1.0"},
+            "table": self._command_table
+        }
+
+        data_node = f"/{device_id}/sgchannels" \
+                    f"/{self._awg_nr}/awg/commandtable/data"
+        daq.setVector(data_node, json.dumps(command_table_list_upload))
+
+        if not isinstance(daq, MockDAQServer):
+            # check if the command table has been properly uploaded
+            status_node = f"/{device_id}/sgchannels" \
+                          f"/{self._awg_nr}/awg/commandtable/status"
+            status = daq.getInt(status_node)
+
+            if status != 1:
+                log.warning(f"Failed to upload the command table to "
+                            f"{self._awg.name}, error index {status}")
+        else:
+            # This is a DAQ server for virtual devices. We assume that upload
+            # is successful.
+            status = 1
+
+        return status
 
     def _set_signal_output_status(self):
         if self.pulsar.sigouts_on_after_programming():

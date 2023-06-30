@@ -14,7 +14,8 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.qubit_object import Qubit
+from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
+    import QuDev_transmon
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -59,6 +60,8 @@ class T1FrequencySweep(CalibBuilder):
          - assumes there is one task for each qubit. If task_list is None, it
           will internally create it.
          - the entry "qb" in each task should contain one qubit name.
+         - if force_2D_sweep is False and the first sweep dim is empty or has
+           only 1 point, the flux pulse amplitude will be swept as a 1D sweep.
 
         """
         try:
@@ -83,6 +86,9 @@ class T1FrequencySweep(CalibBuilder):
                 [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
+                self.sweep_points.reduce_dim(1, inplace=True)
+                self._num_sweep_dims = 1
             self.sequences, self.mc_points = \
                 self.parallel_sweep(self.preprocessed_task_list,
                                     self.t1_flux_pulse_block, **kw)
@@ -213,6 +219,9 @@ class T1FrequencySweep(CalibBuilder):
             all_fits (bool, default: True): whether to do all fits
         """
 
+        if len(self.sweep_points) == 1:
+            self.analysis = tda.MultiQubit_TimeDomain_Analysis()
+            return
         self.all_fits = kw.get('all_fits', True)
         self.do_fitting = kw.get('do_fitting', True)
         self.analysis = tda.T1FrequencySweepAnalysis(
@@ -1876,7 +1885,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
             })
         d['task_list_fields'].update({
             SingleQubitGateCalibExperiment.__name__: odict({
-                'qb': ((Qubit, 'single_select'), None),
+                'qb': ((QuDev_transmon, 'single_select'), None),
                 'transition_name': (['ge', 'ef', 'fh'], 'ge'),
             })
         })
@@ -2058,6 +2067,11 @@ class ThermalPopulation(Rabi):
     amplitudes of the two Rabi oscillations, one can infer the thermal e
     state population.
 
+    Args:
+        amps (list): Amplitude sweep points, see docstring of the parent class.
+        In this QuantumExperiment they are used as amplitude of the X180_ef
+        pulse, while the amplitude of the X180_ge pulse is set by qb.ge_amp180.
+
     TODO: extend to states other than the e state
     """
     default_experiment_name = 'Thermal Population'
@@ -2081,7 +2095,9 @@ class ThermalPopulation(Rabi):
                 param_name=f'{qbn}_amplitude_ge',
                 values=np.array([0.0, ge_amp]),
                 unit='V',
-                label='amplitude ge')
+                label='amplitude ge',
+                dimension=1,
+            )
         return super().update_sweep_points()
 
     def sweep_block(self, qb, sweep_points, **kw):
@@ -2168,6 +2184,10 @@ class Ramsey(SingleQubitGateCalibExperiment):
         sweep points, which will be identical for all tasks.
     :param echo: (bool, default: False) whether to do an Echo (True) or a
         Ramsey (False) measurement.
+    :param minimum_sampling_ratio: (float, default: 2) minimum sampling
+        period of the Ramsey measurement relative to the expected
+        artificial detuning. Sampling ratios below this (too low of an
+        artificial detuning or too large time steps) trigger a warning.
     :param kw: keyword arguments.
         Can be used to provide keyword arguments to sweep_n_dim, autorun, and
         to the parent class.
@@ -2192,13 +2212,15 @@ class Ramsey(SingleQubitGateCalibExperiment):
     default_experiment_name = 'Ramsey'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 delays=None, echo=False, **kw):
+                 delays=None, echo=False, minimum_sampling_ratio=2, **kw):
         try:
             if 'artificial_detuning' not in kw:
                 # add default artificial_detuning to kw before passing to
                 # init of parent
                 kw['artificial_detuning'] = 0
+
             self.echo = echo
+            self.minimum_sampling_ratio = minimum_sampling_ratio
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              delays=delays, **kw)
@@ -2269,6 +2291,20 @@ class Ramsey(SingleQubitGateCalibExperiment):
                 ramsey_block.pulses[-1]['phase'] = ParametricValue(
                     'pulse_delay', func=lambda x, o=first_delay_point:
                     ((x-o)*art_det*360) % 360)
+
+        delays = sweep_points.get_sweep_params_property('values', 0,
+                                                        'pulse_delay')
+        delta_t_min = np.min(np.diff(delays))
+        artificial_oscillation_period = 1/art_det
+        sampling_ratio = artificial_oscillation_period/delta_t_min
+        if sampling_ratio < self.minimum_sampling_ratio:
+            log.warning(
+                f'Chosen artificial detuning {art_det} and minimum delta '
+                f'between delays {delta_t_min} results in a sampling ratio of '
+                f'{sampling_ratio}, below the minimum of '
+                f'{self.minimum_sampling_ratio}. Decrease the spacing between '
+                'delays or reduce the artificial detuning.'
+            )
 
         if self.echo:
             # add echo block: pi-pulse halfway between the two X90_tr_name
@@ -2523,7 +2559,6 @@ class ReparkingRamsey(Ramsey):
             Passed to parent method.
         """
 
-        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
         if analysis_kwargs is None:
             analysis_kwargs = {}
         options_dict = analysis_kwargs.pop('options_dict', {})
@@ -3816,12 +3851,8 @@ class ActiveReset(CalibBuilder):
             # perpare correspondance between integration unit (key)
             # and uhf channel; check if only one channel is asked for
             # (not asked for all qb channels and weight type uses only 1)
-            if not all_qb_channels and qb.acq_weights_type() \
-                    in ('square_root', 'optimal'):
-                chs = {0: qb.acq_I_channel()}
-            else:
-                # other weight types have 2 channels
-                chs = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
+            chs = {i: ch for i, ch in enumerate([
+                qb.get_acq_int_channels(2 if all_qb_channels else None)])}
 
             #get clf thresholds
             if from_clf_params:

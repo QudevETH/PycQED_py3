@@ -64,3 +64,18 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
                     f"{internal_instrument_class} was requested"
                 )
             return ins
+
+
+class DummyVisaHandle:
+    """Dummy handle for virtual visa instruments to avoid crash in snapshot
+    """
+    class DummyTimeOut:
+        def get(self):
+            return None
+    read_termination = None
+    write_termination = None
+    timeout = DummyTimeOut()
+
+    def close(self):
+        pass
+
