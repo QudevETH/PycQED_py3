@@ -51,10 +51,10 @@ class InterpolatedHamiltonianModel:
         if flux is not None:
             self._flux = flux
         self._data_points = self._qb.calculate_frequency(
-            flux=self._flux, transitions=['ge', 'ef'])
+            flux=self._flux, transition=['ge', 'ef'])
 
     def __call__(self, flux=None, bias=None, amplitude=None,
-                 transitions=('ge')):
+                 transition=('ge')):
         """Compute transition frequencies at the specified flux-bias-amplitude
         points using interpolation.
 
@@ -71,8 +71,10 @@ class InterpolatedHamiltonianModel:
             amplitude (array, optional): Flux pulse amplitudes that are added
                 ontop of the specified flux or dc bias points. Needs to have the
                 same length as flux or bias. Defaults to None.
-            transitions (list, optional): Which transition frequencies should be
-                calculated. Defaults to ('ge').
+            transition (list, optional): Which transition frequencies should be
+                calculated. Defaults to ('ge'). Note that this is called
+                transition and not transitions to match the signature of
+                QuDev_transmon.calculate_frequency.
 
         Raises:
             ValueError: Raised in case flux pulse amplitude is provided but the
@@ -101,5 +103,5 @@ class InterpolatedHamiltonianModel:
         freqs = self.model(flux % 1.0)
         freqs = [
             {'ge': freqs[0], 'ef': freqs[1], 'gf': freqs[0] + freqs[1]}[t]
-            for t in transitions]
+            for t in transition]
         return freqs
