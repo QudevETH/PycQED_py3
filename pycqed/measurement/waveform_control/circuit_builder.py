@@ -655,7 +655,7 @@ class CircuitBuilder:
 
             prep_pulse_list = []
             for rep in range(reset_reps):
-                ro_list = self.copy_op(reset_ro_pulses)
+                ro_list = [self.copy_op(p) for p in reset_ro_pulses]
                 ro_list[0]['name'] = 'refpulse_reset_element_{}'.format(rep)
 
                 for pulse in ro_list:
@@ -669,7 +669,7 @@ class CircuitBuilder:
                     ro_list[0]['pulse_delay'] = ro_separation
                     ro_list[0]['ref_point'] = 'start'
 
-                rp_list = self.copy_op(reset_pulses)
+                rp_list = [self.copy_op(p) for p in reset_pulses]
                 for j, pulse in enumerate(rp_list):
                     pulse['element_name'] = f'reset_pulse_element_{rep}'
                     pulse['ref_pulse'] = f'refpulse_reset_element_{rep}'
