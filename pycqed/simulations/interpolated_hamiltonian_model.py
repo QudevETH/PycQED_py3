@@ -53,8 +53,8 @@ class InterpolatedHamiltonianModel:
         self._data_points = self._qb.calculate_frequency(flux=self._flux,
                                                          return_ge_and_ef=True)
 
-    def __call__(self, flux=None, bias=None, amplitude=None, transition='ge',
-                 return_ge_and_ef=False):
+    def __call__(self, flux=None, bias=None, amplitude=None,
+                 transitions=('ge')):
         """Compute transition frequencies at the specified flux-bias-amplitude
         points using interpolation.
 
@@ -77,9 +77,6 @@ class InterpolatedHamiltonianModel:
                 transitions, 'ge' and 'ef'. Overwrites the choice taken in
                 argument transition. Defaults to False.
 
-        Note: Before calling the interpolation, the flux-bias-amplitude points
-        will be mapped to the [0, 1] flux domain.
-
         Raises:
             ValueError: Raised in case flux pulse amplitude is provided but the
                 flux_amplitude_bias_ratio saved in the qubit is None.
@@ -87,6 +84,7 @@ class InterpolatedHamiltonianModel:
         Returns:
             array: Array containing the computed frequencies.
         """
+
         flux_amplitude_bias_ratio = self._qb.flux_amplitude_bias_ratio()
         if flux_amplitude_bias_ratio is None:
             if amplitude != 0:
@@ -101,14 +99,10 @@ class InterpolatedHamiltonianModel:
 
         if amplitude is not None and not np.all(amplitude == 0):
             flux += (amplitude / flux_amplitude_bias_ratio) / vfc['V_per_phi0']
+        # Note: the interpolation model is computed for flux points in [0, 1],
+        # so the flux points are here passed modulo 1 to the model.
         freqs = self.model(flux % 1.0)
-        if return_ge_and_ef:
-            return freqs
-        elif transition=='ge':
-            return freqs[0]
-        elif transition=='ef':
-            return freqs[1]
-        else:
-            raise NotImplementedError('transition either needs to be one of '
-                                      '["ge", "ef"] or return_ge_and_ef needs '
-                                      'to be True.')
+        freqs = [
+            {'ge': freqs[0], 'ef': freqs[1], 'gf': freqs[0] + freqs[1]}[t]
+            for t in transitions]
+        return freqs
