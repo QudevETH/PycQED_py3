@@ -534,9 +534,8 @@ class QuDev_transmon(MeasurementObject):
             which the  model was measured. Otherwise, it mandatory and is
             interpreted as voltage of the DC source.
         :param amplitude: (float, default: 0) flux pulse amplitude
-        :param transition: (str, default: 'ge') the transition whose
-            frequency should be calculated. Currently, only 'ge' is
-            implemented.
+        :param transition: (str or list of str, default: 'ge') the transition
+            whose frequency should be calculated.
         :param model: (str, default: 'transmon_res') the model to use.
             'approx': Qubit_dac_to_freq with parameters from
                 the qubit parameter fit_ge_freq_from_flux_pulse_amp.
