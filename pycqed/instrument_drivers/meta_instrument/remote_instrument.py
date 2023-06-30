@@ -137,18 +137,19 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
             s.sendall(b'done')
             data = b''
             while True:
+                data_count = 0
                 data += s.recv(1024 * 1024)
                 more_data = False
                 try:
                     data = pickle.loads(data)
                 except pickle.UnpicklingError as e:
-                    print('exception')
-                    print(e)
                     more_data = True
+                    data_count += 1
                 if not more_data:
+                    if data_count > 0:
+                        print(f'Data from the remote instrument has been '
+                              f'acquired in {data_count} blocks')
                     break
-                else:
-                    print('more data')
             if isinstance(data, Exception):
                 if str(data).endswith('QCoDeS instruments can not be pickled.'):
                     log.warning(f'Error while accessing remote parameter '
@@ -160,7 +161,6 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
 
 
 def server(port=PORT, host='127.0.0.1'):
-    i = 1
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, port))
         while True:
@@ -169,7 +169,7 @@ def server(port=PORT, host='127.0.0.1'):
                 s.setblocking(True)
                 conn, addr = s.accept()
                 with conn:
-                    print(f"Connected by {addr}")
+                    # print(f"Connected by {addr}")
                     data = b''
                     while True:
                         new_data = conn.recv(1024)
@@ -199,7 +199,7 @@ def server(port=PORT, host='127.0.0.1'):
                             attr = obj
                         else:
                             attr = getattr(obj, cmd[2])
-                        print(cmd[:3])
+                        # print(cmd[:3])
                         if cmd[1] == 'id':
                             result = id(attr)
                         elif cmd[1] == 'type':
@@ -241,7 +241,6 @@ def server(port=PORT, host='127.0.0.1'):
                     except Exception as e:
                         data_out = pickle.dumps(e)
                     conn.sendall(data_out)
-                    i += 1
             except ConnectionResetError:
                 print('Client disconnected')
                 pass
