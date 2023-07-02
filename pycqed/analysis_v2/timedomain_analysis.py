@@ -7479,45 +7479,6 @@ class DynamicPhaseAnalysis(MultiCZgate_Calib_Analysis):
             if row % 2 != 0 else 'with FP'
 
 
-class SingleRowChevronAnalysis(MultiQubit_TimeDomain_Analysis):
-    """Analysis for 1-dimensional Chevron QuantumExperiment
-
-    This is used for instance for the 1-D measurements performed as part of
-    CZ gate calibration
-    """
-
-    def extract_data(self):
-        # Necessary for data processing and plotting since sweep_points are 2D
-        self.default_options['TwoD'] = True
-        super().extract_data()
-
-    def prepare_projected_data_plots(self):
-        # FIXME this overrides the super method but does almost the same. One
-        #  should clean up the logic in the super to get rid of this, see below.
-        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
-            for k, v in dd.items():
-                # FIXME this plot is almost the same as in the super method,
-                #  but with plot_cal_points=True. The problem is that TwoD is
-                #  True, meaning that the super does not plot the cal points,
-                #  even though it correctly resolves that the data is really 1D.
-                self.prepare_projected_data_plot(
-                    fig_name=f'SingleRowChevron_{qbn}_{k}',
-                    data=v[0],
-                    data_axis_label=f'|{k[1:]}> state population',
-                    qb_name=qbn, TwoD=False, plot_cal_points=True,
-                )
-                # FIXME this is the same as the projected plot, just rescaled.
-                if k == 'pf':
-                    self.prepare_projected_data_plot(
-                        fig_name=f'Leakage_{qbn}',
-                        data=v[0],
-                        data_axis_label=f'|{k[1:]}> state population',
-                        qb_name=qbn, TwoD=False, plot_cal_points=True,
-                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
-                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
-                    )
-
-
 class CryoscopeAnalysis(DynamicPhaseAnalysis):
 
     def __init__(self, qb_names, *args, **kwargs):
@@ -11668,3 +11629,42 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
         """
         return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
+
+
+class SingleRowChevronAnalysis(ChevronAnalysis):
+    """Analysis for 1-dimensional Chevron QuantumExperiment
+
+    This is used for instance for the 1-D measurements performed as part of
+    CZ gate calibration
+    """
+
+    def extract_data(self):
+        # Necessary for data processing and plotting since sweep_points are 2D
+        self.default_options['TwoD'] = True
+        super().extract_data()
+
+    def prepare_projected_data_plots(self):
+        # FIXME this overrides the super method but does almost the same. One
+        #  should clean up the logic in the super to get rid of this, see below.
+        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
+            for k, v in dd.items():
+                # FIXME this plot is almost the same as in the super method,
+                #  but with plot_cal_points=True. The problem is that TwoD is
+                #  True, meaning that the super does not plot the cal points,
+                #  even though it correctly resolves that the data is really 1D.
+                self.prepare_projected_data_plot(
+                    fig_name=f'SingleRowChevron_{qbn}_{k}',
+                    data=v[0],
+                    data_axis_label=f'|{k[1:]}> state population',
+                    qb_name=qbn, TwoD=False, plot_cal_points=True,
+                )
+                # FIXME this is the same as the projected plot, just rescaled.
+                if k == 'pf':
+                    self.prepare_projected_data_plot(
+                        fig_name=f'Leakage_{qbn}',
+                        data=v[0],
+                        data_axis_label=f'|{k[1:]}> state population',
+                        qb_name=qbn, TwoD=False, plot_cal_points=True,
+                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
+                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
+                    )
