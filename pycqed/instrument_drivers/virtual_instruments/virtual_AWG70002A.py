@@ -58,8 +58,6 @@ class SRValidator(Validator[float]):
             self._internal_validator.validate(value)
         else:
             ext_freq = self.awg.clock_external_frequency()
-            # TODO: I'm not sure what the minimal allowed sample rate is
-            # in this case
             validator = vals.Numbers(1.49e3, self._freq_multiplier*ext_freq)
             validator.validate(value)
 
@@ -309,7 +307,7 @@ class VirtualAWG70002A(AWG70002A.AWG70002A):
     def loadSEQXFile(self, filename):
         self.file = self.awg_files[filename]
 
-    def wait_for_operation_to_complete(self) -> None:
+    def wait_for_operation_to_complete(self):
         """
         Waits for the latest issued overlapping command to finish
         """
