@@ -1346,6 +1346,533 @@ class CosPulse(pulse.Pulse):
         return hashlist
 
 
+class f0g1Pulse(pulse.Pulse):
+    """
+    definition of the symmetric shaped f0g1 Pulse
+    """
+    def __init__(self,
+                 I_channel,
+                 Q_channel,
+                 element_name,
+                 name='f0g1 pulse', **kw):
+        super().__init__(name, element_name, **kw)
+
+        self.I_channel = I_channel
+        self.Q_channel = Q_channel
+        self.channels = [self.I_channel]
+        if self.Q_channel is not None:
+            self.channels += [self.Q_channel]
+
+        self.phase_lock = kw.pop('phase_lock', False)
+
+        # with the function relevantTimeValues, calculate the 4 important times
+        # (tStart, tStop, tRise, tFall)
+        self.tStart, self.tStop, self.tRise, self.tFall = \
+            self.relevantTimeValues(
+            gamma1=self.gamma1,
+            gamma2=self.gamma2,
+            photonTrunc=self.photonTrunc,
+            pulseTrunc=self.pulseTrunc,
+            junctionTrunc=self.junctionTrunc,
+            junctionSigma=self.junctionSigma,
+            timeReverse=self.timeReverse
+        )
+
+        # calculate the length of the pulse
+        self.length = self.tStop - self.tStart
+
+
+    def relevantTimeValues(self, gamma1, gamma2, photonTrunc, pulseTrunc,
+                           junctionTrunc, junctionSigma, timeReverse=False):
+        """Calculates the important time values for the pulse.
+
+        Args:
+            gamma1 (float): exponential rate of the rising edge of the
+                emitted photon
+            gamma2 (float): exponential rate of the falling edge of the
+                emitted photon
+            photonTrunc (float), pulseTrunc (float):  Pulse truncation
+                properties. For pulseTrunc=1, the pulse is truncated at
+                -photonTrunc*2/gamma1 and photonTrunc*2/gamma2.
+                For pulseTrunc<1, the pulse is truncated such that it has the
+                same start time, but a pulse length of pulseTrunc*pulseLength
+            junctionTrunc (float), junctionSigma (float): information about the
+                junction bridging the AWG amplitude from the truncated pulse
+                value at the end and zero. These variables denote the junction
+                truncation, width and type, respectively
+            timeReverse (bool): Says if the pulse should be time reversed to
+                absorb an incoming photon. One should set a=1 for this to work
+
+        Returns:
+            tStart (float): when the pulse starts
+            tStop (float): when the pulse ends
+            tRise (float): when the pulse starts after the ramp up
+            tFall (float): when the pulse ends before the ramp down
+        """
+
+        if not timeReverse:
+            tRise = -photonTrunc * 2 / gamma1
+            tFall = tRise + photonTrunc * pulseTrunc * \
+                    (2 / gamma2 + 2 / gamma1)
+        else:
+            tFall = photonTrunc * 2 / gamma2
+            tRise = tFall - photonTrunc * pulseTrunc * \
+                    (2 / gamma2 + 2 / gamma1)
+        tStart = tRise - junctionTrunc * junctionSigma
+        tStop = tFall + junctionTrunc * junctionSigma
+
+        return tStart, tStop, tRise, tFall
+
+    def GTilde(self, kappa, gamma1, gamma2, delta, a, t):
+        # Dr. Paul Magnard PhD Thesis, 2021 - pag. 43
+        """Generates the drive rate vs time needed to emit a photon with
+            the required shape:
+                     ________________________________________________
+                    /
+            \      /     gamma1+gamma2              gamma1-gamma2
+         a * \    /      —————————————   sinc( pi * ————————————— )
+              \  /             2                    gamma1+gamma2
+               \/
+
+                            1
+            * ——————————————————————————————————
+                e^(-gamma1*t/2) + e^(gamma2*t/2)
+
+        Detuned by delta from the resonance frequency of an
+            emitter qubit/resonator which leaks at rate kappa.
+
+        The drive rate is expressed as a "population" Rabi rate, i.e. the swap
+            matrix element is gTilde * (|0><1| + h.c.) / 2
+
+        The returned shape of this function is the
+            ** first formula of page 43 - Dr. Paul Magnard PhD Thesis, 2021 **
+
+        Args:
+            kappa (float): the fixed effective leakage rate of the
+                transfer/emitter resonator-purcell system.
+            gamma1 (float): exponential rate of the rising edge of the
+                emitted photon
+            gamma2 (float): exponential rate of the falling edge of the
+                emitted photon
+            delta (float): detuning of the emitted photon with respect to the
+                emitter resonator/qubit/cavity resonant frequency.
+            a (float): fraction of the photon which is emitted. a^2 = 1
+                corresponds to a full photon emission. a^2 = 0.5 leads to
+                a perfectly entangled emitter-photon system.
+            t (array, float): the values of the time for which we
+                want the amplitude of gTilde
+
+        Returns:
+            (float): value of the first formula of
+                pag. 43 - Dr. Paul Magnard PhD Thesis, 2021
+        """
+
+        # we define two variables that will help us in the definitions
+        gamma = gamma1 + gamma2
+
+        X = (gamma * np.sinc((gamma1 - gamma2) / gamma) / 2)
+
+        # we define f, the shape of the photon that we are looking for
+        f = a * np.sqrt(X) / (np.exp(-gamma1 * t / 2)
+                              + np.exp(gamma2 * t / 2))
+        assert (f > 0).all(), 'Photon shape is positive'
+
+        # calculate the F2 definition, see page 43 of Paul's 2021 thesis
+        # We use hypergeom function to integrate f^2 until time t
+        # (for a list of t) to avoid numerical aberrations at high t
+        # calculating 0/0. The normalization constant in front
+        # of f is chosen such that lim_(t->inf) F(2) = a
+
+        # now let us define F2 for t<0 (_a) and for t>0 (_b) - we do it
+        # this way to be able to use numpy lists as an input of t
+        F2_a = a * X * np.exp(gamma1 * t) / gamma1 * \
+            sp.special.hyp2f1(2, 2 * gamma1 / gamma,
+                (3 * gamma1 + gamma2) / gamma, -np.exp(gamma * t / 2))
+
+        F2_b = a * (1 - X * np.exp(-gamma2 * t) / gamma2 *
+            sp.special.hyp2f1(2, 2 * gamma2 / gamma,
+                (3 * gamma2 + gamma1) / gamma, -np.exp(-gamma * t / 2)))
+
+        # we create the final F2 (real, between 0 and 1)
+        F2 = np.int32(t < 0) * F2_a + np.int32(t >= 0) * F2_b
+
+        # derivative of f (real)
+        df = f * (np.exp(-gamma1 * t / 2) * gamma1 -
+            np.exp(gamma2 * t / 2) * gamma2) / \
+            (2 * (np.exp(-gamma1 * t / 2) + np.exp(gamma2 * t / 2)))
+
+        # return (first formula pag. 43 Dr. Paul Magnard PhD Thesis, 2021)
+        gTilde_vs_t = 2 * np.sqrt(((df + kappa * f / 2) ** 2 +
+            (delta * f) ** 2) / (kappa * (1 - F2) - f ** 2))
+        # If the denominator is negative, we want to emit
+        # too much photon per time
+        assert ((kappa * (1 - F2) - f ** 2) > 0).all(), \
+            'Requested coupling should be real'
+
+        # second derivative of f
+        ddf = f * (2 * (np.exp(-gamma1 * t / 2) * gamma1 -
+                         np.exp(gamma2 * t / 2) * gamma2) ** 2 \
+                    - (np.exp(-gamma1 * t / 2) + np.exp(gamma2 * t / 2)) * \
+                    (np.exp(-gamma1 * t / 2) * gamma1 ** 2 +
+                     np.exp(gamma2 * t / 2) * gamma2 ** 2)) \
+              / (4 * (np.exp(-gamma1 * t / 2) + np.exp(gamma2 * t / 2)) ** 3)
+
+        # return (second formula pag. 43 Dr. Paul Magnard PhD Thesis, 2021)
+        return_term_1 = f ** 2 / (kappa * (1 - F2) - f ** 2)
+        return_term_2 = (ddf * f - df ** 2) / ((delta * f) ** 2 + \
+                                               (df + kappa * f / 2) ** 2)
+
+        FrequencyChirp = delta * (return_term_1 + return_term_2)
+
+        # Both returns (as all steps above) should be real-valued
+        return gTilde_vs_t, FrequencyChirp
+
+
+    def joinJunctions(self, gTilde_vs_t, tRise, tFall, junctionTrunc,
+                      junctionSigma, junctionType, t):
+        """
+        This function creates a 'ramp up' and a 'rump down' for the pulse
+        outside of the interval given by 'tStart' and 'tFall'.
+
+        The returned shape will have 3 parts:
+            part_a = ramp up
+            part_b = pulse function
+            part_c = ramp down
+
+        The function is defined the following way:
+
+                part_a: tRise - junctionTrunc*junctionSigma <= t < tRise
+                part_b:                               tRise <= t < tFall
+                part_c:                               tFall  <= t < tFall +
+                                                junctionTrunc*junctionSigma
+                     0:                                     otherwise
+
+                                               ~~~~~~
+                                            ~~~~    ~~~~~~
+                                    ~~~~~~~~              \
+                                  /                        \
+                                 /                          \
+                                /                            \
+                               /                              \
+                              /                                \
+                    _________/                                  \_________
+
+                             |- a -|----------- b --------|- c -|
+
+
+
+        The ramps (up and down) can have different shapes: gaussian, tanh or
+        ramp (linear).
+
+        Args:
+            gTilde_vs_t (array): An array of the shape of the pulse,
+                it spans the whole time here (a, b and c)
+            tRise (float): when part_b starts (when the photon starts)
+            tFall (float): when part_b ends (when the photon ends)
+            junctionTrunc (float), junctionSigma (float): information about the
+                junction bridging the AWG amplitude from the truncated pulse
+                value at the end and zero. These variables denote the junction
+                truncation, width and type respectively
+            junctionType (str): defines the shape of the ramps: 'gaussian',
+                'tanh' or 'ramp' (linear)
+
+        Retruns:
+            An array of values: the final pulse shape
+        """
+
+        # raise an error if type_junction is one of the three allowed
+        junctionTypes_allowed = ['gaussian', 'tanh', 'ramp']
+        if junctionType not in junctionTypes_allowed:
+            raise ValueError("joinJunctions: '%s' is an invalid junction "
+                             "type. Expected one of: %s" \
+                             % (junctionType, junctionTypes_allowed))
+
+        # create 'junction function', its shape depends on junctionType
+        if junctionType == "gaussian":
+            offset = np.exp(-junctionTrunc ** 2 / 2)
+            amp = 1 / (1 - offset)
+            junctionFunc = lambda t: amp * \
+                                     (np.exp(-t ** 2 /
+                                             (2 * junctionSigma ** 2)) -
+                                      offset)
+        elif junctionType == "tanh":
+            offset = np.tanh(-junctionTrunc)
+            amp = -1 / (2 * offset)
+            junctionFunc = lambda t: amp * (
+                        np.tanh((2 * t + junctionTrunc * junctionSigma) /
+                                junctionSigma) - offset)
+        else:  # ramp
+            junctionFunc = lambda t: t / \
+                                     (junctionTrunc * junctionSigma) + 1
+
+        # we define the final shape for each part:
+        #                    part_a, tRise - junctionTrunc*junctionSigma <= t < tRise
+        #                    part_b,                               tRise <= t < tFall
+        #                    part_c,                               tFall  <= t < tFall + junctionTrunc*junctionSigma
+        #                    0   ,      otherwise
+
+        arg_tRise = np.argmin(abs(t - tRise))
+        arg_tFall = np.argmin(abs(t - tFall))
+        return_part_a = gTilde_vs_t[arg_tRise] * junctionFunc(t - tRise)
+        return_part_b = gTilde_vs_t
+        return_part_c = gTilde_vs_t[arg_tFall] * junctionFunc(tFall - t)
+
+        # we put together the final shape
+        return_final = np.int32(
+            ((tRise - junctionTrunc * junctionSigma) <= t) &
+            (t < tRise)) * return_part_a + np.int32((tRise <= t) &
+            (t < tFall)) * return_part_b + np.int32((tFall <= t) &
+            (t < (tFall + junctionTrunc * junctionSigma))) * return_part_c
+
+        # we return final shape
+        return return_final
+
+
+    def photonShapingPulse(self, t, kappa, gamma1, gamma2, delta, a,
+                           acStark_coefs, rabiRate_coefs, timeValues,
+                           junctionTrunc, junctionSigma, junctionType="ramp",
+                           timeReverse=False, lowerFreqPhoton=False,
+                           driveDetScale=0):
+
+        """
+        Get the complex amplitude and frequency of the f0g1 pulse, pulse
+        tailored to emit a photon with shape:
+                     ________________________________________________
+                    /
+            \      /     gamma1+gamma2              gamma1-gamma2
+             \    /  a * —————————————   sinc( pi * ————————————— )       *
+              \  /             2                    gamma1+gamma2
+               \/
+                            1
+          * ——————————————————————————————————
+             e^(-gamma1*t/2) + e^(gamma2*t/2)
+
+        args:
+            t (np.array): array of time values. It should start at 'tStart'
+                and end at 'tStop'; These two values are calculated with the
+                'relevantTimeValues' function
+            kappa (float): the fixed leakage rate of the transfer/emitter
+                resonator/qubit/cavity.
+            gamma1 (float): exponential rate of the rising edge of the emitted
+                photon
+            gamma2 (float): exponential rate of the falling edge of the emitted
+                photon
+            delta (float): detuning of the emitted photon with respect to the
+                emitter resonator/qubit/cavity resonant frequency.
+            a (float): fraction of the photon which is emitted. a=1 corresponds
+                to a full photon emission. a=0.5 leads to a perfectly entangled
+                emitter-photon system.
+            acStark_coefs (np.array): coefficients of the AcStark function
+                (polynomial): given drive amplitude returns frequency shift
+            rabiRate_coefs (np.array): coefficients of the RabiRate function
+                (polynomial): given drive amplitude returns gTilde amplitude
+            timeValues (tuple): tuple of 4 values 'tStart, tStop, tRise,
+                tFall': these values are given by the 'relevantTimeValues'
+                function
+            junctionTrunc (float), junctionSigma (float): information about the
+                junction bridging the AWG amplitude from the truncated pulse
+                value at the end and zero. These variables denote the junction
+                truncation, width and type respectively
+            junctionType (str): defines the shape of the ramps for the
+                truncation: 'gaussian', 'tanh' or 'ramp' (linear)
+            timeReverse (bool): Says if the pulse should be time reversed to
+                absorb an incoming photon. One should set a=1 for this to work
+            lowerFreqPhoton (bool): Should be set to True is ω_gf > ω_p and to
+                False otherwise. Has an impact on the sign of 'delta' in the
+                drive functions.
+            driveDetScale (int): an additional offset for the final frequency
+                of the pulse
+
+        returns:
+            amplitude_final (np.array): array of amplitudes of the final pulse
+                (it's the envelope of the pulse) for each value of time a
+                complex amplitude is returned
+            ifOffset + deltaDet + driveDetScale (float): value for the
+                frequency of the pulse
+
+        """
+
+        # if t, acStark_coefs and gTilde_to_amplitude_coefs are not numpy
+        # arrays we create them as so
+        t = np.array(t)
+        acStark_coefs = np.array(acStark_coefs)
+        rabiRate_coefs = np.array(rabiRate_coefs)
+
+        # we get the coefficients of the gTilde to amplitude function:
+        rabiRate_coefs = np.append(rabiRate_coefs, np.array(
+            [0 for i in range(4 - rabiRate_coefs.size)]))  # if there is less
+        # than 4 coefs, add them
+        c0, c1, c2, c3 = rabiRate_coefs[:4]  # we put the first 4 coefs to some
+        # variables
+        gTilde_to_amplitude_coefs = np.array([0, 1 / c1, 0, -c3 / c1 ** 4])
+        # we invert the odd polynomial (degree 3)
+
+
+        # the relevant time values of the pulse
+        tStart, tStop, tRise, tFall = timeValues
+
+        # reverse the time is the variable is true
+        if timeReverse: t = np.flip(t)
+
+
+        # get gTilde shape and truncation
+        gTilde_vs_t, frequencyChirp = self.GTilde(kappa, gamma1, gamma2, delta, a, t)
+
+        gTildeTruncated_vs_t = self.joinJunctions(gTilde_vs_t, tRise, tFall,
+                                                  junctionTrunc, junctionSigma,
+                                                  junctionType, t)
+
+        #  ---- get pulse phase
+
+        # get the amplitude of the pulse for all times
+        pulse_amplitude = np.polyval(np.flip(gTilde_to_amplitude_coefs),
+                                     gTildeTruncated_vs_t)
+
+        # get frequencies thanks to acStark_coefs from the amplitude
+        frequencies = np.polyval(np.flip(acStark_coefs),
+                                 pulse_amplitude)
+
+        # Add extra frequency due to photon detuning from the emitter
+        instantFreqList = frequencyChirp + frequencies
+
+        ifOffset = (np.min(instantFreqList) + np.max(instantFreqList)) / 2
+        instantFreqList -= ifOffset
+
+        # Get the pulse phase for each time
+
+        phases = np.zeros(len(t))
+        phase_sum = 0
+        for i in range(len(t) - 1):
+            phases[i] = phase_sum
+            phase_sum += (instantFreqList[i + 1] + instantFreqList[i]) * (t[i + 1] - t[i]) / 2
+        phases[-1] = phase_sum
+
+        # As frequencies are in Hz, we need a 2Pi factor.
+        pulsePhase = 2 * np.pi * phases * (-1) ** timeReverse
+
+        #  ----
+
+        # get the complex amplitude of the pulse drive, which starts at
+        # t=tStart and ends at t=tStop.
+
+        # An important minus here is to ensure the consistency with PycQED
+        amplitude_final = pulse_amplitude * np.exp(-1j * pulsePhase)
+
+        # subtract delta to the drive frequency if w_p < w_gf, and add delta
+        # otherwise
+        deltaDet = delta * (-1) ** lowerFreqPhoton
+
+        # return final pulse: 'array of amplitudes' and 'frequency'
+
+        return np.array([amplitude_final,
+                         (ifOffset + deltaDet + driveDetScale)], dtype=object)
+
+
+    @classmethod
+    def pulse_params(cls):
+        """
+        Returns a dictionary of pulse parameters and initial values. These
+        parameters are set upon calling the super().__init__ method.
+        """
+        params = {
+            'pulse_type': 'f0g1Pulse',
+            'kappa': 1,
+            'gamma1': 1,
+            'gamma2': 1,
+            'delta': 0,
+            'a': 1,
+            'photonTrunc': 1.8,
+            'pulseTrunc': 0,
+            'junctionTrunc': 2,
+            'junctionSigma': 1.5e-9,
+            'AcStark_IFCoefs' : np.array([0,0,0]),
+            'RabiRate_Coefs' : np.array([0,0,0]),
+            'timeReverse': False,
+            'lowerFreqPhoton': False,
+            'driveDetScale': 0,
+            'junctionType': 'ramp',
+
+            'I_channel': None,
+            'Q_channel': None,
+            'frequency': 0,
+            'phase': 0,
+            'alpha': 1,
+            'phi_skew': 0,
+
+            'delay': 0,
+        }
+        return params
+
+
+    def chan_wf(self, chan, tvals):
+        """
+        given the channel and an array of times (tvals) it returns the
+        amplitudes of the pulse for this channel
+        """
+        # center the time, let it start and finish at the correct values to get
+        # the correct shape
+        t = tvals - self.algorithm_time() + self.tStart
+
+        # get the shape and frequency with the 'photonShapingPulse' function
+        wave_shape, self.frequency = self.photonShapingPulse(
+            t=t,
+            kappa=self.kappa,
+            gamma1=self.gamma1,
+            gamma2=self.gamma2,
+            delta=self.delta,
+            a=self.a,
+            timeValues=(self.tStart, self.tStop, self.tRise, self.tFall),
+            junctionTrunc=self.junctionTrunc,
+            junctionSigma=self.junctionSigma,
+            acStark_coefs=self.AcStark_IFCoefs,
+            rabiRate_coefs=self.RabiRate_Coefs,
+            junctionType=self.junctionType,
+            timeReverse=self.timeReverse,
+            lowerFreqPhoton=self.lowerFreqPhoton,
+            driveDetScale=self.driveDetScale)
+
+        # we apply sideband modulation to the envelope shape with the frequency
+        # computed
+        I_mod, Q_mod = apply_modulation(
+            np.real(wave_shape),
+            np.imag(wave_shape),
+            t,
+            mod_frequency=self.frequency,
+            phase=self.phase,
+            phi_skew=self.phi_skew,
+            alpha=self.alpha,
+            tval_phaseref=0 if self.phase_lock else self.algorithm_time())
+
+        # return I or Q depending on the channel
+        if chan == self.I_channel:
+            return I_mod
+        if chan == self.Q_channel:
+            return Q_mod
+
+    def hashables(self, tstart, channel):
+        """
+        it returns a hash list to identify the pulse
+        """
+
+        hashlist = self.common_hashables(tstart, channel)
+        if channel not in self.channels or self.pulse_off:
+            return hashlist
+        hashlist += [tuple(self.AcStark_IFCoefs.tolist()),
+                     tuple(self.RabiRate_Coefs.tolist())]
+        hashlist += [self.kappa, self.gamma1, self.gamma2, self.delta, self.a]
+        hashlist += [self.timeReverse, self.lowerFreqPhoton,
+                     self.driveDetScale, self.junctionType]
+        hashlist += [self.photonTrunc, self.pulseTrunc,
+                     self.junctionTrunc, self.junctionSigma]
+        hashlist += [channel == self.I_channel]
+        hashlist += [self.frequency, self.delay]
+        phase = self.phase
+        phase += 360 * self.phase_lock * self.frequency * self.algorithm_time()
+        hashlist += [self.alpha, self.phi_skew, phase]
+
+        return hashlist
+
+
 def apply_modulation(ienv, qenv, tvals, mod_frequency,
                      phase=0., phi_skew=0., alpha=1., tval_phaseref=0.):
     """
