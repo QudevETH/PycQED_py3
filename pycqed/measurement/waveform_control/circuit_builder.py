@@ -580,6 +580,35 @@ class CircuitBuilder:
                 prep_pulse_list += [block_end]
             return Block(block_name, prep_pulse_list, copy_pulses=False)
 
+        # f0g1 reset
+        elif preparation_type == 'f0g1_reset':
+            preparation_pulses = []
+            for i, qbn in enumerate(qb_names):
+                preparation_pulses.append(
+                    self.get_pulse('f0g1_reset_pulse ' + qbn))
+                preparation_pulses[-1]['ref_point'] = 'start'
+                preparation_pulses[-1]['element_name'] = 'f0g1_reset'
+
+                preparation_pulses.append(
+                    self.get_pulse('ef_for_f0g1_reset_pulse ' + qbn))
+                preparation_pulses[-1]['ref_point'] = 'start'
+                preparation_pulses[-1]['element_name'] = 'f0g1_reset'
+
+            preparation_pulses[0]['ref_pulse'] = ref_pulse
+            preparation_pulses[0]['name'] = 'f0g1_reset_pulse'
+            preparation_pulses[0]['pulse_delay'] = 0  # -ro_separation
+
+            preparation_pulses[1]['ref_pulse'] = ref_pulse
+            preparation_pulses[1]['name'] = 'ef_for_f0g1_reset_pulse'
+            preparation_pulses[1]['pulse_delay'] = 0  # -ro_separation
+
+            block_end = dict(name='end', pulse_type="VirtualPulse",
+                             ref_pulse='f0g1_reset_pulse',
+                             pulse_delay=ro_separation,
+                             ref_point='end')
+            preparation_pulses += [block_end]
+            return Block(block_name, preparation_pulses, copy_pulses=False)
+
         # preselection
         elif preparation_type == 'preselection':
             preparation_pulses = []
