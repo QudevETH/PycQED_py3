@@ -497,7 +497,7 @@ def get_state_prob_mtxs_from_hdf_file(timestamp, meas_obj_names,
                 # for whichever qubit was in the Analysis group (might not
                 # be part of meas_obj_names).
                 state_prob_mtxs[mobjn] = get_param_from_analysis_group(
-                    'state_prob_mtx_masked', timestamp).get(mobjn, None)
+                    timestamp, 'state_prob_mtx_masked').get(mobjn, None)
             else:
                 try:
                     state_prob_mtxs[mobjn] = get_instr_param_from_file(
