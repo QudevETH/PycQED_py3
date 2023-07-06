@@ -7890,24 +7890,44 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ana_params['optimal_weights'] = defaultdict(dict)
         ana_params['optimal_weights_basis_labels'] = defaultdict(dict)
         ana_params['means'] = defaultdict(dict)
-        for qbn in self.qb_names:
+        for qb_indx, qbn in enumerate(self.qb_names):
             # retrieve time traces
-            for i, rdd in enumerate(self.raw_data_dict):
+
+            if len(self.channel_map[qbn]) != 2:
+                raise NotImplementedError(
+                    'This analysis does not support optimal weight '
+                    f'measurement based on {len(self.channel_map[qbn])} '
+                    f'ro channels. Try again with 2 RO channels.')
+
+            twoD = self.get_param_value('TwoD', False)
+
+            if twoD: # called by measure.OptimalWeights
+                rdd = self.raw_data_dict[0]
                 ttrace_per_ro_ch = [rdd["measured_data"][ch]
                                     for ch in self.channel_map[qbn]]
-                if len(ttrace_per_ro_ch) != 2:
-                    raise NotImplementedError(
-                        'This analysis does not support optimal weight '
-                        f'measurement based on {len(ttrace_per_ro_ch)} ro channels.'
-                        f' Try again with 2 RO channels.')
-                cp = CalibrationPoints.from_string(
-                    self.get_param_value('cal_points', None, i))
-                # get state of qubit. There can be only one cal point per sequence
-                # when using uhf for time traces so it is the 0th state
-                qb_state = cp.states[0][cp.qb_names.index(qbn)]
-                # store all timetraces in same pdd for convenience
-                ana_params['timetraces'][qbn].update(
-                    {qb_state: ttrace_per_ro_ch[0] + 1j *ttrace_per_ro_ch[1]})
+                states = eval(self.get_param_value('states'))
+                if len(states[0]) == 1: # [('g',), ('e',), ]
+                    states = [s[0] for s in states]
+                else: # [('g', 'e'), ('e', 'f'), ]
+                    states = [s[qb_indx] for s in states]
+                for i, state in enumerate(states):
+                    ana_params['timetraces'][qbn].update(
+                        {state: ttrace_per_ro_ch[0][:,i] +
+                                1j * ttrace_per_ro_ch[1][:,i]})
+
+            else: # called by mqm.find_optimal_weights
+                for i, rdd in enumerate(self.raw_data_dict):
+                    ttrace_per_ro_ch = [rdd["measured_data"][ch]
+                                        for ch in self.channel_map[qbn]]
+                    cp = CalibrationPoints.from_string(
+                        self.get_param_value('cal_points', None, i))
+                    # get state of qubit. There can be only one cal point per
+                    # sequence when using uhf for time traces, so it is the
+                    # 0th state
+                    qb_state = cp.states[0][cp.qb_names.index(qbn)]
+                    # store all timetraces in same pdd for convenience
+                    ana_params['timetraces'][qbn].update(
+                        {qb_state: ttrace_per_ro_ch[0] + 1j *ttrace_per_ro_ch[1]})
 
             timetraces = ana_params['timetraces'][qbn] # for convenience
             basis_labels = self.get_param_value('acq_weights_basis', None, 0)
@@ -7965,6 +7985,9 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
         pdd = self.proc_data_dict
         rdd = self.raw_data_dict
+        twoD = self.get_param_value('TwoD', False)
+        states = self.get_param_value('states', None)
+        num_states = len(eval(states)) if twoD else len(rdd)
         ana_params = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
             mod_freq = float(rdd[0].get(f'ro_mod_freq_{qbn}'))
@@ -7997,9 +8020,9 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                         "do_legend":True,
                         "legend_pos": "upper right",
                         'numplotsx': 1,
-                        'numplotsy': len(rdd) + 1, # #states + 1 for weights
+                        'numplotsy': num_states + 1, # #states + 1 for weights
                         'plotsize': (10,
-                                     (len(rdd) + 1) * 3), # 3 inches per plot
+                                     (num_states + 1) * 3), # 3 inches per plot
                         'title': title if ax_id == 0 else ""}
             ax_id = len(ana_params["timetraces"][qbn]) # id plots for weights
             for i, weights in enumerate(ana_params['optimal_weights'][qbn]):
