@@ -2783,12 +2783,13 @@ class MultiQubit_HistogramAnalysis(MultiQubit_TimeDomain_Analysis):
         super().extract_data()
 
     def get_channel_map(self):
-        # delete this method once we pass the correct movnm
-        # git cherry-pick 75151513f6cf1df260ce7d6dba4255e99c28a5db
-        # might solve this, but there might be some conflicts to resolve
+        # FIXME: delete this method once it has been tested that
+        #  - the super method handles single-qubit histograms correctly
+        #  - multi-qubit histograms are analyzed correctly
         if len(self.qb_names) > 1:
-            raise NotImplementedError(
-                'We need to fix the movnm before doing multi-qb histograms.')
+            log.warning('Analysis of multi-qubit histograms has not been '
+                        'tested yet.')
+            return super().get_channel_map()
         self.channel_map = {
             self.qb_names[0]: self.raw_data_dict['value_names']}
 
