@@ -72,6 +72,7 @@ class AcquisitionDevice():
         self._acquisition_nodes = []
         self._acq_mode = None
         self._acq_data_type = None
+        self._acq_classifier_params = {}
         self._reset_n_acquired()
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
@@ -462,9 +463,10 @@ class AcquisitionDevice():
         """Set the classifier parameters on the acquisition device.
 
         The default behavior is that calling the method does not have any
-        effect. Child classes that support classification in the hardware
-        need to override this method to implement setting the classifier
-        parameters in the hardware.
+        effect beyond storing the parameters in a private attribute.
+        Child classes that support classification in the hardware can
+        implement setting the classifier parameters in the hardware by
+        making use of that private attribute and/or by overriding this method.
 
         Arguments:
             channels (list of tuple): Channels for which to set the parameters.
@@ -475,7 +477,7 @@ class AcquisitionDevice():
                 * ``thresholds``: OrderedDict containing the thresholds for
                   state discrimination.
         """
-        pass
+        self._acq_classifier_params[tuple(channels)] = params
 
     def get_awg_control_object(self):
         """

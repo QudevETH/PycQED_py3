@@ -59,7 +59,6 @@ class VC707(VC707_core, AcquisitionDevice):
 
         self.initialize(devidx=devidx, clockmode=clockmode, verbose=verbose)
         self._acq_integration_weights = {}
-        self._acq_classifier_params = {}
         self._last_traces = []
         self.nb_bins = {}
         self.peak_to_peak = {}
@@ -259,9 +258,6 @@ class VC707(VC707_core, AcquisitionDevice):
             return self._adapt_histogrammer_results(res)
         elif module == "state_discriminator":
             return self._adapt_state_discriminator_results(res)
-
-    def set_classifier_params(self, channels, params):
-        self._acq_classifier_params[tuple(channels)] = params
 
     def _adapt_averager_results(self, raw_results) -> dict:
         """Format the FPGA averager results as expected by PycQED."""
