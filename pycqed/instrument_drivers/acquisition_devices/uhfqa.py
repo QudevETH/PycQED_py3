@@ -150,13 +150,6 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                     'qas_0_trans_offset_weightfunction_{}'.format(channel[1]))
         return data
 
-    def set_classifier_params(self, channels, params):
-        if params is not None and (p := params.get('thresholds')):
-            for i, ch in enumerate(channels):
-                if i in p:
-                    # there is a threshold for the i-th integration channel
-                    self.set(f'qas_0_thresholds_{ch[1]}_level', p[i])
-
     def _reset_n_acquired(self):
         super()._reset_n_acquired()
         self._n_acquisition_progress_last = 0
