@@ -1031,7 +1031,7 @@ class NDimQuantumExperiment():
         Resulting experiments (psueudo-code):
         for j in range(2):
             for i in range(3):
-                idxs = (i,j)
+                idx = (i,j)
                 sweep_points=sp_mod.SweepPoints([
                     {'freq': (..., 'Hz', 'Readout frequency')},
                     {  # dimension number self.DUMMY_DIM
@@ -1059,14 +1059,15 @@ class NDimQuantumExperiment():
         self.experiments = {}
         if QuantumExperiment is not None:
             self.QuantumExperiment = QuantumExperiment
+        self.timestamps = []
         self.forget_experiments = forget_experiments
         self.sweep_points = SweepPoints(sweep_points)
         self._generate_sweep_lengths()
         self.args = args
         self.kwargs = kwargs
 
-        for idxs in self.get_experiment_indices():
-            self.create_experiment(idxs)
+        for idx in self.get_experiment_indices():
+            self.create_experiment(idx)
 
         if kwargs.get('measure') and kwargs.get('analyze', True):
             self.run_ndim_analysis()
@@ -1095,14 +1096,15 @@ class NDimQuantumExperiment():
             *[range(i) for i in self.sweep_lengths[:1:-1]])
         return [idx[::-1] for idx in idxs]
 
-    def make_2d_sweep_points(self, sweep_points, idxs):
+    def make_2d_sweep_points(self, sweep_points, idx):
         """
-        Extracts 2-dim SweepPoints for an experiment indexed by idxs,
-        by slicing the dimensions >=2 of sweep_points at indices idxs.
+        Extracts 2-dim SweepPoints for an experiment indexed by idx,
+        by slicing the dimensions >=2 of sweep_points at indices idx.
 
         Args:
-            sweep_points: N-dim sweep points to slice down to 2 dimensions.
-            idxs: indices of the experiments to instantiate,
+            sweep_points (SweepPoints): N-dim SweepPoints to slice down to 2
+            dimensions.
+            idx (tuple): indices of the experiments to instantiate,
             see self.get_experiment_indices
         """
         # Extract sweep_point dimensions beyond the second dimension
@@ -1110,34 +1112,45 @@ class NDimQuantumExperiment():
         # Extract first two dimensions of N dimensional sweep points
         current_sp = SweepPoints(sweep_points[:2])
         length = self.sweep_lengths[self.DUMMY_DIM]
-        for dim, idx in enumerate(idxs):
+        for dim, i in enumerate(idx):
             for k in extra_sp.get_sweep_dimension(dim, default={}):
                 current_sp.add_sweep_parameter(
-                    k, [extra_sp[k][idx] for i in range(length)],
+                    k, [extra_sp[k][i] for _ in range(length)],
                     extra_sp.get_sweep_params_property('unit', param_names=k),
                     extra_sp.get_sweep_params_property('label', param_names=k),
                     dimension=self.DUMMY_DIM,
                 )
         return current_sp
 
-    def create_experiment(self, idxs):
-        """
-        Instantiates sub-experiments.
+    def create_experiment(self, idx, **kw):
+        """Instantiates a sub-experiment (one 2-D QuantumExperiment).
 
         Args:
-            idxs: indices of the experiments to instantiate,
+            idx (tuple): indices corresponding to the experiment to instantiate,
                 see self.get_experiment_indices
+            kw (dict): keyword arguments passed to instantiate the experiment
         """
-        current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
+        current_sp = self.make_2d_sweep_points(self.sweep_points, idx)
+        # To recover the N-dimensional SweepPoints in the analysis,
+        # one could either store them fully in the metadata of each
+        # QuantumExperiment and read them from there, or just store the 2-D
+        # points corresponding to each QuantumExperiment, and reconstruct
+        # the N-D ones in the analysis. Here we do the former, for simplicity.
+        # FIXME: currently only task-specific N-dim SweepPoints
+        #  (from NDimMultiTaskingExperiment.create_experiment) are read in
+        #  NDim_BaseDataAnalysis. The analysis should be extended if we want
+        #  to run a simple NDimQuantumExperiment (without multitasking),
+        #  such that the analysis also reads the metadata stored here:
         exp_metadata = dict(
             ndim_sweep_points=self.sweep_points,
-            ndim_current_idxs=idxs,
+            ndim_current_idxs=idx,
         )
-        self.experiments[idxs] = self.QuantumExperiment(
+        self.experiments[idx] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp, exp_metadata=exp_metadata,
-            **self.kwargs)
+            **self.kwargs, **kw)
+        self.timestamps = [qe.timestamp for qe in self.experiments.values()]
         if self.forget_experiments:
-            del self.experiments[idxs]
+            del self.experiments[idx]
 
     def run_measurement(self, **kw):
         for qe in self.experiments.values():
@@ -1169,6 +1182,11 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         task_list: see MultiTaskingExperiment
 
     FIXME should a MultiTasking-like experiment be listed in this module?
+
+    FIXME It is currently mandatory to pass sweep_points in the task_list.
+     This is because base_analysis.NDim_BaseDataAnalysis currently relies on
+     the sweep_points present in the task_list of each experiment to
+     reconstruct the N-dimensional sweep_points (see docstring).
     """
 
     def __init__(self, task_list, *args, sweep_points=None,
@@ -1177,7 +1195,6 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         super().__init__(*args, sweep_points=sweep_points,
                          QuantumExperiment=QuantumExperiment, **kwargs)
 
-
     def _generate_sweep_lengths(self, sweep_points=None):
         sp = self.sweep_points if sweep_points is None else sweep_points
         sp = deepcopy(sp)
@@ -1185,20 +1202,14 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
             sp.update(SweepPoints(task.get('sweep_points', [])))
         super()._generate_sweep_lengths(sp)
 
-
-    def create_experiment(self, idxs):
-        current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
+    def create_experiment(self, idx, **kw):
         current_tl = [copy(t) for t in self.task_list]
         for task in current_tl:
-            # Just to ease recovering the full sp in the analysis
+            # Store task-specific SweepPoints in the metadata, see super method
             task['ndim_sweep_points'] = task['sweep_points']
-            task['ndim_current_idxs'] = idxs
-            # Make sp that will actually be used in the experiment
+            task['ndim_current_idxs'] = idx
+            # Make sp that will actually be used in the sub-experiment
             task['sweep_points'] = self.make_2d_sweep_points(
-                task.get('sweep_points', []), idxs)
-        self.experiments[idxs] = self.QuantumExperiment(
-            *self.args, sweep_points=current_sp,
-            task_list=current_tl, **self.kwargs)
-        if self.forget_experiments:
-            del self.experiments[idxs]
+                task.get('sweep_points', []), idx)
+        super().create_experiment(idx, task_list=current_tl, **kw)
 

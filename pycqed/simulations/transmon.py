@@ -23,6 +23,7 @@ import numpy as np
 import scipy as sp
 import scipy.optimize
 from typing import Optional, List, Tuple
+from pycqed.utilities.math import kron
 import logging
 log = logging.getLogger(__name__)
 
@@ -300,6 +301,106 @@ def transmon_resonator_levels(ec: float, ej: float, frb: float, gb: float,
 
     return es
 
+
+def transmon_resonator_purcell_levels(ec: float, ej: float,
+                                      frb: float, fpb: float,
+                                      gb: float, j: float, kp: float = None,
+                                      ng: float = 0., dim_charge: int = 21,
+                                      dim_resonator: int = 3,
+                                      dim_purcell: int = 3,
+                                      states: List[Tuple[int, int]] =
+                                      ((1, 0, 0), (2, 0, 0), (0, 1, 0), (1, 1, 0),
+                                       (0, 0, 1))):
+    """Calculate eigenfrequencies of the coupled transmon-resonator-Purcell
+     filter Hamiltonian, i.e.:
+
+    $\hat{H} =4 E_C \hat{n}_t^2-E_J \cos \hat{\varphi}_t+
+     i g\left(\hat{a}-\hat{a}^{\dagger}\right) \hat{n}_t
+        +\omega_r \hat{a}^{\dagger} \hat{a}
+        + \omega_f \hat{f}^{\dagger} \hat{f}
+        - J\left(\hat{a}-\hat{a}^{\dagger}\right)\left(\hat{f}-\hat{f}^{\dagger}\right)$
+    with the following mapping:
+    g --> gb
+    f --> b_pur
+    a --> a_res
+    omega_f --> fpb
+    omega_r --> frb
+    n --> n_mon
+    Args:
+        ec: Charging energy of the Hamiltonian.
+        ej: Josephson energy of the Hamiltonian.
+        frb: Bare resonator frequency.
+        fpb: Bare purcell frequency
+        gb: Bare transmon-resonator coupling strength.
+        ng: Charge offset of the Hamiltonian.
+        j: coupling between the readout resonator and purcell filter
+        kp: purcell filter linewidth.
+        dim_charge: Number of charge states to use in calculations.
+        dim_resonator: Number of photon number states to use in calculations
+            for the readout resonator.
+        dim_purcell: Number of photon number states for the purcell filter.
+
+        states: A list of tuples, corresponding to the (transmon, resonator,
+            purcell filter)
+                level indices for which to calculate the energy levels.
+
+    Returns:
+        A list of eigenvalues of the coupled transmon-resonator Hamiltonian
+        for the specified states with the ground-state energy subtracted.
+    """
+
+    id_mon = np.diag(np.ones(dim_charge))
+    id_res = np.diag(np.ones(dim_resonator))
+    id_pur = np.diag(np.ones(dim_resonator))
+    ham_mon = transmon_hamiltonian(ec, ej, ng, dim_charge)
+    ham_res = resonator_hamiltonian(frb, dim_resonator)
+    # add loss as imaginary frequency of purcell filter
+    if kp is not None:
+        fpb = fpb + 1j * kp / 2
+    ham_pur = resonator_hamiltonian(fpb, dim_purcell)
+    n_mon = transmon_charge(ng, dim_charge)
+    a_res = resonator_destroy(dim_resonator)
+    b_pur = resonator_destroy(dim_purcell)
+    ham_qb_res_int = 1j * gb * kron(n_mon, a_res - a_res.T)
+    ham_res_pur_int = - j * kron(a_res - a_res.T, b_pur - b_pur.T)
+    ham = kron(ham_mon, id_res, id_pur) + kron(id_mon, ham_res, id_pur) + \
+          kron(id_mon, id_res, ham_pur) + kron(ham_qb_res_int, id_pur) + \
+          kron(id_mon, ham_res_pur_int)
+
+    # diagonalize hamiltonian
+    try:
+        levels_full, states_full = np.linalg.eig(ham)
+        levels_transmon, states_transmon = np.linalg.eigh(ham_mon)
+        if any(np.isnan(levels_full)) or any(np.isnan(levels_transmon)):
+            raise np.linalg.LinAlgError('Some eigenvalues are nan.')
+    except np.linalg.LinAlgError as e:
+        log.warning(f'Eigenvalue calculation in transmon_resonator_levels '
+                    f'failed in first attempt: {e} Trying again.')
+        levels_full, states_full = np.linalg.eig(ham)
+        levels_transmon, states_transmon = np.linalg.eigh(ham_mon)
+        if any(np.isnan(levels_full)) or any(np.isnan(levels_transmon)):
+            raise np.linalg.LinAlgError('Some eigenvalues are nan.')
+        log.warning('Second attempt successful.')
+
+    states_transmon = states_transmon[:, np.argsort(levels_transmon)]
+
+    return_idxs = []
+    for kt, kr, kp in states:
+        # bare state
+        bare_state = kron(states_transmon[:, kt],
+                               np.arange(dim_resonator) == kr,
+                               np.arange(dim_purcell) == kp)
+        # find dressed state with most overlap to bare state
+        return_idxs.append(np.argmax(np.abs(states_full.T @ bare_state)))
+    # ground state
+    bare_state = kron(states_transmon[:, 0],
+                           np.arange(dim_resonator) == 0,
+                           np.arange(dim_purcell) == 0)
+    gs_id = np.argmax(np.abs(states_full.T @ bare_state))
+
+    es = levels_full[return_idxs] - levels_full[gs_id]
+
+    return es
 
 def transmon_resonator_fge_anh_frg_chi(ec: float, ej: float, frb: float,
                                        gb: float, ng: float = 0.,
