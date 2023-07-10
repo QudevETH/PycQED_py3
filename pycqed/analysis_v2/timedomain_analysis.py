@@ -11669,60 +11669,59 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
                                 max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
                     )
 
-    def get_leakage_best_val(self, minimize=True,
-                             save_fig=True, show=True, xtransform=None,
-                             xlabel=None, timestamp=None):
+    def get_leakage_best_val(self, task, minimize=True,
+                             save_fig=True, show_fig=True, fig=None,
+                             xtransform=None, xlabel=None, colors=None):
 
-        best_vals = []
-        for task in self.get_param_value('task_list'):
-            qbH_name, qbL_name = self._get_qbH_qbL(task)
-            data = self.proc_data_dict['projected_data_dict'][qbH_name][
-                       'pf'][0, :-3]
-            x = self.sp.get_sweep_params_property('values',
-                                                  dimension=0).copy()
-            if minimize == 'auto':
-                minimize = data[len(x) // 2] < data[0]
-            print(f"minimize = {minimize}")
-            if minimize:
-                a = 100
-                c = 0
-            else:
-                a = -100
-                c = 1
-            if xtransform:
-                x = xtransform(x)
-            label = xlabel or self.sp.get_sweep_params_property('label')
-            fact = 1
-            while abs(max(x)) < 1e-3:
-                x *= 1e3
-                fact *= 1e3
-            model_func = lambda x, a, b, c: a * ((x - b) ** 2) + c
-            model = lmfit.Model(model_func)
-            res = model.fit(data, x=x, a=a, c=c, b=np.mean(x))
-            best_val = res.best_values['b'] / fact
-            print(res.best_values)
-            plt.plot(x / fact, data, '*', label='Meas.')
-            x_resampled = np.linspace(x[0], x[-1], 100)
-            plt.plot(x_resampled / fact,
-                     model_func(x_resampled, **res.best_values), label='Fit')
-            plt.vlines(best_val, np.min(data), np.max(data))
-            plt.xlabel(label)
-            plt.ylabel('$|2\\rangle$ state pop.')
-            if save_fig:
-                import datetime
-                import os
-                fig_title = 'Leakage_sweep_{}_{}'.format(qbH_name,
-                                                         qbL_name)
-                fig_title = '{}--{:%Y%m%d_%H%M%S}'.format(
-                    fig_title, datetime.datetime.now())
-                if timestamp is None:
-                    save_folder = a_tools.latest_data()
-                else:
-                    save_folder = a_tools.get_folder(timestamp)
-                filename = os.path.abspath(
-                    os.path.join(save_folder, fig_title + '.png'))
-                plt.savefig(filename, bbox_inches='tight')
-            if show:
-                plt.show()
-            best_vals.append(best_val)
-        return best_vals
+        if colors is None:
+            colors = ['C0', 'C1']
+        qbH_name, qbL_name = self._get_qbH_qbL(task)
+        data = self.proc_data_dict['projected_data_dict'][qbH_name][
+                   'pf'][0, :-3]
+        x = self.sp.get_sweep_params_property('values',
+                                              dimension=0).copy()
+        if minimize == 'auto':
+            minimize = data[len(x) // 2] < data[0]
+        if minimize:
+            a = 100
+            c = 0
+        else:
+            a = -100
+            c = 1
+        if xtransform:
+            x = xtransform(x)
+        label = xlabel or self.sp.get_sweep_params_property('label')
+        fact = 1
+        while abs(max(x)) < 1e-3:
+            x *= 1e3
+            fact *= 1e3
+        model_func = lambda x, a, b, c: a * ((x - b) ** 2) + c
+        model = lmfit.Model(model_func)
+        res = model.fit(data, x=x, a=a, c=c, b=np.mean(x))
+        best_val = res.best_values['b'] / fact
+        if fig is None:
+            fig, ax = plt.subplots(1, figsize=(5, 4))
+        ax = fig.get_axes()[0]
+        ax.plot(x / fact, data, 'o', label='Meas.', color=colors[0])
+        x_resampled = np.linspace(x[0], x[-1], 100)
+        ax.plot(x_resampled / fact,
+                model_func(x_resampled, **res.best_values), label='Fit',
+                color=colors[1])
+        ax.vlines(best_val, np.min(data), np.max(data), linestyle='--',
+                  color=colors[1])
+        ax.set_xlabel(label)
+        ax.set_ylabel('$|2\\rangle$ state pop.')
+        if save_fig:
+            import datetime
+            import os
+            fig_title = 'Leakage_sweep_{}_{}'.format(qbH_name,
+                                                     qbL_name)
+            fig_title = '{}--{:%Y%m%d_%H%M%S}'.format(
+                fig_title, datetime.datetime.now())
+            save_folder = a_tools.get_folder(self.timestamps[0])
+            filename = os.path.abspath(
+                os.path.join(save_folder, fig_title + '.png'))
+            fig.savefig(filename, bbox_inches='tight')
+        if show_fig:
+            fig.show()
+        return best_val
