@@ -883,6 +883,10 @@ def fit_exp_lmfit(x, y, start_vals=None, fixed_A=None, weights=None, **kw):
         lmfit_model.set_param_hint(f'tau{i}', min=0)
     if fixed_A is not None:
         lmfit_model.set_param_hint('A', vary=False)
+    if 'fixed_vals' in kw:
+        fixed_vals = kw.pop('fixed_vals')
+        for par_name in fixed_vals:
+            lmfit_model.set_param_hint(par_name, vary=False)
     # print(kw)
     res = lmfit_model.fit(y, x=x, weights=weights, **kw, **fit_params)
     return res
