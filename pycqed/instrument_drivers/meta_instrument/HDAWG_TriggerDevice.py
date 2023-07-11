@@ -17,9 +17,9 @@ class HDAWG_TriggerDevice(Instrument):
         "var reps = getUserReg({reps});\n"
         "var sep = getUserReg({sep});\n"
         "\n"
-        "wave w_pulse = marker({pulse_length}, 3);\n"
+        "wave w_pulse = marker({pulse_length}, 1);\n"
         "repeat (reps) {{\n"
-        "  playWave(1, w_pulse);\n"
+        "  playWave(w_pulse, w_pulse);\n"
         "  playZero(sep);\n"
         "}}\n"
     )
