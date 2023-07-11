@@ -94,7 +94,7 @@ class HDAWG_TriggerDevice(Instrument):
 
     def _pulse_period_set_parser(self, pulse_period):
         samples = pulse_period * self.awg.clock_freq()
-        if np.abs(samples % self.GRANULARITY) > 1e-12:
+        if np.abs(samples % self.GRANULARITY) > 1e-11:
             raise ValueError(
                 f'Pulse period {pulse_period}s is not a multiple of the '
                 f'waveform granularity {self.GRANULARITY} samples.')
