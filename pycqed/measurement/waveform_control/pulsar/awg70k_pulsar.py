@@ -13,6 +13,7 @@ try:
         import VirtualAWG70002A
 except Exception:
     AWG70002A = type(None)
+    VirtualAWG70002A = type(None)
 
 from .pulsar import PulsarAWGInterface
 
