@@ -7,7 +7,7 @@
 import numpy as np
 import pycqed.measurement.waveform_control.pulsar as ps
 from collections import OrderedDict as odict
-from copy import deepcopy
+from copy import deepcopy, copy
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -517,7 +517,7 @@ class Sequence:
         elif len(sequences) == 1:
             # special case, return current sequence:
             return sequences
-        sequences = [deepcopy(s) for s in sequences]
+        sequences = [copy(s) for s in sequences]
         merged_seqs = [sequences[0]]
         if segment_limit is None:
             segment_limit = np.inf
