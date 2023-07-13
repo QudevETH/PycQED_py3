@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 class T1FrequencySweep(CalibBuilder):
 
     default_experiment_name = 'T1_frequency_sweep'
+    kw_for_task_keys = ['for_ef']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         """
@@ -51,8 +52,7 @@ class T1FrequencySweep(CalibBuilder):
             If this parameter is provided it will be used for all qubits.
         :param qubits: list of QuDev_transmon class instances
         :param kw: keyword arguments
-            for_ef (bool, default: False): passed to get_cal_points; see
-                docstring there.
+            for_ef (bool, default: False): measure f level T1
             spectator_op_codes (list, default: []): see t1_flux_pulse_block
             all_fits (bool, default: True) passed to run_analysis; see
                 docstring there
@@ -80,7 +80,8 @@ class T1FrequencySweep(CalibBuilder):
                              sweep_points=sweep_points, **kw)
 
             self.analysis = None
-            self.data_to_fit = {qb: 'pe' for qb in self.meas_obj_names}
+            self.data_to_fit = {qb: 'pf' if kw.get('for_ef', False) else 'pe'
+                                for qb in self.meas_obj_names}
             self.sweep_points = SweepPoints(
                 [{}, {}] if self.sweep_points is None else self.sweep_points)
             self.task_list = self.add_amplitude_sweep_points(
@@ -188,13 +189,19 @@ class T1FrequencySweep(CalibBuilder):
         if isinstance(qubit_name, list):
             qubit_name = qubit_name[0]
         hard_sweep_dict, soft_sweep_dict = sweep_points
-        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
+        pp = [self.block_from_pulse_dicts(prepend_pulse_dicts)]
 
         pulse_modifs = {'all': {'element_name': 'pi_pulse'}}
-        pp = self.block_from_ops('pipulse',
+        pp += [self.block_from_ops('pipulse',
                                  [f'X180 {qubit_name}'] +
                                  kw.get('spectator_op_codes', []),
-                                 pulse_modifs=pulse_modifs)
+                                 pulse_modifs=pulse_modifs)]
+        if kw.get('for_ef', False):
+            pp += [self.block_from_ops('pipulse_ef',
+                                     [f'X180_ef {qubit_name}'] +
+                                     kw.get('spectator_op_codes', []),
+                                     pulse_modifs=pulse_modifs)]
+
 
         pulse_modifs = {
             'all': {'element_name': 'flux_pulse', 'pulse_delay': 0}}
@@ -208,9 +215,9 @@ class T1FrequencySweep(CalibBuilder):
             for p in fp.pulses:
                 if k in p:
                     p[k] = ParametricValue(k)
+        pp += [fp]
 
-        return self.sequential_blocks(f't1 flux pulse {qubit_name}',
-                                      [pb, pp, fp])
+        return self.sequential_blocks(f't1 flux pulse {qubit_name}', pp)
 
     @Timer()
     def run_analysis(self, **kw):
