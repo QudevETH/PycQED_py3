@@ -3445,9 +3445,10 @@ class NPulseAmplitudeCalib(ErrorAmplificationCalibExperiment):
                     raise NotImplementedError('Only one parameter in the second '
                                               'sweep dimension is supported '
                                               'when using fixed_scaling.')
-                # Apply pairs of X180 pulses, where the amplitude of the first
-                # pulse is scaled by amp_scaling, and the amplitude of the
-                # second scaled by fixed_scaling. (specified by sp2d_idx).
+                # After the preparation X90 pulse, apply pairs of X180 pulses,
+                # where the amplitude of the first pulse is scaled by
+                # amp_scaling, and the amplitude of the second scaled by
+                # fixed_scaling. (specified by sp2d_idx).
 
                 # Create the pulse list for n_repetitions specified by sp1d_idx
                 pulse_list = [f'X90{transition_name} {qb}'] + \
@@ -3459,10 +3460,12 @@ class NPulseAmplitudeCalib(ErrorAmplificationCalibExperiment):
 
                 amp_scaling = sweep_points.get_sweep_params_property(
                     'values', 1)[sp2d_idx]
-                # Scale amp of all even pulses after the first by amp_scaling
+                # Scale by amp_scaling the amp of all even pulses after the
+                # preparation pulse ([1:] in the indexing below)
                 for pulse_dict in drive_calib_block.pulses[1:][0::2]:
                     pulse_dict['amplitude'] *= amp_scaling
-                # Scale amp of all odd pulses after the first by fixed_scaling
+                # Scale by fixed_scaling the amp of all odd pulses after the
+                # preparation pulse ([1:] in the indexing below)
                 for pulse_dict in drive_calib_block.pulses[1:][1::2]:
                     pulse_dict['amplitude'] *= fixed_scaling
             else:
@@ -3479,7 +3482,8 @@ class NPulseAmplitudeCalib(ErrorAmplificationCalibExperiment):
                 # Create a block from this list of pulses
                 drive_calib_block = self.block_from_ops(f'pulses_{qb}',
                                                         pulse_list)
-                # Divide amp of all pulses after the first by amp_scaling
+                # Divide by amp_scaling the amp of all pulses after the
+                # preparation pulse ([1:] in the indexing below)
                 for pulse_dict in drive_calib_block.pulses[1:]:
                     for param_name in sp2d:
                         values = sp2d[param_name][0]
