@@ -10885,9 +10885,9 @@ class DriveAmplitudeNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
                 for qbn in self.qb_names])
             if run_ana:
                 # NPulseAmplitudeCalibAnalysis has not been run. Run it here
-                print(f'NPulseAmplitudeCalibAnalysis was not run for {ts} '
-                      f'(amplitude scaling of {ideal_scalings[ii]}). '
-                      f'Running it now ... ')
+                log.info(f'NPulseAmplitudeCalibAnalysis was not run for {ts} '
+                         f'(amplitude scaling of {ideal_scalings[ii]}). '
+                         f'Running it now ... ')
                 a = NPulseAmplitudeCalibAnalysis(
                     t_start=ts, options_dict=self.options_dict)
                 for qbn in self.qb_names:
