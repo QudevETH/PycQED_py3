@@ -601,7 +601,10 @@ class BaseDataAnalysis(object):
             else:
                 if qbn is None:
                     qbn = list(reset_params['analysis_instructions'].keys())[0]
-                if len(reset_params['analysis_instructions'][qbn]) > 1:
+                if len(reset_params['analysis_instructions'][qbn]) == 0:
+                    # empty list, i.e. no reset steps
+                    return dict(preparation_type="wait")
+                elif len(reset_params['analysis_instructions'][qbn]) > 1:
                     log.warning(f'Reset params dictionary contains several'
                                 f' steps: {reset_params["steps"]}, '
                                 f'currently the analysis will consider'
