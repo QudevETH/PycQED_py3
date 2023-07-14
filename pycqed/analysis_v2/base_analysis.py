@@ -253,10 +253,17 @@ class BaseDataAnalysis(object):
 
             delegate_plotting = self.check_plotting_delegation()
             if not delegate_plotting:
+                # Store the current rcParams running in the kernel
+                from copy import deepcopy
+                kernel_rcParams = deepcopy(plt.rcParams)
+                # Update the rcParams to ensure nice plots
+                self.get_default_plot_params(set_pars=True)
                 self.prepare_plots()  # specify default plots
                 if not self.extract_only:
                     # make the plots
                     self.plot(key_list='auto')
+                # Reset the rcParams to the ones that were running in the kernel
+                plt.rcParams.update(kernel_rcParams)
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
