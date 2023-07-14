@@ -131,6 +131,9 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
     SSB second-order DRAG pulse with quadrature scaling factor and
     frequency detuning.
 
+    FIXME: A future version of this this class should be adapted to allow
+    crosstalk cancellation
+
     Args:
         See parent class for docstring.
         Additional parameter recognised by this class:
@@ -233,6 +236,9 @@ class SSB_DRAG_pulse_with_cancellation(SSB_DRAG_pulse):
     """
     SSB Drag pulse with copies with scaled amp. and offset phase on extra
     channels intended for interferometrically cancelling on-device crosstalk.
+
+    FIXME: This class should be generalized to allow crosstalk cancellation
+    for different drive pulse shapes (e.g., SSB_DRAG_pulse_cos).
 
     Args:
         name (str): Name of the pulse, used for referencing to other pulses in a
