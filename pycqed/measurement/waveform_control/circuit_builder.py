@@ -245,7 +245,7 @@ class CircuitBuilder:
                 reset_steps = {qb.name: deepcopy(qb.reset.steps()) for qb in qubits}
                 analysis_instructions = \
                     {qb.name: [qb.reset.submodules.get(s).get_analysis_instructions()
-                               for s in qb.reset.steps()]
+                               for s in qb.reset.steps() if s != "padding"]
                      for qb in qubits}
             except AttributeError as e:
                 log.error(f"Failed to retrieve reset"
