@@ -52,6 +52,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                                   awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
+                 auto_repetition_period=False,
                  callback_condition=lambda : True, **kw):
         """
         Initializes a QuantumExperiment.
@@ -225,6 +226,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                   'cz_pulse_name': self.cz_pulse_name,
                                   'data_type': data_type})
         self.waveform_viewer = None
+        self.auto_repetition_period = auto_repetition_period
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
         """
@@ -275,6 +277,15 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             self.mc_points = [self.mc_points[0], []]
 
         exception = None
+        # FIXME: currently called possibly before sequence is generated
+        #  (self.sequences could still be None at this point). The reason
+        #  is that the trigger repetition rate is added to the temporary values.
+        #  Alternatively the code could be put after _prepare_sequences
+        #  but then an additional temporary value context would be required just for
+        #  that.
+        self.resolve_repetition_period()
+
+
         with temporary_value(*self.temporary_values):
             # Perpare all involved qubits. If not available, prepare
             # all measure objects.
@@ -1001,6 +1012,27 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             'task_list_fields': odict({}),
             'sweeping_parameters': odict({}),
         }
+
+    def resolve_repetition_period(self, buffer=500e-9):
+        try:
+            if self.sequences and hasattr(self.sequences[0], "pulsar"):
+                # get master awg object
+                mawg = self.sequences[0].pulsar.find_instrument(
+                    self.sequences[0].pulsar.master_awg())
+                reset_configured = np.all(['parametric_flux' in
+                                           qb.reset.steps() for qb in
+                                           self.meas_objs])
+                if self.auto_repetition_period and reset_configured:
+                    min_rep_period = np.max([s.get_max_segment_duration()
+                                             for s in self.sequences])
+                    min_rep_period += buffer
+                    min_rep_period = np.ceil(min_rep_period / 1e-6) * 1e-6
+                    self.temporary_values.append((mawg.pulse_period, min_rep_period))
+                    print(f'Repetition period: {min_rep_period * 1e6:.1f} µs')
+        except Exception as e:
+            log.error(f"Failed to resolve repetition pulse period: {e}."
+                       " Pulse period will not be modified.")
+
 
 
 class NDimQuantumExperiment():
