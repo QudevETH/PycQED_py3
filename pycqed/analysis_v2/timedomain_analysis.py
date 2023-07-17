@@ -14294,7 +14294,8 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
         for task in self.get_param_value('task_list'):
             qbn = task['qb']
             # Find operation point(s) for each qubit
-            if 'pulse_length' and 'frequency' in self.mospm[qbn]:
+            if 'pulse_length' in self.mospm[qbn] and 'frequency' in \
+                    self.mospm[qbn]:
                 data = self.proc_data_dict['projected_data_dict'][qbn]['pf'][
                        :,:-3]
                 pulse_lengths = self.sp.get_values('pulse_length')
