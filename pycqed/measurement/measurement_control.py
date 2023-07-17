@@ -111,6 +111,16 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
+        self.add_parameter('program_only_on_change',
+                           label='Whether to reprogram AWGs',
+                           docstring='Programs AWGs only if the hard sweep '
+                                     'have changed from the last iteration to '
+                                     'speed up the measurements, '
+                                     'e.g. when soft averaging with '
+                                     'cyclic_soft_avg = False.',
+                           parameter_class=ManualParameter,
+                           vals=vals.Bool(),
+                           initial_value=False)
 
         self.add_parameter('plotting_max_pts',
                            label='Maximum number of live plotting points',
@@ -462,6 +472,7 @@ class MeasurementControl(Instrument):
         elif self.detector_function.detector_control == 'hard':
             self.get_measurement_preparetime()
             sweep_points = self.get_sweep_points()
+            last_val = {}
 
             while self.get_percdone() < 100:
                 start_idx = self.get_datawriting_start_idx()
@@ -475,6 +486,10 @@ class MeasurementControl(Instrument):
                     for i, sweep_function in enumerate(self.sweep_functions):
                         swf_sweep_points = sweep_points[:, i]
                         val = swf_sweep_points[start_idx]
+                        if self.program_only_on_change() and \
+                                last_val.get(i) == val:
+                            continue
+                        last_val[i] = val
                         # prepare in 2D sweeps is done in set_parameters (though not always
                         # for first upload). Therefore, a common checkpoint is used
                         # in the timer to collect upload times in a single place
