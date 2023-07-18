@@ -1645,7 +1645,7 @@ class Segment:
         """
         TODO docstring
         """
-        self.elements.append(pulse)
+        self.elements[element].append(pulse)
         for el_group in self._element_start_end_raw:
             if el_group[0] == element:
                 t_start_raw, t_end = self._element_start_end_raw[el_group]
