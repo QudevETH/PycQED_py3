@@ -946,9 +946,7 @@ class Segment:
                 chan = set(self.pulsar.get_trigger_group_channels(group))
                 awg_channels = awg_channels.union(chan)
 
-            # Calculate the tvals dictionary for the element
-            tvals = self.tvals(compensation_chan & awg_channels, element)
-
+            tvals = None
             for pulse in self.elements[element]:
                 # Find the end of the last pulse of the segment
                 t_end = max(t_end, pulse.algorithm_time() + pulse.length)
@@ -956,6 +954,12 @@ class Segment:
                 for c in pulse.masked_channels():
                     if c not in compensation_chan:
                         continue
+                    if c not in pulse_area:
+                        pulse_area[c] = [0, None]
+                    if pulse.is_net_zero:
+                        pulse_area[c][1] = element
+                        continue
+
                     group = self.pulsar.get_trigger_group(c)
                     element_start_time = self.get_element_start(element, group)
                     pulse_start = self.time2sample(
@@ -964,18 +968,16 @@ class Segment:
                         pulse.element_time(element_start_time) + pulse.length,
                         channel=c)
 
-                    if c in pulse_area:
-                        pulse_area[c][0] += pulse.pulse_area(
-                            c, tvals[c][pulse_start:pulse_end])
-                        # Overwrite this entry for all elements. The last
-                        # element on that channel will be the one that
-                        # is saved.
-                        pulse_area[c][1] = element
-                    else:
-                        pulse_area[c] = [
-                            pulse.pulse_area(
-                                c, tvals[c][pulse_start:pulse_end]), element
-                        ]
+                    # Calculate the tvals dictionary for the element
+                    if tvals is None:
+                        tvals = self.tvals(compensation_chan & awg_channels,
+                                           element)
+                    pulse_area[c][0] += pulse.pulse_area(
+                        c, tvals[c][pulse_start:pulse_end])
+                    # Overwrite this entry for all elements. The last
+                    # element on that channel will be the one that
+                    # is saved.
+                    pulse_area[c][1] = element
 
         # Add all compensation pulses to the last element after the last pulse
         # of the segment and for each element with a compensation pulse save
