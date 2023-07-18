@@ -112,6 +112,7 @@ class Segment:
             self._algo_start['search'] = None
         self.elements = odict()
         self.element_start_end = {}
+        self._element_start_end_raw = {}
         self.elements_on_awg = {}
         self.elements_on_channel = {}
         self.element_metadata = {}
@@ -1054,7 +1055,7 @@ class Segment:
             longest_pulse[(last_element,group)] = \
                     max(longest_pulse.get((last_element,group),0), total_length)
 
-            self.elements[last_element].append(pulse)
+            self.add_pulse_to_element(last_element, pulse)
 
         for (el, group) in longest_pulse:
             length_comp = longest_pulse[(el, group)]
@@ -1225,8 +1226,8 @@ class Segment:
 
                 # Add trigger element and pulse to seg.elements
                 if trig_pulse.element_name in self.elements:
-                    self.elements[trig_pulse.element_name].append(
-                        trig_pulse)
+                    self.add_pulse_to_element(trig_pulse.element_name,
+                                              trig_pulse)
                 else:
                     self.elements[trig_pulse.element_name] = [trig_pulse]
 
@@ -1640,6 +1641,23 @@ class Segment:
                           self.PHASE_ROUNDING_DIGITS) % 360.0,
                     self.PHASE_ROUNDING_DIGITS)
 
+    def add_pulse_to_element(self, element, pulse):
+        """
+        TODO docstring
+        """
+        self.elements.append(pulse)
+        for el_group in self._element_start_end_raw:
+            if el_group[0] == element:
+                t_start_raw, t_end = self._element_start_end_raw[el_group]
+                for ch in pulse.masked_channels():
+                    if self.pulsar.get_trigger_group(ch) == el_group[1]:
+                        break
+                else:
+                    continue
+                t_start_raw = min(pulse.algorithm_time(), t_start_raw)
+                t_end = max(pulse.algorithm_time() + pulse.length, t_end)
+                self._element_start_end_raw[el_group] = (t_start_raw, t_end)
+
     def element_start_length(self, element, trigger_group, t_start=np.inf):
         """
         Finds and saves the start and length of an element on an AWG
@@ -1651,14 +1669,21 @@ class Segment:
         # find element start, end and length
         t_end = -np.inf
 
-        for pulse in self.elements[element]:
-            for ch in pulse.masked_channels():
-                if self.pulsar.get_trigger_group(ch) == trigger_group:
-                    break
-            else:
-                continue
-            t_start = min(pulse.algorithm_time(), t_start)
-            t_end = max(pulse.algorithm_time() + pulse.length, t_end)
+        el_group = (element, trigger_group)
+        if el_group not in self._element_start_end_raw:
+            t_start_raw = np.inf
+            for pulse in self.elements[element]:
+                for ch in pulse.masked_channels():
+                    if self.pulsar.get_trigger_group(ch) == trigger_group:
+                        break
+                else:
+                    continue
+                t_start_raw = min(pulse.algorithm_time(), t_start_raw)
+                t_end = max(pulse.algorithm_time() + pulse.length, t_end)
+                self._element_start_end_raw[el_group] = (t_start_raw, t_end)
+        else:
+            t_start_raw, t_end = self._element_start_end_raw[el_group]
+        t_start = min(t_start, t_start_raw)
 
         # if element is not on the awg provided, the function
         # shall return None. This is useful for
