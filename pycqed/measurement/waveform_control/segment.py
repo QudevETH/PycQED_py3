@@ -101,6 +101,7 @@ class Segment:
         self.pulsar = ps.Pulsar.get_instance()
         self.unresolved_pulses = []
         self.resolved_pulses = []
+        self.destroyed = False
         self.extra_pulses = []  # trigger and charge compensation pulses
         self.previous_pulse = None
         self._init_end_name = None  # to detect end of init block in self.add
@@ -269,6 +270,11 @@ class Segment:
         :param store_segment_length_timer: (bool, default: True) whether
             the segment length should be stored in the segment's Timer object
         """
+        if self.destroyed:
+            raise Exception(
+                f'The unresolved_pulses list of segment {self.name} has been '
+                'destroyed in a previous resolution in fast mode. The segment '
+                'cannot be resolved again.')
         self._check_acquisition_elements()
         self.join_or_split_elements()
         self.resolve_timing()
@@ -304,6 +310,8 @@ class Segment:
 
     def join_or_split_elements(self):
         self.resolved_pulses = []
+        if self.fast_mode:
+            self.destroyed = True
         default_ese_element = f'default_ese_{self.name}'
         index = 1
         for p in self.unresolved_pulses:
@@ -331,15 +339,21 @@ class Segment:
 
             # add the pulses as default pulse if it has a default channel or
             # if it is not part of any channel (i.e. only used as a flag)
+            p_def = None
+            ch_mask_def = p.pulse_obj.channel_mask | (channels - chs_def)
             if len(chs_def) != 0 or \
-                len(chs_def) == 0 and len(chs_ese) == 0 and len(chs_split) == 0:
-                p_def = deepcopy(p)
-                channel_mask = channels - chs_def
-                p_def.pulse_obj.channel_mask |= channel_mask
+                    len(chs_def) == 0 and len(chs_ese) == 0 and len(chs_split) == 0:
+                if self.fast_mode:
+                    p_def = p
+                else:
+                    p_def = deepcopy(p)
                 self.resolved_pulses.append(p_def)
 
             if len(chs_ese) != 0:
-                p_ese = deepcopy(p)
+                if self.fast_mode and len(chs_def) + len(chs_split) == 0:
+                    p_ese = p
+                else:
+                    p_ese = deepcopy(p)
                 channel_mask = channels - chs_ese
                 p_ese.pulse_obj.channel_mask |= channel_mask
 
@@ -393,6 +407,9 @@ class Segment:
                     log.warning('Split pulses cannot use codewords, '
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(list(channels))}')
+
+            if p_def:
+                p_def.pulse_obj.channel_mask = ch_mask_def
 
     def resolve_timing(self, resolve_block_align=True):
         """
