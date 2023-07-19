@@ -11669,19 +11669,18 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
                                 max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
                     )
 
-    def get_leakage_best_val(self, task, minimize=True,
-                             save_fig=True, show_fig=True, fig=None,
+    def get_leakage_best_val(self, qbH_name, qbL_name, minimize=True,
+                             save_fig=True, show_fig=False, fig=None,
                              xtransform=None, xlabel=None, colors=None):
 
         if colors is None:
             colors = ['C0', 'C1']
-        qbH_name, qbL_name = self._get_qbH_qbL(task)
         data = self.proc_data_dict['projected_data_dict'][qbH_name][
                    'pf'][0, :-3]
         x = self.sp.get_sweep_params_property('values',
                                               dimension=0).copy()
         if minimize == 'auto':
-            minimize = data[len(x) // 2] < data[0]
+            minimize = data[len(data) // 2] < (data[0] + data[-1])/2
         if minimize:
             a = 100
             c = 0
@@ -11700,7 +11699,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
         res = model.fit(data, x=x, a=a, c=c, b=np.mean(x))
         best_val = res.best_values['b'] / fact
         if fig is None:
-            fig, ax = plt.subplots(1, figsize=(5, 4))
+            fig, ax = plt.subplots(1)
         ax = fig.get_axes()[0]
         ax.plot(x / fact, data, 'o', label='Meas.', color=colors[0])
         x_resampled = np.linspace(x[0], x[-1], 100)
