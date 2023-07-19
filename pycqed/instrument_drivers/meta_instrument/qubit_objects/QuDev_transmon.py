@@ -2432,24 +2432,24 @@ class QuDev_transmon(MeasurementObject):
         Returns:
 
         """
-        fit_paras = deepcopy(self.fit_ge_freq_from_flux_pulse_amp())
+        vfc = self.fit_ge_freq_from_dc_offset()
         if freqs is not None:
-            amplitudes = fit_mods.Qubit_freq_to_dac(freqs, **fit_paras)
+            amplitudes = fit_mods.Qubit_freq_to_dac_res(freqs, **vfc)
 
         amplitudes = np.array(amplitudes)
 
         if cz_pulse_name is None:
             cz_pulse_name = 'FP ' + self.name
 
-        if np.any((amplitudes > abs(fit_paras['dac_sweet_spot']))):
-            amplitudes -= fit_paras['V_per_phi0']
-        elif np.any((amplitudes < -abs(fit_paras['dac_sweet_spot']))):
-            amplitudes += fit_paras['V_per_phi0']
+        if np.any((amplitudes > abs(vfc['dac_sweet_spot']))):
+            amplitudes -= vfc['V_per_phi0']
+        elif np.any((amplitudes < -abs(vfc['dac_sweet_spot']))):
+            amplitudes += vfc['V_per_phi0']
 
-        if np.any((amplitudes > abs(fit_paras['V_per_phi0']) / 2)):
-            amplitudes -= fit_paras['V_per_phi0']
-        elif np.any((amplitudes < -abs(fit_paras['V_per_phi0']) / 2)):
-            amplitudes += fit_paras['V_per_phi0']
+        if np.any((amplitudes > abs(vfc['V_per_phi0']) / 2)):
+            amplitudes -= vfc['V_per_phi0']
+        elif np.any((amplitudes < -abs(vfc['V_per_phi0']) / 2)):
+            amplitudes += vfc['V_per_phi0']
 
         if np.any(np.isnan(amplitudes)):
             raise ValueError('Specified frequencies resulted in nan amplitude. '
