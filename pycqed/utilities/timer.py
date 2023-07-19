@@ -355,20 +355,23 @@ class Timer(OrderedDict):
                                  f"implemented")
         ckpt_pairs = []
         for ckpt in ckpts:
-            if ckpt.endswith(self.name_separator + self.NAME_CKPT_START):
-                ckpt = ckpt[:-len(
-                self.name_separator + self.NAME_CKPT_START)]
-                ckpt_pairs.append(self.find_start_end(ckpt))
-            elif ckpt.endswith(self.name_separator + self.NAME_CKPT_END):
-                ckpt = ckpt[:-len(
-                    self.name_separator + self.NAME_CKPT_END)]
-                ckpt_pairs.append(self.find_start_end(ckpt))
-            else:
-                # checkpoint not part of "start" or "end" binome,
-                # will return twice same checkpoint in pair
-                ckpt_pairs.append(self.find_start_end(ckpt,
-                                                      start_suffix="",
-                                                      end_suffix=""))
+            try:
+                if ckpt.endswith(self.name_separator + self.NAME_CKPT_START):
+                    ckpt = ckpt[:-len(
+                    self.name_separator + self.NAME_CKPT_START)]
+                    ckpt_pairs.append(self.find_start_end(ckpt))
+                elif ckpt.endswith(self.name_separator + self.NAME_CKPT_END):
+                    ckpt = ckpt[:-len(
+                        self.name_separator + self.NAME_CKPT_END)]
+                    ckpt_pairs.append(self.find_start_end(ckpt))
+                else:
+                    # checkpoint not part of "start" or "end" binome,
+                    # will return twice same checkpoint in pair
+                    ckpt_pairs.append(self.find_start_end(ckpt,
+                                                          start_suffix="",
+                                                          end_suffix=""))
+            except Exception as e:
+                log.warning(e)
 
         all_start_and_durations = {}
         for i, (s, e) in enumerate(ckpt_pairs):
