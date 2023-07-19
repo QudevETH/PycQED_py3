@@ -13,7 +13,7 @@ from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
-from pycqed.utilities.timer import WatchdogTimer, WatchdogException
+from pycqed.utilities.timer import WatchdogTimer, WatchdogException, Timer
 
 from .zi_pulsar_mixin import ZIPulsarMixin
 
@@ -575,6 +575,7 @@ class Pulsar(Instrument):
 
         super().__init__(name)
 
+        self.timer = None
         self._sequence_cache = dict()
         self.reset_sequence_cache()
 
@@ -1133,6 +1134,7 @@ class Pulsar(Instrument):
 
         for awg in used_awg_interfaces:
             awg.stop()
+        self.timer = None
 
     def sigout_on(self, ch, on:bool=True):
         """Turn channel outputs on or off."""
@@ -1149,6 +1151,9 @@ class Pulsar(Instrument):
             awgs: List of AWGs names, or ``"all"``
         """
 
+        if self.timer is None:
+            self.timer = Timer(self.name)
+            sequence.timer.children.update({self.name: self.timer})
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
@@ -1159,6 +1164,7 @@ class Pulsar(Instrument):
             self.reset_sequence_cache()
             self._program_awgs(sequence, awgs)
 
+    @Timer()
     def _program_awgs(self, sequence, awgs:Union[List[str], str]='all'):
 
         # Stores the last uploaded sequence for easy access and plotting
