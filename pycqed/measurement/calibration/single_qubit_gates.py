@@ -172,14 +172,15 @@ class T1FrequencySweep(CalibBuilder):
             task['sweep_points'] = sweep_points
         return task_list
 
-    def t1_flux_pulse_block(self, qb, sweep_points,
-                            prepend_pulse_dicts=None, **kw):
+    def t1_flux_pulse_block(self, qb, sweep_points, prepend_pulse_dicts=None,
+                            op_code=None, **kw):
         """
         Function that constructs the experiment block for one qubit
         :param qb: name or list with the name of the qubit
             to measure. This function expect only one qubit to measure!
         :param sweep_points: SweepPoints class instance
         :param prepend_pulse_dicts: dictionary of pulses to prepend
+        :param op_code: optional op_code for the flux pulse
         :param kw: keyword arguments
             spectator_op_codes: list of op_codes for spectator qubits
         :return: precompiled block
@@ -205,7 +206,8 @@ class T1FrequencySweep(CalibBuilder):
 
         pulse_modifs = {
             'all': {'element_name': 'flux_pulse', 'pulse_delay': 0}}
-        fp = self.block_from_ops('flux', [f'FP {qubit_name}'],
+        op_code = f'FP {qubit_name}' if op_code is None else op_code
+        fp = self.block_from_ops('flux', [op_code],
                                  pulse_modifs=pulse_modifs)
         for k in hard_sweep_dict:
             for p in fp.pulses:
