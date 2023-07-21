@@ -487,7 +487,7 @@ class Timer(OrderedDict):
                     ax.annotate(
                         self._human_delta(total_durations[label],
                                           milliseconds=milliseconds) + " ",
-                        (1.01, i), xycoords=tform)
+                        (1.01, i), xycoords=tform, verticalalignment='center')
                 y_ticklabels.append(label)
 
             elif type == "timeline":
