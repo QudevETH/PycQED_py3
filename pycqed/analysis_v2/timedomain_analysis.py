@@ -9622,7 +9622,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         for t, v in timers_dicts.items():
             self.timers[t] = tm_mod.Timer(name=t, **v)
 
-        self.nr_averages = self._extract_nr_averages()
+        self._extract_nr_averages_shots()
 
         # Extract and build raw measurement timer
         self.timers['BareMeasurement'] = self.bare_measurement_timer(
@@ -9728,7 +9728,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         return tm
 
-    def _extract_nr_averages(self):
+    def _extract_nr_averages_shots(self):
         try:
             sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
             if sa is not None and sa != 1:
@@ -9744,21 +9744,28 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # in case some of the attributes do not exist
             pass
         #TODO Currently does not support soft averages or soft repetitions
+        self.nr_averages = self.get_param_value(
+            'nr_averages', self._extract_param_from_det('nr_averages'))
+        if self.nr_averages is None:
+            raise ValueError('Could not extract nr_averages from hdf file.'
+                             'Please specify "nr_averages" in options_dict.')
+        self.nr_shots = self.get_param_value(
+            'nr_shots', self._extract_param_from_det('nr_shots', 1))
+
+    def _extract_param_from_det(self, param, default=None):
         det_metadata = self.metadata.get("Detector Metadata", None)
-        nr_averages = self.get_param_value('nr_averages', None)
-        if det_metadata is not None and nr_averages is None:
+        val = None
+        if det_metadata is not None:
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
-            nr_averages = det_metadata.get('nr_averages',
-                                           det_metadata.get('nr_shots', None))
-            if nr_averages is None:
+            val = det_metadata.get(param, None)
+            if val is None:
                 det = list(det_metadata.get('detectors', {}).values())[0]
-                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
-        if nr_averages is None:
-            raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
-                             'Please specify "nr_averages" in options_dict.')
-        return nr_averages
+                val = det.get(param, None)
+        if val is None:
+            val = default
+        return val
 
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
                               count_nan_measurements=False):
