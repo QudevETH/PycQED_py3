@@ -77,7 +77,8 @@ class Sequence:
     def generate_waveforms_sequences(self, awgs=None,
                                      get_channel_hashes=False,
                                      resolve_segments=None,
-                                     trigger_groups=None):
+                                     trigger_groups=None,
+                                     awg_sequences=None):
         """
         Calculates and returns 
             * waveforms: a dictionary of waveforms used in the sequence,
@@ -158,8 +159,11 @@ class Sequence:
                         sequences[awg][uelname].setdefault(cw, {})
                         for ch in seg.get_element_channels(elname,
                                                            trigger_group=group):
-                            h = seg.calculate_hash(elname, cw, ch)
                             chid = self.pulsar.get(f'{ch}_id')
+                            if awg_sequences:
+                                h = awg_sequences[awg][uelname][cw][chid]
+                            else:
+                                h = seg.calculate_hash(elname, cw, ch)
                             sequences[awg][uelname][cw][chid] = h
                             if get_channel_hashes:
                                 if ch not in channel_hashes:
