@@ -580,7 +580,7 @@ class Timer(OrderedDict):
         Takes a timedelta object and formats it for humans.
         :param tdelta: The timedelta object.
         :param milliseconds (bool, str): "auto" will display ms in case
-        the time delta is < 1s.
+        the time delta is < 10s.
         :param return_empty (bool): If True, returns a label even if
         the time delta is 0. Defaults to False.
         :return: The human formatted timedelta
@@ -592,6 +592,9 @@ class Timer(OrderedDict):
         d = dict(days=tdelta.days)
         d['hrs'], rem = divmod(tdelta.seconds, 3600)
         d['min'], d['sec'] = divmod(rem, 60)
+
+        if milliseconds == 'auto':
+            milliseconds = tdelta < dt.timedelta(seconds=10)
         if milliseconds:
             d['msec'] = int(np.round(tdelta.microseconds * 1e-3))
         else:
@@ -600,15 +603,15 @@ class Timer(OrderedDict):
 
         if d['days'] != 0:
             fmt = '{days} day(s) {hrs:02}:{min:02}'
-        elif (d['hrs'] == 0 and
-              d['min'] == 0 and
-              d['sec'] == 0 and milliseconds == "auto"):
-            fmt = '{msec:03} ms'
-        else:
+        elif not d['msec']:
             fmt = '{hrs:02}:{min:02}:{sec:02}'
+        elif d['hrs'] + d['min'] > 0:
+            fmt = '{hrs:02}:{min:02}:{sec:02}.{msec:03}'
+        elif d['sec'] > 0:
+            fmt = '{sec:01}.{msec:03} s'
+        else:
+            fmt = '{msec:03} ms'
 
-        if milliseconds and milliseconds != "auto":
-            fmt += '.{msec:03}'
         return fmt.format(**d)
 
 
