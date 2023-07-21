@@ -187,7 +187,7 @@ class Preselection(ResetScheme):
         op_dict = self.instr_ref.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
-        preselection_ro = op_dict[f'RO {self.instr_ref.name}']
+        preselection_ro = deepcopy(op_dict[f'RO {self.instr_ref.name}'])
 
         # update pulse parameters with initialization-specific parameters
         preselection_ro.update(self.get_init_specific_params()['RO'])
