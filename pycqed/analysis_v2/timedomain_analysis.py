@@ -9793,7 +9793,14 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # No scaling needed, since all hsp are contained in one hardware run
             n_hsp = 1
         else:
+            # Note that the number of shots is already included in n_hsp
             n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+            prep_params = self.metadata['preparation_params']
+            if 'active' in prep_params['preparation_type']:
+                # If reset: n_hsp already includes the number of shots
+                # and the final readout is interleaved with n_reset readouts
+                n_resets = prep_params['reset_reps']
+                n_hsp = n_hsp // (1 + n_resets)
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]
@@ -9807,7 +9814,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
                                            nr_averages, perc_meas)
 
-    def bare_experiment_time(self, nr_averages=None):
+    def bare_experiment_time(self, nr_averages=None, nr_shots=None):
         """
         Computes the bare experiment time from the segments durations,
         which are extracted from the segment timers.
@@ -9815,9 +9822,10 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             for now this function always accounts for the full experiment time
             even if the measurement was interrupted.
         Args:
-            nr_averages: Number of averages for each segment.
-                Defaults to self.nr_averages, which is extracted by
-                self._extract_nr_averages()
+            nr_averages: Number of averages for each segment. Defaults to
+                self.nr_averages
+            nr_shots: Number of shots for each segment. Defaults to
+                self.nr_shots
 
         Returns:
             Total experiment time (in seconds)
@@ -9825,6 +9833,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         if nr_averages is None:
             nr_averages = self.nr_averages
+        if nr_shots is None:
+            nr_shots = self.nr_shots
         try:
             # duration of segments are stored with the .dt checkpoint end
             ckpts = self.timers['Sequences'].find_keys('.dt',
@@ -9838,7 +9848,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             self.proc_data_dict["segment_durations"] = \
                 {ck:d for ck, d in zip(ckpts, segment_durations)}
 
-            tot_secs = np.sum(segment_durations) * nr_averages
+            tot_secs = np.sum(segment_durations) * nr_averages * nr_shots
             return tot_secs
         except Exception as e:
             log.error(f'Could not compute bare experiment time : {e}.'
