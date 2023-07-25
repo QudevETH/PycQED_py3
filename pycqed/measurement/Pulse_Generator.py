@@ -230,7 +230,7 @@ def T1_CBox(n_waves=70, time_step=2000, amp180=4000):
 
     # Below is data saving
     AWG.stop()
-    filename = hdf5_data.Data(name="T1")
+    filename = hdf5.Data(name="T1")
 
     if "Experimental Data" in filename:
         grp = filename["Experimental Data"]
