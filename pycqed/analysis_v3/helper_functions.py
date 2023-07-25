@@ -606,8 +606,14 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
 
     h5mode = get_param('h5mode', data_dict, default_value='r', **params)
     data_file = a_tools.open_hdf_file(folder=folder, mode=h5mode, **params)
-    config_station = setman.get_station_from_file(
-        folder=folder, param_path=params_dict.values(), **params)
+    try:
+        config_station = setman.get_station_from_file(
+            folder=folder, param_path=params_dict.values(), **params)
+    except KeyError:
+        # Some hdf files only contain analysis information without instrument
+        # settings.
+        log.warning(f'No instrument settings found in file {folder}.')
+        config_station = None
 
     try:
         for save_par, file_par in params_dict.items():
