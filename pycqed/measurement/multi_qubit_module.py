@@ -333,11 +333,17 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
     elif df_name == 'inp_avg_det':
         return det.MultiPollDetector([
             det.AveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
+                acq_dev=uhf_instances[uhf],
+                AWG=(AWG if enforce_pulsar_restart
+                     else uhf_instances[uhf].get_awg_control_object()[0]),
+                prepare_and_finish_pulsar=(not enforce_pulsar_restart),
+                nr_averages=nr_averages,
                 acquisition_length=max_int_len[uhf],
                 channels=inp_channels[uhf],
                 **kw)
-            for uhf in uhfs])
+            for uhf in uhfs],
+            AWG=(trigger_dev if len(uhfs) > 1 and not enforce_pulsar_restart
+                 else None))
     elif df_name == 'int_corr_det':
         return det.MultiPollDetector([
             det.UHFQC_correlation_detector(
