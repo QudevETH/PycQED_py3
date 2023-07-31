@@ -503,7 +503,11 @@ class CircuitBuilder:
         block = Block(block_name, pulses, copy_pulses=False)
         block.set_end_after_all_pulses()
         blocks = []
-        if len(reset_params) != 0:
+        # if reset parameters exist and location specifies reset should be done
+        # at start of sequence (note: is this really the best way to encode where
+        # to do the reset? shall we make this 'per_qubit')?)
+        if len(reset_params) != 0 and \
+                reset_params.get('location', 'start') == 'start':
             blocks.append(self.reset(**reset_params))
         if prepend_block is not None:
             blocks.append(prepend_block)
@@ -616,6 +620,7 @@ class CircuitBuilder:
         return self.sequential_blocks(block_name, prep)
 
     def mux_readout(self, qb_names='all', element_name='RO', block_name="Readout",
+                    reset_params=None,
                     **pulse_pars):
         _, qb_names = self.get_qubits(qb_names)
         ro_pulses = []
@@ -630,7 +635,18 @@ class CircuitBuilder:
             ro_pulses.append(ro_pulse)
         block = Block(block_name, ro_pulses, copy_pulses=False)
         block.set_end_after_all_pulses()
-        return block
+        if reset_params is None:
+            reset_params = self.get_reset_params(qb_names)
+
+        if reset_params.get('location', 'end') == 'end':
+            if len(reset_params) != 0:
+                return self.sequential_blocks(
+                    f"{block_name}_and_reset",
+                    [block, self.reset(**reset_params)])
+            else:
+                return block
+        else:
+            return block
 
     def Z_gate(self, theta=0, qb_names='all'):
 
