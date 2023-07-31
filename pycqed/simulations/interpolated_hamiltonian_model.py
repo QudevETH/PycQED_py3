@@ -54,7 +54,7 @@ class InterpolatedHamiltonianModel:
             flux=self._flux, transition=['ge', 'ef'])
 
     def __call__(self, flux=None, bias=None, amplitude=None,
-                 transition=('ge')):
+                 transition=('ge',)):
         """Compute transition frequencies at the specified flux-bias-amplitude
         points using interpolation.
 
