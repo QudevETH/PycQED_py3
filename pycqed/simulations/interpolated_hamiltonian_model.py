@@ -81,7 +81,8 @@ class InterpolatedHamiltonianModel:
                 flux_amplitude_bias_ratio saved in the qubit is None.
 
         Returns:
-            array: Array containing the computed frequencies.
+            list: List containing the computed frequencies for each transition
+                (or list of arrays if flux, bias or amplitude are arrays).
         """
 
         flux_amplitude_bias_ratio = self._qb.flux_amplitude_bias_ratio()
