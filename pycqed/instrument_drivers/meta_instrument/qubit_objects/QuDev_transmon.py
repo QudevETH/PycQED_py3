@@ -616,7 +616,10 @@ class QuDev_transmon(MeasurementObject):
                 "'transmon_res' are implemented.")
         if update:
             for t, f in zip(transition, freqs):
-                self.parameters[f'{t}_freq'](f)
+                if f'{t}_freq' in self.parameters:
+                    self.parameters[f'{t}_freq'](f)
+                else:
+                    log.warning(f'Cannot set the frequency of transition {t}!')
         if return_list:
             return freqs
         else:
