@@ -8,7 +8,7 @@ import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
 
 from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
-from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
+from .zi_pulsar_mixin import ZIPulsarMixin
 from .zi_pulsar_mixin import ZIGeneratorModule
 from .pulsar import PulsarAWGInterface
 
@@ -29,8 +29,7 @@ except Exception:
 log = logging.getLogger(__name__)
 
 
-class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
-                                ZIMultiCoreCompilerMixin):
+class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI SHFSG and SHFQC signal generator module support for the Pulsar class.
 
     Supports :class:`pycqed.measurement.waveform_control.segment.Segment`
@@ -66,11 +65,18 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._init_mcc()
         self._sgchannel_sine_enable = [False] * len(self.awg.sgchannels)
         """Determines the sgchannels for which the sine generator is turned on
         (off) in :meth:`start` (:meth:`stop`).
         """
+
+        # Set up multi-core compiler
+        self.find_multi_core_compiler()
+
+        self.awg_mcc = self.awg
+        self.awg_mcc_generators = list()
+        for sgchannel in self.awg_mcc.sgchannels:
+            self.awg_mcc_generators.append(sgchannel.awg)
 
         # Each AWG channel corresponds to an SHF generator channel.
         self.awg_modules = []
@@ -82,9 +88,6 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
             )
 
             self.awg_modules.append(channel)
-
-    def _get_awgs_mcc(self) -> list:
-        return [sgc.awg for sgc in self.awg.sgchannels]
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
@@ -382,16 +385,6 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin,
                         'supported by pulsar. Cannot retrieve amplitude.')
         return g
 
-    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
-        # This method is needed because 'finalize_upload_after_mcc' method in
-        # 'MultiCoreCompilerQudevZI' class calls 'upload_waveforms' method
-        # from device interfaces instead of from channel interfaces.
-        self.awg_modules[awg_nr].upload_waveforms(
-            wave_idx=wave_idx,
-            waveforms=waveforms,
-            wave_hashes=wave_hashes
-        )
-
     def is_channel_pair(
             self,
             cname1: str,
@@ -656,12 +649,18 @@ class SHFGeneratorModule(ZIGeneratorModule):
         waveforms = zhinst.toolkit.waveform.Waveforms()
         waveforms.assign_waveform(wave_idx, a1, a2)
 
-        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
-            # Parallel seqc compilation is used, which must take place before
-            # waveform upload. Waveforms are added to self.wfms_to_upload and
-            # will be uploaded to device in pulsar._program_awgs.
-            self._awg_interface.wfms_to_upload[(awg_nr, wave_idx)] = \
-                (waveforms, wave_hashes)
+        if self.pulsar.use_mcc() and self.multi_core_compiler:
+            # Waveforms are added to mcc.post_sequencer_code_upload and will
+            # be uploaded to device in pulsar._program_awgs after multi-core
+            # compiler is executed.
+            upload_info = (
+                self.upload_waveforms,
+                {"wave_idx": wave_idx,
+                 "waveforms": waveforms,
+                 "wave_hashes": wave_hashes}
+            )
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name].append(upload_info)
         else:
             self.upload_waveforms(wave_idx, waveforms, wave_hashes)
 

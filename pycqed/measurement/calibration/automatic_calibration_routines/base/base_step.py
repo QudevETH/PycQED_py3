@@ -41,7 +41,9 @@ class Step:
                 the step.
             settings_user (dict): A dictionary from the user to update the
                 configuration parameters. The structure of the dictionary must
-                be compatible with that of a general settings dictionary.
+                be compatible with that of a general settings dictionary. See
+                docstring of parse_settings() of Step class for information on
+                how settings are passed to the routines and the QuantumExperiment.
 
         Keyword args:
             Shouldn't be any, this is here for backwards compatibility.
@@ -334,7 +336,8 @@ class Step:
     def parse_settings(self, requested_kwargs):
         """
         Resolves the keyword arguments from get_requested_settings to calls
-        within the parameter dictionary.
+        within the parameter dictionary. This routine also adds keyword
+        arguments in qe_kwards passed in via the routine or via settings files.
 
         Args:
             requested_kwargs (dict): A dictionary containing the names and
@@ -356,6 +359,7 @@ class Step:
         kwargs['analyze'] = False
         kwargs['qubits'] = self.qubits
         kwargs['experiment_name'] = self.step_label
+        kwargs.update(self.get_param_value('qe_kwargs', default={}))
         return kwargs
 
     @property

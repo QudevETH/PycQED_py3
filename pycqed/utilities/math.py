@@ -85,3 +85,40 @@ def dbm_to_vp(dbm, z0=50):
     pwatt = 1e-3 * 10**(dbm/10)
     vrms = np.sqrt(pwatt * z0)
     return vrms * np.sqrt(2)
+
+
+def kron(*args):
+        """
+        Compute the Kronecker product of multiple matrices or vectors.
+
+        Args:
+            *args: Variable number of input matrices.
+
+        Returns:
+            numpy.ndarray: The Kronecker product of the input matrices.
+
+        Example:
+            A = np.array([[1, 2], [3, 4]])
+            B = np.array([[5, 6], [7, 8]])
+            C = np.array([[9, 10], [11, 12]])
+
+            result = kronecker(A, B, C)
+
+        The Kronecker product of multiple matrices is obtained by taking the tensor product
+        of their vector spaces. If A, B, C, ..., are matrices with dimensions (m x n), (p x q),
+        (r x s), ..., respectively, the resulting matrix will have dimensions (m * p * r * ... x
+        n * q * s * ...). The basis elements of the resulting matrix can be represented using
+        braket notation as:
+
+        |aᵢ⟩ ⊗ |bⱼ⟩ ⊗ |cₖ⟩ ⊗ ...
+
+        where |aᵢ⟩ represents the i-th basis element of matrix A, |bⱼ⟩ represents the j-th
+        basis element of matrix B, |cₖ⟩ represents the k-th basis element of matrix C, and so on.
+
+        The resulting matrix is obtained by taking the Kronecker product of each combination
+        of basis elements from the input matrices in the given order.
+        """
+        result = args[0]
+        for i in range(1, len(args)):
+            result = np.kron(result, args[i])
+        return result

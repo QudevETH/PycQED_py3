@@ -179,7 +179,7 @@ class QuDev_transmon(MeasurementObject):
                                  'amplitude fit',
                            initial_value={}, parameter_class=ManualParameter)
         self.add_parameter('fit_ge_freq_from_dc_offset',
-                           label='Parameters for frequency vs flux dc '
+                           label='Parameters for frequency vs flux DC '
                                  'offset fit',
                            initial_value={}, parameter_class=ManualParameter)
         self.add_parameter(
@@ -385,9 +385,9 @@ class QuDev_transmon(MeasurementObject):
                                  vals=vals.Numbers(0),
                                  docstring="Used for NZTransitionControlledPulse")
 
-        # dc flux parameters
+        # DC flux parameters
         self.add_parameter('dc_flux_parameter', initial_value=None,
-                           label='QCoDeS parameter to sweep the dc flux',
+                           label='QCoDeS parameter to sweep the DC flux',
                            parameter_class=ManualParameter)
         self.add_parameter('flux_parking', initial_value=0,
                            label='Flux (in units of phi0) at the parking '
@@ -534,9 +534,8 @@ class QuDev_transmon(MeasurementObject):
             which the  model was measured. Otherwise, it mandatory and is
             interpreted as voltage of the DC source.
         :param amplitude: (float, default: 0) flux pulse amplitude
-        :param transition: (str, default: 'ge') the transition whose
-            frequency should be calculated. Currently, only 'ge' is
-            implemented.
+        :param transition: (str or list of str, default: 'ge') the transition
+            or transitions whose frequency should be calculated.
         :param model: (str, default: 'transmon_res') the model to use.
             'approx': Qubit_dac_to_freq with parameters from
                 the qubit parameter fit_ge_freq_from_flux_pulse_amp.
@@ -555,14 +554,25 @@ class QuDev_transmon(MeasurementObject):
             the flux value from self.flux_parking() is used.
         :param update: (bool, default False) whether the result should be
             stored as {transition}_freq parameter of the qubit object.
-        :return: calculated ge transition frequency
+        :return: calculated transition frequency/frequencies
+
+        TODO: Add feature to automatically make use of
+              `InterpolatedHamiltonianModel` to speed up the computation in
+              certain use cases.
         """
 
-        if transition not in ['ge', 'ef'] or (transition == 'ef' and
-                                              model not in ['transmon_res']):
-            raise NotImplementedError(
-                f'calculate_frequency: Currently, transition {transition} is '
-                f'not implemented for model {model}.')
+        if isinstance(transition, (list, tuple)):
+            return_list = True
+        else:
+            transition = [transition]
+            return_list = False
+
+        for t in transition:
+            if t not in ['ge', 'ef', 'gf']\
+                    or (t != 'ge' and model not in ['transmon_res']):
+                raise NotImplementedError(
+                    f'calculate_frequency: Currently, transition {t} '
+                    f'is not implemented for model {model}.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
         if flux_amplitude_bias_ratio is None:
             if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
@@ -582,9 +592,9 @@ class QuDev_transmon(MeasurementObject):
                 amplitude = self.calculate_voltage_from_flux(flux, model)
 
         if model == 'approx':
-            freq = fit_mods.Qubit_dac_to_freq(
+            freqs = [fit_mods.Qubit_dac_to_freq(
                 amplitude + (0 if bias is None or np.all(bias == 0) else
-                             bias * flux_amplitude_bias_ratio), **vfc)
+                             bias * flux_amplitude_bias_ratio), **vfc)]
         elif model == 'transmon':
             kw = deepcopy(vfc)
             kw.pop('coupling', None)
@@ -592,21 +602,31 @@ class QuDev_transmon(MeasurementObject):
             #  this is not a very descriptive name. Should it be changed to
             #  'bare_ro_res_freq'? This is relevant to the device database.
             kw.pop('fr', None)
-            freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+            freqs = [fit_mods.Qubit_dac_to_freq_precise(bias + (
                 0 if np.all(amplitude == 0)
-                else amplitude / flux_amplitude_bias_ratio), **kw)
+                else amplitude / flux_amplitude_bias_ratio), **kw)]
         elif model == 'transmon_res':
-            freq = fit_mods.Qubit_dac_to_freq_res(
+            freqs = fit_mods.Qubit_dac_to_freq_res(
                 bias + (0 if np.all(amplitude == 0)
                         else amplitude / flux_amplitude_bias_ratio),
-                return_ef=True, **vfc)[0 if transition == 'ge' else 1]
+                return_ef=True, **vfc)
+            freqs = [
+                {'ge': freqs[0], 'ef': freqs[1], 'gf': freqs[0]+freqs[1]}[t]
+                for t in transition]
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx', 'transmon', and"
                 "'transmon_res' are implemented.")
         if update:
-            self.parameters[f'{transition}_freq'](freq)
-        return freq
+            for t, f in zip(transition, freqs):
+                if f'{t}_freq' in self.parameters:
+                    self.parameters[f'{t}_freq'](f)
+                else:
+                    log.warning(f'Cannot set the frequency of transition {t}!')
+        if return_list:
+            return freqs
+        else:
+            return freqs[0]
 
     def calculate_flux_voltage(self, frequency=None, bias=None,
                                amplitude=None, transition='ge',
@@ -1308,49 +1328,6 @@ class QuDev_transmon(MeasurementObject):
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
                                    TwoD=(mode == '2D'))
 
-    def measure_transients(self, states=('g', 'e'), upload=True,
-                           analyze=True, acq_length=4096/1.8e9,
-                           prep_params=None, exp_metadata=None, **kw):
-        """
-        If the resulting transients will be used to caclulate the optimal
-        weight functions, then it is important that the UHFQC iavg_delay and
-        wint_delay are calibrated such that the weights and traces are
-        aligned: iavg_delay = 2*wint_delay.
-
-        """
-        MC = self.instr_mc.get_instr()
-        name_extra = kw.get('name_extra', None)
-
-        if prep_params is None:
-            prep_params = self.preparation_params()
-        if exp_metadata is None:
-            exp_metadata = dict()
-        exp_metadata.update(
-            {'sweep_name': 'time',
-             'sweep_unit': ['s']})
-
-        with temporary_value(self.acq_length, acq_length):
-            self.prepare(drive='timedomain')
-            swpts = self.instr_acq.get_instr().get_sweep_points_time_trace(
-                acq_length)
-            for state in states:
-                if state not in ['g', 'e', 'f']:
-                    raise ValueError("Unrecognized state: {}. Must be 'g', 'e' "
-                                     "or 'f'.".format(state))
-                base_name = 'timetrace_{}'.format(state)
-                name = base_name + "_" + name_extra if name_extra is not None \
-                    else base_name
-                seq, _ = sq.single_state_active_reset(
-                    operation_dict=self.get_operation_dict(),
-                    qb_name=self.name, state=state, prep_params=prep_params,
-                    upload=False)
-                # set sweep function and run measurement
-                MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
-                                                               upload=upload))
-                MC.set_sweep_points(swpts)
-                MC.set_detector_function(self.inp_avg_det)
-                exp_metadata.update(dict(sweep_points_dict=swpts))
-                MC.run(name=name + self.msmt_suffix, exp_metadata=exp_metadata)
 
     def measure_readout_pulse_scope(self, delays, freqs, RO_separation=None,
                                     prep_pulses=None, comm_freq=225e6,
@@ -1442,6 +1419,33 @@ class QuDev_transmon(MeasurementObject):
 
     def measure_drive_mixer_spectrum(self, if_freqs, amplitude=0.5,
                                      trigger_sep=5e-6, align_frequencies=True):
+        """Measure the output spectrum of the drive upconversion mixer.
+
+        A square pulse with the given amplitude is generated at ge_freq.
+        The readout local oscillator is swept to resolve different frequencies.
+        To average the signal with a fixed phase, the intermediate frequencies
+        `if_freq` need to satisfy the commensurability condition that
+        `if_freq * trigger_sep` must be an integer. The `if_freqs` can be
+        automatically adjusted to satisfy this constraint using the
+        `align_frequencies` parameter.
+
+        Args:
+            if_freqs:
+                A list or array of intermediate frequencies to measure the
+                output spectrum for, in hertz.
+            amplitude:
+                amplitude of the output square pulse in volts. Defaults
+                to `0.5`.
+            trigger_sep:
+                experiment repetition period in seconds. Defaults to `5e-6`.
+            align_frequencies:
+                Boolean flag, whether to automatically satisfy the
+                commensurability constraint. Might lead to in non-uniform
+                spacing of sweep points. Defaults to `True`.
+
+        Return:
+            MeasurementAnalysis object that has plotted the output spectrum.
+        """
         MC = self.instr_mc.get_instr()
         if align_frequencies:
             if_freqs = (if_freqs*trigger_sep).astype(int)/trigger_sep
@@ -1479,6 +1483,24 @@ class QuDev_transmon(MeasurementObject):
 
     def measure_drive_mixer_spectrum_fft(self, ro_lo_freq, amplitude=0.5,
                                          trigger_sep=5e-6):
+        """Measure the output power spectrum of the drive upconversion mixer.
+
+        A square pulse with the given amplitude is generated at ge_freq.
+        The readout local oscillator is set at `ro_lo_freq`, and the power
+        spectra of individual timetraces are averaged. Makes use of the
+        `self.scope_fft_det` detector.
+        Args:
+            ro_lo_freq:
+                The frequency of the readout local oscillator in hertz.
+            amplitude:
+                amplitude of the output square pulse in volts. Defaults
+                to `0.5`.
+            trigger_sep:
+                experiment repetition period in seconds. Defaults to `5e-6`.
+
+        Return:
+            MeasurementAnalysis object that has plotted the output spectrum.
+        """
         MC = self.instr_mc.get_instr()
         s = swf.None_Sweep(
             name='UHF intermediate frequency',
@@ -1566,6 +1588,38 @@ class QuDev_transmon(MeasurementObject):
     def calibrate_drive_mixer_carrier_fft(
             self, update=True, x0=(0., 0.), initial_stepsize=0.01,
             trigger_sep=5e-6, no_improv_break=50, upload=True, plot=True):
+        """Calibrate drive upconversion mixer local oscillator leakage.
+
+        Measures the average power at the LO frequency at the output of the
+        mixer. Uses the Nelder-Mead optimization algorithm and the scope_fft_det
+        detector function.
+
+        Args:
+            update:
+                Boolean flag, whether to update the qubit parameters with the
+                optimized values. Defaults to `True`.
+            x0:
+                Initial values for the optimization algorithm.
+                Defaults to `(0., 0.)`.
+            initial_stepsize:
+                Size of the initial step of the optimization algorithm in volts.
+                Defaults to `0.01`.
+            trigger_sep:
+                Experiment repetition period in seconds. Defaults to `5e-6`.
+            no_improv_break:
+                The optimization will be stopped after this many optimization
+                cycles that lead to no improvement in the costfunction.
+                Defaults to `50`.
+            upload:
+                Boolean flag, whether to upload the waveforms for the
+                experiment. Defaults to `True`.
+            plot:
+                Boolean flag, whether to plot the analysis results. Defaults
+                to `True`.
+
+        Return:
+            Optimal DC offsets for the I and Q output channels.
+        """
 
         def detector_generator(s=self):
             d = s.scope_fft_det
@@ -1583,6 +1637,39 @@ class QuDev_transmon(MeasurementObject):
                                       initial_stepsize=0.01, trigger_sep=5e-6,
                                       no_improv_break=50, upload=True,
                                       plot=True):
+        """Calibrate drive upconversion mixer local oscillator leakage.
+
+        Measures the averaged signal at the LO frequency at the output of the
+        upconversion mixer. Uses the Nelder-Mead optimization algorithm and the
+        int_avg_det_spec detector function.
+
+        Args:
+            update:
+                Boolean flag, whether to update the qubit parameters with the
+                optimized values. Defaults to `True`.
+            x0:
+                Initial values for the optimization algorithm.
+                Defaults to `(0., 0.)`.
+            initial_stepsize:
+                Size of the initial step of the optimization algorithm in volts.
+                Defaults to `0.01`.
+            trigger_sep:
+                Experiment repetition period in seconds. Defaults to `5e-6`.
+            no_improv_break:
+                The optimization will be stopped after this many optimization
+                cycles that lead to no improvement in the costfunction.
+                Defaults to `50`.
+            upload:
+                Boolean flag, whether to upload the waveforms for the
+                experiment. Defaults to `True`.
+            plot:
+                Boolean flag, whether to plot the analysis results. Defaults
+                to `True`.
+
+        Return:
+            Optimal DC offsets for the I and Q output channels.
+        """
+
         def detector_generator(s=self):
             return det.IndexDetector(s.int_avg_det_spec, 0)
 
@@ -1813,6 +1900,32 @@ class QuDev_transmon(MeasurementObject):
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
                                        trigger_sep=5e-6, no_improv_break=50,
                                        initial_stepsize=(0.15, 10)):
+        """Calibrate drive upconversion mixer other sideband.
+
+        Measures the averaged signal of a square-pulse at the other sideband
+        frequency. Uses the Nelder-Mead optimization algorithm and the
+        int_avg_det_spec detector function.
+
+        Args:
+            update:
+                Boolean flag, whether to update the qubit parameters with the
+                optimized values. Defaults to `True`.
+            amplitude:
+                Amplitude of the square pulse used for calibration in volts.
+                Defaults to `0.5`.
+            trigger_sep:
+                Experiment repetition period in seconds. Defaults to `5e-6`.
+            no_improv_break:
+                The optimization will be stopped after this many optimization
+                cycles that lead to no improvement in the costfunction.
+                Defaults to `50`.
+            initial_stepsize:
+                Size of the initial step of the optimization algorithm in volts.
+                Defaults to `0.01`.
+
+        Return:
+            optimal IQ amplitude ratio `alpha` and phase correction `phi`.
+        """
         MC = self.instr_mc.get_instr()
         ad_func_pars = {'adaptive_function': opti.nelder_mead,
                         'x0': [self.ge_alpha(), self.ge_phi_skew()],
@@ -2329,121 +2442,6 @@ class QuDev_transmon(MeasurementObject):
             if analyze:
                 ma.MeasurementAnalysis(auto=True, close_fig=close_fig,
                                     qb_name=self.name)
-
-    def measure_flux_pulse_timing(self, delays, analyze, label=None, **kw):
-        if self.instr_ge_lo() is None:
-            raise NotImplementedError("qb.measure_flux_pulse_timing is not "
-                                      "implemented for setups without ge LO. "
-                                      "Use quantum experiment FluxPulseTiming "
-                                      "instead.")
-        if label is None:
-            label = 'Flux_pulse_timing_{}'.format(self.name)
-        self.measure_flux_pulse_scope([self.ge_freq()], delays,
-                                      label=label, analyze=False, **kw)
-        if analyze:
-            tda.FluxPulseTimingAnalysis(qb_names=[self.name])
-
-    def measure_flux_pulse_scope(self, freqs, delays, cz_pulse_name=None,
-                                 analyze=True, cal_points=True,
-                                 upload=True, label=None,
-                                 n_cal_points_per_state=2, cal_states='auto',
-                                 prep_params=None, exp_metadata=None, **kw):
-        '''
-        flux pulse scope measurement used to determine the shape of flux pulses
-        set up as a 2D measurement (delay and drive pulse frequecy are
-        being swept)
-        pulse sequence:
-                      <- delay ->
-           |    -------------    |X180|  ---------------------  |RO|
-           |    ---   | ---- fluxpulse ----- |
-
-
-        Args:
-            freqs (numpy array): array of drive frequencies
-            delays (numpy array): array of delays of the drive pulse w.r.t
-                the flux pulse
-            pulse_length (float): flux pulse length (if not specified, the
-                                    self.flux_pulse_length() is taken)
-            pulse_amp (float): flux pulse amplitude  (if not specified, the
-                                    self.flux_pulse_amp() is taken)
-            pulse_delay (float): flux pulse delay
-            MC (MeasurementControl): if None, then the self.MC is taken
-
-        Returns: None
-
-        '''
-        if self.instr_ge_lo() is None:
-            raise NotImplementedError('qb.measure_flux_pulse_scope is '
-                                      'not implemented for setups '
-                                      'without external drive LO. Use '
-                                      'FluxPulseScope class instead!')
-
-        if label is None:
-            label = 'Flux_scope_{}'.format(self.name)
-        MC = self.instr_mc.get_instr()
-        self.prepare(drive='timedomain')
-
-        if cz_pulse_name is None:
-            cz_pulse_name = 'FP ' + self.name
-
-        if cal_points:
-            cal_states = CalibrationPoints.guess_cal_states(cal_states)
-            cp = CalibrationPoints.single_qubit(
-                self.name, cal_states, n_per_state=n_cal_points_per_state)
-        else:
-            cp = None
-        if prep_params is None:
-            prep_params = self.preparation_params()
-
-        op_dict = kw.pop('operation_dict', self.get_operation_dict())
-
-        seq, sweep_points, sweep_points_2D = \
-            fsqs.fluxpulse_scope_sequence(
-                delays=delays, freqs=freqs, qb_name=self.name,
-                operation_dict=op_dict,
-                cz_pulse_name=cz_pulse_name, cal_points=cp,
-                prep_params=prep_params, upload=False, **kw)
-        MC.set_sweep_function(awg_swf.SegmentHardSweep(
-            sequence=seq, upload=upload, parameter_name='Delay', unit='s'))
-        MC.set_sweep_points(sweep_points)
-        MC.set_sweep_function_2D(swf.Offset_Sweep(
-            self.instr_ge_lo.get_instr().frequency,
-            -self.ge_mod_freq(),
-            name='Drive frequency',
-            parameter_name='Drive frequency', unit='Hz'))
-        MC.set_sweep_points_2D(sweep_points_2D)
-        det_func = self.int_avg_det
-        MC.set_detector_function(det_func)
-        sweep_points = SweepPoints('delay', delays, unit='s',
-                                   label=r'delay, $\tau$', dimension=0)
-        sweep_points.add_sweep_parameter('freq', freqs, unit='Hz',
-                                         label=r'drive frequency, $f_d$',
-                                         dimension=1)
-        mospm = {self.name: ['delay', 'freq']}
-        if exp_metadata is None:
-            exp_metadata = {}
-        exp_metadata.update({'sweep_points_dict': {self.name: delays},
-                             'sweep_points_dict_2D': {self.name: freqs},
-                             'sweep_points': sweep_points,
-                             'meas_obj_sweep_points_map': mospm,
-                             'meas_obj_value_names_map':
-                                 {self.name: det_func.value_names},
-                             'use_cal_points': cal_points,
-                             'preparation_params': prep_params,
-                             'cal_points': repr(cp),
-                             'rotate': cal_points,
-                             'data_to_fit': {self.name: 'pe'},
-                             "sweep_name": "Delay",
-                             "sweep_unit": "s"})
-        MC.run_2D(label, exp_metadata=exp_metadata)
-
-        if analyze:
-            try:
-                tda.FluxPulseScopeAnalysis(
-                    qb_names=[self.name],
-                    options_dict=dict(TwoD=True, rotation_type='global_PCA'))
-            except Exception:
-                ma.MeasurementAnalysis(TwoD=True)
 
     def measure_T2_freq_sweep(self, flux_lengths=None, n_pulses=None,
                               cz_pulse_name=None,

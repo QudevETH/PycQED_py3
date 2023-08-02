@@ -5,18 +5,11 @@ import shutil
 import numpy as np
 from copy import deepcopy
 from typing import Optional, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from zhinst.core.errors import CoreError
 
 
 log = logging.getLogger(__name__)
-
-try:
-    from pycqed.measurement.waveform_control.pulsar.zi_multi_core_compiler. \
-        multi_core_compiler import MultiCoreCompiler
-except ImportError:
-    log.debug('Could not import MultiCoreCompiler, parallel programming of ZI devices will not work.')
-    class MultiCoreCompiler():
-        def __init__(self):
-            self._awgs = {}
 
 class ZIPulsarMixin:
     """Mixin containing utility functions needed by ZI AWG pulsar interfaces.
@@ -30,6 +23,9 @@ class ZIPulsarMixin:
     key zi_waves_clean: Flag indicating whether the waves dir is clean."""
 
     WAVEDIR_SIZE_LIMIT = 10 * 1024 * 1024 * 1024  # 10 GiB
+
+    def __init__(self, *args, **kwargs):
+        self.multi_core_compiler = None
 
     @staticmethod
     def _zi_wave_dir():
@@ -410,189 +406,93 @@ class ZIPulsarMixin:
         if has_waveforms:
             self.pulsar.add_awg_with_waveforms(self.awg.name)
 
+    def find_multi_core_compiler(self):
+        """ Set up a multi-core compiler (MCC) for programming the
+        instrument. First, this method tries to find the right compiler in
+        the list pulsar.multi_core_compilers. If it doesn't exist,
+        a new compiler will be instantiated and appended to the list.
+        """
+        for mcc in self.pulsar.multi_core_compilers:
+            if isinstance(mcc, MultiCoreCompilerZhinstToolkit):
+                self.multi_core_compiler = mcc
+                break
+        if not self.multi_core_compiler:
+            mcc = MultiCoreCompilerZhinstToolkit()
+            self.multi_core_compiler = mcc
+            self.pulsar.multi_core_compilers.append(mcc)
 
-class MultiCoreCompilerQudevZI(MultiCoreCompiler):
+
+class MultiCoreCompilerZhinstToolkit:
     """
-    A child of MultiCoreCompiler, which compiles and uploads sequences using
-    multiple threads.
-    This class enables compilation on a subset of the added awgs, referred to
-    as "active awgs" and stored in self._awgs.
-
-    Args:
-        awgs (AWG): A list of the AWG Nodes that are target for parallel
-            compilation
-        use_tempdir (bool, optional): Use a temporary directory to store the
-            generated sequences
+    Wrapper class for ZI multicore compilation with zhinst-toolkit
+    (version >= 0.5.2).
     """
-    _instances = []
-    """A list that records all multi-core compilers instantiated from this 
-    class (MultiCoreCompilerQudevZI).
-    """
+    def __init__(self):
 
-    @classmethod
-    def get_instance(cls, session=None):
-        """Get a multi-core compiler working on the specified session. For
-        details regarding the sessions and ZI data server, please refer to
-        the docstring of class zhinst.qcodes.ZISession
+        self.session = None
+        """Session of the active ZI LabOne server."""
 
-        Args:
-            session (ZISession): a ZI server client session
+        self.sequencer_code_mcc = dict()
+        """Sequencer strings to be compiled and uploaded by the multicore 
+        compiler. This variable is a dictionary {module_name: 
+        (awg_core, sequencer_program)}, where awg_core is a ZI API node for 
+        operating the corresponding AWG module and sequencer_program is a 
+        string containing the sequencer code."""
 
-        Returns:
-            mcc (MultiCoreCompilerQudevZI): a multi-core compiler
-                corresponding to the specified session.
-        """
-        for mcc in cls._instances:
-            if mcc._session == session or session is None:
-                return mcc
-        mcc = cls()
-        mcc._session = session
-        cls._instances.append(mcc)
-        return mcc
+        self.post_sequencer_code_upload = dict()
+        """Upload functions to be executed after programming the sequencer 
+        code. This variable is a dictionary {module_name: (upload_function, 
+        parameter_list)}, where upload_function is the function 
+        to be called after programming the sequencer code and parameter_list 
+        is a dictionary provided to upload_function."""
 
-    def __init__(self, *awgs, **kwargs):
-        super().__init__(*awgs, **kwargs)
-        self._awgs_all = {}
-        # Move existing AWGs to the full AWG dict self._awgs_all. Remove AWGs
-        # in the active AWG dict self._awgs to prevent processing all AWGs in
-        # the multi-core compiler. Active AWGs will be added when programming
-        # individual AWGs.
-        self._awgs_all.update(self._awgs)
-        self.reset_active_awgs()
+    def reset_upload_cache(self):
+        """Reset the upload dictionaries."""
+        self.sequencer_code_mcc.clear()
+        self.post_sequencer_code_upload.clear()
 
-    def add_awg(self, awg):
-        """
-        Add a AWG core to self._awgs_all and reset self._awgs.
+    def execute_mcc(self):
+        """Get the active session. Compile and upload the sequencer code.
+        Fish post-sequencer-code programming (upload waveforms, command
+        tables, enable outputs, etc.)."""
+        self._update_session()
+        self._compile_and_upload_seqc()
+        self._finalize_upload_after_mcc()
 
-        Args:
-            awg (AWG): The AWG Nodes that is target for parallel compilation
-        """
-        super().add_awg(awg)
-        self._awgs_all[awg] = self._awgs[awg]
-        self.reset_active_awgs()
+    def _update_session(self):
+        """Get the current ZI LabOne server session."""
+        if len(self.sequencer_code_mcc.values()):
+            self.session = list(self.sequencer_code_mcc.values())[0][
+                0].parent._tk_object._session
 
-    def add_active_awg(self, awg):
-        """
-        Add a AWG core to the active awgs (self._awgs), which are the ones
-        that will be programmed.
+    def _compile_and_upload_seqc(self):
+        """Compile the sequencer code and generate bitstreams to program the
+        devices. Once this is done, upload the bitstreams to the devices."""
+        futures = []
+        with self.session.set_transaction(), ThreadPoolExecutor() as executor:
+            # Compile sequencer code for all AWGs in parallel.
+            for awg_core, awg_string in self.sequencer_code_mcc.values():
+                future_seqc = executor.submit(
+                    awg_core.load_sequencer_program,
+                    awg_string
+                )
+                futures.append(future_seqc)
 
-        Args:
-            awg (AWG): The AWG Nodes that is target for parallel compilation
-        """
-        self._awgs[awg] = self._awgs_all[awg]
+            # Wait until all compilations are finished and check if there are
+            # errors.
+            for future in as_completed(futures):
+                try:
+                    _ = future.result()
+                except CoreError as e:
+                    print("Sequencer code compilation error", e)
 
-    def reset_active_awgs(self):
-        """
-        Reset the active awgs (self._awgs)
-        """
-        self._awgs = {}
-
-
-class ZIMultiCoreCompilerMixin:
-    """
-    Mixin for creating an instance of MultiCoreCompilerQudevZI for parallel
-    compilation and upload of SeqC strings.
-    """
-    multi_core_compilers = {}
-    _disable_mcc = False
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.wfms_to_upload = {}
-        """Stores hashes and waveforms to be uploaded after parallel
-        compilation. This attribute is only used when self.pulsar.use_mcc() is
-        set to True.
-        """
-
-    @property
-    def multi_core_compiler(self):
-        """Getter of the ZI multi-core compiler. If the compiler does not
-        exist, a new one will be created and added to the class attribute
-        self.multi_core_compilers to keep track of all existing compilers.
-
-        Returns:
-            multi_core_compiler (MultiCoreCompilerQudevZI): ZI multi-core
-            compiler for the current instance.
-        """
-        if self not in self.multi_core_compilers:
-            awgs = self.awgs_mcc
-            session = awgs[0].parent._tk_object._session if len(awgs) else None
-            self.multi_core_compilers[self] = \
-                MultiCoreCompilerQudevZI.get_instance(session)
-        return self.multi_core_compilers[self]
-
-    def _init_mcc(self):
-        if not len(self.awgs_mcc):
-            return  # no AWG module supports MCC
-        try:
-            # add AWG modules to multi_core_compiler class variable
-            for awg in self.awgs_mcc:
-                self.multi_core_compiler.add_awg(awg)
-        except Exception as e:
-            log.error(f'Failed to initialize MCC for AWG {self.awg.name}: '
-                      f'{e}.')
-            self._disable_mcc = True
-            return
-        # register a finalized callback in the main pulsar
-        self.pulsar.mcc_finalize_callbacks[self.awg.name] = \
-            self.finalize_upload_after_mcc
-
-    def finalize_upload_after_mcc(self):
-        """Finalize the upload after the MCC has finished
-
-        The base method uploads waveforms stored in wfms_to_upload. Child
-        classes could implement further actions if needed.
-
-        ZI devices currently only support parallel compilation + upload
-        of SeqC strings, so we must upload waveforms separately here
-        after parallel upload is finished.
-        """
-        for k, v in self.wfms_to_upload.items():
-            awg_nr, wave_idx = k
-            waveforms, wave_hashes = v
-            # awg_interface that populate wfms_to_upload must implement the
-            # method upload_waveforms
-            self.upload_waveforms(
-                awg_nr=awg_nr, wave_idx=wave_idx,
-                waveforms=waveforms, wave_hashes=wave_hashes)
-
-    def upload_waveforms(self, awg_nr, wave_idx, waveforms, wave_hashes):
-        """
-        Upload waveforms to an awg core (awg_nr).
-
-        Args:
-            awg_nr (int): index of awg core (0, 1, 2, or 3)
-            wave_idx (int): index of wave upload (0 or 1)
-            waveforms (array): waveforms to upload
-            wave_hashes: waveforms hashes
-        """
-        raise NotImplementedError('Method "upload_waveforms" is not '
-                                  'implemented for parent class '
-                                  '"ZIMultiCoreCompilerMixin". \n'
-                                  'Please rewrite this method in children '
-                                  'classes with device-specific '
-                                  'implementations.')
-
-    @property
-    def awgs_mcc(self) -> list:
-        """List of AWG cores that support parallel compilation.
-
-        If self._disable_mcc is set to True, returns empty list.
-        """
-        if self._disable_mcc:
-            return []
-        else:
-            return self._get_awgs_mcc()
-
-    def _get_awgs_mcc(self) -> list:
-        """Returns the list of the AWG cores that support parallel compilation.
-        """
-        raise NotImplementedError('Method "_get_awgs_mcc" is not '
-                                  'implemented for parent class '
-                                  '"ZIMultiCoreCompilerMixin". \n'
-                                  'Please rewrite this method in children '
-                                  'classes with device-specific '
-                                  'implementations.')
+    def _finalize_upload_after_mcc(self):
+        """Finalize the upload after compiling and uploading the sequencer
+        program."""
+        # Upload waveforms and command tables
+        for command_list in self.post_sequencer_code_upload.values():
+            for upload_func, parameter_dict in command_list:
+                upload_func(**parameter_dict)
 
 
 class ZIGeneratorModule:
@@ -629,11 +529,17 @@ class ZIGeneratorModule:
         self._awg_interface = awg_interface
         """Pulsar interface of the parent device."""
 
+        self.multi_core_compiler = awg_interface.multi_core_compiler
+        """Multi-core compiler used by the parent device."""
+
         self.pulsar = awg_interface.pulsar
         """Pulsar instance which saves global configurations for all devices."""
 
         self._awg_nr = awg_nr
         """AWG module number of the current instance."""
+
+        self.module_name = f"{self._awg.name}_generator{awg_nr}"
+        """Name of this AWG module."""
 
         self.channel_ids = None
         """A list of all programmable IDs of this AWG channel/channel pair."""
@@ -760,6 +666,13 @@ class ZIGeneratorModule:
             if self._use_placeholder_waves or self._use_command_table\
             else set()
 
+    def _reset_mcc_post_compilation_upload_list(self):
+        """If multi-core compiler is enabled, reset the post-programming
+        upload list."""
+        if self.pulsar.use_mcc():
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name] = list()
+
     def program_awg_channel(
             self,
             awg_sequence,
@@ -785,6 +698,7 @@ class ZIGeneratorModule:
         self._reset_sequence_strings()
         self._update_channel_config(awg_sequence=awg_sequence)
         self._reset_defined_waves()
+        self._reset_mcc_post_compilation_upload_list()
 
         # Generates sequencer code according to channel settings and
         # waveforms specified in awg_sequence.
@@ -834,10 +748,25 @@ class ZIGeneratorModule:
             # Command table should be uploaded after compiling and uploading
             # the sequencer code, because the command table memory will be
             # erased when the device is re-programmed with the new sequencer
-            # code.
-            self._upload_command_table()
+            # code. If the multicore compiler is used, "upload_command_table"
+            # method will be pended and executed after the sequencer program
+            # gets uploaded.
+            if self.pulsar.use_mcc():
+                self.multi_core_compiler.post_sequencer_code_upload[
+                    self.module_name].append(
+                    (self._upload_command_table, dict()))
+            else:
+                self._upload_command_table()
 
-        self._set_signal_output_status()
+        if self.pulsar.use_mcc():
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name].append(
+                (self._set_signal_output_status, dict()))
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name].append(
+                (self._update_device_ready_status_mcc, dict()))
+        else:
+            self._set_signal_output_status()
         if any(self.has_waveforms.values()):
             self.pulsar.add_awg_with_waveforms(self._awg.name)
 
@@ -1477,6 +1406,14 @@ class ZIGeneratorModule:
                 self.waveform_cache = dict()
                 self.waveform_cache['wave_idx_lookup'] = self._wave_idx_lookup
 
+    def _update_device_ready_status_mcc(self):
+        """ Updates ready flag in the mock DAQ server when multi-core
+        compilation (MCC) is enabled. This is needed we use a different
+        generator instance for MCC. This method needs to be rewritten in
+        relevant children classes to keep the ready flag in sync.
+        """
+        pass
+
     def _upload_placeholder_waveforms(
             self,
             waveforms,
@@ -1526,12 +1463,10 @@ class ZIGeneratorModule:
         except KeyError:
             prev_dio_valid_polarity = None
 
-        if self.pulsar.use_mcc() and len(self._awg_interface.awgs_mcc) > 0:
-            # Parallel seqc string compilation and upload
-            self._awg_interface.multi_core_compiler.add_active_awg(
-                self._awg_interface.awgs_mcc[self._awg_nr])
-            self._awg_interface.multi_core_compiler.load_sequencer_program(
-                self._awg_interface.awgs_mcc[self._awg_nr], awg_str)
+        if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
+            self.multi_core_compiler.sequencer_code_mcc[self.module_name] = (
+                self._awg_interface.awg_mcc_generators[self._awg_nr], awg_str)
+            self._save_awg_str(awg_str=awg_str)
         else:
             if self.pulsar.use_mcc():
                 log.warning(
