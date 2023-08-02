@@ -255,11 +255,13 @@ class BaseDataAnalysis(object):
             if not delegate_plotting:
                 # Store the current rcParams running in the kernel
                 from pycqed.utilities.general import temporary_rcParams
-                # Update the rcParams to ensure nice plots.
-                # Only if options_dict['disable_plot_formatting'] is False.
-                params = self.get_default_plot_params(set_pars=False) if not \
-                    self.options_dict.get('disable_plot_formatting', False) \
-                    else {}
+                # Update the rcParams to ensure repeatable plots independently
+                # from the rcParams set in the current python kernel.
+                # Only if options_dict['set_default_plot_formatting'] is True.
+                set_default_plot_formatting = self.options_dict.get(
+                    'set_default_plot_formatting ', True)
+                params = self.get_default_plot_params(set_pars=False) if \
+                    set_default_plot_formatting else {}
                 with temporary_rcParams(params):
                     self.prepare_plots()  # specify default plots
                     if not self.extract_only:
