@@ -49,3 +49,7 @@ class DummyVisaHandle:
     read_termination = None
     write_termination = None
     timeout = DummyTimeOut()
+
+    def close(self):
+        pass
+
