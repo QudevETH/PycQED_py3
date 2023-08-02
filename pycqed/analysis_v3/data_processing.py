@@ -457,7 +457,7 @@ def transform_data(data_dict, keys_in, keys_out, **params):
 
 def normalize_qubit_subspace(data_dict, keys_in, keys_out=None, **params):
     """
-    Renormalise the qubit subspace after a qutrit classification,
+    Normalise the qubit subspace after a qutrit classification,
     such that pg + pe = 1.
 
     This function assumes that keys_in point to pg, pe, pf, in this order.
@@ -477,30 +477,29 @@ def normalize_qubit_subspace(data_dict, keys_in, keys_out=None, **params):
     """
     data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
     # get populations as an array with shape
-    # (nr states, nr probabilities for each state)
+    # (3, nr measured probabilities for each basis-state) where 3 refers to the
+    # qutrit probabilities pg, pe, pf
     populations = np.array(list(data_to_proc_dict.values()))
-    if populations.shape[0] == 2:  # qubit: only pg and pe
-        # there is nothing to renormalize
-        pass
-    else:  # qutrit: pg, pe, pf
-        if keys_out is None:
-            keys_out = [f'{keyi}_renormalized' for keyi in keys_in]
-        if len(keys_out) != len(data_to_proc_dict):
-            raise ValueError('keys_out and keys_in do not have the same length.')
-        norm_factor = populations[0, :] + populations[1, :]  # pg + pe
-        populations[0, :] /= norm_factor  # pg
-        populations[1, :] /= norm_factor  # pe
-        for pop, keyo in zip(populations, keys_out):
-            hlp_mod.add_param(keyo, pop, data_dict, **params)
+    if keys_out is None:
+        keys_out = [f'{keyi}_renormalized' for keyi in keys_in]
+    if len(keys_out) != len(data_to_proc_dict):
+        raise ValueError('keys_out and keys_in do not have the same length.')
+    norm_factor = populations[0, :] + populations[1, :]  # pg + pe
+    populations[0, :] /= norm_factor  # pg
+    populations[1, :] /= norm_factor  # pe
+    for pop, keyo in zip(populations, keys_out):
+        hlp_mod.add_param(keyo, pop, data_dict, **params)
     return data_dict
 
 
 def normalize_qubit_subspace_2qb(data_dict, keys_in, keys_out=None, **params):
     """
-    Renormalise the qubit subspace after a qutrit classification,
-    such that pg + pe = 1.
+    Normalise the qubit subspace after a qutrit classification,
+    such that pgg + pge + peg + pee = 1.
 
-    This function assumes that keys_in point to pg, pe, pf, in this order.
+    This function assumes that keys_in point to an array with shape
+    (nr measured probabilities for each basis-state, 9). The columns are the 9
+    basis-state probabilities for a qutrit: gg, ge, gf, eg, ee, ef, fg, fe, ff.
 
     Args:
         data_dict (dict): containing data to be processed and where the
@@ -517,12 +516,14 @@ def normalize_qubit_subspace_2qb(data_dict, keys_in, keys_out=None, **params):
     """
     data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
     # get populations as an array with shape
-    # (nr states, nr probabilities for each state)
+    # (nr measured probabilities for each basis-state, 9), where 9 refers to the
+    # basis-state probabilities for a qutrit; see docstring)
     populations = np.array(list(data_to_proc_dict.values()))[0]
     if keys_out is None:
         keys_out = [f'{keyi}_renormalized' for keyi in keys_in]
     if len(keys_out) != len(data_to_proc_dict):
         raise ValueError('keys_out and keys_in do not have the same length.')
+    # Take columns corresponding to  pgg, pge, peg, pee
     pop_qb = np.concatenate([populations[:, 0:2], populations[:, 3:5]], axis=1)
     norm_factor = np.sum(pop_qb, axis=1)  # pgg + pge + peg + pee
     populations[:, 0] /= norm_factor  # pgg
