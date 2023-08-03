@@ -884,7 +884,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self.process_single_shots(
                 predict_proba=self.predict_proba,
                 classifier_params=self.get_param_value("classifier_params"),
-                states_map=self.get_param_value("states_map"))
+                states_map=self.get_param_value("states_map"),
+                thresholding=self.get_param_value("thresholding"),)
 
         # create projected_data_dict
         if self.rotate:
@@ -2242,10 +2243,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if xunit is None:
             xunit = xu
 
+        value_units = deepcopy(self.raw_data_dict['value_units'])
+        if not isinstance(value_units, list):
+            value_units = [value_units]
+        value_units = {vn: vu for vn, vu in zip(
+            self.raw_data_dict['measured_data'], value_units)}
+
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', False)
         prep_1d_plot = True
         for ax_id, ro_channel in enumerate(raw_data_dict):
+            ro_unit = value_units.get(ro_channel, 'a.u.')
             if TwoD:
                 sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
                 if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
@@ -2271,7 +2279,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             'plotsize': (plotsize[0]*numplotsx,
                                          plotsize[1]*numplotsy),
                             'title': fig_title,
-                            'clabel': '{} (Vpeak)'.format(ro_channel)}
+                            'clabel': f'{ro_channel} ({ro_unit})'}
 
             if prep_1d_plot:
                 yvals = raw_data_dict[ro_channel]
@@ -2297,7 +2305,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'xlabel': xlabel,
                     'xunit': xunit,
                     'yvals': yvals,
-                    'ylabel': '{} (Vpeak)'.format(ro_channel),
+                    'ylabel': f'{ro_channel} ({ro_unit})',
                     'yunit': '',
                     'numplotsx': numplotsx,
                     'numplotsy': numplotsy,
@@ -2767,6 +2775,76 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for task in task_list:
             all_qubits.update([v for k,v in task.items() if 'qb' in k])
         return list(all_qubits)
+
+
+class MultiQubit_HistogramAnalysis(MultiQubit_TimeDomain_Analysis):
+    def extract_data(self):
+        self.default_options['rotation'] = False
+        super().extract_data()
+
+    def get_channel_map(self):
+        # FIXME: delete this method once it has been tested that
+        #  - the super method handles single-qubit histograms correctly
+        #  - multi-qubit histograms are analyzed correctly
+        if len(self.qb_names) > 1:
+            log.warning('Analysis of multi-qubit histograms has not been '
+                        'tested yet.')
+            return super().get_channel_map()
+        self.channel_map = {
+            self.qb_names[0]: self.raw_data_dict['value_names']}
+
+    def process_data(self):
+        super().process_data()
+        import re
+        hsp = self.raw_data_dict['hard_sweep_points']
+        for qbn in self.qb_names:
+            hist = self.proc_data_dict['meas_results_per_qb'][qbn]
+            bins = {}
+            for vn in hist:
+                res = re.findall(r'_hist_(\([0-9, ]*\))', vn)
+                if len(res) == 1:
+                    bins[eval(res[0])] = vn
+            nr_bins = [max([b[i] for b in bins]) + 1 for i in
+                       range(len(list(bins)[0]))]
+            all_bins = list(itertools.product(*[range(i) for i in nr_bins]))
+            missing = [b for b in all_bins if b not in bins]
+            if len(missing):
+                log.warning(f'Bin data missing for {qbn}: {missing}')
+            hist_proc = dict()
+            for i in range(len(hsp)):
+                hist_proc[i] = np.zeros(nr_bins)
+                for b, vn in bins.items():
+                    hist_proc[i][b] = hist[vn][i]
+            self.proc_data_dict.setdefault('histogram_per_qb', {})
+            self.proc_data_dict['histogram_per_qb'][qbn] = hist_proc
+            self.proc_data_dict.setdefault('nr_bins', {})
+            self.proc_data_dict['nr_bins'][qbn] = nr_bins
+
+    def prepare_plots(self):
+        for qbn in self.qb_names:
+            self.prepare_hist_plot(qbn)
+
+    def prepare_hist_plot(self, qb_name):
+        nr_bins = self.proc_data_dict['nr_bins'][qb_name]
+        if len(nr_bins) != 2:
+            return
+        hists = self.proc_data_dict['histogram_per_qb'][qb_name]
+        for seg, hist in hists.items():
+            plot_name = f'histogram_{qb_name}_{seg}'
+            self.plot_dicts[plot_name] = {
+                'plotfn': self.plot_colorxy,
+                'fig_id': plot_name,
+                'xvals': list(range(nr_bins[0])),
+                'yvals': list(range(nr_bins[0])),
+                'zvals': hist,
+                'xlabel': 'bin index dim. 0',
+                'xunit': '',
+                'ylabel': 'bin index dim. 1',
+                'yunit': '',
+                'zrange': self.get_param_value('zrange', None),
+                'title': f'Histogram {qb_name} Segment {seg}',
+                'clabel': 'counts'}
+
 
 class StateTomographyAnalysis(ba.BaseDataAnalysis):
     """
@@ -7594,6 +7672,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ana_params['timetraces'] = defaultdict(dict)
         ana_params['optimal_weights'] = defaultdict(dict)
         ana_params['optimal_weights_basis_labels'] = defaultdict(dict)
+        ana_params['means'] = defaultdict(dict)
         for qbn in self.qb_names:
             # retrieve time traces
             for i, rdd in enumerate(self.raw_data_dict):
@@ -7655,6 +7734,13 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 basis /= k
             ana_params['optimal_weights'][qbn] = basis
             ana_params['optimal_weights_basis_labels'][qbn] = basis_labels
+
+            # calculation of centroids
+            ana_params['means'][qbn] = [[
+                np.sum(np.real(timetraces[state]) * np.real(basis[i,:]))
+                + np.sum(np.imag(timetraces[state]) * np.imag(basis[i,:]))
+                for i, _ in enumerate(basis_labels)]
+                for state in 'gef'[:n_labels + 1]]
 
             self.save_processed_data()
 

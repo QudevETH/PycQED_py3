@@ -382,6 +382,7 @@ class MeasurementObject(Instrument):
             channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
+            acq_length=self.acq_length(),
             **self._get_custom_readout_weights()
         )
 
