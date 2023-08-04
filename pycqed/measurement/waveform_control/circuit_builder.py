@@ -638,7 +638,7 @@ class CircuitBuilder:
         if reset_params is None:
             reset_params = self.get_reset_params(qb_names)
 
-        if reset_params.get('location', 'end') == 'end':
+        if reset_params.get('location', 'start') == 'end':
             if len(reset_params) != 0:
                 return self.sequential_blocks(
                     f"{block_name}_and_reset",
@@ -1086,7 +1086,13 @@ class CircuitBuilder:
 
         ro = self.mux_readout(**ro_kwargs, qb_names=ro_qubits)
         _, all_ro_qubits = self.get_qubits(ro_qubits)
-        all_ro_op_codes = [p['op_code'] for p in ro.pulses]
+        # FIXME: checking whether op_code starts with RO or Acq is a good
+        #  hack because mux_readout() was modified to also sometimes be RO + reset
+        #  but maybe a cleaner solution would be to have a separate block for the
+        #  end reset after the readout?
+        all_ro_op_codes = [p['op_code'] for p in ro.pulses if "op_code" in p
+                           and (p['op_code'].startswith('RO')
+                                or p['op_code'].startswith('Acq'))]
         if body_block is not None:
             op_codes = [p['op_code'] for p in body_block.pulses if 'op_code'
                         in p]
