@@ -59,7 +59,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         self.awg_mcc = self.awg
         self.awg_mcc_qagenerators = list()
-        for qachannel in self.awg_mcc.qachannels:
+        for qachannel in self.awg_mcc.qachannels.values():
             self.awg_mcc_qagenerators.append(qachannel.generator)
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
