@@ -492,7 +492,6 @@ class BaseDataAnalysis(object):
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
             except Exception as e:
-                # data_file.close()
                 self.close_files()
                 raise e
             raw_data_dict.append(raw_data_dict_ts)
