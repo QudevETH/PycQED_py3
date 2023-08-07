@@ -137,11 +137,11 @@ class BaseDataAnalysis(object):
         '''
 
         try:
+            # set error-handling behavior
+            self.raise_exceptions = raise_exceptions
             # set container for data_files and config files
             self.data_files = []
             self.config_files = setman.SettingsManager()
-            # set error-handling behavior
-            self.raise_exceptions = raise_exceptions
 
             # initialize an empty dict to store results of analysis
             self.proc_data_dict = OrderedDict()
