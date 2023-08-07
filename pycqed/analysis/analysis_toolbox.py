@@ -469,13 +469,13 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
             file_a = open_config_file(folder=get_folder(a, folder=folder))
             files_to_close += [file_a]
         else:
-            file_a = a.config_file
+            file_a = a.data_file['Instrument settings']
             a = getattr(a, 'timestamp', 'file a').replace('/', '_')
         if isinstance(b, str):
             file_b = open_config_file(folder=get_folder(b, folder=folder))
             files_to_close += [file_b]
         else:
-            file_b = b.config_file
+            file_b = b.data_file['Instrument settings']
             b = getattr(b, 'timestamp', 'file b').replace('/', '_')
 
         sets_a = file_a
