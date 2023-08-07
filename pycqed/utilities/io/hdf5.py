@@ -438,9 +438,12 @@ class HDF5Loader(Loader):
                         inst = Instrument(inst_path[-1])
                         inst.add_parameter(param)
 
-                    # if more than one instrument name exists, the instrument
-                    # must be a submodule
-                    for inst_name in inst_path[-1:0:-1]:
+                    # if more than one element in inst_path name exists
+                    # (e.g. inst.submod1.submod2.param), the above created inst
+                    # must be a submodule (submod2 in this case). Submodules are
+                    # added in the for loop
+                    for inst_name in inst_path[-2::-1]:
+                        # loop from second to last item to first item in list
                         submod = inst
                         inst = Instrument(inst_name)
                         inst.add_submodule(submod.name, submod)

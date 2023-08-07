@@ -229,7 +229,12 @@ class Instrument(DelegateAttributes):
         """
         self.parameters.update(instrument.parameters)
         self.functions.update(instrument.functions)
-        self.submodules.update(instrument.functions)
+        # updates the submodules recursively
+        for submod_name, submod in instrument.submodules.items():
+            if submod_name in self.submodules:
+                self.submodules[submod_name].update(submod)
+            else:
+                self.submodules[submod_name] = submod
         self.classname = instrument.classname
 
 
