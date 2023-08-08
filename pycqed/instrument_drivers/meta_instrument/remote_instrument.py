@@ -1,3 +1,18 @@
+"""Preliminary (hacky) code to access remote qcodes instruments
+
+CAUTION: Use with care and see concerns below. This was just a quick and
+    hacky draft, but was added to the master because it works well on multiple
+    setups.
+
+FIXME: Clean up and address concerns about security and about potential
+    problems from version mismatches. Then build a proper module and
+    add documentation.
+    Concerns are, e.g., related to unpickling:
+    - can be a security flaw (might be OK on local networks with trusted PCs)
+    - will pickling and unpickling Exceptions lead to problems if different
+      software versions run on client and server?
+"""
+
 import socket
 import pickle
 import traceback
@@ -21,10 +36,16 @@ except AttributeError:
     # older qcode versions (pre 0.37)
     Parameter = qc.parameters.Parameter
 
+# The following default port was chosen arbitrarily (same default is used for
+# the client class and the server function).
 PORT = 65432
-SUBMODULE_CACHE_TIME = 60  # second
+SUBMODULE_CACHE_TIME = 60  # seconds
 
 class RemoteParameter():
+    """Helper class to represent qcodes parameters of remote instruments
+
+    Not meant to be instantiated manually by the user.
+    """
     @property
     def __class__(self):
         return Parameter
@@ -44,12 +65,27 @@ class RemoteParameter():
 
 
 class RemoteInstrument(FurtherInstrumentsDictMixIn):
+    """Allows to access a qcodes instrument on a remote server.
+
+    CAUTION: Note the warning in the module docstring.
+    """
     _remote_instruments = {}
 
     def __init__(self, name,
                  host, port=PORT,
                  id=None,
                  ):
+        """Connect to a remote instrument.
+
+        Args:
+            name (str): name of the instrument (currently needs to be the same
+                name on client and server)
+            host (str): hostname or IP address of the server
+            port (int): port on which the server is listening
+            id: a unique identifier of the instrument. Not meant to be passed
+                by the user. Used in recursive calls to avoid re-querying
+                information that is already available on the client.
+        """
         self._name = name
         self.host = host
         self.port = port
@@ -137,6 +173,14 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
         return self._create_instr(f'{self._name}.{item}')
 
     def remote_call(self, cmd):
+        """Send a command to the server
+
+        Args:
+              cmd (str) the command in a format understood by the server
+
+        Returns:
+              the data returned by the server
+        """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.host, self.port))
             data = pickle.dumps(cmd)
@@ -171,6 +215,16 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
 
 
 def server(port=PORT, host='127.0.0.1'):
+    """Runs a server that allows clients to access qcodes instruments
+
+    CAUTION: Note the warning in the module docstring.
+
+    Args:
+        port (int): port to which the listening socket should be bound
+        host (str): identified the network interface to which the listening
+            socket should be bound, see (host, port) in
+            https://docs.python.org/3/library/socket.html#socket-families
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, port))
         while True:
@@ -179,7 +233,6 @@ def server(port=PORT, host='127.0.0.1'):
                 s.setblocking(True)
                 conn, addr = s.accept()
                 with conn:
-                    # print(f"Connected by {addr}")
                     data = b''
                     while True:
                         new_data = conn.recv(1024)
@@ -209,7 +262,6 @@ def server(port=PORT, host='127.0.0.1'):
                             attr = obj
                         else:
                             attr = getattr(obj, cmd[2])
-                        # print(cmd[:3])
                         if cmd[1] == 'id':
                             result = id(attr)
                         elif cmd[1] == 'type':
