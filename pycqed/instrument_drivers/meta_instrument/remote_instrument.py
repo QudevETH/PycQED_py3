@@ -305,5 +305,3 @@ def server(port=PORT, host='127.0.0.1'):
             except ConnectionResetError:
                 log.info('Client disconnected')
                 pass
-            except:
-                raise
