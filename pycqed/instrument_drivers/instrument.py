@@ -45,6 +45,9 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
 
     @classmethod
     def find_instrument(cls, name, instrument_class=None):
+        # This overrides the super method to allow remote instruments and
+        # local instruments to find each other. There is no docstring here
+        # since the docstring of the super methods remains valid.
         try:
             # First try to find it among the qcodes instruments.
             return super().find_instrument(
