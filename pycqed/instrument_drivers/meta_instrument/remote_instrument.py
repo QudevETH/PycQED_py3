@@ -201,8 +201,8 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
                     data_count += 1
                 if not more_data:
                     if data_count > 0:
-                        print(f'Data from the remote instrument has been '
-                              f'acquired in {data_count} blocks')
+                        log.info(f'Data from the remote instrument has been '
+                                 f'acquired in {data_count} blocks')
                     break
             if isinstance(data, Exception):
                 if str(data).endswith('QCoDeS instruments can not be pickled.'):
@@ -237,7 +237,7 @@ def server(port=PORT, host='127.0.0.1'):
                     while True:
                         new_data = conn.recv(1024)
                         if new_data == b'quit':
-                            print('quit')
+                            log.info('quit')
                             conn.sendall(b'Exiting')
                             return
                         data += new_data
@@ -303,7 +303,7 @@ def server(port=PORT, host='127.0.0.1'):
                         data_out = pickle.dumps(e)
                     conn.sendall(data_out)
             except ConnectionResetError:
-                print('Client disconnected')
+                log.info('Client disconnected')
                 pass
             except:
                 raise
