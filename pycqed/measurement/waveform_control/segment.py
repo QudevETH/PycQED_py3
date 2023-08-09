@@ -1687,6 +1687,13 @@ class Segment:
             ...
             }
         """
+
+        # FIXME: this routine is only used for plotting waveforms of a segment.
+        #        Consider removing this routine and adding functionality to plot
+        #        single segments to the sequence.plot() routine.
+        #        This routine might be less maintained than the sequence routine
+        #        generate_waveforms_sequences().
+
         if awgs is None:
             awgs = set(self.pulsar.get_awg_from_trigger_group(group)
                        for group in self.elements_on_awg)
