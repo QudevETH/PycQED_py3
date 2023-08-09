@@ -701,7 +701,7 @@ def check_keyboard_interrupt():
         pass
 
 
-class temporary_value:
+class TemporaryValue:
     """
     This context manager allows to change a given QCodes parameter
     to a new value, and the original value is reverted upon exit of the context
@@ -714,7 +714,7 @@ class temporary_value:
     Example:
         # measure qubit spectroscopy at a different readout frequency without
         # setting the parameter value
-        with temporary_values((qb1.ro_freq, 6e9)):
+        with TemporaryValue((qb1.ro_freq, 6e9)):
             qb1.measure_spectroscopy(...)
     """
 
@@ -740,6 +740,11 @@ class temporary_value:
         for param, value in self.old_value_pairs:
             param(value)
         log.debug('Exited TemporaryValueContext')
+
+
+# Alias in order to have the class definition in camel case, but keep
+# backwards compatibility
+temporary_value = TemporaryValue
 
 
 def configure_qubit_mux_drive(qubits, lo_freqs_dict):
