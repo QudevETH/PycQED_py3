@@ -3052,7 +3052,7 @@ class QScale(SingleQubitGateCalibExperiment):
         return d
 
 
-class ErrorAmplificationCalibExperiment(SingleQubitGateCalibExperiment):
+class SingleQubitErrorAmplificationExperiment(SingleQubitGateCalibExperiment):
     """
     Base class for measurements using error amplification.
 
@@ -3107,7 +3107,7 @@ class ErrorAmplificationCalibExperiment(SingleQubitGateCalibExperiment):
             sweep the n_repetitions
     """
 
-    default_experiment_name = 'ErrorAmplificationCalibExperiment'
+    default_experiment_name = 'SingleQubitErrorAmplificationExperiment'
     call_parallel_sweep = False  # pulse sequence changes between segments
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
@@ -3223,7 +3223,7 @@ class ErrorAmplificationCalibExperiment(SingleQubitGateCalibExperiment):
             **analysis_kwargs)
 
 
-class NPulseAmplitudeCalib(ErrorAmplificationCalibExperiment):
+class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
     """
     Calibration measurement for the qubit drive amplitude that makes use of
     error amplification from application of N subsequent pulses.
