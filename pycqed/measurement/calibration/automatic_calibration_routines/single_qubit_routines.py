@@ -1201,7 +1201,7 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                 for qb in self.qubits:
                     qb.ge_sigma(self.get_param_value('default_ge_sigma'))
                     qb.ef_sigma(self.get_param_value('default_ef_sigma'))
-                    self.dev.set_default_acq_channels()
+                self.dev.set_default_acq_channels()
 
             self.dev.preparation_params().update(
                 {'preparation_type': self.get_param_value('preparation_type')})
