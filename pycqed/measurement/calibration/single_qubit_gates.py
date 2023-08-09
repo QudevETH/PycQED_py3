@@ -3565,16 +3565,17 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
                          f'rotation. Update only possible for pi and pi/2.')
 
 
-class NPulsePhaseErrorCalib(ErrorAmplificationCalibExperiment):
+class NPulsePhaseErrorCalib(SingleQubitErrorAmplificationExperiment):
     """
     Phase-error calibration measurement using error amplification (see docstring
     of parent class).
 
     This is an error amplification experiment and a multitasking experiment;
-    see docstrings of ErrorAmplificationCalibExperiment, MultiTaskingExperiment
-    and of CalibBuilder for general information. Each task corresponds to one
-    qubit specified by the key 'qb' (either name or QuDev_transmon instance),
-    i.e. multiple qubits can be measured in parallel.
+    see docstrings of SingleQubitErrorAmplificationExperiment,
+    MultiTaskingExperiment and of CalibBuilder for general information.
+    Each task corresponds to one qubit specified by the key 'qb'
+    (either name or QuDev_transmon instance), i.e. multiple qubits can be
+    measured in parallel.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -3680,16 +3681,16 @@ class NPulsePhaseErrorCalib(ErrorAmplificationCalibExperiment):
                           pulse_par)
 
 
-class NPulseLeakagePulseDelayCalib(ErrorAmplificationCalibExperiment):
+class NPulseLeakagePulseDelayCalib(SingleQubitErrorAmplificationExperiment):
     """
     Calibration measurement for the separation between a train of X180 pulses
     that results in coherent accumulation of leakage into the f state.
 
     This is an error amplification experiment and a multitasking experiment;
-    see docstrings of ErrorAmplificationCalibExperiment, MultiTaskingExperiment
-    and of CalibBuilder for general information. Each task corresponds to one
-    qubit specified by the key 'qb' (either name or QuDev_transmon instance),
-    i.e. multiple qubits can be measured in parallel.
+    see docstrings of SingleQubitErrorAmplificationExperiment,
+    MultiTaskingExperiment and of CalibBuilder for general information. Each
+    task corresponds to one qubit specified by the key 'qb' (either name or
+    QuDev_transmon instance), i.e. multiple qubits can be measured in parallel.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
@@ -3741,16 +3742,16 @@ class NPulseLeakagePulseDelayCalib(ErrorAmplificationCalibExperiment):
             traceback.print_exc()
 
 
-class NPulseLeakageCalib(ErrorAmplificationCalibExperiment):
+class NPulseLeakageCalib(SingleQubitErrorAmplificationExperiment):
     """
     Leakage calibration measurement using error amplification (see docstring
     of parent class).
 
     This is an error amplification experiment and a multitasking experiment;
-    see docstrings of ErrorAmplificationCalibExperiment, MultiTaskingExperiment
-    and of CalibBuilder for general information. Each task corresponds to one
-    qubit specified by the key 'qb' (either name or QuDev_transmon instance),
-    i.e. multiple qubits can be measured in parallel.
+    see docstrings of SingleQubitErrorAmplificationExperiment,
+    MultiTaskingExperiment and of CalibBuilder for general information. Each
+    task corresponds to one qubit specified by the key 'qb' (either name or
+    QuDev_transmon instance), i.e. multiple qubits can be measured in parallel.
 
     Sequence for each task (for further info and possible parameters of
     the task, see the docstring of the method sweep_block):
