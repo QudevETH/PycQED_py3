@@ -1023,6 +1023,9 @@ class QuDev_transmon(MeasurementObject):
 
         # other preparations
         self.update_detector_functions()
+        # provide classifier params to acqusition device
+        self.instr_acq.get_instr().set_classifier_params(
+            self.get_acq_int_channels(), self.acq_classifier_params())
 
     def get_ge_lo_freq(self):
         """Returns the required local oscillator frequency for drive pulses
