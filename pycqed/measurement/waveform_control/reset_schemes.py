@@ -180,7 +180,13 @@ class Preselection(ResetScheme):
 
     def __init__(self, parent, **kwargs):
 
-        super().__init__(parent, name="preselection", operations=('RO',), **kwargs)
+        super().__init__(parent, name="preselection", operations=('RO', "FP"),
+                         **kwargs)
+
+        self.add_parameter('compensate_ro_flux', label='compensate_ro_flux',
+                           initial_value=False,
+                           vals=validators.Bool(),
+                           parameter_class=ManualParameter)
 
 
     def _reset_block(self, name, **kwargs):
@@ -191,9 +197,42 @@ class Preselection(ResetScheme):
 
         # update pulse parameters with initialization-specific parameters
         preselection_ro.update(self.get_init_specific_params()['RO'])
+        presel_pulses = [preselection_ro]
+
+        # modify length and amplitude to match the one of ro pulse in
+        # preselection_ro if ro_pulse_type == with flux  AND compensate_flux = True
+        # FIXME: not great to have this check based on hardcoded pulse name
+        #  in the future maybe it should check whether the readout operation
+        #  contains a flux pulse, of which type, etc. Also the logic about the
+        #  flux pulse buffers and length is dupplicated from the pulse_library:
+        #  NOT GREAT.
+        if preselection_ro['pulse_type'] == "GaussFilteredCosIQPulseWithFlux" and \
+            self.compensate_ro_flux():
+            compensation_fp = deepcopy(op_dict[f'FP {self.instr_ref.name}'])
+            compensation_fp['pulse_type'] = "BufferedSquarePulse"
+            compensation_fp['gaussian_filter_sigma'] = \
+                preselection_ro['flux_gaussian_filter_sigma']
+            compensation_fp['amplitude'] = -preselection_ro['flux_amplitude']
+            compensation_fp['pulse_length'] = \
+                preselection_ro['pulse_length'] \
+                + preselection_ro['flux_extend_start'] + \
+                preselection_ro['flux_extend_end']
+            compensation_fp['buffer_length_start'] =\
+                preselection_ro['buffer_length_start'] \
+                - preselection_ro['flux_extend_start']
+            compensation_fp['buffer_length_end'] = \
+                preselection_ro['buffer_length_start'] \
+                + preselection_ro['pulse_length'] \
+                + preselection_ro['buffer_length_end'] \
+                - compensation_fp['buffer_length_start'] \
+                - compensation_fp['pulse_length']
+            compensation_fp.update(self.get_init_specific_params()['FP'])
+            presel_pulses = [compensation_fp] + presel_pulses
 
         # additional changes
-        return block_mod.Block(name, [preselection_ro], copy_pulses=False, **kwargs)
+        return block_mod.Block(name, presel_pulses,
+                               copy_pulses=False,
+                               **kwargs)
 
     def get_analysis_instructions(self):
         # instructions such that the analysis knows how to process the data
