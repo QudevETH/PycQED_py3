@@ -742,42 +742,6 @@ def temporary_value(*param_value_pairs):
     return TemporaryValueContext(*param_value_pairs)
 
 
-def temporary_rcParams(rcParams):
-    """
-    This context manager allows to update the matplotlib rcParams with the
-    values in the dictionary rcParams. The original rcParams are set back
-    upon exit of the context manager.
-
-    Args:
-        rcParams: dictionary of rcParams with their temporary values
-
-    Example:
-        rcParams = {'figure.figsize': (5, 6),
-                  'font.size': 32,
-                  'lines.markersize': 4,
-                  'lines.linewidth': 1,
-                  'xtick.direction': 'out',
-                  'ytick.direction': 'out,
-                  'axes.formatter.useoffset': False,
-                  }
-    """
-    from matplotlib import pyplot as plt
-    class TemporaryValueContext:
-        def __init__(self, rcParams):
-            self.kernel_rcParams = deepcopy(plt.rcParams)
-            self.rcParams = rcParams
-
-        def __enter__(self):
-            log.debug('Entered temporary_rcParams context')
-            plt.rcParams.update(self.rcParams)
-
-        def __exit__(self, type, value, traceback):
-            plt.rcParams.update(self.kernel_rcParams)
-            log.debug('Exited temporary_rcParams context')
-
-    return TemporaryValueContext(rcParams)
-
-
 def configure_qubit_mux_drive(qubits, lo_freqs_dict):
     """Configure qubits for multiplexed drive.
 
