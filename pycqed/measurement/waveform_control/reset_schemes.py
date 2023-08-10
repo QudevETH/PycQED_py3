@@ -117,9 +117,11 @@ class ResetScheme(InstrumentModule):
             self._rep += 1
 
         # add buffers for the total init block
+        bs = {"pulse_delay": self.buffer_start()}
         be = {"pulse_delay": self.buffer_end()}
         be.update(self.block_end())
-        init.block_start.update(self.block_start())
+        bs.update(self.block_start())
+        init.block_start.update(bs)
         init.block_end.update(be)
         return init
 

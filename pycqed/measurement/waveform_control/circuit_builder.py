@@ -957,8 +957,12 @@ class CircuitBuilder:
         for block, d in zip(blocks, destroy):
             if set_end_after_all_pulses:
                 block.set_end_after_all_pulses()
+            # if there is already custom block start, then just update it
+            # with block alignment otherwise create it
+            bs = block.block_start if len(block.block_start) else {}
+            bs.update(dict(block_align=block_align))
             simultaneous.extend(block.build(
-                ref_pulse=f"start", block_start=dict(block_align=block_align),
+                ref_pulse=f"start", block_start=bs,
                 name=block.name if disable_block_counter else None, destroy=d))
             simultaneous_end_pulses.append(simultaneous.pulses[-1]['name'])
         # the name of the simultaneous_end_pulse is used in
@@ -1091,7 +1095,7 @@ class CircuitBuilder:
         #  but maybe a cleaner solution would be to have a separate block for the
         #  end reset after the readout?
         all_ro_op_codes = [p['op_code'] for p in ro.pulses if "op_code" in p
-                           and (p['op_code'].startswith('RO')
+                           and (p['op_code'].startswith('RO ') # space after RO required to avoid
                                 or p['op_code'].startswith('Acq'))]
         if body_block is not None:
             op_codes = [p['op_code'] for p in body_block.pulses if 'op_code'
