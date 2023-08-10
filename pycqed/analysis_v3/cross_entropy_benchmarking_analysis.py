@@ -11,6 +11,7 @@ import numpy as np
 import scipy as sp
 from copy import deepcopy
 from functools import reduce
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
@@ -1062,8 +1063,7 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
                              legend_kw=None, text_position=None, text_kw=None,
                              **params):
 
-    plot_mod.get_default_plot_params()
-    fig, ax = plt.subplots()  # here such that except statement has something to close
+    fig = None
     try:
         if legend_kw is None:
             legend_kw = {}
@@ -1161,102 +1161,104 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
                 return_dict[mobjn] += [fit_res_f, fit_res_p]
 
             if plot:
-                fig, ax = plt.subplots()
-                if cz_error_rate is None:
-                    cz_error_rate = hlp_mod.get_param(
-                        f'{mobjn}.cz_error_rate', data_dict)
+                params = plot_mod.get_default_plot_params(set_params=False)
+                with mpl.rc_context(rc=params):
+                    fig, ax = plt.subplots()
+                    if cz_error_rate is None:
+                        cz_error_rate = hlp_mod.get_param(
+                            f'{mobjn}.cz_error_rate', data_dict)
 
-                if exclude_from_plot:
-                    line_f, = ax.plot(cycles[idx0f:], fid[idx0f:], 'o',
-                                      zorder=0)
-                    line_p, = ax.plot(cycles[idx0p:], pur[idx0p:], 'o',
-                                      zorder=1)
-                else:
-                    line_f, = ax.plot(cycles, fid, 'o', zorder=0)
-                    line_p, = ax.plot(cycles, pur, 'o', zorder=1)
+                    if exclude_from_plot:
+                        line_f, = ax.plot(cycles[idx0f:], fid[idx0f:], 'o',
+                                          zorder=0)
+                        line_p, = ax.plot(cycles[idx0p:], pur[idx0p:], 'o',
+                                          zorder=1)
+                    else:
+                        line_f, = ax.plot(cycles, fid, 'o', zorder=0)
+                        line_p, = ax.plot(cycles, pur, 'o', zorder=1)
 
-                if fit:
-                    xfine = np.linspace(cycles[idx0f], cycles[-1], 100)
-                    ax.plot(xfine, fit_res_f.model.func(xfine, **fit_res_f.best_values),
-                            c=line_f.get_color(), zorder=0)
-                    xfine = np.linspace(cycles[idx0p], cycles[-1], 100)
-                    ax.plot(xfine, fit_res_p.model.func(xfine, **fit_res_p.best_values),
-                            c=line_p.get_color(), zorder=1)
+                    if fit:
+                        xfine = np.linspace(cycles[idx0f], cycles[-1], 100)
+                        ax.plot(xfine, fit_res_f.model.func(xfine, **fit_res_f.best_values),
+                                c=line_f.get_color(), zorder=0)
+                        xfine = np.linspace(cycles[idx0p], cycles[-1], 100)
+                        ax.plot(xfine, fit_res_p.model.func(xfine, **fit_res_p.best_values),
+                                c=line_p.get_color(), zorder=1)
 
-                    epc, epc_err = 100*fit_res_f.best_values["e"], \
-                                   100*fit_res_f.params["e"].stderr
-                    hlp_mod.add_param(f'{mobjn}.fit_results.EPC',
-                                      (epc/100, epc_err/100), data_dict,
-                                      **params)
-                    ppc, ppc_err = 100*fit_res_p.best_values["e"], \
-                                   100*fit_res_p.params["e"].stderr
-                    hlp_mod.add_param(f'{mobjn}.fit_results.PPC',
-                                      (ppc/100, ppc_err/100), data_dict,
-                                      **params)
-                    ctrl_err = epc-ppc
-                    ctrl_err_err = np.sqrt(epc_err**2 + ppc_err**2)
-                    hlp_mod.add_param(f'{mobjn}.fit_results.CEPC',
-                                      (ctrl_err/100, ctrl_err_err/100),
-                                      data_dict, **params)
-                    textstr = f'{epc:.3f}% $\\pm$ {epc_err:.3f}% error per c.' \
-                              f'\n{ppc:.3f}% $\\pm$ {ppc_err:.3f}% purity per c.' \
-                              f'\n{ctrl_err:.3f}% $\\pm$ ' \
-                              f'{ctrl_err_err:.3f}% ctrl. errors per c.'
-                    if cz_error_rate is not None:
-                        textstr += f'\nCZ error: ' \
-                                   f'{100*cz_error_rate.get("value", "nan"):.3f}% ' \
-                                   f'$\\pm$ {100*cz_error_rate.get("stderr", "nan"):.3f}%'
-                    if text_kw is None:
-                        text_kw = dict(va='bottom', ha='left') if log_scale \
-                            else dict(va='top', ha='right')
-                    ax.text(*text_position, textstr, transform=ax.transAxes,
-                            **text_kw)
+                        epc, epc_err = 100*fit_res_f.best_values["e"], \
+                                       100*fit_res_f.params["e"].stderr
+                        # hlp_mod.add_param(f'{mobjn}.fit_results.EPC',
+                        #                   (epc/100, epc_err/100), data_dict,
+                        #                   **params)
+                        ppc, ppc_err = 100*fit_res_p.best_values["e"], \
+                                       100*fit_res_p.params["e"].stderr
+                        # hlp_mod.add_param(f'{mobjn}.fit_results.PPC',
+                        #                   (ppc/100, ppc_err/100), data_dict,
+                        #                   **params)
+                        ctrl_err = epc-ppc
+                        ctrl_err_err = np.sqrt(epc_err**2 + ppc_err**2)
+                        # hlp_mod.add_param(f'{mobjn}.fit_results.CEPC',
+                        #                   (ctrl_err/100, ctrl_err_err/100),
+                        #                   data_dict, **params)
+                        textstr = f'{epc:.3f}% $\\pm$ {epc_err:.3f}% error per c.' \
+                                  f'\n{ppc:.3f}% $\\pm$ {ppc_err:.3f}% purity per c.' \
+                                  f'\n{ctrl_err:.3f}% $\\pm$ ' \
+                                  f'{ctrl_err_err:.3f}% ctrl. errors per c.'
+                        if cz_error_rate is not None:
+                            textstr += f'\nCZ error: ' \
+                                       f'{100*cz_error_rate.get("value", "nan"):.3f}% ' \
+                                       f'$\\pm$ {100*cz_error_rate.get("stderr", "nan"):.3f}%'
+                        if text_kw is None:
+                            text_kw = dict(va='bottom', ha='left') if log_scale \
+                                else dict(va='top', ha='right')
+                        ax.text(*text_position, textstr, transform=ax.transAxes,
+                                **text_kw)
 
-                ax.plot([], [], 'o-', c=line_f.get_color(),  label='Fidelity')
-                ax.plot([], [], 'o-', c=line_p.get_color(),
-                        label='$\\sqrt{\mathrm{Purity}}$')
-                ax.legend(frameon=False, **legend_kw)
-                ax.set_title(f'{filename_prefix}XEB {mobjn} - {timestamp}')
+                    ax.plot([], [], 'o-', c=line_f.get_color(),  label='Fidelity')
+                    ax.plot([], [], 'o-', c=line_p.get_color(),
+                            label='$\\sqrt{\mathrm{Purity}}$')
+                    ax.legend(frameon=False, **legend_kw)
+                    ax.set_title(f'{filename_prefix}XEB {mobjn} - {timestamp}')
 
-                ax.set_ylabel('XEB fidelity, $\\sqrt{\mathrm{Purity}}$')
-                ax.set_xlabel('Number of cycles, $m$')
-                if log_scale:
-                    ax.set_yscale('log')
-                    ax.set_ylim(None, 1.5)
-                    fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
-                else:
-                    ax.set_ylim(-0.1, 1.1)
-                    fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
-
-                xlims = params.get('xlims', None)
-                if xlims is not None:
-                    ax.set_xlim(xlims)
-                ylims = params.get('ylims', None)
-                if ylims is not None:
-                    ax.set_ylim(ylims)
-                return_dict[mobjn] += [fig, ax]
-
-                if savefig:
-                    if fmts is None:
-                        fmts = ['png']
-                    fn = deepcopy(filename)
-                    if fn is None:
-                        fn = f'XEB_{mobjn}_{cycles[-1]}cycles_{nr_seq}seqs_' \
-                             f'{timestamp}'
+                    ax.set_ylabel('XEB fidelity, $\\sqrt{\mathrm{Purity}}$')
+                    ax.set_xlabel('Number of cycles, $m$')
                     if log_scale:
-                        fn += '_log'
-                    fn = f'{filename_prefix}{fn}'
-                    for ext in ['png']:
-                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                        fig.savefig(fn)
-                if show:
-                    plt.show()
-                else:
-                    plt.close(fig)
+                        ax.set_yscale('log')
+                        ax.set_ylim(None, 1.5)
+                        fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
+                    else:
+                        ax.set_ylim(-0.1, 1.1)
+                        fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
 
+                    xlims = params.get('xlims', None)
+                    if xlims is not None:
+                        ax.set_xlim(xlims)
+                    ylims = params.get('ylims', None)
+                    if ylims is not None:
+                        ax.set_ylim(ylims)
+                    return_dict[mobjn] += [fig, ax]
+
+                    if savefig:
+                        if fmts is None:
+                            fmts = ['png']
+                        fn = deepcopy(filename)
+                        if fn is None:
+                            fn = f'XEB_{mobjn}_{cycles[-1]}cycles_{nr_seq}seqs_' \
+                                 f'{timestamp}'
+                        if log_scale:
+                            fn += '_log'
+                        fn = f'{filename_prefix}{fn}'
+                        for ext in ['png']:
+                            fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                            fig.savefig(fn)
+                    if show:
+                        plt.show()
+                    else:
+                        plt.close(fig)
         return return_dict
     except Exception:
-        plt.close(fig)
+        if fig is not None:
+            plt.close(fig)
         traceback.print_exc()
         return
 
@@ -1486,98 +1488,104 @@ def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
         if numcols == 1:
             figure_width = 2
         return_dict = {}
-        for mobjn in meas_obj_names:
-            proba_exp_all = hlp_mod.get_param(f'{mobjn}.xeb_probabilities',
-                                              data_dict)
-            xeb_proba_found = True
-            if proba_exp_all is None:
-                proba_exp_all = data_dict[mobjn][data_key]
-                xeb_proba_found = False
-            print('xeb_proba_found', xeb_proba_found)
 
-            plot_mod.get_default_plot_params(figure_width=figure_width,
-                                             figure_height=figure_height)
-            fig, axs = plt.subplots(numrows, numcols, sharex=True, sharey=True)
+        params = plot_mod.get_default_plot_params(set_params=False,
+                                                  figure_width=figure_width,
+                                                  figure_height=figure_height)
+        with mpl.rc_context(rc=params):
+            for mobjn in meas_obj_names:
+                proba_exp_all = hlp_mod.get_param(f'{mobjn}.xeb_probabilities',
+                                                  data_dict)
+                xeb_proba_found = True
+                if proba_exp_all is None:
+                    proba_exp_all = data_dict[mobjn][data_key]
+                    xeb_proba_found = False
+                print('xeb_proba_found', xeb_proba_found)
 
-            for i, nrc in enumerate(cycles):
-                proba_exp = proba_exp_all
+                fig, axs = plt.subplots(numrows, numcols,
+                                        sharex=True, sharey=True)
+                for i, nrc in enumerate(cycles):
+                    proba_exp = proba_exp_all
 
-                if isinstance(axs, np.ndarray):
-                    ax = axs.flatten()[i]
-                else:
-                    ax = axs
-
-                if not xeb_proba_found:
-                    if isinstance(proba_exp_all, dict):
-                        # 1 qb case
-                        proba_exp = proba_exp_all['pe']
-                        if renormalize:
-                            proba_exp /= (proba_exp + proba_exp_all['pg'])
-                        # add pg = 1-pe
-                        proba_exp = np.concatenate([(1 - proba_exp)[np.newaxis].T,
-                                                    proba_exp[np.newaxis].T], axis=1)
-                        # proba_exp = np.array(list(proba_exp_all.values())).T
+                    if isinstance(axs, np.ndarray):
+                        ax = axs.flatten()[i]
                     else:
-                        # 2 qb case
-                        proba_exp = np.concatenate([proba_exp_all[:, :2],
-                                                    proba_exp_all[:, 3:5]],
-                                                   axis=1)
-                        if renormalize:
-                            proba_exp = proba_exp/np.reshape(
-                                np.sum(proba_exp, axis=1),
-                                (proba_exp.shape[0], 1))
-                    proba_exp = proba_exp.reshape(nr_sp_2d,
-                                                  swpts.length(0),
-                                                  proba_exp.shape[-1])
-                proba_exp = proba_exp[:, i, :]
+                        ax = axs
 
-                # get cdfs
-                x, y_exp, _, distance = get_cdfs(proba_exp.flatten(), d)
-                # Plot data
-                ax.plot(x, y_exp, linewidth=2, label='Measured data')
-                # Porter-Thomas distrib:
-                xpt = np.linspace(0, 1, 100)
-                ax.plot(xpt, cdf_PT(xpt, d), 'k--', label='Porter Thomas')
-                ax.vlines(1/d, 0, 1, colors='gray', linestyles='--', linewidth=1)
-                ax.text(0.95, 0.05, f'{nrc} cycles\n$\\xi$={distance:.3f}',
-                        ha='right', va='bottom', transform=ax.transAxes)
+                    if not xeb_proba_found:
+                        if isinstance(proba_exp_all, dict):
+                            # 1 qb case
+                            proba_exp = proba_exp_all['pe']
+                            if renormalize:
+                                proba_exp /= (proba_exp + proba_exp_all['pg'])
+                            # add pg = 1-pe
+                            proba_exp = np.concatenate([(1 - proba_exp)[np.newaxis].T,
+                                                        proba_exp[np.newaxis].T],
+                                                       axis=1)
+                            # proba_exp = np.array(list(proba_exp_all.values())).T
+                        else:
+                            # 2 qb case
+                            proba_exp = np.concatenate([proba_exp_all[:, :2],
+                                                        proba_exp_all[:, 3:5]],
+                                                       axis=1)
+                            if renormalize:
+                                proba_exp = proba_exp/np.reshape(
+                                    np.sum(proba_exp, axis=1),
+                                    (proba_exp.shape[0], 1))
+                        proba_exp = proba_exp.reshape(nr_sp_2d,
+                                                      swpts.length(0),
+                                                      proba_exp.shape[-1])
+                    proba_exp = proba_exp[:, i, :]
 
-            # add legend
-            odd_nr_cols = numcols % 2 == 1
-            if not hasattr(axs, "shape"):
-                ax = axs
-            elif len(axs.shape) == 1:
-                ax = axs[(numcols // 2 + odd_nr_cols) - 1]
-            else:
-                ax = axs[0, (numcols // 2 + odd_nr_cols) - 1]
-            ax.legend(frameon=False, loc='lower center', ncol=2,
-                      bbox_to_anchor=(0.5 if odd_nr_cols else 1.05, 0.965))
+                    # get cdfs
+                    x, y_exp, _, distance = get_cdfs(proba_exp.flatten(), d)
+                    # Plot data
+                    ax.plot(x, y_exp, linewidth=2, label='Measured data')
+                    # Porter-Thomas distrib:
+                    xpt = np.linspace(0, 1, 100)
+                    ax.plot(xpt, cdf_PT(xpt, d), 'k--', label='Porter Thomas')
+                    ax.vlines(1/d, 0, 1, colors='gray', linestyles='--',
+                              linewidth=1)
+                    ax.text(0.95, 0.05, f'{nrc} cycles\n$\\xi$={distance:.3f}',
+                            ha='right', va='bottom', transform=ax.transAxes)
 
-            fig.text(0, 0.5, r'Cumulative distribution', ha='left', va='center',
-                     rotation=90)
-            fig.text(0.5, 0, f'Basis-state prob., $p$', va='bottom', ha='center')
-            fig.text(0.5, 1, f'{filename_prefix}XEB {mobjn} - {timestamp}',
-                     ha='center', va='top')
-            fig.subplots_adjust(0.11, 0.075, 0.99, 0.92,
-                                wspace=0.05, hspace=0.05)
-            return_dict[mobjn] = [fig, axs]
+                # add legend
+                odd_nr_cols = numcols % 2 == 1
+                if not hasattr(axs, "shape"):
+                    ax = axs
+                elif len(axs.shape) == 1:
+                    ax = axs[(numcols // 2 + odd_nr_cols) - 1]
+                else:
+                    ax = axs[0, (numcols // 2 + odd_nr_cols) - 1]
+                ax.legend(frameon=False, loc='lower center', ncol=2,
+                          bbox_to_anchor=(0.5 if odd_nr_cols else 1.05, 0.965))
 
-            if savefig:
-                if fmts is None:
-                    fmts = ['png']
-                fn = deepcopy(filename)
-                if fn is None:
-                    fn = f'Porter_Thomas_Cumulative_{mobjn}_' \
-                         f'{cycles[-1]}cycles_{nr_sp_2d}seqs_' \
-                         f'{timestamp}'
-                fn = f'{filename_prefix}{fn}'
-                for ext in fmts:
-                    fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                    fig.savefig(fn)
-            if show:
-                plt.show()
-            else:
-                plt.close(fig)
+                fig.text(0, 0.5, r'Cumulative distribution', ha='left',
+                         va='center', rotation=90)
+                fig.text(0.5, 0, f'Basis-state prob., $p$', va='bottom',
+                         ha='center')
+                fig.text(0.5, 1, f'{filename_prefix}XEB {mobjn} - {timestamp}',
+                         ha='center', va='top')
+                fig.subplots_adjust(0.11, 0.075, 0.99, 0.92,
+                                    wspace=0.05, hspace=0.05)
+                return_dict[mobjn] = [fig, axs]
+
+                if savefig:
+                    if fmts is None:
+                        fmts = ['png']
+                    fn = deepcopy(filename)
+                    if fn is None:
+                        fn = f'Porter_Thomas_Cumulative_{mobjn}_' \
+                             f'{cycles[-1]}cycles_{nr_sp_2d}seqs_' \
+                             f'{timestamp}'
+                    fn = f'{filename_prefix}{fn}'
+                    for ext in fmts:
+                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                        fig.savefig(fn)
+                if show:
+                    plt.show()
+                else:
+                    plt.close(fig)
         return return_dict
     except Exception:
         plt.close(fig)
@@ -1629,68 +1637,68 @@ def calculate_optimal_nr_cycles(data_dict, idx0=0, joint_processing=False,
             nrc_opt_all[mobjn] = nrc_opt
 
             if plot:
-                plot_mod.get_default_plot_params()
-                fig, ax = plt.subplots()
+                params = plot_mod.get_default_plot_params(set_params=False)
+                with mpl.rc_context(rc=params):
+                    fig, ax = plt.subplots()
 
-                # plot data
-                if exlude_from_plot:
-                    line, = ax.plot(cycles[idx0:], fid[idx0:], 'o', zorder=1)
-                else:
-                    line, = ax.plot(cycles, fid, 'o', zorder=1)
+                    # plot data
+                    if exlude_from_plot:
+                        line, = ax.plot(cycles[idx0:], fid[idx0:], 'o', zorder=1)
+                    else:
+                        line, = ax.plot(cycles, fid, 'o', zorder=1)
 
-                # plot optimal nr_cycles lines
-                opt_point = fit_res.model.func(nrc_opt, **fit_res.best_values)
-                ax.plot(nrc_opt, opt_point, 'o', c='gray')
-                ax.vlines(nrc_opt, -0.1, opt_point,
-                          linestyles='--', color='gray', zorder=2)
-                ax.hlines(opt_point, 0, nrc_opt,
-                          linestyles='--', color='gray', zorder=2)
+                    # plot optimal nr_cycles lines
+                    opt_point = fit_res.model.func(nrc_opt, **fit_res.best_values)
+                    ax.plot(nrc_opt, opt_point, 'o', c='gray')
+                    ax.vlines(nrc_opt, -0.1, opt_point,
+                              linestyles='--', color='gray', zorder=2)
+                    ax.hlines(opt_point, 0, nrc_opt,
+                              linestyles='--', color='gray', zorder=2)
 
-                # plot fit
-                xfine = np.linspace(cycles[idx0], cycles[-1], 100)
-                ax.plot(xfine, fit_res.model.func(xfine, **fit_res.best_values),
-                        c=line.get_color(), zorder=0)
+                    # plot fit
+                    xfine = np.linspace(cycles[idx0], cycles[-1], 100)
+                    ax.plot(xfine, fit_res.model.func(xfine, **fit_res.best_values),
+                            c=line.get_color(), zorder=0)
 
-                p, p_err = 100*fit_res.best_values["p"], \
-                               100*fit_res.params["p"].stderr
-                textstr = f'Decay const.: {p:.3f}% $\\pm$ {p_err:.3f}%' \
-                          f'\nOptimal nr. cycles: {nrc_opt}'
+                    p, p_err = 100*fit_res.best_values["p"], \
+                                   100*fit_res.params["p"].stderr
+                    textstr = f'Decay const.: {p:.3f}% $\\pm$ {p_err:.3f}%' \
+                              f'\nOptimal nr. cycles: {nrc_opt}'
 
-                if log_scale:
-                    ax.text(0.05, 0.075, textstr,
-                            va='bottom', ha='left', transform=ax.transAxes)
-                else:
-                    ax.text(0.975, 0.95, textstr,
-                            va='top', ha='right', transform=ax.transAxes)
-
-                ax.set_title(f'XEB {mobjn} - {timestamp}')
-                ax.set_ylabel('XEB fidelity')
-                ax.set_xlabel('Number of cycles, $m$')
-                if log_scale:
-                    ax.set_yscale('log')
-                    ax.set_ylim(None, 1.5)
-                    fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
-                else:
-                    ax.set_ylim(-0.1, 1.1)
-                    fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
-
-                if savefig:
-                    if fmts is None:
-                        fmts = ['png']
-                    fn = deepcopy(filename)
-                    if fn is None:
-                        fn = f'Opt_nr_cycles_{mobjn}_{swpts.length(1)}seqs_' \
-                             f'{timestamp}'
                     if log_scale:
-                        fn += '_log'
-                    for ext in ['png']:
-                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                        fig.savefig(fn)
-                if show:
-                    plt.show()
-                else:
-                    plt.close(fig)
+                        ax.text(0.05, 0.075, textstr,
+                                va='bottom', ha='left', transform=ax.transAxes)
+                    else:
+                        ax.text(0.975, 0.95, textstr,
+                                va='top', ha='right', transform=ax.transAxes)
 
+                    ax.set_title(f'XEB {mobjn} - {timestamp}')
+                    ax.set_ylabel('XEB fidelity')
+                    ax.set_xlabel('Number of cycles, $m$')
+                    if log_scale:
+                        ax.set_yscale('log')
+                        ax.set_ylim(None, 1.5)
+                        fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
+                    else:
+                        ax.set_ylim(-0.1, 1.1)
+                        fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
+
+                    if savefig:
+                        if fmts is None:
+                            fmts = ['png']
+                        fn = deepcopy(filename)
+                        if fn is None:
+                            fn = f'Opt_nr_cycles_{mobjn}_{swpts.length(1)}seqs_' \
+                                 f'{timestamp}'
+                        if log_scale:
+                            fn += '_log'
+                        for ext in ['png']:
+                            fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                            fig.savefig(fn)
+                    if show:
+                        plt.show()
+                    else:
+                        plt.close(fig)
         return nrc_opt_all
     except Exception:
         plt.close(fig)
@@ -1726,50 +1734,51 @@ def plot_ctrl_errors(data_dict, unitary_label, data_dict_cepc=None,
     if fig_margins is None:
         fig_margins = [0.17, 0.2, 0.99, 0.90]
     try:
-        for mobjn in meas_obj_names:
-            process_errs = hlp_mod.get_param(f'{mobjn}.optimization_result_process_errs',
-                                             data_dict, default_value=process_errs,
-                                             **params)
-            plot_mod.get_default_plot_params()
-            fig, ax = plt.subplots()
-            # colours = {'qb3': (253/255, 208/255, 162/255), 'qb7': (127/255, 39/255, 4/255)}
-            ax.plot(cycles, 100*np.array(list(process_errs.values())), 'o')
-            try:
-                ctrl_errs = 100*(data_dict_cepc[mobjn]['fit_res_fidelity'].best_values['e'] - \
-                                 data_dict_cepc[mobjn]['fit_res_purity'].best_values['e'])
-                ctrl_errs_err = 100*np.sqrt(data_dict_cepc[mobjn]['fit_res_fidelity'].params['e'].stderr**2 + \
-                                            data_dict_cepc[mobjn]['fit_res_purity'].params['e'].stderr**2)
-            except AttributeError:
-                ctrl_errs = 100*(data_dict_cepc[mobjn]['fit_res_fidelity']['params']['e']['value'] - \
-                                 data_dict_cepc[mobjn]['fit_res_purity']['params']['e']['value'])
-                ctrl_errs_err = 100*np.sqrt(data_dict_cepc[mobjn]['fit_res_fidelity']['params']['e']['stderr']**2 + \
-                                            data_dict_cepc[mobjn]['fit_res_purity']['params']['e']['stderr']**2)
-            if show_error_stripe:
-                ax.axhspan(ctrl_errs-ctrl_errs_err, ctrl_errs+ctrl_errs_err, 0,
-                           cycles[-1]+2, color='gray', alpha=0.25)
-            ax.hlines(ctrl_errs, cycles[0]-2, cycles[-1]+2, linestyles='--',
-                      colors='gray', label='ctrl. err. per cycle')
-            ax.legend(frameon=False)
-            ax.set_xticks(cycles)
-            ax.set_xticklabels(cycles, rotation=45)
-            ax.set_ylabel(f'Error {unitary_label}, $\\varepsilon$ (%)')
-            ax.set_xlabel('Number of cycles, $m$', labelpad=0.1)
-            ax.set_title(f'{filename_prefix}Control errors {mobjn} - {timestamp}')
-            fig.subplots_adjust(*fig_margins, hspace=0.05)
+        params = plot_mod.get_default_plot_params(set_params=False)
+        with mpl.rc_context(rc=params):
+            for mobjn in meas_obj_names:
+                process_errs = hlp_mod.get_param(f'{mobjn}.optimization_result_process_errs',
+                                                 data_dict, default_value=process_errs,
+                                                 **params)
+                fig, ax = plt.subplots()
+                # colours = {'qb3': (253/255, 208/255, 162/255), 'qb7': (127/255, 39/255, 4/255)}
+                ax.plot(cycles, 100*np.array(list(process_errs.values())), 'o')
+                try:
+                    ctrl_errs = 100*(data_dict_cepc[mobjn]['fit_res_fidelity'].best_values['e'] - \
+                                     data_dict_cepc[mobjn]['fit_res_purity'].best_values['e'])
+                    ctrl_errs_err = 100*np.sqrt(data_dict_cepc[mobjn]['fit_res_fidelity'].params['e'].stderr**2 + \
+                                                data_dict_cepc[mobjn]['fit_res_purity'].params['e'].stderr**2)
+                except AttributeError:
+                    ctrl_errs = 100*(data_dict_cepc[mobjn]['fit_res_fidelity']['params']['e']['value'] - \
+                                     data_dict_cepc[mobjn]['fit_res_purity']['params']['e']['value'])
+                    ctrl_errs_err = 100*np.sqrt(data_dict_cepc[mobjn]['fit_res_fidelity']['params']['e']['stderr']**2 + \
+                                                data_dict_cepc[mobjn]['fit_res_purity']['params']['e']['stderr']**2)
+                if show_error_stripe:
+                    ax.axhspan(ctrl_errs-ctrl_errs_err, ctrl_errs+ctrl_errs_err, 0,
+                               cycles[-1]+2, color='gray', alpha=0.25)
+                ax.hlines(ctrl_errs, cycles[0]-2, cycles[-1]+2, linestyles='--',
+                          colors='gray', label='ctrl. err. per cycle')
+                ax.legend(frameon=False)
+                ax.set_xticks(cycles)
+                ax.set_xticklabels(cycles, rotation=45)
+                ax.set_ylabel(f'Error {unitary_label}, $\\varepsilon$ (%)')
+                ax.set_xlabel('Number of cycles, $m$', labelpad=0.1)
+                ax.set_title(f'{filename_prefix}Control errors {mobjn} - {timestamp}')
+                fig.subplots_adjust(*fig_margins, hspace=0.05)
 
-            if savefig:
-                if fmts is None:
-                    fmts = ['png']
-                fn = deepcopy(filename)
-                if fn is None:
-                    fn = f'Opt_res_ctrl_errs_{mobjn}_' \
-                         f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
-                fn = f'{filename_prefix}{fn}'
-                if f'{fn}.png' in os.listdir(data_dict["folders"][0]):
-                    fn = '{}--{:%Y%m%d_%H%M%S}'.format(fn, datetime.datetime.now())
-                for ext in fmts:
-                    fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                    fig.savefig(fn, dpi=600)
+                if savefig:
+                    if fmts is None:
+                        fmts = ['png']
+                    fn = deepcopy(filename)
+                    if fn is None:
+                        fn = f'Opt_res_ctrl_errs_{mobjn}_' \
+                             f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
+                    fn = f'{filename_prefix}{fn}'
+                    if f'{fn}.png' in os.listdir(data_dict["folders"][0]):
+                        fn = '{}--{:%Y%m%d_%H%M%S}'.format(fn, datetime.datetime.now())
+                    for ext in fmts:
+                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                        fig.savefig(fn, dpi=600)
         if show:
             plt.show()
         else:
@@ -1803,46 +1812,50 @@ def plot_opt_res(data_dict, param_labels, savefig=True, fmts=None,
 
         if fig_margins is None:
             fig_margins = [0.2, 0.14, 0.99, 0.99]
-        for mobjn in meas_obj_names:
-            opt_res = hlp_mod.get_param(f'{mobjn}.optimization_result', data_dict,
-                                        raise_error=True, **params)
-            xvals = np.array([int(nc) for nc in opt_res])
-            or_vals = np.array(list(opt_res.values()))
-            nr_params = or_vals.shape[1]
-            if numcols is None or numrows is None:
-                numrows_list = [4, 3, 2, 1]
-                for numr in numrows_list:
-                    if not nr_params % numr:
-                        numrows = numr
-                        numcols = nr_params // numr
-                        break
-            print(mobjn, numrows, numcols)
 
-            plot_mod.get_default_plot_params(figure_width=figure_width,
-                                             figure_height=figure_height)
-            fig, axs = plt.subplots(numrows, numcols, sharex=True)
-            for i, ax in enumerate(axs):
-                ax.plot(xvals, or_vals[:, i], 'o')
-                ax.set_ylabel(param_labels[i])
+        params = plot_mod.get_default_plot_params(set_params=False,
+                                                  figure_width=figure_width,
+                                                  figure_height=figure_height)
+        with mpl.rc_context(rc=params):
+            for mobjn in meas_obj_names:
+                opt_res = hlp_mod.get_param(f'{mobjn}.optimization_result',
+                                            data_dict, raise_error=True,
+                                            **params)
+                xvals = np.array([int(nc) for nc in opt_res])
+                or_vals = np.array(list(opt_res.values()))
+                nr_params = or_vals.shape[1]
+                if numcols is None or numrows is None:
+                    numrows_list = [4, 3, 2, 1]
+                    for numr in numrows_list:
+                        if not nr_params % numr:
+                            numrows = numr
+                            numcols = nr_params // numr
+                            break
+                print(mobjn, numrows, numcols)
 
-            ax.set_xlabel('Number of cycles, $m$', labelpad=0.1)
-            ax.set_xticks(xvals)
-            ax.set_xticklabels(xvals, rotation=45)
-            fig.align_labels()
-            fig.subplots_adjust(*fig_margins, hspace=0.05)
-            if savefig:
-                if fmts is None:
-                    fmts = ['png']
-                fn = deepcopy(filename)
-                if fn is None:
-                    fn = f'Opt_res_{mobjn}_' \
-                         f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
-                fn = f'{filename_prefix}{fn}'
-                if f'{fn}.png' in os.listdir(data_dict["folders"][0]):
-                    fn = '{}--{:%Y%m%d_%H%M%S}'.format(fn, datetime.datetime.now())
-                for ext in fmts:
-                    fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                    fig.savefig(fn, dpi=600)
+                fig, axs = plt.subplots(numrows, numcols, sharex=True)
+                for i, ax in enumerate(axs):
+                    ax.plot(xvals, or_vals[:, i], 'o')
+                    ax.set_ylabel(param_labels[i])
+
+                ax.set_xlabel('Number of cycles, $m$', labelpad=0.1)
+                ax.set_xticks(xvals)
+                ax.set_xticklabels(xvals, rotation=45)
+                fig.align_labels()
+                fig.subplots_adjust(*fig_margins, hspace=0.05)
+                if savefig:
+                    if fmts is None:
+                        fmts = ['png']
+                    fn = deepcopy(filename)
+                    if fn is None:
+                        fn = f'Opt_res_{mobjn}_' \
+                             f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
+                    fn = f'{filename_prefix}{fn}'
+                    if f'{fn}.png' in os.listdir(data_dict["folders"][0]):
+                        fn = '{}--{:%Y%m%d_%H%M%S}'.format(fn, datetime.datetime.now())
+                    for ext in fmts:
+                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                        fig.savefig(fn, dpi=600)
         if show:
             plt.show()
         else:
