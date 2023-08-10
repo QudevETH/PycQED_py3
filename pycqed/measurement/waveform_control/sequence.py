@@ -535,6 +535,7 @@ class Sequence:
             # otherwise merge sequences
             else:
                 for seg_name, segment in seq.segments.items():
+                    segment.is_first_segment = False
                     try:
                         merged_seqs[-1].add(segment)
                     except NameError:  # in case segment name exists, create new name
