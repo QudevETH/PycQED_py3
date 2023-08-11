@@ -87,7 +87,7 @@ class PhaseErrorsAnalysisMixin():
     """Mixin containing utility functions needed by the QScaleAnalysis and
     NPulsePhaseErrorCalibAnalysis classes.
 
-    Classes deriving from this mixin must the following attributes
+    Classes deriving from this mixin must have the following attributes
         - sp
         - qb_names
         - raw_data_dict
@@ -4867,10 +4867,15 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
             piPulse_std = 0
             piHalfPulse_std = 0
 
+        # Calculate mask to extract the PiPulse_vals and piHalfPulse_vals that
+        # are within the range of the sweep_points
         mask1 = np.logical_and(piPulse_vals > min(sweep_points),
                                piPulse_vals < max(sweep_points))
         mask2 = np.logical_and(piHalfPulse_vals > min(sweep_points),
                                piHalfPulse_vals < max(sweep_points))
+        # Return the piPulse and piHalfPulse (needed by the RabiAnalysis), but
+        # also all the remaining piPulse and piHalfPulse values within the range
+        # of the sweep points (needed by the NPulsePhaseErrorCalibAnalysis).
         rabi_amplitudes = {'piPulse': piPulse,
                            'piPulse_stderr': piPulse_std,
                            'piHalfPulse': piHalfPulse,
