@@ -451,11 +451,11 @@ class BaseDataAnalysis(object):
                                             params_dict])
 
             folder = a_tools.get_folder(timestamp)
-            self.open_files()
-            data_file = self.data_files[file_idx]
-            self.config_files.update_station(
-                timestamp, list(params_dict.values()))
             try:
+                self.open_files()
+                data_file = self.data_files[file_idx]
+                self.config_files.update_station(
+                    timestamp, list(params_dict.values()))
                 for save_par, file_par in params_dict.items():
                     if save_par == 'timestamp':
                         raw_data_dict_ts['timestamp'] = timestamp
