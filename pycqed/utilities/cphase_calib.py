@@ -49,6 +49,7 @@ def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
         tdma = analysis_object
     cphases = tdma.proc_data_dict[
         'analysis_params_dict'][f'cphase_{qbt.name}']['val']
+    cphases = np.unwrap(cphases, period=2 * np.pi)
 
     sweep_pts = list(soft_sweep_points.values())[0]['values']
     if tangent_fit:
