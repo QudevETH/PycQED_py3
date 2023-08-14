@@ -3702,7 +3702,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'yvals': 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask],
                     'xlabel': xlabel,
                     'xunit': 'V' if p == 0 else 'Hz',
-                    'ylabel': r'Pop. loss @ {:.0f} ns'.format(
+                    'ylabel': r'Pop. loss {} @ {:.0f} ns'.format(
+                        self.data_to_fit[qb],
                         self.lengths[qb][0]/1e-9
                     ),
                     'yunit': '',
