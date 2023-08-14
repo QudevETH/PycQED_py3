@@ -315,6 +315,10 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                                                **params)
         n_shots = hlp_mod.get_instr_param_from_hdf_file(
             meas_obj_names[0], 'acq_shots', timestamp)
+        prep_params = hlp_mod.get_param_from_metadata_group(
+            timestamp, 'preparation_params')
+        reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
+            'preparation_type'] else 0
 
         nr_swpts0 = swpts.length(0)
         # nr_swpts1 = swpts.length(1)
@@ -353,7 +357,12 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
 
         pp.add_node('extract_data_hdf', timestamps=timestamp)
         for mobjn in meas_obj_names:
-            pp.add_node('classify_gm', keys_in=raw_keys_in[mobjn],
+            pp.add_node('filter_data', keys_in=raw_keys_in[mobjn],
+                        data_filter=lambda x: x[reset_reps::reset_reps+1],
+                        meas_obj_names=mobjn)
+            pp.add_node('classify_gm',
+                        keys_in=[f'{mobjn}.filter_data {movn}' for movn in
+                                 movnm[mobjn]],  # keys set by filter_data
                         keys_out=[f'{mobjn}.classify_gm.{ps}'
                                   for ps in probability_states],
                         clf_params=classifier_params.get(mobjn, None),
@@ -812,13 +821,17 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         compression_factor = hlp_mod.get_param('compression_factor', data_dict)
         n_shots = hlp_mod.get_instr_param_from_hdf_file(
             meas_obj_names[0], 'acq_shots', timestamp)
+        prep_params = hlp_mod.get_param_from_metadata_group(
+            timestamp, 'preparation_params')
+        reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
+            'preparation_type'] else 0
 
         nr_swpts0 = swpts.length(0)
         data_size = len(data_dict[meas_obj_names[0]][
                             list(data_dict[meas_obj_names[0]])[0]])
         nr_swpts1 = data_size // n_shots // nr_swpts0
         n_segments = nr_swpts0 * compression_factor
-        n_sequences = nr_swpts1 // compression_factor
+        n_sequences = nr_swpts1 // compression_factor // (reset_reps+1)
         print(f'{n_sequences} sequences, {n_shots} shots, {n_segments} segments')
 
         classifier_params = hlp_mod.get_clf_params_from_hdf_file(
@@ -850,7 +863,12 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
 
         pp.add_node('extract_data_hdf', timestamps=timestamp)
         for mobjn in meas_obj_names:
-            pp.add_node('classify_gm', keys_in=raw_keys_in[mobjn],
+            pp.add_node('filter_data', keys_in=raw_keys_in[mobjn],
+                        data_filter=lambda x: x[reset_reps::reset_reps+1],
+                        meas_obj_names=mobjn)
+            pp.add_node('classify_gm',
+                        keys_in=[f'{mobjn}.filter_data {movn}' for movn in
+                                 movnm[mobjn]],  # keys set by filter_data
                         keys_out=[f'{mobjn}.classify_gm.{ps}'
                                   for ps in probability_states],
                         clf_params=classifier_params.get(mobjn, None),
