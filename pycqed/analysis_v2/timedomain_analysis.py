@@ -2151,24 +2151,22 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
                                                   slice_idxs_list)
 
-            if 'preparation_params' in self.metadata:
-                if self.data_with_reset:
-                    # Plot raw data without the active reset readouts
-                    key = 'meas_results_per_qb'
-                    raw_data_dict = self.proc_data_dict[key][qb_name]
-                    fig_suffix = 'filtered' if self.data_with_reset else ''
-                    sweep_points = self.proc_data_dict[
-                        'sweep_points_dict'][qb_name]['sweep_points']
-                    if plot_raw_data:
-                        # standard raw data plot
-                        self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                                     xvals=sweep_points,
-                                                     fig_suffix=fig_suffix)
-                    if TwoD and len(slice_idxs_list) > 0:
-                        # plot slices of the 2D raw data
-                        self._prepare_raw_1d_slices_plots(qb_name,
-                                                          raw_data_dict,
-                                                          slice_idxs_list)
+            # Plot raw data without the active reset readouts
+            key = 'meas_results_per_qb'
+            raw_data_dict = self.proc_data_dict[key][qb_name]
+            fig_suffix = 'filtered' if self.data_with_reset else ''  #FIXME
+            sweep_points = self.proc_data_dict[
+                'sweep_points_dict'][qb_name]['sweep_points']
+            if plot_raw_data:
+                # standard raw data plot
+                self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                             xvals=sweep_points,
+                                             fig_suffix=fig_suffix)
+            if TwoD and len(slice_idxs_list) > 0:
+                # plot slices of the 2D raw data
+                self._prepare_raw_1d_slices_plots(qb_name,
+                                                  raw_data_dict,
+                                                  slice_idxs_list)
 
     def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
                                      slice_idxs_list):
