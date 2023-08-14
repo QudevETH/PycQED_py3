@@ -80,14 +80,15 @@ class T1FrequencySweep(CalibBuilder):
                              sweep_points=sweep_points, **kw)
 
             self.analysis = None
-            self.data_to_fit = {qb: 'pf' if kw.get('for_ef', False) else 'pe'
-                                for qb in self.meas_obj_names}
             self.sweep_points = SweepPoints(
                 [{}, {}] if self.sweep_points is None else self.sweep_points)
             self.task_list = self.add_amplitude_sweep_points(
                 [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            self.data_to_fit = {
+                task['qb']: 'pf' if task.get('for_ef', False) else 'pe'
+                for task in self.preprocessed_task_list}
             if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
                 self.sweep_points.reduce_dim(1, inplace=True)
                 self._num_sweep_dims = 1
