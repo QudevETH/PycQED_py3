@@ -389,7 +389,8 @@ class CircuitBuilder:
                     p[cphase_gate_index]['basis_rotation'] = {qb_dec: cphase}
                 else:
                     p = [self.copy_op(self.operation_dict[device_op])]
-                    p[0]['cphase'] = cphase
+                    if cphase is not None:
+                        p[0]['cphase'] = cphase
 
             else:  # Single-qubit gate
                 if self.decompose_rotation_gates.get(op_type, False):
