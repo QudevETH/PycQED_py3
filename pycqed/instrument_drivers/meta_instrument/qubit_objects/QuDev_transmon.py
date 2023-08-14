@@ -240,6 +240,7 @@ class QuDev_transmon(MeasurementObject):
                                      initial_value='SSB_DRAG_pulse',
                                      vals=vals.Enum(
                                          'SSB_DRAG_pulse',
+                                         'SSB_DRAG_pulse_cos',
                                          'SSB_DRAG_pulse_with_cancellation'
                                      ))
             self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_amp180',
@@ -267,6 +268,32 @@ class QuDev_transmon(MeasurementObject):
                                      f'{tr_name}_cancellation_params',
                                      'cancellation_params', initial_value={},
                                      vals=vals.Dict())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_env_mod_freq',
+                                     'env_mod_frequency',
+                                     initial_value=0, vals=vals.Numbers(),
+                                     docstring='Modulation frequency of the '
+                                               'pulse envelope, introducing '
+                                               'a frequency shift of the pulse '
+                                               'spectrum by the value of this '
+                                               'parameter.')
+            self.add_pulse_parameter(f'X180{tn}',
+                                     f'{tr_name}_cancellation_freq_offset',
+                                     'cancellation_frequency_offset',
+                                     initial_value=None,
+                                     vals=vals.MultiType(
+                                         vals.Enum(None), vals.Numbers()),
+                                     docstring='Frequency offset of the '
+                                               'cancellation dip of the DRAG '
+                                               'pulse with respect to the '
+                                               'center frequency of the pulse.')
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
+                                     'phi_skew',
+                                     initial_value=0,
+                                     vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_alpha',
+                                     'alpha',
+                                     initial_value=1,
+                                     vals=vals.Numbers())
             if tr_name == 'ge':
                 # The parameters below will be the same for all transitions
                 self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_I_channel',
@@ -284,14 +311,7 @@ class QuDev_transmon(MeasurementObject):
                     set_parser=lambda f, s=self, t=tr_name:
                                s.configure_mod_freqs(t, **{f'{t}_mod_freq': f}),
                     vals=vals.Numbers())
-                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
-                                         'phi_skew',
-                                         initial_value=0,
-                                         vals=vals.Numbers())
-                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_alpha',
-                                         'alpha',
-                                         initial_value=1,
-                                         vals=vals.Numbers())
+
             # coherence times
             self.add_parameter(f'T1{tn}', label=f'{tr_name} relaxation',
                                unit='s', initial_value=0,
@@ -672,9 +692,8 @@ class QuDev_transmon(MeasurementObject):
             which the  model was measured. Otherwise, it mandatory and is
             interpreted as voltage of the DC source.
         :param amplitude: (float, default: 0) flux pulse amplitude
-        :param transition: (str, default: 'ge') the transition whose
-            frequency should be calculated. Currently, only 'ge' is
-            implemented.
+        :param transition: (str or list of str, default: 'ge') the transition
+            or transitions whose frequency should be calculated.
         :param model: (str, default: 'transmon_res') the model to use.
             'approx': Qubit_dac_to_freq with parameters from
                 the qubit parameter fit_ge_freq_from_flux_pulse_amp.
@@ -693,14 +712,25 @@ class QuDev_transmon(MeasurementObject):
             the flux value from self.flux_parking() is used.
         :param update: (bool, default False) whether the result should be
             stored as {transition}_freq parameter of the qubit object.
-        :return: calculated ge transition frequency
+        :return: calculated transition frequency/frequencies
+
+        TODO: Add feature to automatically make use of
+              `InterpolatedHamiltonianModel` to speed up the computation in
+              certain use cases.
         """
 
-        if transition not in ['ge', 'ef'] or (transition == 'ef' and
-                                              model not in ['transmon_res']):
-            raise NotImplementedError(
-                f'calculate_frequency: Currently, transition {transition} is '
-                f'not implemented for model {model}.')
+        if isinstance(transition, (list, tuple)):
+            return_list = True
+        else:
+            transition = [transition]
+            return_list = False
+
+        for t in transition:
+            if t not in ['ge', 'ef', 'gf']\
+                    or (t != 'ge' and model not in ['transmon_res']):
+                raise NotImplementedError(
+                    f'calculate_frequency: Currently, transition {t} '
+                    f'is not implemented for model {model}.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
         if flux_amplitude_bias_ratio is None:
             if ((model in ['transmon', 'transmon_res'] and amplitude != 0) or
@@ -720,9 +750,9 @@ class QuDev_transmon(MeasurementObject):
                 amplitude = self.calculate_voltage_from_flux(flux, model)
 
         if model == 'approx':
-            freq = fit_mods.Qubit_dac_to_freq(
+            freqs = [fit_mods.Qubit_dac_to_freq(
                 amplitude + (0 if bias is None or np.all(bias == 0) else
-                             bias * flux_amplitude_bias_ratio), **vfc)
+                             bias * flux_amplitude_bias_ratio), **vfc)]
         elif model == 'transmon':
             kw = deepcopy(vfc)
             kw.pop('coupling', None)
@@ -730,21 +760,31 @@ class QuDev_transmon(MeasurementObject):
             #  this is not a very descriptive name. Should it be changed to
             #  'bare_ro_res_freq'? This is relevant to the device database.
             kw.pop('fr', None)
-            freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+            freqs = [fit_mods.Qubit_dac_to_freq_precise(bias + (
                 0 if np.all(amplitude == 0)
-                else amplitude / flux_amplitude_bias_ratio), **kw)
+                else amplitude / flux_amplitude_bias_ratio), **kw)]
         elif model == 'transmon_res':
-            freq = fit_mods.Qubit_dac_to_freq_res(
+            freqs = fit_mods.Qubit_dac_to_freq_res(
                 bias + (0 if np.all(amplitude == 0)
                         else amplitude / flux_amplitude_bias_ratio),
-                return_ef=True, **vfc)[0 if transition == 'ge' else 1]
+                return_ef=True, **vfc)
+            freqs = [
+                {'ge': freqs[0], 'ef': freqs[1], 'gf': freqs[0]+freqs[1]}[t]
+                for t in transition]
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx', 'transmon', and"
                 "'transmon_res' are implemented.")
         if update:
-            self.parameters[f'{transition}_freq'](freq)
-        return freq
+            for t, f in zip(transition, freqs):
+                if f'{t}_freq' in self.parameters:
+                    self.parameters[f'{t}_freq'](f)
+                else:
+                    log.warning(f'Cannot set the frequency of transition {t}!')
+        if return_list:
+            return freqs
+        else:
+            return freqs[0]
 
     def calculate_flux_voltage(self, frequency=None, bias=None,
                                amplitude=None, transition='ge',
@@ -1121,6 +1161,9 @@ class QuDev_transmon(MeasurementObject):
 
         # other preparations
         self.update_detector_functions()
+        # provide classifier params to acqusition device
+        self.instr_acq.get_instr().set_classifier_params(
+            self.get_acq_int_channels(), self.acq_classifier_params())
 
     def get_ge_lo_freq(self):
         """Returns the required local oscillator frequency for drive pulses
@@ -1230,10 +1273,6 @@ class QuDev_transmon(MeasurementObject):
                     operation_dict['X180 ' + self.name]['I_channel']
                 operation_dict[f'X180{tn} ' + self.name]['Q_channel'] = \
                     operation_dict['X180 ' + self.name]['Q_channel']
-                operation_dict[f'X180{tn} ' + self.name]['phi_skew'] = \
-                    operation_dict['X180 ' + self.name]['phi_skew']
-                operation_dict[f'X180{tn} ' + self.name]['alpha'] = \
-                    operation_dict['X180 ' + self.name]['alpha']
                 if self.get(f'{tr_name}_freq') == 0:
                     operation_dict[f'X180{tn} ' + self.name][
                         'mod_frequency'] = None
@@ -1241,6 +1280,7 @@ class QuDev_transmon(MeasurementObject):
                     operation_dict[f'X180{tn} ' + self.name][
                         'mod_frequency'] = self.get(f'{tr_name}_freq') - \
                                            self.ge_freq() + self.ge_mod_freq()
+
             operation_dict.update(add_suffix_to_dict_keys(
                 sq.get_pulse_dict_from_pars(
                     operation_dict[f'X180{tn} ' + self.name]),
