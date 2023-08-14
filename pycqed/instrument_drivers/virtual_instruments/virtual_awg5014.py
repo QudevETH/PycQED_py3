@@ -5,11 +5,13 @@ from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 from qcodes.instrument_drivers.tektronix.AWG5014 import Tektronix_AWG5014
+from pycqed.instrument_drivers.instrument import DummyVisaHandle
 
 
 class VirtualAWG5014(Tektronix_AWG5014):
     def __init__(self, name, timeout=5, address=''):
         Instrument.__init__(self, name)
+        self.visa_handle = DummyVisaHandle()
         self._address = address
         self._terminator = ''
         self.add_parameter(

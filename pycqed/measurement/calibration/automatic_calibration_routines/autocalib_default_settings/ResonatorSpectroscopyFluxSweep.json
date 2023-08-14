@@ -1,0 +1,8 @@
+{
+    "freq_range": 200e6,
+    "freq_pts": 400,
+    "freq_center": "{between_dips}",
+    "volt_range": 7,
+    "volt_pts": 15,
+    "volt_center": 0
+}

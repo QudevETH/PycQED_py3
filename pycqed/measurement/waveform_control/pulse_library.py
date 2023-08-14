@@ -44,6 +44,9 @@ class SSB_DRAG_pulse(pulse.Pulse):
             addition to the nominal 90 degrees. Defaults to 0.
     """
 
+    SUPPORT_INTERNAL_MOD = True
+    SUPPORT_HARMONIZING_AMPLITUDE = True
+
     def __init__(self, element_name, I_channel, Q_channel,
                  name='SSB Drag pulse', **kw):
         super().__init__(name, element_name, **kw)
@@ -123,10 +126,119 @@ class SSB_DRAG_pulse(pulse.Pulse):
         return hashlist
 
 
+class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
+    """
+    SSB second-order DRAG pulse with quadrature scaling factor and
+    frequency detuning.
+
+    FIXME: A future version of this this class should be adapted to allow
+    crosstalk cancellation
+
+    Args:
+        See parent class for docstring.
+        Additional parameter recognised by this class:
+            cancellation_frequency_offset (float; default=None):
+                frequency offset of the cancellation dip in the pulse spectrum
+                with respect to the center frequency. This parameter typically
+                takes the value of the transmon anharmonicity (ex: -170e6).
+                The quadrature correction is not applied if this parameter
+                is None (no cancellation dip in the pulse spectrum).
+            env_mod_frequency (float; default=0):
+                modulation frequency of the pulse envelope, introducing a
+                detuning from mod_frequency
+
+        When cancellation_frequency_offset is not None, this class applies
+        correction factors to the amplitude and env_mod_frequency in order to
+        decouple the effects of the three parameters amplitude,
+        env_mod_frequency and cancellation_frequency_offset.
+        These correction factors work in the limit
+        abs(env_mod_freq) << 1/tg << cancellation_frequency_offset
+        and ensure that:
+            - the maximum spectral power of the pulse is at the
+        env_mod_frequency independent of the value for amplitude or
+        cancellation_frequency_offset;
+            - the spectral power of the pulse at 0 is not changed by changing
+        env_mod_frequency or cancellation_frequency_offset.
+    """
+
+    @classmethod
+    def pulse_params(cls):
+        params = super().pulse_params()
+        params.update({'cancellation_frequency_offset': None,
+                       'env_mod_frequency': 0})
+        return params
+
+    def chan_wf(self, channel, tvals):
+        tg = self.nr_sigma * self.sigma
+        half = tg / 2
+        tc = self.algorithm_time() + half
+
+        env_mod_freq_corr = self.env_mod_frequency
+        amplitude_corr = self.amplitude
+        if self.cancellation_frequency_offset is not None:
+            # Apply correction factors to decouple the effects of the
+            # pulse parameters.
+            env_mod_freq_corr += 3 / (self.cancellation_frequency_offset *
+                                      tg ** 2 * (np.pi ** 2 - 6))
+            amplitude_corr /= 1 - (np.pi ** 2 - 6) * \
+                              (tg * env_mod_freq_corr) ** 2 / 6
+
+        # in-phase component
+        envi = np.cos(np.pi * (tvals - tc) / tg) ** 2
+        # truncate
+        envi *= (tvals - tc >= -half) * (tvals - tc < half)
+        # apply envelope modulation
+        envi = envi * amplitude_corr * \
+               np.exp(-2j * np.pi * env_mod_freq_corr * (tvals - tc))
+
+        if self.cancellation_frequency_offset is not None:
+            # Apply DRAG correction
+            # Calculate quadrature component
+            q = -1 / (2 * np.pi * self.cancellation_frequency_offset * tg)
+            envq = q * tg * 0.5 * (np.diff(envi, prepend=[0]) +
+                                   np.diff(envi, append=[0])) / \
+                   (tvals[1]-tvals[0])
+        else:
+            log.debug('DRAG correction was not applied because '
+                      'the cancellation_frequency_offset is 0.')
+            envq = np.zeros_like(envi)
+
+        envc = envi + 1j * envq
+        # envi is complex if env_mod_frequency != 0, so we re-calculate the
+        # real (envi) and imaginary (envq) components from the full complex
+        # waveform envc
+        envi, envq = np.real(envc), np.imag(envc)
+
+        if self.mod_frequency is not None:
+            I_mod, Q_mod = apply_modulation(
+                envi, envq, tvals, self.mod_frequency,
+                phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
+                tval_phaseref=0 if self.phaselock else tc)
+        else:
+            # Ignore the Q component and program the I component to both
+            # channels. See HDAWG8Pulsar._hdawg_mod_setter
+            I_mod, Q_mod = envi, envi
+
+        if channel == self.I_channel:
+            return I_mod
+        elif channel == self.Q_channel:
+            return Q_mod
+        else:
+            return np.zeros_like(tvals)
+
+    def hashables(self, tstart, channel):
+        hashlist = super().hashables(tstart, channel)
+        hashlist += [self.cancellation_frequency_offset, self.env_mod_frequency]
+        return hashlist
+
+
 class SSB_DRAG_pulse_with_cancellation(SSB_DRAG_pulse):
     """
     SSB Drag pulse with copies with scaled amp. and offset phase on extra
     channels intended for interferometrically cancelling on-device crosstalk.
+
+    FIXME: This class should be generalized to allow crosstalk cancellation
+    for different drive pulse shapes (e.g., SSB_DRAG_pulse_cos).
 
     Args:
         name (str): Name of the pulse, used for referencing to other pulses in a
@@ -1006,7 +1118,6 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
-            'mirror_pattern': None,
         }
         return params
 
@@ -1052,6 +1163,7 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         return hashlist
 
 
+
 class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
     def __init__(self,
                  I_channel,
@@ -1078,7 +1190,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
                                       buffer_length_start=self.flux_buffer_length_start,
                                       buffer_length_end=self.flux_buffer_length_end,
                                       gaussian_filter_sigma=self.flux_gaussian_filter_sigma,
-                                      mirror_pattern=kw.get("mirror_pattern",
+                                      mirror_pattern=kw.get("flux_mirror_pattern",
                                                             None))
 
     @classmethod
@@ -1095,7 +1207,14 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             'flux_amplitude': 0,
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,
-            'flux_gaussian_filter_sigma': 0.5e-9
+            'flux_gaussian_filter_sigma': 0.5e-9,
+            # Note that the mirror pattern is included in the pulse parameters
+            # to ensure consistency (other flux_* parameters are also stored as
+            # attributes of the Pulse object). However, the value of
+            # self.fp.mirror_pattern (which should be identical to
+            # self.flux_mirror_pattern unless someone messes with it)
+            # is the one used by the code to retrieve the pattern to apply.
+            'flux_mirror_pattern': None,
         }
         return params
 
@@ -1116,6 +1235,16 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             return self.fp.hashables(tstart, channel)
         else:
             return []  # empty list if neither of the conditions is satisfied
+
+    def get_mirror_pulse_obj_and_pattern(self):
+        # For flux pulse assisted readout, we currently return the mirror pattern
+        # of the flux pulse.
+        # FIXME: note that this prevents the user to enable mirror pattern on
+        #  the readout drive pulse at the moment when using this pulse type.
+        #  A better long term solution consists in refactoring the Pulse
+        #  abstraction layer in which a clearer separation
+        #  is made between pulses and operations (which can contain several pulses).
+        return self.fp.get_mirror_pulse_obj_and_pattern()
 
 
 class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
@@ -1332,13 +1461,15 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     Applies single sideband modulation, requires tvals to make sure the
     phases are correct.
 
-    The modulation and predistortion is calculated as
+    If alpha >= 1.0: The modulation and predistortion is calculated as
     [I_mod] = [cos(phi_skew)  sin(phi_skew)] [ cos(wt)  sin(wt)] [I_env]
     [Q_mod]   [0              1/alpha      ] [-sin(wt)  cos(wt)] [Q_env],
     where wt = 360 * mod_frequency * (tvals - tval_phaseref) + phase
 
-    The output is normalized such that the determinatnt of the transformation
-    matrix is +-1.
+    If alpha < 1.0: I_mod and Q_mod will be multiplied with alpha on top of
+    the expression above. This is to make sure that all elements of the
+    predistortion matrix is not larger than 1, in order to be compatible with
+    mixer_calib modulation mode of ZI HDAWG.
 
     Args:
         ienv (np.ndarray): In-phase envelope waveform.
@@ -1360,12 +1491,10 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     phii = phi + phi_skew
     phiq = phi + 90
 
-    # k = 1 / np.cos(np.pi * phi_skew / 180) #  old normalization
-    k = np.sqrt(np.abs(alpha / np.cos(np.deg2rad(phi_skew))))
-
-    imod = k * (ienv * np.cos(np.deg2rad(phii)) +
+    r = alpha if alpha < 1.0 else 1.0
+    imod = r * (ienv * np.cos(np.deg2rad(phii)) +
                 qenv * np.sin(np.deg2rad(phii)))
-    qmod = k * (ienv * np.cos(np.deg2rad(phiq)) +
+    qmod = r * (ienv * np.cos(np.deg2rad(phiq)) +
                 qenv * np.sin(np.deg2rad(phiq))) / alpha
 
     return imod, qmod
