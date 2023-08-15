@@ -2868,10 +2868,12 @@ class T1(SingleQubitGateCalibExperiment):
         return d
 
 
-class QScale(SingleQubitGateCalibExperiment):
+class PhaseErrorCalib(SingleQubitGateCalibExperiment):
     """
-    QScale measurement for finding the motzoi parameter for driving a transmon
-    transition without phase errors.
+    Phase error calibration measurement for finding the quadrature scaling
+    parameter (motzoi) of an SSB_DRAG_pulse or the envelope modulation frequency
+    (env_mod_frequency) of an SSB_DRAG_pulse_full/SSB_DRAG_pulse_cos that allows
+    to drive a transmon transition without phase errors.
     See the papers:
         https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.103.110501
         https://journals.aps.org/pra/abstract/10.1103/PhysRevA.83.012308
@@ -2886,7 +2888,8 @@ class QScale(SingleQubitGateCalibExperiment):
         |tr_prep_pulses**|  --  |X90_tr_name**| - |X180_tr_name** |  --  |RO*|
         |tr_prep_pulses**|  --  |X90_tr_name**| - |Y180_tr_name** |  --  |RO*|
         |tr_prep_pulses**|  --  |X90_tr_name**| - |mY180_tr_name**|  --  |RO*|
-                                 sweep qscale       sweep qscale
+                               sweep motzoi or     sweep motzoi or
+                               env_mod_frequency   env_mod_frequency
 
         * = in parallel on all qubits_to_measure (key in the task)
         ** = in parallel on all qubits_to_measure and aligned at the end
@@ -2900,38 +2903,51 @@ class QScale(SingleQubitGateCalibExperiment):
         Note: depending on which transition is tuned up in each task, the
         sequence can have different number of pulses for each qubit.
 
-    See docstring of parent class for the first 3 parameters.
-    :param qscales: (numpy array) sweep points for the motzoi param of the pairs
-        of pulses in the pulse sequence above.
-        This parameter can be used together with "qubits" for convenience to
-        avoid having to specify a task_list.
-        If not None, qscales will be used to create the first dimension of
-        sweep points, which will be identical for all tasks.
-    :param kw: keyword arguments.
+    Args
+        See docstring of parent class for the first 3 parameters.
+
+        qscales (numpy array): sweep points for the motzoi param of the pairs
+            of pulses in the pulse sequence above.
+            This parameter can be used together with "qubits" for convenience to
+            avoid having to specify a task_list.
+            If not None, qscales will be used to create the first dimension of
+            sweep points, which will be identical for all tasks.
+        env_mod_freqs (numpy array): sweep points for the env_mod_frequency
+            param of the pairs of pulses in the pulse sequence above.
+            If not None, env_mod_freqs will be used to create the first
+            dimension of sweep points, which will be identical for all tasks.
+
+        Only one of the two sweep parameters should be specified!
+
+    Keyword Args
         Can be used to provide keyword arguments to sweep_n_dim, autorun, and
         to the parent class.
 
     The following keys in a task are interpreted by this class in
     addition to the ones recognized by the parent classes:
+        - env_mod_freqs
         - qscales
     """
 
     kw_for_sweep_points = {
+        'env_mod_freqs': dict(param_name='env_mod_frequency', unit='Hz',
+                              label='Pulse Envelope Frequency', dimension=0,
+                              values_func=lambda df: np.repeat(df, 3)),
         'qscales': dict(param_name='motzoi', unit='',
-                        label='Quadrature scaling, $q$', dimension=0,
+                        label='Quadrature Scaling Factor, $q$', dimension=0,
                         values_func=lambda q: np.repeat(q, 3))
     }
-    default_experiment_name = 'Qscale'
+    default_experiment_name = 'PhaseErrorCalib'
     call_parallel_sweep = False  # pulse sequence changes between segments
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 qscales=None, **kw):
+                 env_mod_freqs=None, qscales=None, **kw):
         try:
             # the 3 pairs of pulses to be applied for each sweep point
-            self.qscale_base_ops = [['X90', 'X180'], ['X90', 'Y180'],
-                                    ['X90', 'mY180']]
+            self.base_ops = [['X90', 'X180'], ['X90', 'Y180'], ['X90', 'mY180']]
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
+                             env_mod_freqs=env_mod_freqs,
                              qscales=qscales, **kw)
         except Exception as x:
             self.exception = x
@@ -2939,49 +2955,46 @@ class QScale(SingleQubitGateCalibExperiment):
 
     def update_sweep_points(self):
         """
-        Checks if the qscale sweep points are repeated 3 times (there are 3
-        pairs of pulses in qscale_base_ops). Updates the self.sweep_points and
-        the sweep points in each task of preprocessed_task_list with the
-        repeated qscale sweep points.
+        Checks if the sweep points in the first sweep dimension are repeated 3
+        times (there are 3 pairs of pulses in base_ops). If they are not,
+        this method updates the self.sweep_points and the sweep points in each
+        task of preprocessed_task_list with the repeated sweep points.
         """
 
         # update self.sweep_points
         swpts = deepcopy(self.sweep_points)
-        swp_dim0 = swpts.get_sweep_dimension(0)
-
         par_names = []
         vals = []
-        for par in swp_dim0:
-            if 'motzoi' not in par:
-                continue
-
-            values = swpts.get_sweep_params_property('values', param_names=par)
+        for par in swpts.get_parameters(0):
+            values = swpts[par]
             if np.unique(values[:3]).size > 1:
-                # the qscale sweep points are not repeated 3 times (for each
-                # pair of qscale_base_ops)
+                # the sweep points are not repeated 3 times (for each
+                # pair of base_ops)
                 par_names += [par]
                 vals += [np.repeat(values, 3)]
-
         self.sweep_points.update_property(par_names, values=vals)
 
         # update sweep points in preprocessed_task_list
         for task in self.preprocessed_task_list:
             swpts = task['sweep_points']
-            values = swpts.get_sweep_params_property(
-                'values', param_names='motzoi')
-            if np.unique(values[:3]).size > 1:
-                swpts.update_property(['motzoi'], values=[np.repeat(values, 3)])
+            for par in swpts.get_parameters(0):
+                values = swpts[par]
+                if np.unique(values[:3]).size > 1:
+                    swpts.update_property([par], values=[np.repeat(values, 3)])
 
     def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
         """
-        This function creates the blocks for each QScale measurement task,
-        see the pulse sequence in the class docstring.
-        :param sp1d_idx: sweep point index in the first sweep dimension
-        :param sp2d_idx: sweep point index in the second sweep dimension
-        :param kw: keyword arguments to be provided in each task
-            qb: qubit name
-            sweep_points: SweepPoints instance
-            transition_name: transmon transition to be tuned up. Can be
+        This function creates the blocks for each task, see the pulse sequence
+        in the class docstring.
+
+        Args
+            sp1d_idx (int): sweep point index in the first sweep dimension
+            sp2d_idx (int): sweep point index in the second sweep dimension
+
+        Keyword Args: to be provided in each task
+            qb (str): qubit name
+            sweep_points (class instance): of the SweepPoints
+            transition_name (str): transmon transition to be tuned up. Can be
                 "", "_ef", "_fh". See the docstring of parent method.
         """
 
@@ -2993,28 +3006,35 @@ class QScale(SingleQubitGateCalibExperiment):
 
             # create prepended pulses
             prepend_blocks = super().sweep_block(**task)
-            # add qscale block consisting of the correct set of 2 pulses
-            # from qscale_base_ops (depending on sp1d_idx)
-            qscale_pulses_block = self.block_from_ops(
-                f'qscale_pulses_{qb}', [f'{p}{transition_name} {qb}' for p in
-                                        self.qscale_base_ops[sp1d_idx % 3]])
-            # set the motzoi parameter of the pulses in the qscale block
-            for p in qscale_pulses_block.pulses:
-                p['motzoi'] = sweep_points.get_sweep_params_property(
-                    'values', 0, 'motzoi')[sp1d_idx]
+            # add task block consisting of the correct set of 2 pulses
+            # from base_ops (depending on sp1d_idx)
+            task_block = self.block_from_ops(
+                f'task_pulses_{qb}', [f'{p}{transition_name} {qb}' for p in
+                                      self.base_ops[sp1d_idx % 3]])
+            # set the pulse parameters of the pulses in the task block
+            swp_pars = sweep_points.get_parameters()
+            for p in task_block.pulses:
+                for spar in swp_pars:
+                    if spar in p:
+                        p[spar] = sweep_points[spar][sp1d_idx] if \
+                            sweep_points.find_parameter(spar) == 0 else \
+                            sweep_points[spar][sp2d_idx]
             # gather the blocks for each task
             parallel_block_list += [self.sequential_blocks(
-                f'qscale_{qb}', prepend_blocks + [qscale_pulses_block])]
+                f'phase_err_cal_{qb}', prepend_blocks + [task_block])]
 
-        return self.simultaneous_blocks(f'qscale_{sp2d_idx}_{sp1d_idx}',
+        return self.simultaneous_blocks(f'phase_err_cal_{sp2d_idx}_{sp1d_idx}',
                                         parallel_block_list, block_align='end')
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
         Runs analysis and stores analysis instance in self.analysis.
-        :param analysis_kwargs: (dict) keyword arguments for analysis
-        :param kw: keyword arguments
-            Passed to parent method.
+
+        Args
+            analysis_kwargs (dict): keyword arguments for analysis
+
+        Keyword Args
+            Passed to super call.
         """
 
         super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
@@ -3027,29 +3047,45 @@ class QScale(SingleQubitGateCalibExperiment):
 
     def run_update(self, **kw):
         """
-        Updates the tr_name_motzoi parameter of the qubit in each task with
-        the value extracted by the analysis.
-        :param kw: keyword arguments
+        Updates the tr_name_motzoi parameter or the tr_name_env_mod_freq
+        parameter of the qubit in each task with the value extracted by the
+        analysis.
+
+        Keyword Args
+            Not used, but are here to allow pass-through.
         """
 
         for task in self.preprocessed_task_list:
             qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
-            qscale = self.analysis.proc_data_dict['analysis_params_dict'][
+            pulse_par = self.analysis.proc_data_dict['analysis_params_dict'][
                 qubit.name]['qscale']
-            qubit.set(f'{task["transition_name_input"]}_motzoi', qscale)
+            if self.analysis.pulse_par_name == 'motzoi':
+                qubit.set(f'{task["transition_name_input"]}_motzoi', pulse_par)
+            else:
+                qubit.set(f'{task["transition_name_input"]}_env_mod_freq',
+                          pulse_par)
 
     @classmethod
     def gui_kwargs(cls, device):
         d = super().gui_kwargs(device)
         d['sweeping_parameters'].update({
-            QScale.__name__: {
+            cls.__name__: {
                 0: {
-                    'motzoi': 'V',
+                    'env_mod_frequency': 'Hz',
+                    'motzoi': '',
                 },
                 1: {},
             }
         })
         return d
+
+
+class QScale(PhaseErrorCalib):
+    """
+    Legacy measurement class.
+    PhaseErrorCalib measurement with the name QScale.
+    """
+    default_experiment_name = 'QScale'
 
 
 class SingleQubitErrorAmplificationExperiment(SingleQubitGateCalibExperiment):
@@ -3527,6 +3563,250 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
             else:
                 log.info(f'No qubit parameter to update for a {ideal_sc}pi '
                          f'rotation. Update only possible for pi and pi/2.')
+
+
+class NPulsePhaseErrorCalib(SingleQubitErrorAmplificationExperiment):
+    """
+    Phase-error calibration measurement using error amplification (see docstring
+    of parent class).
+
+    This is an error amplification experiment and a multitasking experiment;
+    see docstrings of SingleQubitErrorAmplificationExperiment,
+    MultiTaskingExperiment and of CalibBuilder for general information.
+    Each task corresponds to one qubit specified by the key 'qb'
+    (either name or QuDev_transmon instance), i.e. multiple qubits can be
+    measured in parallel.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        qb:   [ |X180| --- |mX180| ] x n_repetitions  ---  |RO|
+             sweep env_mod_frequency
+
+    Expected sweep points, either global or per task:
+        - env_mod_freqs or qscales in dimension 0
+        - n_repetitions in dimension 1
+
+    Idea behind this calibration measurement:
+        If the envelope modulation frequency is perfectly calibrated, the qubit
+        will remain in the ground state independent of n_repetitions.
+        Sweeping the envelope modulation frequency will result in an oscillation
+        between the ground and excited states, with the frequency of this
+        oscillation dependent on n_repetitions (faster oscillations at larger
+        n_repetitions).
+        More about this measurement can be read here:
+        https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.116.020501
+
+    Args (in addition to the ones accepted by the parent classes)
+        env_mod_freqs (list or array): specifying the values for the envelope
+            modulation frequency of the SSB_DRAG_pulse_full or
+            SSB_DRAG_pulse_cos.
+        qscales (list or array): specifying the values for the quadrature
+            scaling factor of the SSB_DRAG_pulse.
+
+    Keyword Args (in addition to the ones accepted by the parent classes)
+        fit_indices (dict): with mobj names as keys and ints as values. Used in
+            update and only relevant if len(n_repetitions) > 1, in which case
+            there are several traces from which the fitted pulse parameters
+            could be taken. The ints in this dict specify the index of the fit
+            from which to update the pulse parameter.
+    """
+
+    default_experiment_name = 'NPulsePhaseErrorCalib'
+    kw_for_sweep_points = {
+        'env_mod_freqs': dict(param_name='env_mod_frequency', unit='Hz',
+                              label='Envelope Modulation frequency, $f$',
+                              dimension=0),
+        'qscales': dict(param_name='motzoi', unit='',
+                        label='Quadrature Scaling Factor, $q$',
+                        dimension=0),
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 env_mod_freqs=None, qscales=None, **kw):
+        try:
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             env_mod_freqs=env_mod_freqs,
+                             qscales=qscales,
+                             n_repetitions_sweep_dim=1,
+                             amplification_pulses=['X180', 'mX180'],
+                             analysis_class=tda.NPulsePhaseErrorCalibAnalysis,
+                             **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis class
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+        data_to_fit = {mobjn: 'pg' for mobjn in self.meas_obj_names}
+        analysis_kwargs = {'options_dict': {'data_to_fit': data_to_fit}}
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+
+    def run_update(self, **kw):
+        """
+        Updates the tr_name_motzoi parameter or the tr_name_env_mod_freq
+        parameter of the qubit in each task with the value extracted by the
+        analysis.
+
+        Keyword Args
+            Not used, but are here to allow pass-through.
+        """
+
+        fit_indices = kw.get('fit_indices', None)
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
+            apd = self.analysis.proc_data_dict['analysis_params_dict']
+            key = [k for k in apd if qubit.name in k]
+            if len(key) == 1:
+                key = key[0]
+            else:
+                if fit_indices is None:
+                    log.warning('More than one fit result was found. Please '
+                                'provide "fit_indices." Update was not run.')
+                    return
+                else:
+                    key = key[fit_indices[qubit.name]]
+
+            pulse_par = apd[key]['piPulse']
+            if self.analysis.pulse_par_name == 'motzoi':
+                qubit.set(f'{task["transition_name_input"]}_motzoi', pulse_par)
+            else:
+                qubit.set(f'{task["transition_name_input"]}_env_mod_freq',
+                          pulse_par)
+
+
+class NPulseLeakagePulseDelayCalib(SingleQubitErrorAmplificationExperiment):
+    """
+    Calibration measurement for the separation between a train of X180 pulses
+    that results in coherent accumulation of leakage into the f state.
+
+    This is an error amplification experiment and a multitasking experiment;
+    see docstrings of SingleQubitErrorAmplificationExperiment,
+    MultiTaskingExperiment and of CalibBuilder for general information. Each
+    task corresponds to one qubit specified by the key 'qb' (either name or
+    QuDev_transmon instance), i.e. multiple qubits can be measured in parallel.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        qb:   |X180| x n_repetitions  ---  |RO|
+                sweep pulse_delay
+
+    Expected sweep points, either global or per task:
+        - pulse_delays in dimension 0
+        - n_repetitions in dimension 1
+
+    Idea behind this calibration measurement:
+        Simply applying a train of X180 pulses played back to back will not
+        necessarily result in leakage accumulation, because, depending on the
+        length of the ge pulse during which the ef transition is driven outside
+        the frame of reference set by the LO in which the ge transition was
+        calibration, the leakage can accumulate in an incoherent manner,
+        result in a destructive-interference effect. In this measurement, we
+        find the pulse separation at which the f-state population is maximal.
+
+    Args (in addition to the ones accepted by the parent classes)
+        pulse_delays (list or array): delay of an X180 pulses with respect to
+            the previous one.
+
+    Keyword Args
+        See parent classes.
+    """
+
+    default_experiment_name = 'NPulseLeakagePulseDelayCalib'
+    kw_for_sweep_points = {
+        'pulse_delays': dict(param_name='pulse_delay', unit='s',
+                             label='Drive pulse separation, $\\tau$',
+                             dimension=0),
+    }
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 pulse_delays=None, **kw):
+        try:
+            if 'cal_states' not in kw:
+                kw['cal_states'] = 'gef'
+
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             pulse_delays=pulse_delays,
+                             n_repetitions_sweep_dim=1,
+                             amplification_pulses=['X180'], **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+
+class NPulseLeakageCalib(SingleQubitErrorAmplificationExperiment):
+    """
+    Leakage calibration measurement using error amplification (see docstring
+    of parent class).
+
+    This is an error amplification experiment and a multitasking experiment;
+    see docstrings of SingleQubitErrorAmplificationExperiment,
+    MultiTaskingExperiment and of CalibBuilder for general information. Each
+    task corresponds to one qubit specified by the key 'qb' (either name or
+    QuDev_transmon instance), i.e. multiple qubits can be measured in parallel.
+
+    Sequence for each task (for further info and possible parameters of
+    the task, see the docstring of the method sweep_block):
+
+        qb:   |X180| x n_repetitions  ---  |RO|
+        sweep cancellation_frequency_offset
+
+    Expected sweep points, either global or per task:
+        - cancellation_freq_offsets in dimension 0
+        - n_repetitions in dimension 1
+
+    Idea behind this calibration measurement:
+        If the leakage is perfectly cancelled using the
+        cancellation_frequency_offset parameter of the DRAG pulse, the f-state
+        population will be zero, independent of n_repetitions.
+        Sweeping the cancellation frequency offset at a pulse spacing that
+        results in coherent leakage accumulation, will produce an oscillation
+        in the f-state population with n_repetitions.
+
+    Args (in addition to the ones accepted by the parent classes)
+        cancellation_freq_offsets (list or array): frequencies offset from the
+            ge transition frequency used to set the cancellation point of the
+            SSB_DRAG_pulse_full or SSB_DRAG_pulse_cos.
+        pulse_spacing (float): time separation between the X180 pulses in the
+            amplification block. Defaults to 0.
+            This parameter and its value will be copied to each task which does
+            not already contain it.
+
+    Keyword Args
+        See parent classes.
+    """
+
+    default_experiment_name = 'NPulseLeakageCalib'
+    kw_for_sweep_points = {
+        'cancellation_freq_offsets': dict(
+            param_name='cancellation_frequency_offset', unit='Hz',
+            label='Cancellation freq. offset, $f_c$', dimension=0),
+    }
+    kw_for_task_keys = ['pulse_spacing']
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 cancellation_freq_offsets=None, pulse_spacing=0, **kw):
+        try:
+            if 'cal_states' not in kw:
+                kw['cal_states'] = 'gef'
+            super().__init__(task_list, qubits=qubits, sweep_points=sweep_points,
+                             cancellation_freq_offsets=cancellation_freq_offsets,
+                             pulse_spacing=pulse_spacing,
+                             n_repetitions_sweep_dim=1,
+                             amplification_pulses=['X180'],
+                             pulse_modifs={'all': {'pulse_delay': pulse_spacing}},
+                             **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
 
 
 class RabiFrequencySweep(ParallelLOSweepExperiment):
