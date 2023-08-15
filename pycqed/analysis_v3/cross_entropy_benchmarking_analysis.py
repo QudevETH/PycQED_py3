@@ -1268,7 +1268,7 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
                         fn = deepcopy(filename)
                         if fn is None:
                             fn = f'XEB_{mobjn}_{cycles[-1]}cycles_{nr_seq}seqs_' \
-                                 f'{timestamp}'
+                                 f'{cz_name}_{timestamp}'
                         if log_scale:
                             fn += '_log'
                         fn = f'{filename_prefix}{fn}'
