@@ -45,6 +45,9 @@ class SSB_DRAG_pulse(pulse.Pulse):
             addition to the nominal 90 degrees. Defaults to 0.
     """
 
+    SUPPORT_INTERNAL_MOD = True
+    SUPPORT_HARMONIZING_AMPLITUDE = True
+
     def __init__(self, element_name, I_channel, Q_channel,
                  name='SSB Drag pulse', **kw):
         super().__init__(name, element_name, **kw)
@@ -124,10 +127,119 @@ class SSB_DRAG_pulse(pulse.Pulse):
         return hashlist
 
 
+class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
+    """
+    SSB second-order DRAG pulse with quadrature scaling factor and
+    frequency detuning.
+
+    FIXME: A future version of this this class should be adapted to allow
+    crosstalk cancellation
+
+    Args:
+        See parent class for docstring.
+        Additional parameter recognised by this class:
+            cancellation_frequency_offset (float; default=None):
+                frequency offset of the cancellation dip in the pulse spectrum
+                with respect to the center frequency. This parameter typically
+                takes the value of the transmon anharmonicity (ex: -170e6).
+                The quadrature correction is not applied if this parameter
+                is None (no cancellation dip in the pulse spectrum).
+            env_mod_frequency (float; default=0):
+                modulation frequency of the pulse envelope, introducing a
+                detuning from mod_frequency
+
+        When cancellation_frequency_offset is not None, this class applies
+        correction factors to the amplitude and env_mod_frequency in order to
+        decouple the effects of the three parameters amplitude,
+        env_mod_frequency and cancellation_frequency_offset.
+        These correction factors work in the limit
+        abs(env_mod_freq) << 1/tg << cancellation_frequency_offset
+        and ensure that:
+            - the maximum spectral power of the pulse is at the
+        env_mod_frequency independent of the value for amplitude or
+        cancellation_frequency_offset;
+            - the spectral power of the pulse at 0 is not changed by changing
+        env_mod_frequency or cancellation_frequency_offset.
+    """
+
+    @classmethod
+    def pulse_params(cls):
+        params = super().pulse_params()
+        params.update({'cancellation_frequency_offset': None,
+                       'env_mod_frequency': 0})
+        return params
+
+    def chan_wf(self, channel, tvals):
+        tg = self.nr_sigma * self.sigma
+        half = tg / 2
+        tc = self.algorithm_time() + half
+
+        env_mod_freq_corr = self.env_mod_frequency
+        amplitude_corr = self.amplitude
+        if self.cancellation_frequency_offset is not None:
+            # Apply correction factors to decouple the effects of the
+            # pulse parameters.
+            env_mod_freq_corr += 3 / (self.cancellation_frequency_offset *
+                                      tg ** 2 * (np.pi ** 2 - 6))
+            amplitude_corr /= 1 - (np.pi ** 2 - 6) * \
+                              (tg * env_mod_freq_corr) ** 2 / 6
+
+        # in-phase component
+        envi = np.cos(np.pi * (tvals - tc) / tg) ** 2
+        # truncate
+        envi *= (tvals - tc >= -half) * (tvals - tc < half)
+        # apply envelope modulation
+        envi = envi * amplitude_corr * \
+               np.exp(-2j * np.pi * env_mod_freq_corr * (tvals - tc))
+
+        if self.cancellation_frequency_offset is not None:
+            # Apply DRAG correction
+            # Calculate quadrature component
+            q = -1 / (2 * np.pi * self.cancellation_frequency_offset * tg)
+            envq = q * tg * 0.5 * (np.diff(envi, prepend=[0]) +
+                                   np.diff(envi, append=[0])) / \
+                   (tvals[1]-tvals[0])
+        else:
+            log.debug('DRAG correction was not applied because '
+                      'the cancellation_frequency_offset is 0.')
+            envq = np.zeros_like(envi)
+
+        envc = envi + 1j * envq
+        # envi is complex if env_mod_frequency != 0, so we re-calculate the
+        # real (envi) and imaginary (envq) components from the full complex
+        # waveform envc
+        envi, envq = np.real(envc), np.imag(envc)
+
+        if self.mod_frequency is not None:
+            I_mod, Q_mod = apply_modulation(
+                envi, envq, tvals, self.mod_frequency,
+                phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
+                tval_phaseref=0 if self.phaselock else tc)
+        else:
+            # Ignore the Q component and program the I component to both
+            # channels. See HDAWG8Pulsar._hdawg_mod_setter
+            I_mod, Q_mod = envi, envi
+
+        if channel == self.I_channel:
+            return I_mod
+        elif channel == self.Q_channel:
+            return Q_mod
+        else:
+            return np.zeros_like(tvals)
+
+    def hashables(self, tstart, channel):
+        hashlist = super().hashables(tstart, channel)
+        hashlist += [self.cancellation_frequency_offset, self.env_mod_frequency]
+        return hashlist
+
+
 class SSB_DRAG_pulse_with_cancellation(SSB_DRAG_pulse):
     """
     SSB Drag pulse with copies with scaled amp. and offset phase on extra
     channels intended for interferometrically cancelling on-device crosstalk.
+
+    FIXME: This class should be generalized to allow crosstalk cancellation
+    for different drive pulse shapes (e.g., SSB_DRAG_pulse_cos).
 
     Args:
         name (str): Name of the pulse, used for referencing to other pulses in a
@@ -251,8 +363,9 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
             `len(lengths) == len(channels)`.
         amplitudes (list of list of float): The amplitudes of all pulse
             segments. The shape must match that of `lengths`.
-        gaussian_filter_sigma (float): The width of the gaussian filter sigma
-            of the pulse.
+        gaussian_filter_sigma (float or list of float): The width of the
+            gaussian filter sigma of the pulse. If this is a list, indicates
+            a value for each channel in self.channels.
         codeword (int or 'no_codeword'): The codeword that the pulse belongs in.
             Defaults to 'no_codeword'.
     """
@@ -295,14 +408,19 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
         idx = self.channels.index(channel)
         wave = np.zeros_like(t)
 
-        if self.gaussian_filter_sigma > 0:
-            timescale = 1 / (np.sqrt(2) * self.gaussian_filter_sigma)
+        if isinstance(self.gaussian_filter_sigma, list):
+            gaussian_filter_sigma = self.gaussian_filter_sigma[idx]
+        else:
+            gaussian_filter_sigma = self.gaussian_filter_sigma
+
+        if gaussian_filter_sigma > 0:
+            timescale = 1 / (np.sqrt(2) * gaussian_filter_sigma)
         else:
             timescale = 0
 
         for seg_len, seg_amp in zip(self.lengths[idx], self.amplitudes[idx]):
             t1 = t0 + seg_len
-            if self.gaussian_filter_sigma > 0:
+            if gaussian_filter_sigma > 0:
                 wave += 0.5 * seg_amp * (sp.special.erf((t - t0) * timescale) -
                                          sp.special.erf((t - t1) * timescale))
             else:
@@ -328,16 +446,39 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
     """
     A zero-area pulse shape that allows to control the accumulated phase when
     transitioning from the first pulse half to the second pulse half, by having
-    an additional, low-amplitude segment between the two main pulse-halves.
+    an additional, low-amplitude segment between the two main pulse halves.
 
-    The zero area is achieved by adjusting the lengths for the intermediate
-    pulses.
+    Pulse shape:
+            1
+        ---------
+       |         | 2
+       |          ---
+       |             | 3
+       |              ---
+       |                 |
+    ---                  |                  ---
+                         |                 |
+                          ---              |
+                           3 |             |
+                              ---          |
+                               2 |         |
+                                  ---------
+                                      1
+    1: Main pulse halves
+        - amplitude: amplitude +/- amplitude_offset
+        - duration: pulse_length/2 + offset correction to keep a zero area
+    2: (Optional) secondary transition step
+        - amplitude: trans2_amplitude
+        - duration: trans2_length
+    3: Mid-pulse step (typically used to set the cphase via its time integral)
+        - amplitude: trans_amplitude
+        - duration: trans_length
+    This pulse is meant to be played on the flux channels of two
+    qubits in parallel; attributes ending with '2' refer to the second channel.
     """
     def __init__(self, element_name, name='NZTC pulse', **kw):
         super().__init__(name, element_name, **kw)
-        if self.cphase is not None:
-            self.trans_amplitude2, self.basis_rotation = \
-                self.calc_cphase_params(self.cphase, self.cphase_calib_dict)
+        self._update_cphase()
         self._update_lengths_amps_channels()
 
 
@@ -357,73 +498,117 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'trans_amplitude': 0,
             'trans_amplitude2': 0,
             'trans_length': 0,
+            'trans2_amplitude': 0,
+            'trans2_amplitude2': 0,
+            'trans2_length': 0,
             'buffer_length_start': 30e-9,
             'buffer_length_end': 30e-9,
             'channel_relative_delay': 0,
             'gaussian_filter_sigma': 1e-9,
             'cphase': None,
             'cphase_calib_dict': None,
+            'cphase_ctrl_params': ['trans_amplitude2', 'basis_rotation'],
+            'fixed_pulse_length': None,
         }
         return params
 
     @staticmethod
-    def calc_cphase_params(phi, cphase_calib_dict):
-        # calib: measure trans_amplitude2 -> cphase and finetuning params
-        # this function: cphase -> trans_amplitude2 and finetuning params
+    def calc_cphase_params(cphase, cphase_calib_dict, cphase_ctrl_params,
+                           target=0, interpolation_type='quadratic'):
+        """Calculates pulse parameters to implement a given conditional phase
+
+        During the calibration, cphase_calib_dict is measured:
+            {main_control_param: [...], 'cphase': [...], 'other_param': [...]}
+        The goal of this function is to interpolate between all parameter
+        values, for a given value of cphase.
+
+        Args:
+            cphase (float): Value of the conditional phase
+            cphase_calib_dict (dict): Calibration dictionary, containing
+                measurement values of the cphase as a function of the control
+                parameters of the pulse
+            cphase_ctrl_params (list): List of pulse parameter names that
+                should be interpolated to set the conditional phase
+            target (float): Since there might be several sets of parameters
+                yielding a given cphase (if the calibrated range is wide
+                enough to cover strictly more than 360 degrees), we choose
+                one main parameter, cphase_ctrl_params[0], and select the value
+                of this parameter which is closest to 'target'
+
+        Returns:
+            Dict of control parameters names and values
+        """
 
         # Currently cphase_calib_dict = {'param': [values...] ...} including
         # 'cphase', all with the same number of points.
         # Could be extended to instead hold tuples of (cphase_vals,
-        # param_vals) for each param, to allow different granularities.
-        # FIXME deal with phase wrapping for cphase and basis_rotation
-        params_to_interpolate = ['trans_amplitude2', 'basis_rotation']
-        param_vals = []
+        # param_vals) for each param, to allow different granularities
+        param_vals = {}
 
-        cp = cphase_calib_dict['cphase']
-        # For cases where cp is split over two periods
-        # ( assuming that min(cp) < 0 < max(cp) )
-        if phi>np.max(cp):
-            phi = phi-360
+        cp_list = cphase_calib_dict['cphase']
+        # The calib dict may be calibrated over a range > 360 degrees.
+        # Here, get all possible values of cphase, contained in the range of
+        # the calib dict, which match the requested cphase modulo 360 degrees.
+        # e.g. if cp_list = [273.2, ..., 1215.1] and cphase = 10.0, then
+        # possible_cp = [370.,  730., 1090.] are all the ways one can
+        # implement 10 degrees within the range of the calibration dict.
+        # In details: min(cp_list)+(cphase-min(cp_list))%360 is the minimum
+        # value of cp_list which is equal to cphase modulo 360. We then
+        # recover all values equal to cphase modulo 360 by doing an arange.
+        # Note that the arange does not include the upper bound, but this
+        # would mean missing one possible cphase only if
+        # max(cp_list) = cphase (mod. 360).
+        possible_cp = np.arange(min(cp_list)+(cphase-min(cp_list))%360,
+                                 max(cp_list), 360)
+        # Get values of the main control parameter which yield these cphases
+        f = interp1d(cp_list, cphase_calib_dict[cphase_ctrl_params[0]],
+                     kind=interpolation_type)
+        possible_param_vals = f(possible_cp)
+        # Choose the value of the main control param closest to target
+        id_closest = np.abs(possible_param_vals-target).argmin()
+        # This is the cphase (not modulo 360) from the calibration dict which:
+        # - equals the requested cphase modulo 360 degrees
+        # - requires a value of the main control parameter closest to target
+        cphase = possible_cp[id_closest]
 
-        for param_name in params_to_interpolate:
+        # Now that we have chosen one point of the calib dict, interpolate all
+        # control params needed to reach this value of cphase
+        for param_name in cphase_ctrl_params:
             cal_data = cphase_calib_dict[param_name]
             if isinstance(cal_data, dict):  # for 'basis_rotation'
                 param_vals_dict = {}
                 for qbn, qbn_data in cal_data.items():
-                    f = interp1d(cp, qbn_data)
-                    param_vals_dict.update({qbn: float(f(phi))})
-                param_vals.append(param_vals_dict)
+                    f = interp1d(cp_list, qbn_data, kind=interpolation_type)
+                    param_vals_dict.update({qbn: float(f(cphase))})
+                param_vals[param_name] = param_vals_dict
             else:
-                f = interp1d(cp, cal_data)
-                param_vals.append(float(f(phi)))
+                f = interp1d(cp_list, cal_data, kind=interpolation_type)
+                param_vals[param_name] = float(f(cphase))
         return param_vals
 
-        # --- Below is code from Nathan's CARB
-        # th = cphase_calib_dict.get('zero_angle_threshold', 0)
-        # assert 'phase_amplitude_array' in cphase_calib_dict, \
-        #     "phase_amplitude_array not provided"
-        # paa = cphase_calib_dict['phase_amplitude_array']
-        # # the following asarray makes the function robust to work for phi
-        # # being float, list, or array
-        # offset = np.asarray(cphase_calib_dict.get('offset', paa[0][0]))
-        # amplitude = np.interp((phi - offset) % (2 * np.pi),
-        #                       paa[0] - offset, paa[1], period=2 * np.pi) \
-        #             * (1 - np.less(np.abs(np.mod(phi, 2 * np.pi)), th))
-        #
-        # if 'amplitude_dynphase_dict' not in cphase_calib_dict:
-        #     log.warning('amplitude_dynphase_dict not provided. '
-        #                 'Using basis_rotation from pulse settings.')
-        #     basis_rotation = None
-        # else:
-        #     basis_rotation = {}
-        #     kind = cphase_calib_dict.get('dynphase_interp_kind', 'cubic')
-        #     for qbn, ada in cphase_calib_dict['amplitude_dynphase_dict'].items():
-        #         basis_rotation[qbn] = sp.interpolate.interp1d(ada[0],
-        #                 (np.unwrap(ada[1] / 180 * np.pi) * 180 / np.pi),
-        #                 kind=kind, fill_value='extrapolate'
-        #             )(amplitude) \
-        #             * (1 - np.less(np.abs(np.mod(phi, 2 * np.pi)), th))
-        # return (amplitude, basis_rotation)
+    def _update_cphase(self, cphase=None):
+        """Update cphase parameter and update all pulse parameters accordingly.
+
+        Args:
+            cphase (float, optional): Will be set as pulse parameter. If None
+                the currently set cphase parameter is used to compute all pulse
+                parameters. Defaults to None.
+        """
+        if cphase is not None:
+            self.cphase = cphase
+        if not (self.cphase is None
+                or hasattr(self.cphase, '_is_parametric_value')):
+            param_dict = \
+                self.calc_cphase_params(
+                    cphase=self.cphase,
+                    cphase_calib_dict=self.cphase_calib_dict,
+                    cphase_ctrl_params=self.cphase_ctrl_params,
+                    # target the main control param to be close to the
+                    # currently calibrated value for the CZ180 gate
+                    target=getattr(self, self.cphase_ctrl_params[0])
+                )
+            for param_name, param_value in param_dict.items():
+                setattr(self, param_name, param_value)
 
     def _update_lengths_amps_channels(self):
         self.channels = [c for c in [self.channel, self.channel2]
@@ -436,16 +621,19 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         self.amplitudes = []
 
         # add amplitudes and lengths for gate pulses
-        for ma, ta, ao, d, c in [
+        for ma, ta, ao, d, c, ia in [
             (self.amplitude, self.trans_amplitude, self.amplitude_offset,
-             -self.channel_relative_delay/2, self.channel),
+             -self.channel_relative_delay/2, self.channel,
+             self.trans2_amplitude),
             (self.amplitude2, self.trans_amplitude2, self.amplitude_offset2,
-             self.channel_relative_delay/2, self.channel2),
+             self.channel_relative_delay/2, self.channel2,
+             self.trans2_amplitude2),
         ]:
             if c is None:
                 continue
             ml = self.pulse_length
             tl = self.trans_length
+            il = self.trans2_length
             bs = self.buffer_length_start
             be = self.buffer_length_end
             ca0 = ma + ao
@@ -453,9 +641,14 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             cl0 = max(-(ml * ao) / ca0, 0) if ca0 else 0
             cl1 = max(-(ml * ao) / ca1, 0) if ca1 else 0
 
-            self.amplitudes.append([0, ma + ao, ta, -ta, -ma + ao, 0])
-            self.lengths.append([bs + d - cl0, cl0 + ml / 2, tl / 2,
-                                 tl / 2, ml / 2 + cl1, be - d - cl1])
+            self.amplitudes.append([0, ma + ao, ia, ta, -ta, -ia, -ma + ao, 0])
+            self.lengths.append([bs + d - cl0, cl0 + ml / 2, il, tl / 2,
+                                 tl / 2, il, ml / 2 + cl1, be - d - cl1])
+            if self.fixed_pulse_length is not None:
+                current_length = np.sum(self.lengths[-1])
+                difference = self.fixed_pulse_length - current_length
+                self.lengths[-1][0] += difference / 2
+                self.lengths[-1][-1] += difference / 2
         while len(self.lengths) < len(self.channels):
             self.lengths += [[]]
         while len(self.amplitudes) < len(self.channels):
@@ -1071,7 +1264,6 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
-            'mirror_pattern': None,
         }
         return params
 
@@ -1117,6 +1309,7 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         return hashlist
 
 
+
 class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
     def __init__(self,
                  I_channel,
@@ -1143,7 +1336,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
                                       buffer_length_start=self.flux_buffer_length_start,
                                       buffer_length_end=self.flux_buffer_length_end,
                                       gaussian_filter_sigma=self.flux_gaussian_filter_sigma,
-                                      mirror_pattern=kw.get("mirror_pattern",
+                                      mirror_pattern=kw.get("flux_mirror_pattern",
                                                             None))
 
     @classmethod
@@ -1160,7 +1353,14 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             'flux_amplitude': 0,
             'flux_extend_start': 20e-9,
             'flux_extend_end': 150e-9,
-            'flux_gaussian_filter_sigma': 0.5e-9
+            'flux_gaussian_filter_sigma': 0.5e-9,
+            # Note that the mirror pattern is included in the pulse parameters
+            # to ensure consistency (other flux_* parameters are also stored as
+            # attributes of the Pulse object). However, the value of
+            # self.fp.mirror_pattern (which should be identical to
+            # self.flux_mirror_pattern unless someone messes with it)
+            # is the one used by the code to retrieve the pattern to apply.
+            'flux_mirror_pattern': None,
         }
         return params
 
@@ -1181,6 +1381,16 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             return self.fp.hashables(tstart, channel)
         else:
             return []  # empty list if neither of the conditions is satisfied
+
+    def get_mirror_pulse_obj_and_pattern(self):
+        # For flux pulse assisted readout, we currently return the mirror pattern
+        # of the flux pulse.
+        # FIXME: note that this prevents the user to enable mirror pattern on
+        #  the readout drive pulse at the moment when using this pulse type.
+        #  A better long term solution consists in refactoring the Pulse
+        #  abstraction layer in which a clearer separation
+        #  is made between pulses and operations (which can contain several pulses).
+        return self.fp.get_mirror_pulse_obj_and_pattern()
 
 
 class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
@@ -1397,13 +1607,15 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     Applies single sideband modulation, requires tvals to make sure the
     phases are correct.
 
-    The modulation and predistortion is calculated as
+    If alpha >= 1.0: The modulation and predistortion is calculated as
     [I_mod] = [cos(phi_skew)  sin(phi_skew)] [ cos(wt)  sin(wt)] [I_env]
     [Q_mod]   [0              1/alpha      ] [-sin(wt)  cos(wt)] [Q_env],
     where wt = 360 * mod_frequency * (tvals - tval_phaseref) + phase
 
-    The output is normalized such that the determinatnt of the transformation
-    matrix is +-1.
+    If alpha < 1.0: I_mod and Q_mod will be multiplied with alpha on top of
+    the expression above. This is to make sure that all elements of the
+    predistortion matrix is not larger than 1, in order to be compatible with
+    mixer_calib modulation mode of ZI HDAWG.
 
     Args:
         ienv (np.ndarray): In-phase envelope waveform.
@@ -1425,12 +1637,10 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     phii = phi + phi_skew
     phiq = phi + 90
 
-    # k = 1 / np.cos(np.pi * phi_skew / 180) #  old normalization
-    k = np.sqrt(np.abs(alpha / np.cos(np.deg2rad(phi_skew))))
-
-    imod = k * (ienv * np.cos(np.deg2rad(phii)) +
+    r = alpha if alpha < 1.0 else 1.0
+    imod = r * (ienv * np.cos(np.deg2rad(phii)) +
                 qenv * np.sin(np.deg2rad(phii)))
-    qmod = k * (ienv * np.cos(np.deg2rad(phiq)) +
+    qmod = r * (ienv * np.cos(np.deg2rad(phiq)) +
                 qenv * np.sin(np.deg2rad(phiq))) / alpha
 
     return imod, qmod

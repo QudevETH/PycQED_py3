@@ -9,11 +9,11 @@ log = logging.getLogger(__name__)
 import device_db_client
 from device_db_client import model
 from device_db_client.api import api_api
+# from device_db_client.apis.tags import api_api # TODO: Needs to be used when upgrading to new version of OpenAPI generator
 from pycqed.utilities.devicedb import decorators, utils
 
 class Config:
-    @decorators.at_least_one_not_none(['username', 'token'])
-    @decorators.all_or_none(['username', 'password'])
+    @decorators.all_or_none(['username', 'password', 'token'])
     def __init__(
         self,
         username=None,
@@ -37,21 +37,15 @@ class Config:
             device_name (str, optional): the name of the device to retrieve from the database, if needed. Defaults to None.
             setup (str, optional): the name of the setup one which measurements are performed. Defaults to None.
             host (str, optional): the url for the server hosting the device database. Defaults to "https://device-db.qudev.phys.ethz.ch".
+            use_test_db (bool, optional): Boolean, specifying if the test database should be used or not. Defaults to False.
         """
         self.username = username
         self.password = password
         self.token = token
         self.device_name = device_name
         self.setup = setup
-
-        if host != None:
-            self.host = host
-        else:
-            if use_test_db == False: # Use the actual server
-                self.host = "https://device-db.qudev.phys.ethz.ch"
-            else: # Use the test server
-                self.host = "https://test-device-db.qudev.phys.ethz.ch"
-                log.info(f"Use the test server {self.host} instead of the actual live server.")
+        self.host = host
+        self.use_test_db = use_test_db
 
 
 class Client:
@@ -74,13 +68,42 @@ class Client:
         Args:
             config (Config): contains the configuration parameters for the client
         """
+
         self.config = config
-        self.api_config = device_db_client.Configuration(
-            host=self.config.host,
-            username=self.config.username,
-            password=self.config.password,
-            access_token=self.config.token,
-        )
+
+        # If username, password and token are provided, use those.
+        # Otherwise use the configuration loader `get_configuration_obj()`
+        # from device_db_client which automatically loads the credentials from
+        # the corresponding file.
+        if self.config.username != None and self.config.password != None and self.config.token != None:
+            self.api_config = device_db_client.Configuration(
+                host=self.config.host,
+                username=self.config.username,
+                password=self.config.password,
+                api_key={'sessionAuth': self.config.token}, # Used for tracking
+                    # which person/setup uses the API since for all API calls,
+                    # the same username from the specific D PHYS user is used
+            )
+        else:
+            if "get_configuration_obj" in dir(device_db_client):
+                self.api_config = device_db_client.get_configuration_obj(
+                    use_test_db=self.config.use_test_db,
+                    host=self.config.host,
+                )
+            else:
+                raise RuntimeError(
+                    'The device_db_client library is deprecated! You '
+                    'cannot connect to the device database with the old '
+                    'library anymore. Please run `git pull` in the '
+                    'device_db_client library, restart your Python kernel and '
+                    'rerun your code. Then a file will automatically open with '
+                    'instructions on how to generate tokens which are required '
+                    'from now on. Go to the Device Database documentation if '
+                    'any errors should occur: '
+                    'https://documentation.qudev.phys.ethz.ch/websites/device_db/dev/index.html'
+                )
+
+
         self.api_client = device_db_client.ApiClient(self.api_config)
         self.setup_name = self.config.setup
         self.setup = None
@@ -110,9 +133,25 @@ class Client:
                 name=self.config.device_name)
 
     def check_setup(self):
-        """Checks if a setup exists in the database for the given names and stores it in a property of the client object"""
+        """Checks if a setup exists in the database for the given name and stores it in a property of the client object"""
         if self.setup_name is not None:
-            self.setup = self.get_api_instance().list_setups(name=self.setup_name)[0]
+            setups = self.get_api_instance().list_setups(name=self.setup_name)
+            # TODO
+            # In the future, with the new version of the OpenAPI generator,
+            # the following has to be used:
+            # query_params = {
+            #     'name': self.setup_name,
+            # }
+            # setups = self.get_api_instance().list_setups(query_params=query_params)
+
+            if len(setups) == 0:
+                raise ValueError(f"No setup found for the provided name '{self.setup_name}'.")
+            elif len(setups) > 1:
+                raise ValueError(
+                    'More than one setup found for the provided name '
+                    f'\'{self.setup_name}\'.')
+            else: # Exactly one setup found as it should be the case
+                self.setup = setups[0]
 
     def get_api_instance(self):
         """Returns the internal API client's api instance, which can make direct calls to the database server
@@ -854,6 +893,212 @@ class Client:
                 return None
         return device_property_type
 
+    def get_device_property_value_by_name(self, device_name:str=None, qubit_num:int=None, property_name:str=None):
+        """Generic function which returns the device property value with name
+        `property_name` for the specified qubit on the specified device.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            qubit_num (int): number of the qubit
+            property_name (str): pyname of the property type which should be returned
+
+        Returns:
+            val: value of the corresponding property type
+        """
+        property_type_id = self.get_device_property_type_for(py_name=property_name).id
+        qubit_type_id = self.get_component_type_for(py_name="qb").id
+
+        device = self.get_device_for(name=device_name)
+        component = self.get_component_for(type=qubit_type_id,
+                          devicedesign=device.devicedesign,
+                          number=qubit_num)
+
+        search_kwargs = {
+            "type": str(property_type_id),
+            "device": str(device.id),
+            "component": str(component.id)
+        }
+
+        search_kwargs = utils.noneless(**search_kwargs)
+        device_property_values_list = self.get_api_instance().list_device_property_values(
+            **search_kwargs)
+
+        if len(device_property_values_list) == 0:
+            log.warning(f"No value for the property {property_name} for qubit "
+                      f"{qubit_num} on device {device_name} found.")
+            return None
+        elif len(device_property_values_list) > 1:
+            log.warning(f"Found {len(device_property_values_list)} values "
+                      f"for the property {property_name} for qubit {qubit_num} "
+                      f"on device {device_name}. Just return the first one.")
+
+        return device_property_values_list[0]["value"]
+
+    def get_asymmetry_for(self, device_name:str=None, qubit_num:int=None):
+        """Get the asymmetry of the specified qubit on the specified device.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            qubit_num (int): number of the qubit
+
+        Returns:
+            d: asymmetry of the SQUID loop of the corresponding qubit
+        """
+
+        return self.get_device_property_value_by_name(
+                device_name=device_name,
+                qubit_num=qubit_num,
+                property_name="asymmetry"
+                )
+
+    def get_device_design_property_value_by_name(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None, property_name:str=None):
+        """Get the value of the qubit parameter specified in `property_name`
+        of the specified qubit on the specified device design.
+        Only one of `device_name` and `device_design_name` should be passed.
+        If `device_name` is passed, the associated `device_design_name` is
+        automatically determined.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            device_design_name (str): name of the device design
+            qubit_num (int): number of the qubit
+            property_name (str): pyname of the property type which should be returned
+
+        Returns:
+            val: value of the corresponding property type
+        """
+        property_type_id = self.get_device_design_property_type_for(py_name=property_name).id
+        qubit_type_id = self.get_component_type_for(py_name="qb").id
+
+        if device_name != None:
+            device = self.get_device_for(name=device_name)
+            device_design_id = device.devicedesign
+        else:
+            device_design = self.get_device_design_for(name=device_design_name)
+            device_design_id = device_design.id
+
+        component = self.get_component_for(type=qubit_type_id,
+                          devicedesign=device_design_id,
+                          number=qubit_num)
+
+        search_kwargs = {
+            "type": str(property_type_id),
+            "component": str(component.id)
+        }
+
+        search_kwargs = utils.noneless(**search_kwargs)
+        device_design_property_values_list = self.get_api_instance().list_device_design_property_values(
+            **search_kwargs)
+
+        if len(device_design_property_values_list) == 0:
+            log.warning(f"No value for the property {property_name} for qubit "
+                      f"{qubit_num} found.")
+            return None
+        elif len(device_design_property_values_list) > 1:
+            log.warning(f"Found {len(device_design_property_values_list)} "
+                      f"values for the property {property_name} for qubit "
+                      f"{qubit_num}. Just return the "
+                      f"first one.")
+
+        return device_design_property_values_list[0]["value"]
+
+    def get_design_Ec_for(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None):
+        """Get the design value for the charging energy E_c in Hz of the
+        specified qubit on the specified device. Only one of `device_name` and
+        `device_design_name` should be passed.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            device_design_name (str): name of the device design
+            qubit_num (int): number of the qubit
+
+        Returns:
+            Ec: charging energy in Hz
+        """
+
+        return self.get_device_design_property_value_by_name(
+                device_name=device_name,
+                device_design_name=device_design_name,
+                qubit_num=qubit_num,
+                property_name="E_c"
+                )
+
+    def get_ro_freq_for(self, device_name:str=None, device_design_name:str=None, qubit_num:int=None):
+        """Get the bare readout frequency in Hz of the specified qubit on the
+        specified device. Only one of `device_name` and `device_design_name`
+        should be passed.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            device_design_name (str): name of the device design
+            qubit_num (int): number of the qubit
+
+        Returns:
+            ro_freq: bare readout frequency in Hz
+        """
+
+        return self.get_device_design_property_value_by_name(
+                device_name=device_name,
+                device_design_name=device_design_name,
+                qubit_num=qubit_num,
+                property_name="fr"
+                )
+
+    def get_Ej_max_for(self, device_name:str=None, qubit_num:int=None):
+        """Get the total Josephson energy Ej_max in Hz of the specified qubit on
+        the specified device.
+        It is calculated as Ej_max = c / R_N with c some conversion factor which
+        is stored in the database and R_N the normal state resistance which is
+        also stored in the database.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            qubit_num (int): number of the qubit
+
+        Returns:
+            Ej_max: total Josephson energy in Hz
+        """
+        device = self.get_device_for(name=device_name)
+
+        nsr = self.get_device_property_value_by_name(
+                device_name=device_name,
+                qubit_num=qubit_num,
+                property_name="nsr"
+                )
+
+        return device.e_j_conversion_factor * 1e6 / nsr # the conversion factor
+            # is in GHz/kOhm and nsr is in Ohm, so multiply by 10^6 to get the
+            # result in Hz
+
+    def get_ham_fit_dict_for(self, device_name:str=None, qubit_num:int=None):
+        """Get a dictionary with the charging energy, the total Josephson energy
+        and the asymmetry of the specified qubit on the specified device. This
+        dict can directly be passed to the `qb.fit_ge_freq_from_dc_offset()`
+        function. E_c and Ej_max are returned in Hz such that the dict can
+        directly be passed to `Qubit_freq_to_dac_res` in
+        `pycqed.analysis.fitting_models`.
+
+        Args:
+            device_name (str): name of the device in the format WAFER_DESIGN_NUMBER
+            qubit_num (int): number of the qubit
+
+        Returns:
+            ham_fit_dict(dict): dict of E_c in Hz, Ej_max in Hz and asymmetry
+        """
+        return dict(E_c=self.get_design_Ec_for(
+                        device_name = device_name,
+                        qubit_num = qubit_num
+                    ),
+                    Ej_max=self.get_Ej_max_for(
+                        device_name = device_name,
+                        qubit_num = qubit_num
+                    ),
+                    asymmetry=self.get_asymmetry_for(
+                        device_name = device_name,
+                        qubit_num = qubit_num
+                    )
+                )
+
     @decorators.at_least_one_not_none(
         ['id', 'name', 'verbose_name', 'py_name'])
     def get_device_design_property_type_for(self,
@@ -1387,58 +1632,42 @@ class Client:
 
     @decorators.only_one_not_none(['id', 'name'])
     def get_device_design_connectivity_graph(self, name=None, id=None):
-        """Returns the connectivity graph of a device design.
+        """Returns the connectivity graph of a device design as a list of lists
+        with the qubit names as strings.
 
         For example for the S17v2 design, it will return
-        [(1, 2), (1, 3), (4, 2), (4, 3), (4, 5), (4, 9), (6, 5),
-        (6, 11), (8, 3), (8, 7), (8, 9), (8, 13), (10, 5), (10, 9),
-        (10, 11), (10, 15), (12, 7), (12, 13), (14, 9), (14, 13),
-        (14, 15), (14, 16), (17, 15), (17, 16)]
+        [['qb1', 'qb2'],  ['qb1', 'qb3'],  ['qb4', 'qb2'],  ['qb4', 'qb3'],
+        ['qb4', 'qb5'],  ['qb4', 'qb9'],  ['qb6', 'qb5'],  ['qb6', 'qb11'],
+        ['qb8', 'qb3'],  ['qb8', 'qb7'],  ['qb8', 'qb9'],  ['qb8', 'qb13'],
+        ['qb10', 'qb5'],  ['qb10', 'qb9'],  ['qb10', 'qb11'],  ['qb10', 'qb15'],
+        ['qb12', 'qb7'],  ['qb12', 'qb13'],  ['qb14', 'qb9'],  ['qb14', 'qb13'],
+        ['qb14', 'qb15'],  ['qb14', 'qb16'],  ['qb17', 'qb15'],
+        ['qb17', 'qb16']]
 
         Args:
             id (int|str): id of the device design
             name (str): name of the device design
 
         Returns:
-            list: list of tuples, representing the connectivity graph of the
-                device design
+            connectivity_graph (list): list of lists, representing the
+                connectivity graph of the device design
         """
         api = self.get_api_instance()
 
         # if id == None, a name has to be provided instead and we can find
         # the id over the name
         if id==None:
-            try:
-                device_design = self.get_device_design_for(name=name)
-                id = device_design.id
-            except Exception as e:
-                raise SystemError(
-                    'Could not find the device design related to the name '
-                    f'{name}. Exception: {e}'
-                )
+            device_design = self.get_device_design_for(name=name)
+            id = device_design.id
 
         # Get the id of the component type for qubit qubit coupling resonators
-        try:
-            component_type = self.get_component_type_for(py_name="qb_qb_coupl_res")
-        except Exception as e:
-            raise SystemError(
-                'Could not find the qubit-qubit coupling resonator component '
-                f'type in the database. Exception: {e}'
-            )
-            return False
+        component_type = self.get_component_type_for(py_name="qb_qb_coupl_res")
 
         # Get the list of all the qubit qubit coupling resonators on that design
-        try:
-            component_list = api.list_components(
-                type=str(component_type.id),
-                devicedesign=str(id)
-            )
-        except Exception as e:
-            raise SystemError(
-                'Could not get the component list of qubit-qubit coupling '
-                f'resonators. Exception: {e}'
-            )
-            return False
+        component_list = api.list_components(
+            type=str(component_type.id),
+            devicedesign=str(id)
+        )
 
         connectivity_graph = [] # Array which stores qubit connections
 
@@ -1475,9 +1704,7 @@ class Client:
                     qb_id_on_design = api.retrieve_component(id=str(qb))
                     qbs_list.append(qb_id_on_design.number)
 
-                # Append the two qubits as tuples. If tuples are not required,
-                # one can also just use connectivity_graph.append(qbs_list)
-                connectivity_graph.append((qbs_list[0], qbs_list[1]))
+                connectivity_graph.append([f"qb{qbs_list[0]}", f"qb{qbs_list[1]}"])
 
         return connectivity_graph
 

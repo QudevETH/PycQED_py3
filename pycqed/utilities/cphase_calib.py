@@ -49,6 +49,7 @@ def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
         tdma = analysis_object
     cphases = tdma.proc_data_dict[
         'analysis_params_dict'][f'cphase_{qbt.name}']['val']
+    cphases = np.unwrap(cphases, period=2 * np.pi)
 
     sweep_pts = list(soft_sweep_points.values())[0]['values']
     if tangent_fit:
@@ -97,7 +98,8 @@ def plot_and_save_cz_amp_sweep(cphases, soft_sweep_params_dict, fit_res,
     ax.set_title('CZ {}-{}'.format(qbc_name, qbt_name))
 
     ax.text(0.5, 0.95, 'Best {} = {:.6f} ({})'.format(
-        sweep_param_name, best_val*1e9 if unit=='s' else best_val, unit),
+        sweep_param_name, best_val*1e9 if unit == 's' else best_val,
+        'ns' if unit == 's' else unit),
             horizontalalignment='center', verticalalignment='top',
             transform=ax.transAxes)
     if save_fig:

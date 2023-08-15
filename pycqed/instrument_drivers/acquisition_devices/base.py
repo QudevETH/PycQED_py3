@@ -30,7 +30,8 @@ class AcquisitionDevice():
         acq_sampling_rate (float): sampling rate of the acquisition units in
             Hertz (*)
         acq_weights_n_samples (int): number of samples of auto-generated
-            integration weights (*)
+            integration weights. If None, the acquisition length needs to be
+            passed to acquisition_set_weights. (*)
         acq_Q_sign (1 or -1): sign of auto-generated integration weights for
             the second weighted-integration channel in a pair (*)
         allowed_weights_types (list of str): allowed types of auto-generated
@@ -54,7 +55,7 @@ class AcquisitionDevice():
     acq_weights_n_samples = None
     acq_Q_sign = 1
     allowed_modes = []
-    allowed_weights_types = ['optimal', 'optimal_qutrit', 'SSB',
+    allowed_weights_types = ['custom', 'custom_2D', 'SSB',
                              'DSB', 'DSB2', 'square_rot']
 
     def __init__(self, *args, **kwargs):
@@ -71,6 +72,7 @@ class AcquisitionDevice():
         self._acquisition_nodes = []
         self._acq_mode = None
         self._acq_data_type = None
+        self._acq_classifier_params = {}
         self._reset_n_acquired()
         self.lo_freqs = [None] * self.n_acq_units
         self._acq_units_used = []
@@ -295,6 +297,22 @@ class AcquisitionDevice():
         """
         pass
 
+    def get_int_channels_value_names_map(self, channels, data_type='raw'):
+        """Returns column names of the returned values of the given channels.
+
+        Args:
+            channels (list of tuple of int): integration channels for which the
+                names should be returned (channel format as in the docstring of
+                acquisition_initialize)
+            data_type (str): data type. One of the str listed in
+                self.allowed_modes for the chosen mode.
+
+        Returns:
+            dict with channels as keys and value names as values
+        """
+        return {ch: f'{self.name}_{ch[0]}_{data_type} w{ch[1]}'
+                for ch in channels}
+
     def get_value_properties(self, data_type='raw', acquisition_length=None):
         """Returns properties of the returned values of a given data type.
 
@@ -441,6 +459,26 @@ class AcquisitionDevice():
         for ch, w in zip(channels, weights):
             self._acquisition_set_weight(ch, w)
 
+    def set_classifier_params(self, channels, params):
+        """Set the classifier parameters on the acquisition device.
+
+        The default behavior is that calling the method does not have any
+        effect beyond storing the parameters in a private attribute.
+        Child classes that support classification in the hardware can
+        implement setting the classifier parameters in the hardware by
+        making use of that private attribute and/or by overriding this method.
+
+        Arguments:
+            channels (list of tuple): Channels for which to set the parameters.
+            params: A dictionnary containing various classifier parameters that
+                can be used by children classes:
+                * ``centroids``: ``N x 2`` (or ``N x 1``) array containing the
+                  centroids for 2D (or 1D) clustering of states
+                * ``thresholds``: OrderedDict containing the thresholds for
+                  state discrimination.
+        """
+        self._acq_classifier_params[tuple(channels)] = params
+
     def get_awg_control_object(self):
         """
         To be overloaded by children to return the AWG control object and its
@@ -456,15 +494,16 @@ class AcquisitionDevice():
 
     def _acquisition_generate_weights(self, weights_type, mod_freq=None,
                                       acq_IQ_angle=0,
+                                      acq_length=None,
                                       weights_I=(), weights_Q=()):
         """
         Generates integration weights based on the provided settings.
         :param weights_type: (str) the type of weights can be:
             - manual: do not set any weights (keep what is configured in the
                 acquisition device)
-            - optimal: use the optimal weights for single-channel integration
+            - custom: use the weights for single-channel integration
                 provided in weights_I[0], weights_Q[0].
-            - optimal_qutrit: use the optimal weights for two-channel
+            - custom_2D: use the weights for two-channel
                 integration provided in weights_I[:2], weights_Q[:2]
             - SSB: single-sideband demodulation using two integration
                 channels and both physical input channels.
@@ -483,11 +522,14 @@ class AcquisitionDevice():
         :param acq_IQ_angle: (float) The phase (in rad) of the integration
             weights when using weights type SSB, DSB, DSB, or square_rot.
             Ignored in other cases.
+        :param acq_length: (float) The length of the acquisition (in seconds)
+            for which weights should be generated. This parameter is ignored
+            (and may thus be None) if acq_weights_n_samples is not None.
         :param weights_I: (list/tuple of np.array or None) The i-th entry of
             the list defines the weights for first physical input channel
             used in the i-th integration channel. Must have (at least) one
-            entry if weights type is optimal and two entries if weights type
-            is optimal_qutrit. Unneeded entries are ignored, and the whole
+            entry if weights type is custom and two entries if weights type
+            is custom_2D. Unneeded entries are ignored, and the whole
             list is ignored for other weights types.
         :param weights_Q: (list of np.array or None) Like weights_I,
             but for the second physical input channel.
@@ -498,7 +540,7 @@ class AcquisitionDevice():
             raise ValueError(f'Weights type {weights_type} not supported by '
                              f'{self.name}.')
         aQs = self.acq_Q_sign
-        for wt, n_chan in [('optimal', 1), ('optimal_qutrit', 2)]:
+        for wt, n_chan in [('custom', 1), ('custom_2D', 2)]:
             if weights_type == wt:
                 if (len(weights_I) < n_chan or len(weights_Q) < n_chan
                         or any([w is None for w in weights_I[:n_chan]])
@@ -515,8 +557,10 @@ class AcquisitionDevice():
             log.warning(f'No modulation frequency provided. Not setting '
                         f'integration weights.')
             return []
+        if self.acq_weights_n_samples is not None:
+            acq_length = self.acq_weights_n_samples / self.acq_sampling_rate
         tbase = np.arange(
-            0, self.acq_weights_n_samples / self.acq_sampling_rate,
+            0, acq_length,
             1 / self.acq_sampling_rate)
         cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)

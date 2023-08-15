@@ -1,6 +1,7 @@
 import logging
 import sys
 from datetime import datetime
+import re
 
 import device_db_client
 
@@ -310,10 +311,22 @@ class DevicePropertyValueUploader:
                 # We now have the component for the raw_data and
                 # device property value
                 try:
+                    # Regex for extracting the routine name out of the rawdata path
+                    # E.g. the path could be D:\pydata\20221213\225609_ef_T2_star
+                    # while we want only ef_T2_star.
+                    # Note that '\\\\' is needed in order to match a literal
+                    # backslash (see https://docs.python.org/3/library/re.html)
+                    # We want to store only the routine name (e.g. ef_T2_star)
+                    # and not the whole path because the live and archive folder
+                    # are stored in the `Setup` class in order to prevent
+                    # redunant storage of all the folder paths.
+                    regex_matches = re.search('(.*)\\\\(\d*)_(.*)', value_node['rawdata_folder_path'])
+                    routine_name = regex_matches[3]
+
                     raw_data = device_db_client.model.timestamp_raw_data.TimestampRawData(
                         setup=int(self.client.setup.id),
-                        property_name=value_node['property_type'],
-                        timestamp=value_node['timestamp'].replace("_",""),
+                        routine_name=routine_name,
+                        timestamp=value_node['timestamp'],
                     )
                     raw_data = self.client.get_or_create_timestamp_raw_data(
                         raw_data)

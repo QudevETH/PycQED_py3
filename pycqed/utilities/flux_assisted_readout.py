@@ -5,7 +5,8 @@ def ro_flux_tmp_vals(qb, v_park=None, use_ro_flux=None, **kw):
     temporary parking position v_park, based on the information provided in
     the following qcodes parameters of the qubit object, which need to be
     set properly prior to calling the function:
-    - flux_parking
+    - flux_parking (the function assumes that readout was originally calibrated
+      for this parking position)
     - flux_amplitude_bias_ratio
     - fit_ge_freq_from_dc_offset
     - ro_flux_amplitude if the qubit was already configured for fp-assisted RO
