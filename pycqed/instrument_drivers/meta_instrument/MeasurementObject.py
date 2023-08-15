@@ -62,7 +62,7 @@ class MeasurementObject(Instrument):
         self.add_parameter('acq_shots', initial_value=4094,
                            docstring='Number of single shot measurements to do'
                                      'in single shot experiments.',
-                           vals=vals.Ints(0, 1048576),
+                           vals=vals.Ints(0, 1048576**2),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_length', initial_value=2.2e-6,
                            vals=vals.Numbers(min_value=1e-8,
@@ -382,6 +382,7 @@ class MeasurementObject(Instrument):
             channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
+            acq_length=self.acq_length(),
             **self._get_custom_readout_weights()
         )
 

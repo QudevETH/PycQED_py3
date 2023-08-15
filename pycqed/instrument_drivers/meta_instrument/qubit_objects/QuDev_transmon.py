@@ -240,6 +240,7 @@ class QuDev_transmon(MeasurementObject):
                                      initial_value='SSB_DRAG_pulse',
                                      vals=vals.Enum(
                                          'SSB_DRAG_pulse',
+                                         'SSB_DRAG_pulse_cos',
                                          'SSB_DRAG_pulse_with_cancellation'
                                      ))
             self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_amp180',
@@ -267,6 +268,32 @@ class QuDev_transmon(MeasurementObject):
                                      f'{tr_name}_cancellation_params',
                                      'cancellation_params', initial_value={},
                                      vals=vals.Dict())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_env_mod_freq',
+                                     'env_mod_frequency',
+                                     initial_value=0, vals=vals.Numbers(),
+                                     docstring='Modulation frequency of the '
+                                               'pulse envelope, introducing '
+                                               'a frequency shift of the pulse '
+                                               'spectrum by the value of this '
+                                               'parameter.')
+            self.add_pulse_parameter(f'X180{tn}',
+                                     f'{tr_name}_cancellation_freq_offset',
+                                     'cancellation_frequency_offset',
+                                     initial_value=None,
+                                     vals=vals.MultiType(
+                                         vals.Enum(None), vals.Numbers()),
+                                     docstring='Frequency offset of the '
+                                               'cancellation dip of the DRAG '
+                                               'pulse with respect to the '
+                                               'center frequency of the pulse.')
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
+                                     'phi_skew',
+                                     initial_value=0,
+                                     vals=vals.Numbers())
+            self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_alpha',
+                                     'alpha',
+                                     initial_value=1,
+                                     vals=vals.Numbers())
             if tr_name == 'ge':
                 # The parameters below will be the same for all transitions
                 self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_I_channel',
@@ -284,14 +311,7 @@ class QuDev_transmon(MeasurementObject):
                     set_parser=lambda f, s=self, t=tr_name:
                                s.configure_mod_freqs(t, **{f'{t}_mod_freq': f}),
                     vals=vals.Numbers())
-                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_phi_skew',
-                                         'phi_skew',
-                                         initial_value=0,
-                                         vals=vals.Numbers())
-                self.add_pulse_parameter(f'X180{tn}', f'{tr_name}_alpha',
-                                         'alpha',
-                                         initial_value=1,
-                                         vals=vals.Numbers())
+
             # coherence times
             self.add_parameter(f'T1{tn}', label=f'{tr_name} relaxation',
                                unit='s', initial_value=0,
@@ -535,7 +555,7 @@ class QuDev_transmon(MeasurementObject):
             interpreted as voltage of the DC source.
         :param amplitude: (float, default: 0) flux pulse amplitude
         :param transition: (str or list of str, default: 'ge') the transition
-            whose frequency should be calculated.
+            or transitions whose frequency should be calculated.
         :param model: (str, default: 'transmon_res') the model to use.
             'approx': Qubit_dac_to_freq with parameters from
                 the qubit parameter fit_ge_freq_from_flux_pulse_amp.
@@ -619,7 +639,10 @@ class QuDev_transmon(MeasurementObject):
                 "'transmon_res' are implemented.")
         if update:
             for t, f in zip(transition, freqs):
-                self.parameters[f'{t}_freq'](f)
+                if f'{t}_freq' in self.parameters:
+                    self.parameters[f'{t}_freq'](f)
+                else:
+                    log.warning(f'Cannot set the frequency of transition {t}!')
         if return_list:
             return freqs
         else:
@@ -1005,6 +1028,9 @@ class QuDev_transmon(MeasurementObject):
 
         # other preparations
         self.update_detector_functions()
+        # provide classifier params to acqusition device
+        self.instr_acq.get_instr().set_classifier_params(
+            self.get_acq_int_channels(), self.acq_classifier_params())
 
     def get_ge_lo_freq(self):
         """Returns the required local oscillator frequency for drive pulses
@@ -1081,10 +1107,6 @@ class QuDev_transmon(MeasurementObject):
                     operation_dict['X180 ' + self.name]['I_channel']
                 operation_dict[f'X180{tn} ' + self.name]['Q_channel'] = \
                     operation_dict['X180 ' + self.name]['Q_channel']
-                operation_dict[f'X180{tn} ' + self.name]['phi_skew'] = \
-                    operation_dict['X180 ' + self.name]['phi_skew']
-                operation_dict[f'X180{tn} ' + self.name]['alpha'] = \
-                    operation_dict['X180 ' + self.name]['alpha']
                 if self.get(f'{tr_name}_freq') == 0:
                     operation_dict[f'X180{tn} ' + self.name][
                         'mod_frequency'] = None
@@ -1092,6 +1114,7 @@ class QuDev_transmon(MeasurementObject):
                     operation_dict[f'X180{tn} ' + self.name][
                         'mod_frequency'] = self.get(f'{tr_name}_freq') - \
                                            self.ge_freq() + self.ge_mod_freq()
+
             operation_dict.update(add_suffix_to_dict_keys(
                 sq.get_pulse_dict_from_pars(
                     operation_dict[f'X180{tn} ' + self.name]),

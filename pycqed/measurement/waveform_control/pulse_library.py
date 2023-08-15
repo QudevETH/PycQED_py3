@@ -127,10 +127,119 @@ class SSB_DRAG_pulse(pulse.Pulse):
         return hashlist
 
 
+class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
+    """
+    SSB second-order DRAG pulse with quadrature scaling factor and
+    frequency detuning.
+
+    FIXME: A future version of this this class should be adapted to allow
+    crosstalk cancellation
+
+    Args:
+        See parent class for docstring.
+        Additional parameter recognised by this class:
+            cancellation_frequency_offset (float; default=None):
+                frequency offset of the cancellation dip in the pulse spectrum
+                with respect to the center frequency. This parameter typically
+                takes the value of the transmon anharmonicity (ex: -170e6).
+                The quadrature correction is not applied if this parameter
+                is None (no cancellation dip in the pulse spectrum).
+            env_mod_frequency (float; default=0):
+                modulation frequency of the pulse envelope, introducing a
+                detuning from mod_frequency
+
+        When cancellation_frequency_offset is not None, this class applies
+        correction factors to the amplitude and env_mod_frequency in order to
+        decouple the effects of the three parameters amplitude,
+        env_mod_frequency and cancellation_frequency_offset.
+        These correction factors work in the limit
+        abs(env_mod_freq) << 1/tg << cancellation_frequency_offset
+        and ensure that:
+            - the maximum spectral power of the pulse is at the
+        env_mod_frequency independent of the value for amplitude or
+        cancellation_frequency_offset;
+            - the spectral power of the pulse at 0 is not changed by changing
+        env_mod_frequency or cancellation_frequency_offset.
+    """
+
+    @classmethod
+    def pulse_params(cls):
+        params = super().pulse_params()
+        params.update({'cancellation_frequency_offset': None,
+                       'env_mod_frequency': 0})
+        return params
+
+    def chan_wf(self, channel, tvals):
+        tg = self.nr_sigma * self.sigma
+        half = tg / 2
+        tc = self.algorithm_time() + half
+
+        env_mod_freq_corr = self.env_mod_frequency
+        amplitude_corr = self.amplitude
+        if self.cancellation_frequency_offset is not None:
+            # Apply correction factors to decouple the effects of the
+            # pulse parameters.
+            env_mod_freq_corr += 3 / (self.cancellation_frequency_offset *
+                                      tg ** 2 * (np.pi ** 2 - 6))
+            amplitude_corr /= 1 - (np.pi ** 2 - 6) * \
+                              (tg * env_mod_freq_corr) ** 2 / 6
+
+        # in-phase component
+        envi = np.cos(np.pi * (tvals - tc) / tg) ** 2
+        # truncate
+        envi *= (tvals - tc >= -half) * (tvals - tc < half)
+        # apply envelope modulation
+        envi = envi * amplitude_corr * \
+               np.exp(-2j * np.pi * env_mod_freq_corr * (tvals - tc))
+
+        if self.cancellation_frequency_offset is not None:
+            # Apply DRAG correction
+            # Calculate quadrature component
+            q = -1 / (2 * np.pi * self.cancellation_frequency_offset * tg)
+            envq = q * tg * 0.5 * (np.diff(envi, prepend=[0]) +
+                                   np.diff(envi, append=[0])) / \
+                   (tvals[1]-tvals[0])
+        else:
+            log.debug('DRAG correction was not applied because '
+                      'the cancellation_frequency_offset is 0.')
+            envq = np.zeros_like(envi)
+
+        envc = envi + 1j * envq
+        # envi is complex if env_mod_frequency != 0, so we re-calculate the
+        # real (envi) and imaginary (envq) components from the full complex
+        # waveform envc
+        envi, envq = np.real(envc), np.imag(envc)
+
+        if self.mod_frequency is not None:
+            I_mod, Q_mod = apply_modulation(
+                envi, envq, tvals, self.mod_frequency,
+                phase=self.phase, phi_skew=self.phi_skew, alpha=self.alpha,
+                tval_phaseref=0 if self.phaselock else tc)
+        else:
+            # Ignore the Q component and program the I component to both
+            # channels. See HDAWG8Pulsar._hdawg_mod_setter
+            I_mod, Q_mod = envi, envi
+
+        if channel == self.I_channel:
+            return I_mod
+        elif channel == self.Q_channel:
+            return Q_mod
+        else:
+            return np.zeros_like(tvals)
+
+    def hashables(self, tstart, channel):
+        hashlist = super().hashables(tstart, channel)
+        hashlist += [self.cancellation_frequency_offset, self.env_mod_frequency]
+        return hashlist
+
+
 class SSB_DRAG_pulse_with_cancellation(SSB_DRAG_pulse):
     """
     SSB Drag pulse with copies with scaled amp. and offset phase on extra
     channels intended for interferometrically cancelling on-device crosstalk.
+
+    FIXME: This class should be generalized to allow crosstalk cancellation
+    for different drive pulse shapes (e.g., SSB_DRAG_pulse_cos).
 
     Args:
         name (str): Name of the pulse, used for referencing to other pulses in a
