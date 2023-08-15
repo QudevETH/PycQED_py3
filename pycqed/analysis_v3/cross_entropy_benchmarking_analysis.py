@@ -953,7 +953,6 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
     for depth in cycles:
         xeb_data[depth] = 0
     i = 0
-    total_prob_ideal = np.zeros((swpts.length(1), swpts.length(0), 4))
     while i < len(cycles):
         print(cycles[i])
         pops_meas = proba_exp[i::len(cycles)]
@@ -963,13 +962,8 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
         prob_ideal = proba_from_all_circuits(current_circuits)
         proba_ideal[i::len(cycles)] = prob_ideal
         xeb = crossEntropyFidelity(pops_meas, np.array(prob_ideal), d)
-        total_prob_ideal[:, i, :] = np.array(prob_ideal).reshape(swpts.length(
-            1), 4)
         xeb_data[cycles[i]] = xeb
         i += 1
-    total_prob_ideal = np.reshape(np.array(total_prob_ideal), (-1, 4))
-    hlp_mod.add_param(f'{container}.ideal_xeb_probabilities', total_prob_ideal,
-                      data_dict, **params)
 
     y_xeb = []
     y_purity = []
