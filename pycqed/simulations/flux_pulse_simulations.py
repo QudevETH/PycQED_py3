@@ -8,30 +8,29 @@ def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states,
     specified in t taking the flux pulse into account.
 
     Args:
-        t (numpy.array): numpy array specifying the time for which the frequency
+        t (numpy.array): numpy array specifying the times at which the frequency
             will be computed.
-        pulse (Pulse): Pulse object that contains defined the flux waveforms.
-            If the flux_pulse_channel of a qubit is not contained in
-            pulse.channels it is assumed that this qubit has a fixed flux
-            defined by flux_parking.
+        pulse (Pulse): Pulse object that defines the flux waveforms. If
+            `pulse.channels` does not contain the `flux_pulse_channel` of a
+            given qubit, it is assumed that no flux pulse is applied to that
+            qubit (i.e., it is fixed at `qb.flux_parking`).
         qubits (list[QuDev_transmon]): Qubit objects. The order specifies the
-            basis for the state vectors. They do not need to be part of the
-            flux pulse.
+            basis for the state vectors (used in argument `states`).
+            They do not need to be part of the flux pulse.
         states (list[str]): List of strings. Each string specifying a mutli
             qubit state for which the frequency will be calculated from the
             provided flux pulse, e.g.: states=['01', '20']. Valid single qb
-            states include 0 (g), 1 (e) & 2 (f)
+            states include 0, 1, 2.
         interpolations (list[callable]): List of callable objects that has the
             same signature as QuDev_transmon.calculate_frequency. This can be
-            used to pass an interpolated Hamiltonian model to speed up the
-            computation. If set to None, qb.calculate_frequency is used instead.
+            used to pass an interpolated Hamiltonian model
+            (`InterpolatedHamiltonianModel`) to speed up the computation. If
+            set to None, qb.calculate_frequency is used instead.
             Defaults to None.
 
     Returns
         numpy.array of shape (len(states), len(t)) with frequency values.
     """
-    # mapping from basis = [ge, ef] to energy levels 0, 1, 2:
-    sg_qb_mat = np.array([[0, 0], [1, 0], [1, 1]])
     # get pulse waveforms for involved qubits:
     wf = [pulse.chan_wf(qb.flux_pulse_channel(), t)
           if qb.flux_pulse_channel() in pulse.channels else np.zeros_like(t)
@@ -50,12 +49,22 @@ def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states,
                                     * np.ones((2, len(t)))
                                     for i, qb in enumerate(qubits)]),
                          (2 * len(qubits), len(t)))
-    # The `state_matrix` maps the ge and ef transition freuqency of each qubit
-    # to the states in the list `states`.
+    # We define a helper matrix to map from ge & ef transitions to energy
+    # levels 0 (gg), 1 (ge), 2 (gf = ge + ef):
+    transition2energy_level_matrix = np.array([[0, 0], [1, 0], [1, 1]])
+    # The `state_matrix` maps the ge and ef transition frequencies of each
+    # qubit to the multi-qubit states in the list `states`, e.g.,
+    #    states = ['ee', 'ef']
+    # will result in
+    #    state_matrix = [[1, 0, 1, 0], [1, 0, 1, 1]]
+    # with each row refering to [f_ge_qb1, f_ef_qb1, f_ge_qb2, f_ef_qb2].
     state_matrix = np.zeros(shape = (len(states), 2 * len(qubits)))
     for i, state in enumerate(states):
         for j, state_qb_j in enumerate(state):
-            state_matrix[i, 2 * j : 2 * j + 2] += sg_qb_mat[int(state_qb_j)]
+            state_matrix[i, 2 * j : 2 * j + 2] += \
+                transition2energy_level_matrix[int(state_qb_j)]
+    # We apply the state_matrix element-wise to the the qb_freqs array. The
+    # method np.einsum is used only to implement the operation element-wise.
     state_freqs = np.einsum('ij,jk', state_matrix, qb_freqs)
     return state_freqs
 
@@ -72,6 +81,10 @@ def plot_state_freqs(t, states, state_freqs, additional_states_matrix=None,
             values computed, e.g., using `compute_energy_levels_from_flux_pulse`
         additional_states_matrix: Matrix to compute additional states from
             `state_freqs`, e.g., the difference between two states in `state_freqs`.
+            Example:
+                With `state_freqs` holding the 11 and 20 state frequencies and
+                with `additional_states_matrix` being [[1, 1], [1, -1]], the
+                additionally computed energies would be 11+20 and 11-20.
         only_plot_additional_states (bool): Whether to plot only the states
             computed from `additional_states_matrix`. Defaults to `False`.
         colors (dict[matplotlib colors]): Dict mapping state labels to valid
@@ -108,39 +121,19 @@ def plot_state_freqs(t, states, state_freqs, additional_states_matrix=None,
     return fig
 
 
-def compute_accumulated_phase(t, pulse, qubits, states=('11', '20'),
-                              state_freqs=None, interpolations=None):
+def compute_accumulated_phase(t, states, state_freqs):
     """Uses np.trapz to integrate the accumulated phase between states.
 
     Args:
         t (numpy.array): numpy array specifying the sample points in time.
-        pulse (Pulse): Pulse object that contains defined the flux waveforms.
-            If the flux_pulse_channel of a qubit is not contained in
-            pulse.channels it is assumed that this qubit has a fixed flux
-            defined by flux_parking.
-        qubits (list[QuDev_transmon]): Qubit objects. The order specifies the
-            basis for the state vectors. They do not need to be part of the
-            flux pulse.
-        states (tuple[str], optional): Tuple of 2 multi qb state strings for
+        states (tuple[str]): Tuple of 2 multi qb state strings for
             which the accumulated phase will be calculated. See docstring of
             compute_energy_levels_from_flux_pulse for syntax.
-            Defaults to ('11', '20').
-        state_freqs (np.array, optional): If None
-            compute_energy_levels_from_flux_pulse is used to compute the state
-            frequencies during the pulse. If provided it must have shape
-            (len(states), len(t)). Defaults to None.
-        interpolations (list[callable]): See docstring of
-            `compute_energy_levels_from_flux_pulse`.
+        state_freqs (np.array): Must have shape
+            (len(states), len(t)).
 
     Returns:
         float: accumulated phase in deg
     """
-    if state_freqs is None:
-        state_freqs = compute_energy_levels_from_flux_pulse(t, pulse, qubits,
-                                                            states,
-                                                            interpolations)
-    if len(states) == 1:
-        diff_freq = state_freqs[0][1] - state_freqs[0][0]
-    else:
-        diff_freq = state_freqs[1] - state_freqs[0]
+    diff_freq = state_freqs[1] - state_freqs[0]
     return np.trapz(diff_freq, t) * 360

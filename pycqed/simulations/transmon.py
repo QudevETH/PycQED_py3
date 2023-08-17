@@ -434,7 +434,7 @@ def transmon_resonator_ftr_anh_frg_chi(ec: float, ej: float, frb: float,
     Returns:
         A tuple of 1) qubit transition frequency, 2) qubit anharmonicity,
         3) the resonator frequency for transmon ground state, and 4) the
-        dispersive shift.
+        dispersive shift, which is HALF the frequency difference.
     """
     f10, f20, f01, f11 = transmon_resonator_levels(ec, ej, frb, gb, ng,
                                                    dim_charge,
@@ -527,7 +527,7 @@ def transmon_resonator_ej_anh_frg_chi(f_tr: float, ec: float, frb: float,
     if transition == 'ef':
         fge = f_tr + ec
     if transition == 'gf':
-        fge = (f_tr - ec)/2
+        fge = (f_tr + ec)/2
     anh0 = -ec
     ej0 = (fge + ec)**2 / 8 / ec
     frg0 = frb
