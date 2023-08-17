@@ -298,7 +298,8 @@ class Sequence:
                 parameter_suffix="_use_command_table"
             ):
                 logging.warning(
-                    f"On {awg_module.awg.name}: PycQED will "
+                    f"On {awg_module.awg.name}_"
+                    f"{awg_module.analog_channel_ids[0]}: PycQED will "
                     f"not harmonize amplitude for this AWG module "
                     f"because this feature only works when command table "
                     f"is enabled. Please set \"_use_command_table\" "
@@ -534,6 +535,7 @@ class Sequence:
             # otherwise merge sequences
             else:
                 for seg_name, segment in seq.segments.items():
+                    segment.is_first_segment = False
                     try:
                         merged_seqs[-1].add(segment)
                     except NameError:  # in case segment name exists, create new name
