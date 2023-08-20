@@ -706,8 +706,98 @@ def transfer(data_dict, **params):
     return lis
 
 
+def manual_propagator(gate):
+    """
+    Efficiently computes the propagator for a parameterised quantum gate using
+    analytic expressions.
+
+    Calling this method for each gate in a qutip circuit is equivalent to
+    calling circuit.propagators(). The latter is more generic, since it can
+    deal with arbitrary gates by exponentiating the underlying Hamiltonians.
+    The former is however approximately 2 orders of magnitude faster, because
+    it is so simple, and could probably still be further optimised if needed.
+    """
+    m = np.zeros([4,4], 'complex128')
+    if gate.name == 'RZ':
+        e = np.exp(-1j*gate.arg_value/2)
+        ec = np.exp(1j*gate.arg_value/2)
+        if gate.targets[0] == 0:
+            m[0,0] = e
+            m[1,1] = e
+            m[2,2] = ec
+            m[3,3] = ec
+        if gate.targets[0] == 1:
+            m[0,0] = e
+            m[1,1] = ec
+            m[2,2] = e
+            m[3,3] = ec
+    elif gate.name == 'RY':
+        cos = np.cos(gate.arg_value/2)
+        sin = np.sin(gate.arg_value/2)
+        if gate.targets[0] == 0:
+            m[0,0] = cos
+            m[1,1] = cos
+            m[0,2] = -sin
+            m[1,3] = -sin
+            m[2,0] = sin
+            m[3,1] = sin
+            m[2,2] = cos
+            m[3,3] = cos
+        if gate.targets[0] == 1:
+            m[0,0] = cos
+            m[0,1] = -sin
+            m[1,0] = sin
+            m[1,1] = cos
+            m[2,2] = cos
+            m[2,3] = -sin
+            m[3,2] = sin
+            m[3,3] = cos
+    elif gate.name == 'RX':
+        cos = np.cos(gate.arg_value/2)
+        misin = -1j*np.sin(gate.arg_value/2)
+        if gate.targets[0] == 0:
+            m[0,0] = cos
+            m[1,1] = cos
+            m[0,2] = misin
+            m[1,3] = misin
+            m[2,0] = misin
+            m[3,1] = misin
+            m[2,2] = cos
+            m[3,3] = cos
+        if gate.targets[0] == 1:
+            m[0,0] = cos
+            m[0,1] = misin
+            m[1,0] = misin
+            m[1,1] = cos
+            m[2,2] = cos
+            m[2,3] = misin
+            m[3,2] = misin
+            m[3,3] = cos
+    elif gate.name == 'CPHASE':
+        m[0,0] = 1
+        m[1,1] = 1
+        m[2,2] = 1
+        m[3,3] = np.exp(1j*gate.arg_value)  # qutip convention: positive sign
+    else:
+        raise ValueError(f"Gate {gate.name} not implemented!")
+    return m
+
+
 def proba(qc):
-    U = qt.qip.operations.gate_sequence_product(qc.propagators())
+    """
+    Computes the output states probabilities for a qutip quantum circuit
+
+    TODO: one can finish removing calls to qutip and make this method even
+     faster if needed.
+    """
+    # Equivalent (only for basic gates) to
+    # U = qt.qip.operations.gate_sequence_product(qc.propagators())
+    M = np.eye(4)
+    for g in qc.gates:
+        M = np.matmul(manual_propagator(g), M)
+    U = qt.Qobj(M)
+    U.dims = [[2, 2], [2, 2]]
+
     gg = qt.tensor(qt.basis(2, 0), qt.basis(2, 0))
     ge = qt.tensor(qt.basis(2, 0), qt.basis(2, 1))
     eg = qt.tensor(qt.basis(2, 1), qt.basis(2, 0))
