@@ -324,7 +324,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         # nr_swpts1 = swpts.length(1)
         data_size = len(data_dict[meas_obj_names[0]][
                             list(data_dict[meas_obj_names[0]])[0]])
-        nr_swpts1 = data_size // n_shots // nr_swpts0
+        nr_swpts1 = data_size // n_shots // nr_swpts0 // (reset_reps+1)
         n_segments = nr_swpts0 * compression_factor
         n_sequences = nr_swpts1 // compression_factor
         print(f'{n_sequences} sequences, {n_shots} shots, {n_segments} segments')
