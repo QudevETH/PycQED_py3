@@ -327,7 +327,8 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         nr_swpts1 = data_size // n_shots // nr_swpts0 // (reset_reps+1)
         n_segments = nr_swpts0 * compression_factor
         n_sequences = nr_swpts1 // compression_factor
-        print(f'{n_sequences} sequences, {n_shots} shots, {n_segments} segments')
+        print(f'{nr_swpts0} segments, {compression_factor} hard sequences, '
+              f'{n_sequences} soft sequences, {n_shots} shots')
 
         classifier_params = hlp_mod.get_clf_params_from_hdf_file(
             timestamp, meas_obj_names, classifier_params)
@@ -832,7 +833,8 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         nr_swpts1 = data_size // n_shots // nr_swpts0
         n_segments = nr_swpts0 * compression_factor
         n_sequences = nr_swpts1 // compression_factor // (reset_reps+1)
-        print(f'{n_sequences} sequences, {n_shots} shots, {n_segments} segments')
+        print(f'{nr_swpts0} segments, {compression_factor} hard sequences, '
+              f'{n_sequences} soft sequences, {n_shots} shots')
 
         classifier_params = hlp_mod.get_clf_params_from_hdf_file(
             timestamp, meas_obj_names, classifier_params)
