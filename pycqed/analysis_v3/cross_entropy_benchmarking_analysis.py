@@ -863,7 +863,6 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         print('probability_states: ', probability_states)
         nr_states = len(probability_states)**len(meas_obj_names)
 
-        pp.add_node('extract_data_hdf', timestamps=timestamp)
         for mobjn in meas_obj_names:
             pp.add_node('filter_data', keys_in=raw_keys_in[mobjn],
                         data_filter=lambda x: x[reset_reps::reset_reps+1],
@@ -886,11 +885,13 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                     joint_processing=True, do_preselection=False,
                     meas_obj_names=meas_obj_names)
         pp.resolve(movnm)
-        data_dict = {'dim_hilbert': len(meas_obj_names)**2,
-                     'sg_qb_gate_lengths': get_sg_qb_gate_lengths(timestamp),
-                     'sweep_type': sweep_type,
-                     'meas_obj_names': meas_obj_names,
-                     'renormalize': renormalize}
+        data_dict.update({
+            'dim_hilbert': len(meas_obj_names)**2,
+            'sg_qb_gate_lengths': get_sg_qb_gate_lengths(timestamp),
+            'sweep_type': sweep_type,
+            'meas_obj_names': meas_obj_names,
+            'renormalize': renormalize
+        })
         pp(data_dict)
         data_dict = pp.data_dict
 
