@@ -286,7 +286,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                               probability_states=None, save_figures=True,
                               raw_keys_in=None, save=True, save_filename=None,
                               renormalize=True, shots_selection_map=None,
-                              **params):
+                              meas_data_dtype=None, **params):
 
     # (nr_seq, len(cycles), nr_cycles)
     # list with nr_seq lists; each sublist has length len(cycles)
@@ -303,7 +303,8 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         print(meas_obj_names)
         if raw_keys_in is None:
             raw_keys_in = {mobjn: 'raw' for mobjn in meas_obj_names}
-        data_dict = dat_extr_mod.extract_data_hdf(timestamps=timestamp)
+        data_dict = dat_extr_mod.extract_data_hdf(
+            timestamps=timestamp, meas_data_dtype=meas_data_dtype)
         swpts, movnm = hlp_mod.get_measurement_properties(
             data_dict, props_to_extract=['sp', 'movnm'])
         if sweep_type is None:
@@ -801,7 +802,8 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                            state_prob_mtxs=None, correct_readout=(True,),
                            sweep_type=None, save_processed_data=True,
                            probability_states=None, save_figures=True,
-                           raw_keys_in=None, save_filename=None, save=True):
+                           raw_keys_in=None, save_filename=None, save=True,
+                           meas_data_dtype=None):
 
     pp = pp_mod.ProcessingPipeline(add_param_method='replace')
     try:
@@ -811,7 +813,8 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         if raw_keys_in is None:
             raw_keys_in = {mobjn: 'raw' for mobjn in meas_obj_names}
         print(meas_obj_names)
-        data_dict = dat_extr_mod.extract_data_hdf(timestamps=timestamp)
+        data_dict = dat_extr_mod.extract_data_hdf(
+            timestamps=timestamp, meas_data_dtype=meas_data_dtype)
         swpts, movnm = hlp_mod.get_measurement_properties(
             data_dict, props_to_extract=['sp', 'movnm'])
         if sweep_type is None:
