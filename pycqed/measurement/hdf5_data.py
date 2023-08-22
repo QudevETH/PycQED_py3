@@ -150,7 +150,7 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
             where to write to.
     """
     for key, item in data_dict.items():
-        if isinstance(key, tuple):
+        if isinstance(key, (tuple, int)):
             key = str(key)
 
         # Basic types
