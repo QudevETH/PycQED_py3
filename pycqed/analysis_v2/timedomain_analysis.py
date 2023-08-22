@@ -11633,9 +11633,6 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class LeakageAmplificationAnalysis(ChevronAnalysis):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(do_fitting=False, *args, **kwargs)
-
     def plot(self, cmap_lim=None, **kw):
         """
         TODO
@@ -11739,9 +11736,12 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 save_folder, f'{ts}_leakage_amplification_{qbn}.png'))
             fig.savefig(filename, bbox_inches='tight')
 
+            id_opt = np.argmin(y_max)
             self.leakage_ymax = {
                 'x': coords[0],
+                'x_label': labels[0],
                 'y': y_max / task['num_cz_gates'] ** 2,
+                'x_opt': sp[labels[0]][id_opt],
             }
 
         plt.show()
