@@ -1777,7 +1777,8 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
     def define_cal_states_rotations(self):
         """
         Creates cal_states_rotations for each qubit based on the information
-        in the preprocessed_task_list, and adds it to exp_metadata.
+        in the preprocessed_task_list and self.meas_obj_names, 
+        and adds it to exp_metadata.
         This is of the form {qb_name: {cal_state: cal_state_order_index}}
         and will be used by the analyses.
         """
