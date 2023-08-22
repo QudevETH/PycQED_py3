@@ -1122,6 +1122,211 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
                       data_dict2, add_param_method='replace')
     return cz_error_rate
 
+
+def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None):
+    """
+    TODO
+    """
+    try:
+        # TODO: could automatically reload analysis results saved by pp.save().
+        #  Requires pp.save() to correctly save all the data_dict.
+        # dd1 = hlp_mod.read_analysis_file(timestamp, raise_errors=True)
+        raise FileNotFoundError
+    except FileNotFoundError:
+        pp, meas_obj_names1, cycles, nr_seq = single_qubit_xeb_analysis(
+            timestamp,
+            meas_obj_names=meas_obj_names,
+            meas_data_dtype=meas_data_dtype,
+            save=False)
+        plot_porter_thomas_dist(pp.data_dict, savefig=True)
+        calculate_fidelities_purities_1qb(
+            pp.data_dict,
+            data_key='correct_readout'  # 'average_data'
+        )
+        _ = fit_plot_fidelity_purity(
+            pp.data_dict,
+            idx0f=1, idx0p=1,
+            savefig=True,
+            log_scale=False
+        )
+        fit_plot_leakage_1qb(pp.data_dict, meas_obj_names,
+                                     data_key='correct_readout',
+                                     idx0f=1, idx0p=1,
+                                     savefig=True, show=False)
+        pp.save()
+        plt.close('all')
+        dd1 = pp.data_dict
+        return dd1
+
+
+def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
+                         meas_data_dtype=None, meas_obj_names=None):
+    """
+    TODO
+    """
+    from pycqed.measurement import sweep_points as sp_mod
+
+    task_id = 0
+
+    dd2 = []
+    cphases = \
+    hlp_mod.get_param_from_metadata_group(timestamp, 'task_list')[task_id][
+        'cphases']
+    for idx in range(len(cphases)):  # loop over cphases
+        print(f"timestamp = {timestamp}")
+        if timer:
+            timer.checkpoint('two_qubit_xeb_analysis.start')
+        pp, meas_obj_names2, cycles1, nr_seq1 = two_qubit_xeb_analysis(
+            timestamp,
+            meas_obj_names=meas_obj_names,
+            save=False,
+            meas_data_dtype=meas_data_dtype,
+            # timer=timer,
+        )
+        if timer:
+            timer.checkpoint('two_qubit_xeb_analysis.end')
+        # Trim sp
+        sp = sp_mod.SweepPoints(pp.data_dict['exp_metadata']['sweep_points'])
+        sp[1].keys()
+        sp_gatechoice = deepcopy(sp)
+        for i in range(len(sp_gatechoice)):
+            keys = list(sp_gatechoice[i].keys())
+            for k in keys:
+                keys_to_trim = ['cycles', 'gateschoice']
+                if any([kt in k for kt in keys_to_trim]):
+                    k_split = k.split('_')
+                    if k_split[-1] == str(idx):
+                        continue
+                    sp_gatechoice[i].pop(k)
+
+        pp.data_dict['exp_metadata']['sweep_points'] = sp_gatechoice
+
+        # Set cphase
+        pp.data_dict['exp_metadata']['cphase'] = cphases[idx]
+
+        # Trim data and only keep what corresponds to one cphase
+        data = pp.data_dict[','.join(meas_obj_names)]['correct_readout']
+        data = data.reshape(
+            [sp_gatechoice.length(1), len(cphases), sp_gatechoice.length(0),
+             9])[:, idx, :, :].reshape([-1, 9])
+        pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
+
+        # Set mospm
+        mospm = sp_gatechoice.get_meas_obj_sweep_points_map(meas_obj_names)
+        # for v in mospm.values():
+        #     v.pop(1)
+        print(f"mospm = {mospm}")
+        pp.data_dict['exp_metadata']['meas_obj_sweep_points_map'] = mospm
+
+        # Analysis
+        if timer:
+            timer.checkpoint('plot_porter_thomas_dist.start')
+        plot_porter_thomas_dist(pp.data_dict, savefig=True)
+        if timer:
+            timer.checkpoint('plot_porter_thomas_dist.end')
+        if timer:
+            timer.checkpoint('calculate_fidelities_purities_2qb.start')
+        calculate_fidelities_purities_2qb(pp.data_dict,
+                                                  data_key='correct_readout',
+                                                  timer=timer,
+                                                  )
+        if timer:
+            timer.checkpoint('calculate_fidelities_purities_2qb.end')
+        if timer:
+            timer.checkpoint('fit_plot_fidelity_purity.start')
+        _ = fit_plot_fidelity_purity(pp.data_dict,
+                                                        joint_processing=True,
+                                                        savefig=True,
+                                                        log_scale=False)
+        if timer:
+            timer.checkpoint('fit_plot_fidelity_purity.end')
+        if timer:
+            timer.checkpoint('fit_plot_leakage_2qb.start')
+        fit_plot_leakage_2qb(pp.data_dict, meas_obj_names,
+                                     data_key='correct_readout',
+                                     savefig=True, show=False, timer=timer)
+        if timer:
+            timer.checkpoint('fit_plot_leakage_2qb.end')
+        plt.close('all')
+        if timer:
+            timer.checkpoint('pp.save.start')
+        pp.save()
+        if timer:
+            timer.checkpoint('pp.save.end')
+        dd = pp.data_dict
+        del pp
+        if clear_some_memory:
+            for mobjn in meas_obj_names:
+                # Raw data seems to be the highest quantity of data
+                # (from task manager: 80%?)
+                del dd[mobjn]
+        dd2.append(dd)
+
+        # if idx >= 1:
+        #     break
+
+    return dd2
+
+
+def get_multi_xeb_results_from_dd(dd1, dd2, meas_obj_names=None):
+    """
+    TODO
+
+    Args:
+        meas_obj_names (list): mobj names in case they aren't saved by the
+            experiment in the correct order, preventing to recalculate the
+            quantum circuits here. FIXME this should be saved correctly instead
+    This adds a few print statements, but there's a lot in this module anyway.
+    """
+    pauli_error_from_average_error = lambda avg_err, d: (d + 1) * avg_err / d
+    average_error_from_pauli_error = lambda pauli_err, d: d * pauli_err / \
+                                                          (d + 1)
+
+    results = {}
+    for dd in dd2:
+        print(f"ts 1qb: {dd1['timestamps'][0]}")
+        print(f"ts 2qb: {dd['timestamps'][0]}")
+        try:
+            cphase = dd['exp_metadata']['cphase']
+            results[cphase] = {}
+            res = results[cphase]
+
+            res['e_qb1'] = \
+            dd1[meas_obj_names[0]]['fit_res_fidelity'].best_values['e']
+            res['std_e_qb1'] = \
+            dd1[meas_obj_names[0]]['fit_res_fidelity'].params['e'].stderr
+            res['e_qb2'] = \
+            dd1[meas_obj_names[1]]['fit_res_fidelity'].best_values['e']
+            res['std_e_qb2'] = \
+            dd1[meas_obj_names[1]]['fit_res_fidelity'].params['e'].stderr
+            res['e_2qb'] = \
+            dd[','.join(meas_obj_names)]['fit_res_fidelity'].best_values['e']
+            res['std_e_2qb'] = \
+            dd[','.join(meas_obj_names)]['fit_res_fidelity'].params['e'].stderr
+            res['pauli_e_cz'] = res['e_2qb'] - res['e_qb1'] - res['e_qb2']
+            res['std_pauli_e_cz'] = np.sqrt(
+                res['std_e_qb1'] ** 2 + res['std_e_qb2'] ** 2 + res[
+                    'std_e_2qb'] ** 2)
+            res['e_cz'] = average_error_from_pauli_error(res['pauli_e_cz'], 4)
+            res['std_e_cz'] = average_error_from_pauli_error(
+                res['std_pauli_e_cz'], 4)
+
+            print(f"cphase = "
+                  f"{'None' if cphase is None or cphase == '' else cphase}")
+            print(f"Total error 2qb + 1qb (%): {res['e_2qb'] * 100}")
+            print(
+                f"CZ Pauli error (%): {res['pauli_e_cz'] * 100} +/- "
+                f"{res['std_pauli_e_cz'] * 100}")
+            print(
+                f"CZ average error (%): {res['e_cz'] * 100} +/- "
+                f"{res['std_e_cz'] * 100}")
+            print()
+
+        except Exception as e:
+            raise e
+    return results
+
+
 ## Functions common to both 1 and 2 qubits ##
 # standard_pulses = {
 #     'I': qt.qeye(2),
