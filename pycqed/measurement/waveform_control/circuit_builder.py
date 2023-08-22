@@ -283,7 +283,9 @@ class CircuitBuilder:
             # FIXME: This parsing is format dependent and is far from ideal but
             #  to generate parametrized pulses it is helpful to be able to
             #  parse Z gates etc.
-            op_type = op_name.split(':')[0].rstrip('0123456789.')
+            # FIXME e- allows to recognise numbers in scientific notation,
+            #  but could be made more specific
+            op_type = op_name.split(':')[0].rstrip('0123456789.e-')
             angle = op_name[len(op_type):]
             sign = -1 if op_name[0] == 'm' else 1
             if sign == -1:
