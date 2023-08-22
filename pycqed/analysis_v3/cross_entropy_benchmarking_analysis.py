@@ -1172,19 +1172,21 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
     cphases = \
     hlp_mod.get_param_from_metadata_group(timestamp, 'task_list')[task_id][
         'cphases']
+
+    if timer:
+        timer.checkpoint('two_qubit_xeb_analysis.start')
+    pp_full, meas_obj_names2, cycles1, nr_seq1 = two_qubit_xeb_analysis(
+        timestamp,
+        meas_obj_names=meas_obj_names,
+        save=False,
+        meas_data_dtype=meas_data_dtype,
+        # timer=timer,
+    )
+    if timer:
+        timer.checkpoint('two_qubit_xeb_analysis.end')
+
     for idx in range(len(cphases)):  # loop over cphases
-        print(f"timestamp = {timestamp}")
-        if timer:
-            timer.checkpoint('two_qubit_xeb_analysis.start')
-        pp, meas_obj_names2, cycles1, nr_seq1 = two_qubit_xeb_analysis(
-            timestamp,
-            meas_obj_names=meas_obj_names,
-            save=False,
-            meas_data_dtype=meas_data_dtype,
-            # timer=timer,
-        )
-        if timer:
-            timer.checkpoint('two_qubit_xeb_analysis.end')
+        pp = deepcopy(pp_full)
         # Trim sp
         sp = sp_mod.SweepPoints(pp.data_dict['exp_metadata']['sweep_points'])
         sp[1].keys()
@@ -1265,6 +1267,7 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         # if idx >= 1:
         #     break
 
+    del pp_full
     return dd2
 
 
