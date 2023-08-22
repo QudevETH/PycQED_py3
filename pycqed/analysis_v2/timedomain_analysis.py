@@ -11629,3 +11629,120 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
         """
         return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
+
+
+class LeakageAmplificationAnalysis(ChevronAnalysis):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(do_fitting=False, *args, **kwargs)
+
+    def plot(self, cmap_lim=None, **kw):
+        """
+        TODO
+
+        FIXME: not the standard pycqed format (plot dicts)
+        """
+        from pycqed.measurement import sweep_points as sp_mod
+        import os
+        ts = self.timestamps[0]
+
+        if cmap_lim is None:
+            cmap_lim = [None, None]
+            # cmap_lim = [0, 100]
+        for task in self.metadata['task_list']:
+            qbn = task['qbc']
+            pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
+                [:, :-3] * 100
+            sp = sp_mod.SweepPoints(task['sweep_points'])
+
+            # Re-organise data to keep the delay as vertical axis
+            label_orthogonal = 'buffer_length_start'
+            if sp.find_parameter(label_orthogonal) == 0:
+                pop = pop.T
+                sp[0], sp[1] = sp[1], sp[0]
+            labels = [list(sp[i])[0] for i in range(len(sp))]
+            coords = [sp[l] for l in labels]
+
+            # Process labels
+            nice_labels = [
+                list(sp.get_sweep_params_description(l)) + [l] for l in labels
+            ]
+            nice_labels = [
+                [l[2] if l[2] else l[3],  # param description or just param name
+                 f' ({l[1]})' if len(l[1]) else '']
+                for l in nice_labels
+            ]
+            # Adapt axis scaling/units
+            for i in range(len(labels)):
+                if nice_labels[i][1] == ' (s)':
+                    nice_labels[i][1] = ' (ns)'
+                    coords[i] = coords[i] * 1e9
+            nice_labels = [
+                label + unit
+                for label, unit in nice_labels
+            ]
+            for i, l in enumerate(labels):
+                if 'pulse_off' in l:
+                    labels[i] = 'num_cz_gates'
+                    coords[i] = range(task['num_cz_gates'] + 1)
+                    nice_labels[i] = 'Number of CZ gates'
+            acq_averages = self.get_hdf_param_value(
+                f"Instrument settings/{qbn}", "acq_averages")
+
+            fig, axs = plt.subplots(2, 1, figsize=(6, 8),
+                                    sharex=True, constrained_layout=True)
+            axs = np.append(axs, axs[1].twinx())
+            X, Y = np.meshgrid(*coords)
+            pcm = axs[0].pcolormesh(
+                X, Y, pop, vmin=cmap_lim[0], vmax=cmap_lim[1])
+
+            norm = mpl.colors.Normalize(vmin=np.min(pop), vmax=np.max(pop))
+            y_max = -np.infty * np.ones(len(coords[0]))
+            x = coords[0]
+            for i in range(len(coords[1])):
+                y = np.take(pop, [i], axis=0).flatten()
+                y_max = np.maximum(y_max, y)
+                axs[2].errorbar(
+                    x, y, yerr=0, color='k', alpha=0.1, linestyle='-', zorder=0)
+                axs[2].scatter(
+                    x, y, color=pcm.cmap(norm(y)), alpha=0.3, zorder=1)
+
+            y_err_f = lambda pop, n: np.sqrt(pop * (1 - pop) / n)
+            # The error bar is computed from the total pop for N gates
+            y_err = y_err_f(y_max / 100, acq_averages) * 100
+            axs[2].errorbar(
+                x, y_max, yerr=y_err, color='k', linestyle='-', zorder=0)
+            axs[2].scatter(
+                x, y_max, color=pcm.cmap(norm(y_max)), alpha=1, zorder=1)
+
+            # axs[0].set_yticklabels(axs[0].get_yticks()/1e9)  # could use to avoid rescaling coords
+            axs[2].set_ylim(cmap_lim[0], cmap_lim[1])
+            axs[1].set_ylim(axs[2].get_ylim() / task['num_cz_gates'] ** 2)
+            axs[0].set_ylabel(nice_labels[1])
+            axs[1].set_xlabel(nice_labels[0])
+            axs[2].set_ylabel(
+                'Total leakage (%)\n($\\approx$Leakage * $n_{gates}^2$)')
+            axs[1].set_ylabel('Leakage per gate (%)')
+            cbar = plt.colorbar(pcm, ax=axs[0], label='Total leakage (%)',
+                                pad=-0.25)
+
+            sp_dims = sp.length() + [self.metadata['compression_factor']]
+            plt.suptitle(
+                f"{ts} Leakage ampl. {qbn}{task['qbt']}\n"
+                f"{sp_dims[0]} seg. * {sp_dims[2]} hard seq. * "
+                f"{sp_dims[1] // sp_dims[2]} soft seq.\n"
+                f"{task['num_cz_gates']} {task['cz_pulse_name']} gates, "
+                f"{acq_averages} avg."
+            )
+            save_folder = a_tools.get_folder(ts)
+            filename = os.path.abspath(os.path.join(
+                save_folder, f'{ts}_leakage_amplification_{qbn}.png'))
+            fig.savefig(filename, bbox_inches='tight')
+
+            self.leakage_ymax = {
+                'x': coords[0],
+                'y': y_max / task['num_cz_gates'] ** 2,
+            }
+
+        plt.show()
+        plt.close('all')
