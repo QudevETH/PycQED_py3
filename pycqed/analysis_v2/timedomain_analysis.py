@@ -10774,7 +10774,7 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             self.fitted_amp_sc_errs = {qbn: np.zeros(len_sp2dd)
                                        for qbn in self.qb_names}
         # store fit results T1, T2 {qbn: len_nr_soft_sp}
-        self.fitted_coh_times = {qbn: {i: '' for i in range(len_sp2dd)}
+        self.fitted_coh_times = {qbn: {str(i): '' for i in range(len_sp2dd)}
                                  for qbn in self.qb_names}
         # store fit lines {qbn: 2D array (each row is a fit line)}
         self.fit_lines = {qbn:  np.zeros((len_sp2dd, len(nr_pi_p)))
