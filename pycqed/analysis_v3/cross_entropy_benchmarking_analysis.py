@@ -17,6 +17,7 @@ from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis import fitting_models as fit_mods
 
+import pycqed.measurement.benchmarking.randomized_benchmarking as rb_meas
 
 
 convert_to_mhz = lambda freq_angle, t: freq_angle/2/np.pi/t
@@ -1189,19 +1190,10 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
 
     for idx in range(len(cphases)):  # loop over cphases
         pp = deepcopy(pp_full)
-        sp_gatechoice = deepcopy(sp_full)
         # Trim sp
-        for i in range(len(sp_gatechoice)):
-            keys = list(sp_gatechoice[i].keys())
-            for k in keys:
-                keys_to_trim = ['cycles', 'gateschoice']
-                if any([kt in k for kt in keys_to_trim]):
-                    k_split = k.split('_')
-                    if k_split[-1] == str(idx):
-                        continue
-                    sp_gatechoice[i].pop(k)
-
-        pp.data_dict['exp_metadata']['sweep_points'] = sp_gatechoice
+        sp = rb_meas.TwoQubitXEBMultiCphase.extract_combined_sweep_points(
+            sp_full=sp_full, idx=idx, deep=True)
+        pp.data_dict['exp_metadata']['sweep_points'] = sp
 
         # Set cphase
         pp.data_dict['exp_metadata']['cphase'] = cphases[idx]
@@ -1209,12 +1201,12 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         # Trim data and only keep what corresponds to one cphase
         data = pp.data_dict[','.join(meas_obj_names)]['correct_readout']
         data = data.reshape(
-            [sp_gatechoice.length(1), len(cphases), sp_gatechoice.length(0),
+            [sp.length(1), len(cphases), sp.length(0),
              9])[:, idx, :, :].reshape([-1, 9])
         pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
 
         # Set mospm
-        mospm = sp_gatechoice.get_meas_obj_sweep_points_map(meas_obj_names)
+        mospm = sp.get_meas_obj_sweep_points_map(meas_obj_names)
         # for v in mospm.values():
         #     v.pop(1)
         print(f"mospm = {mospm}")
