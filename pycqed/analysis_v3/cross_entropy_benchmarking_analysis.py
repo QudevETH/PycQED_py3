@@ -1184,13 +1184,13 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
     )
     if timer:
         timer.checkpoint('two_qubit_xeb_analysis.end')
+    sp_full = sp_mod.SweepPoints(
+        pp_full.data_dict['exp_metadata']['sweep_points'])
 
     for idx in range(len(cphases)):  # loop over cphases
         pp = deepcopy(pp_full)
+        sp_gatechoice = deepcopy(sp_full)
         # Trim sp
-        sp = sp_mod.SweepPoints(pp.data_dict['exp_metadata']['sweep_points'])
-        sp[1].keys()
-        sp_gatechoice = deepcopy(sp)
         for i in range(len(sp_gatechoice)):
             keys = list(sp_gatechoice[i].keys())
             for k in keys:
@@ -1252,7 +1252,7 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         plt.close('all')
         if timer:
             timer.checkpoint('pp.save.start')
-        pp.save()
+        # pp.save()  # Removed for speed reasons. Could keep once works properly
         if timer:
             timer.checkpoint('pp.save.end')
         dd = pp.data_dict
