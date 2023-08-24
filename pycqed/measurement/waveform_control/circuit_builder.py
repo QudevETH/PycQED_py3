@@ -265,15 +265,26 @@ class CircuitBuilder:
         of the corresponding pulse dictionary
 
         """
-        op = op.split(" ") if isinstance(op, str) else op
+        # op_split is further parsed and used below
+        # op is the op_code which will be stored in the returned pulse
+        if isinstance(op, str):
+            op_split = op.split(" ")
+        else:
+            op_split = op
+            op = " ".join(op)
         if not self.fast_mode:
             # the call to get_qubits resolves qubits indices if needed
-            _, op[1:] = self.get_qubits(op[1:], strict=False)
-        simultaneous = op[0][0] == 's'
+            _, op_split[1:] = self.get_qubits(op_split[1:], strict=False)
+        simultaneous = False
+        if op_split[0][0] == 's':
+            simultaneous = True
+            op_split[0] = op_split[0][1:]
+        if op_split[0][-1] == 's':
+            simultaneous = True
+            op_split[0] = op_split[0][:-1]
         # First part of the op_code, e.g. "Z:2*[theta]"
-        op_name = op[0][1:] if simultaneous else op[0]
-        qbn = op[1:]
-        op = op_name + ' ' + ' '.join(qbn)
+        op_name = op_split[0]
+        qbn = op_split[1:]
 
         if op in self.operation_dict:
             p = [self.copy_op(self.operation_dict[op])]
@@ -296,16 +307,6 @@ class CircuitBuilder:
                 raise KeyError(f'Gate "{op}" not found.')
             param = None  # e.g. 'theta' if angle = '2*[theta]'
             if angle:
-                if angle[-1] == 's' and angle[:-1].isnumeric():
-                    # For non-parametric gates, an alternative syntax for
-                    # simultaneous pulses with appended s instead of prepended s
-                    # is allowed. This code branch treats, e.g., simultaneous
-                    # virtual Z pulses (like 'Z90s qb1') and simultaneous X/Y
-                    # rotations with angles different from 90 and 180
-                    # (like 'X45s qb1'; X90s and X180s are contained in the
-                    # operations dict anyways, but no other angles).
-                    simultaneous = True
-                    angle = angle[:-1]
                 if angle[0] == ':':  # angle depends on a parameter
                     angle = angle[1:]
                     param_start = angle.find('[') + 1
