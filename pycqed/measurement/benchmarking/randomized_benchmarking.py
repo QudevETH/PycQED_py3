@@ -799,7 +799,8 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
              list of strings with op codes
         """
 
-        def gen_random(cycles):
+        list_all_seqs = []
+        for _ in range(nr_seqs):
             s_gates = ["X90 ", "Y90 ", "Z45 "]
             lis = []
             for length in cycles:
@@ -836,8 +837,8 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                         gates.append(f"CZ{cphases[i+1]} " + 'qb_1 qb_2')
                         gates += append_gates
                 lis.append(gates)
-            return lis
-        return [gen_random(cycles) for _ in range(nr_seqs)]
+            list_all_seqs.append(lis)
+        return list_all_seqs
 
     def xeb_block(self, sp1d_idx, sp2d_idx, **kw):
         """
