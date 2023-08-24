@@ -72,9 +72,9 @@ class RandomCircuitBenchmarkingMixin:
         """
         self.kw_for_sweep_points = deepcopy(self.kw_for_sweep_points)
         key = f'nr_{self.randomizations_name},{self.seq_lengths_name}'
-        if f'{key},cphase,append_gates' in self.kw_for_sweep_points:
+        if f'{key},cphase,gate_modifs' in self.kw_for_sweep_points:
             # TwoQubitXEB case
-            key = f'{key},cphase,append_gates'
+            key = f'{key},cphase,gate_modifs'
         self.kw_for_sweep_points[key]['dimension'] = \
             self.sweep_type[self.randomizations_name]
         self.kw_for_sweep_points[self.seq_lengths_name]['dimension'] = \
@@ -719,7 +719,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
     """
     default_experiment_name = 'TwoQubitXEB'
     kw_for_sweep_points = {
-        'nr_seqs,cycles,cphase,append_gates': dict(
+        'nr_seqs,cycles,cphase,gate_modifs': dict(
             param_name='gateschoice', unit='',
             label='cycles gates', dimension=1,
             values_func='paulis_gen_func')}
@@ -782,7 +782,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             self.exception = x
             traceback.print_exc()
 
-    def paulis_gen_func(self, nr_seqs, cycles, cphase='', append_gates=()):
+    def paulis_gen_func(self, nr_seqs, cycles, cphase='', gate_modifs=None):
         """
         Creates the list of random gates to be applied in each sequence of the
         experiment.
@@ -793,11 +793,21 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             cycles (list/array): integers specifying the number of cycles of
                 random gates to apply in a sequence
             cphase (float): value of the C-phase gate angle in degrees
-            append_gates (list): list of gates to append to the two-qubit gate
+            gate_modifs (dict): contains additional keyword arguments used to
+                generate the gate list
 
         Returns:
              list of strings with op codes
         """
+
+        if gate_modifs is None:
+            gate_modifs = {}
+        append_gates = gate_modifs.get('append_gates', [])
+        n_gates = gate_modifs.get('n_gates', 1)
+        # E.g. to set every second gate to a CZ180
+        # This is a string so it stays readable in the experiment metadata
+        cphases_modifier = eval(
+            gate_modifs.get('cphases_modifier', 'lambda x: x'))
 
         list_all_seqs = []
         for _ in range(nr_seqs):
@@ -806,17 +816,18 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             for length in cycles:
                 cphases = np.random.uniform(0, 1, length) * 360 \
                     if cphase=='randomized' else np.repeat([cphase], length)
+                cphases = cphases_modifier(cphases)
                 gates = [
                     s_gates[1] + " qb_1",
                     s_gates[1] + "s qb_2",
                     s_gates[2] + " qb_1",
                     s_gates[2] + "s qb_2",
-                    f"CZ{cphases[0]} qb_1 qb_2",
                 ]
                 last_1qb_gates = [s_gates[2], s_gates[2]]
+                gates += [f"CZ{cphases[0]} qb_1 qb_2"]*n_gates
                 gates += append_gates
                 if length > 0:
-                    for i in range(length - 1):
+                    for i in range(1, length):
                         new_1qb_gates = []
                         # Choose a gate different from the last one on that qb
                         for lg in last_1qb_gates:
@@ -829,7 +840,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                         gates.append(new_1qb_gates[1] + "s qb_2")
                         last_1qb_gates = new_1qb_gates
 
-                        gates.append(f"CZ{cphases[i+1]} qb_1 qb_2")
+                        gates += [f"CZ{cphases[i]} qb_1 qb_2"]*n_gates
                         gates += append_gates
                 lis.append(gates)
             list_all_seqs.append(lis)
