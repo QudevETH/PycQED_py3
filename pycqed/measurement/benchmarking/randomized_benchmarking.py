@@ -801,40 +801,37 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
 
         list_all_seqs = []
         for _ in range(nr_seqs):
-            s_gates = ["X90 ", "Y90 ", "Z45 "]
+            s_gates = ["X90", "Y90", "Z45"]
             lis = []
             for length in cycles:
                 cphases = np.random.uniform(0, 1, length) * 360 \
                     if cphase=='randomized' else np.repeat([cphase], length)
                 gates = []
-                gates.append(s_gates[1] + "qb_1")
-                sim_str = ' ' if 'Z' in s_gates[1][0:3] else 's '
-                gates.append(s_gates[1][0:3] + sim_str + "qb_2")
-                gates.append(s_gates[2] + "qb_1")
-                sim_str = ' ' if 'Z' in s_gates[2][0:3] else 's '
-                gates.append(s_gates[2][0:3] + sim_str + "qb_2")
-                gates.append(f"CZ{cphases[0]} " + "qb_1 qb_2")
+                gates.append(s_gates[1] + " qb_1")
+                gates.append(s_gates[1] + "s qb_2")
+                gates.append(s_gates[2] + " qb_1")
+                gates.append(s_gates[2] + "s qb_2")
+                gates.append(f"CZ{cphases[0]} qb_1 qb_2")
                 gates += append_gates
                 if length > 0:
                     for i in range(length - 1):
-                        last_1_gate1 = gates[-3-len(append_gates)][0:4]
+                        last_1_gate1 = gates[-3-len(append_gates)][:3]
 
                         choice1 = []
                         for gate in s_gates:
                             choice1.append(gate)
                         choice1.remove(last_1_gate1)
                         gate1 = random.choice(choice1)
-                        gates.append(gate1 + 'qb_1')
+                        gates.append(gate1 + " qb_1")
 
-                        last_1_gate2 = gates[-3-len(append_gates)][0:3] +' '
+                        last_1_gate2 = gates[-3-len(append_gates)][:3]
                         choice2 = []
                         for gate in s_gates:
                             choice2.append(gate)
                         choice2.remove(last_1_gate2)
                         gate2 = random.choice(choice2)
-                        sim_str = ' ' if 'Z' in gate2[:3] else 's '
-                        gates.append(gate2[:3] + sim_str + 'qb_2')
-                        gates.append(f"CZ{cphases[i+1]} " + 'qb_1 qb_2')
+                        gates.append(gate2 + "s qb_2")
+                        gates.append(f"CZ{cphases[i+1]} qb_1 qb_2")
                         gates += append_gates
                 lis.append(gates)
             list_all_seqs.append(lis)
