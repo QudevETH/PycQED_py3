@@ -1,6 +1,6 @@
 import numpy as np
 import traceback
-from copy import deepcopy
+from copy import copy, deepcopy
 import random
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
 from pycqed.measurement.randomized_benchmarking import \
@@ -806,31 +806,29 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             for length in cycles:
                 cphases = np.random.uniform(0, 1, length) * 360 \
                     if cphase=='randomized' else np.repeat([cphase], length)
-                gates = []
-                gates.append(s_gates[1] + " qb_1")
-                gates.append(s_gates[1] + "s qb_2")
-                gates.append(s_gates[2] + " qb_1")
-                gates.append(s_gates[2] + "s qb_2")
-                gates.append(f"CZ{cphases[0]} qb_1 qb_2")
+                gates = [
+                    s_gates[1] + " qb_1",
+                    s_gates[1] + "s qb_2",
+                    s_gates[2] + " qb_1",
+                    s_gates[2] + "s qb_2",
+                    f"CZ{cphases[0]} qb_1 qb_2",
+                ]
+                last_1qb_gates = [s_gates[2], s_gates[2]]
                 gates += append_gates
                 if length > 0:
                     for i in range(length - 1):
-                        last_1_gate1 = gates[-3-len(append_gates)][:3]
+                        new_1qb_gates = []
+                        # Choose a gate different from the last one on that qb
+                        for lg in last_1qb_gates:
+                            choices = copy(s_gates)
+                            choices.remove(lg)
+                            ng = random.choice(choices)
+                            new_1qb_gates.append(ng)
 
-                        choice1 = []
-                        for gate in s_gates:
-                            choice1.append(gate)
-                        choice1.remove(last_1_gate1)
-                        gate1 = random.choice(choice1)
-                        gates.append(gate1 + " qb_1")
+                        gates.append(new_1qb_gates[0] + " qb_1")
+                        gates.append(new_1qb_gates[1] + "s qb_2")
+                        last_1qb_gates = new_1qb_gates
 
-                        last_1_gate2 = gates[-3-len(append_gates)][:3]
-                        choice2 = []
-                        for gate in s_gates:
-                            choice2.append(gate)
-                        choice2.remove(last_1_gate2)
-                        gate2 = random.choice(choice2)
-                        gates.append(gate2 + "s qb_2")
                         gates.append(f"CZ{cphases[i+1]} qb_1 qb_2")
                         gates += append_gates
                 lis.append(gates)
