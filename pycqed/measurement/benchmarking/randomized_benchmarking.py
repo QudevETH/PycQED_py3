@@ -837,7 +837,12 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                             new_1qb_gates.append(ng)
 
                         gates.append(new_1qb_gates[0] + " qb_1")
-                        gates.append(new_1qb_gates[1] + "s qb_2")
+                        # Virtual Z should not be flagged as simultaneous, such
+                        # that e.g. for ['X90 qb_1', 'Z45 qb_1', 'CZ qb_1 qb_2']
+                        # the CZ is correctly referenced to the end of the
+                        # last gate, which is the longer X90
+                        simultaneous = '' if 'Z' in new_1qb_gates[1] else 's'
+                        gates.append(new_1qb_gates[1] + simultaneous + " qb_2")
                         last_1qb_gates = new_1qb_gates
 
                         gates += [f"CZ{cphases[i]} qb_1 qb_2"]*n_gates
