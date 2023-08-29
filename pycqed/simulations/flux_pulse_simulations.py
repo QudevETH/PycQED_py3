@@ -42,13 +42,15 @@ def compute_energy_levels_from_flux_pulse(t, pulse, qubits, states,
         calculate_frequency = [qb.calculate_frequency
                                for i, qb in enumerate(qubits)]
     # compute evolution of ge and ef transition frequencies for all qubits:
-    qb_freqs = np.reshape(np.array([np.reshape(calculate_frequency[i](
-                                                    amplitude=wf[i],
-                                                    transition=['ge', 'ef']),
-                                               (2, -1))
-                                    * np.ones((2, len(t)))
-                                    for i, qb in enumerate(qubits)]),
-                         (2 * len(qubits), len(t)))
+    # For each time in t, we compute the ge and ef transition frequency of each
+    # qubit. In the end, we want an array of the same length as t with each
+    # element in this array providing the frequencies at that time in the
+    # shape [f_ge_qb1, f_ef_qb1, f_ge_qb2, f_ef_qb2] for the example of two
+    # qubits. This format is achieved by the reshape.
+    qb_freqs = np.reshape([calculate_frequency[i](amplitude=wf[i],
+                                                  transition=['ge', 'ef'])
+                           for i, qb in enumerate(qubits)],
+                          (2 * len(qubits), len(t)))
     # We define a helper matrix to map from ge & ef transitions to energy
     # levels 0 (gg), 1 (ge), 2 (gf = ge + ef):
     transition2energy_level_matrix = np.array([[0, 0], [1, 0], [1, 1]])
