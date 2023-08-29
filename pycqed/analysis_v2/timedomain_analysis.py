@@ -148,8 +148,9 @@ class PhaseErrorsAnalysisMixin():
         trans_name = self.get_transition_name(qb_name)
         old_pulse_par_val = self.raw_data_dict[
             f'{trans_name}_{self.pulse_par_name}_' + qb_name]
+        # FIXME: the following condition is always False, isn't it?
         if old_pulse_par_val != old_pulse_par_val:
-            old_pulse_par_val = 0
+            old_pulse_par_val = 0  # FIXME: explain why
         old_pulse_par_val *= scaling_factor
         fit_val *= scaling_factor
         fit_stderr *= scaling_factor
@@ -5004,12 +5005,14 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                 trans_name = self.get_transition_name(qbn)
                 old_pipulse_val = self.raw_data_dict[
                     f'{trans_name}_amp180_'+qbn]
+                # FIXME: the following condition is always False, isn't it?
                 if old_pipulse_val != old_pipulse_val:
-                    old_pipulse_val = 0
+                    old_pipulse_val = 0  # FIXME: explain why
                 old_pihalfpulse_val = self.raw_data_dict[
                     f'{trans_name}_amp90scale_'+qbn]
+                # FIXME: the following condition is always False, isn't it?
                 if old_pihalfpulse_val != old_pihalfpulse_val:
-                    old_pihalfpulse_val = 0
+                    old_pihalfpulse_val = 0  # FIXME: explain why
                 old_pihalfpulse_val *= old_pipulse_val
 
                 textstr = ('  $\pi-Amp$ = {:.3f} V'.format(
@@ -5447,8 +5450,9 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
                 trans_name = self.get_transition_name(qbn)
                 old_T1_val = self.raw_data_dict[f'{trans_name}_T1_'+qbn]
+                # FIXME: the following condition is always False, isn't it?
                 if old_T1_val != old_T1_val:
-                    old_T1_val = 0
+                    old_T1_val = 0  # FIXME: explain why
                 T1_dict = self.proc_data_dict['analysis_params_dict']
                 textstr = '$T_1$ = {:.2f} $\mu$s'.format(
                             T1_dict[qbn]['T1']*1e6) \
@@ -5560,8 +5564,9 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
             trans_name = self.get_transition_name(qbn)
             old_qb_freq = self.raw_data_dict[f'{trans_name}_freq_'+qbn]
+            # FIXME: the following condition is always False, isn't it?
             if old_qb_freq != old_qb_freq:
-                old_qb_freq = 0
+                old_qb_freq = 0  # FIXME: explain why
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'old_qb_freq'] = old_qb_freq
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
@@ -6716,8 +6721,9 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             trans_name = self.get_transition_name(qbn)
             old_amp180 = self.raw_data_dict[
                 f'{trans_name}_amp180_'+qbn]
+            # FIXME: the following condition is always False, isn't it?
             if old_amp180 != old_amp180:
-                old_amp180 = 0
+                old_amp180 = 0  # FIXME explain why
 
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn][
@@ -6758,8 +6764,9 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 trans_name = self.get_transition_name(qbn)
                 old_amp180 = self.raw_data_dict[
                     f'{trans_name}_amp180_'+qbn]
+                # FIXME: the following condition is always False, isn't it?
                 if old_amp180 != old_amp180:
-                    old_amp180 = 0
+                    old_amp180 = 0  # FIXME: explain why
                 correction_dict = self.proc_data_dict['analysis_params_dict']
                 fit_res = self.fit_dicts['fit_' + qbn]['fit_res']
                 textstr = '$\pi$-Amp = {:.4f} mV'.format(
