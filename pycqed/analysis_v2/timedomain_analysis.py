@@ -120,6 +120,7 @@ class PhaseErrorsAnalysisMixin():
         Takes the value of self.pulse_par_name for each qubit from the HDF file
         and stores the values in self.raw_data_dict.
         """
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -4703,15 +4704,13 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.default_options['base_plot_name'] = 'Rabi'
-        params_dict = {}
-        for qbn in self.qb_names:
-            trans_name = self.get_transition_name(qbn)
-            params_dict[f'{trans_name}_amp180_'+qbn] = \
-                f'{qbn}.{trans_name}_amp180'
-            params_dict[f'{trans_name}_amp90scale_'+qbn] = \
-                f'{qbn}.{trans_name}_amp90_scale'
-        self.raw_data_dict.update(
-            self.get_data_from_timestamp_list(params_dict))
+        # FIXME: the following would not be needed if the station
+        #  auto-updated itself whenever a parameter is not found
+        self.config_files.update_station(
+            self.timestamps[0],
+            [f'{qbn}.{self.get_transition_name(qbn)}_{param}'
+             for qbn in self.qb_names
+             for param in ['amp_180', 'amp90scale']])
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5003,13 +5002,13 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'colors': 'gray'}
 
                 trans_name = self.get_transition_name(qbn)
-                old_pipulse_val = self.raw_data_dict[
-                    f'{trans_name}_amp180_'+qbn]
+                old_pipulse_val = self.get_instrument_setting(
+                    f'{qbn}.{trans_name}_amp180')
                 # FIXME: the following condition is always False, isn't it?
                 if old_pipulse_val != old_pipulse_val:
                     old_pipulse_val = 0  # FIXME: explain why
-                old_pihalfpulse_val = self.raw_data_dict[
-                    f'{trans_name}_amp90scale_'+qbn]
+                old_pihalfpulse_val = self.get_instrument_setting(
+                    f'{qbn}.{trans_name}_amp90scale')
                 # FIXME: the following condition is always False, isn't it?
                 if old_pihalfpulse_val != old_pihalfpulse_val:
                     old_pihalfpulse_val = 0  # FIXME: explain why
@@ -5071,6 +5070,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
     def extract_data(self):
         super().extract_data()
         # Extract additional parameters from the HDF file.
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             params_dict[f'drive_ch_{qbn}'] = f'{qbn}.ge_I_channel'
@@ -5265,6 +5265,7 @@ class ThermalPopulationAnalysis(RabiAnalysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             params_dict[f'ge_freq_'+qbn] = f'{qbn}.ge_freq'
@@ -5375,6 +5376,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -5485,6 +5487,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     """
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -5943,6 +5946,7 @@ class ResidualZZAnalysis(RamseyAnalysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         task_list = self.get_param_value('task_list', default_value=[])
         for task in task_list:
@@ -6394,6 +6398,7 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         """Skip for this class. Take raw_data_dict from self.echo_analysis
         which is needed for a check in the BaseDataAnalsis.save_fit_results."""
         self.raw_data_dict = self.echo_analysis.raw_data_dict
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -6688,6 +6693,7 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -8882,6 +8888,7 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             params_dict[f'fp_length_{qbn}'] = f'{qbn}.flux_pulse_pulse_length'
@@ -10449,6 +10456,7 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     """
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -11278,6 +11286,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         super().extract_data()
         self.task_list = self.get_param_value('task_list')
         self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp',
                   'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
         for qbn in self.qb_names:
