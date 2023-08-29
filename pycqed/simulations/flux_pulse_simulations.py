@@ -103,20 +103,18 @@ def plot_state_freqs(t, states, state_freqs, additional_states_matrix=None,
     if additional_states_matrix is not None:
         additional_states_freqs = np.einsum('ij,jk', additional_states_matrix,
                                             state_freqs)
-        additional_states_labels = []
         for i, v in enumerate(additional_states_matrix):
-            additional_states_labels.append('')
+            freqs = additional_states_freqs[i]
+            label = ''
             for j, factor in enumerate(v):
                 if factor == 0:
                     continue
                 elif abs(factor) == 1:
-                    additional_states_labels[i] += (f'{factor:+}')[0]
-                    additional_states_labels[i] += f'{states[j]}'
+                    label += (f'{factor:+}')[0]
+                    label += f'{states[j]}'
                 else:
-                    additional_states_labels[i] += f' {factor:+} * {states[j]}'
-        for i, freqs in enumerate(additional_states_freqs):
-            plt.plot(1e9*t, 1e-9*freqs, label=additional_states_labels[i],
-                color=colors.get(states[i], None))
+                    label += f' {factor:+} * {states[j]}'
+            plt.plot(1e9*t, 1e-9*freqs, label=label)
     plt.ylabel('Frequency, $f$ (GHz)')
     plt.xlabel('Time, $t$ (ns)')
     plt.legend()
