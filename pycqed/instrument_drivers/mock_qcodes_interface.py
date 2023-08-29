@@ -337,6 +337,9 @@ class Station(DelegateAttributes):
             else:
                 param_value = param
         except Exception:
+            # FIXME: This might be due to an incomplete HDF import.
+            #  Try loading the param from file. If this also fails,
+            #  raise.
             # TODO: Do not suppress raising the exception. Either
             #  re-raise, or raise a KeyError, or a custom error type
             #  such as defining a ParameterNotFoundError

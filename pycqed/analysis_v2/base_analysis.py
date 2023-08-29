@@ -464,6 +464,8 @@ class BaseDataAnalysis(object):
 
         Remark: Note that this assumes that the station has been updated
             before (TODO explain)
+            FIXME: remove this remark once the station is changed to
+             auto-update itself whenever a parameter is not found
         """
         if len(self.timestamps) != 1:
             raise NotImplementedError(
