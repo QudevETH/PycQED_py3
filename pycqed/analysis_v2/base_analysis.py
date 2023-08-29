@@ -459,6 +459,18 @@ class BaseDataAnalysis(object):
                 file_par)
         return return_dict
 
+    def get_instrument_setting(self, param_name):
+        """TODO
+
+        Remark: Note that this assumes that the station has been updated
+            before (TODO explain)
+        """
+        if len(self.timestamps) != 1:
+            raise NotImplementedError(
+                'get_setting is only implemented for analyses with a single '
+                'timestamp.')
+        return self.config_files.stations[self.timestamps[0]].get(param_name)
+
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):
         SETTINGS_PREFIX = 'Instrument settings.'
