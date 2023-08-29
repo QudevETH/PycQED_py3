@@ -1,4 +1,4 @@
-from copy import deepcopy
+from copy import copy, deepcopy
 
 import numpy as np
 import datetime as dt
@@ -629,7 +629,7 @@ def multi_plot(timers, **plot_kwargs):
     # create dummy timer that contains checkpoints of other timers
     tm = Timer(auto_start=False)
     for t in timers:
-        tt = deepcopy(t) # do not modify original timer
+        tt = copy(t) # do not modify original timer
         tt.rename_checkpoints(tt.name + "_", which="all")
         tm.update(tt)
 
@@ -649,7 +649,20 @@ class Checkpoint(list):
 
         for v in values:
             if isinstance(v, str):
-                v = dt.datetime.strptime(v, self.fmt)
+                if self.fmt=="%Y-%m-%d %H:%M:%S.%f":
+                    # Manual parsing for speed reasons
+                    v = dt.datetime(
+                        year=int(v[:4]),
+                        month=int(v[5:7]),
+                        day=int(v[8:10]),
+                        hour=int(v[11:13]),
+                        minute=int(v[14:16]),
+                        second=int(v[17:19]),
+                        microsecond=int(v[20:26]),
+                    )
+                else:
+                    # This is generic, but slow
+                    v = dt.datetime.strptime(v, self.fmt)
             self.append(v)
         if log_init:
             self.log_time()
