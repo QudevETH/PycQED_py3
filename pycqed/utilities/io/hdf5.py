@@ -237,15 +237,19 @@ def read_from_hdf5(path_to_key_or_attribute, h5_group):
 
     Returns: key (as a dict) or attribute or 'not found' if it could not find
         the specified path
+        TODO: Avoid 'not found' hack
 
     """
-    param_value = read_attribute_from_hdf5(path_to_key_or_attribute, h5_group)
-    if param_value == 'not found':
+    try:  # try whether it is an attribute
+        param_value = read_attribute_from_hdf5(
+            path_to_key_or_attribute, h5_group)
+    except KeyError:  # TODO: or whatever read_attribute_from_hdf5 raises
+        # treat it as a group (or path to group)
+        # allow '.' as an alias for the separator '/'
         group_name = '/'.join(path_to_key_or_attribute.split('.'))
-        try:
-            param_value = read_dict_from_hdf5({}, h5_group[group_name])
-        except Exception:
-            return 'not found'
+        # TODO: put following line into try-except if we want to raise
+        #  a custom error different from what read_dict_from_hdf5 raises
+        param_value = read_dict_from_hdf5({}, h5_group[group_name])
     return param_value
 
 
@@ -257,14 +261,16 @@ def read_attribute_from_hdf5(path_to_attribute, h5_group):
         h5_group (hdf5 file/group): hdf5 file or group from which to read.
 
     Returns: attribute value or 'not found' if it can not find path_to_attribute
+        TODO: Avoid 'not found' hack
 
     """
-    param_value = 'not found'
+    param_value = 'not found'  # TODO: Avoid 'not found' hack
 
     try:
         if len(path_to_attribute.split('.')) == 1:
             param_value = decode_attribute_value(h5_group.attrs[path_to_attribute])
         else:
+            # allow '.' as an alias for the separator '/'
             group_name = '/'.join(path_to_attribute.split('.')[:-1])
             par_name = path_to_attribute.split('.')[-1]
             group = h5_group[group_name]
@@ -272,7 +278,10 @@ def read_attribute_from_hdf5(path_to_attribute, h5_group):
             if par_name in attrs:
                 param_value = decode_attribute_value(
                     group.attrs[par_name])
-    except Exception as e:
+    except Exception as e:  # TODO: only catch a more specifix exception
+        # TODO: Do not suppress raising the exception. Either
+        #  re-raise, or raise a KeyError, or a custom error type
+        #  such as defining a ParameterNotFoundError
         param_value = 'not found'
 
     return param_value
@@ -424,6 +433,9 @@ class HDF5Loader(Loader):
                     param_value = read_attribute_from_hdf5(path_to_param,
                                                            config_file)
                     if param_value == 'not found':
+                        # TODO: Avoid 'not found' hack. Catch an exception
+                        #  raised by read_attribute_from_hdf5
+                        # TODO: comment to explain why it is OK to continue
                         continue
                     # if param path is only an instrument (%inst_name%)
                     if len(path_to_param.split('.')) == 1:

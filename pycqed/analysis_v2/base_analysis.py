@@ -446,67 +446,97 @@ class BaseDataAnalysis(object):
                                                          1])
         return recursive_search(param_name, search_attrs[0])
 
+    def get_instrument_settings_from_timestamp(self, params_dict, timestamp):
+        """TODO
+        """
+        return_dict = {}
+        # TODO: the following line opens the HDF file if settings are stored
+        #  in the HDF file. Does it hurt if the hdf file is already opened by
+        #  self.open_files()?
+        self.config_files.update_station(timestamp, list(params_dict.values()))
+        for save_par, file_par in params_dict.items():
+            return_dict[save_par] = self.config_files.stations[timestamp].get(
+                file_par)
+        return return_dict
+
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):
+        SETTINGS_PREFIX = 'Instrument settings.'
+        settings_keys = [k for k in params_dict if k.startswith(SETTINGS_PREFIX)]
+        settings_dict = {k[len(SETTINGS_PREFIX):]: v for k, v in params_dict.items()
+                         if k in settings_keys}
+        params_dict = {k: v for k, v in params_dict.items()
+                         if k not in settings_keys}
         if timestamps is None:
             timestamps = self.timestamps
         raw_data_dict = []
-        for timestamp in timestamps:
-            file_idx = self.timestamps.index(timestamp)
-            raw_data_dict_ts = OrderedDict([(param, '') for param in
-                                            params_dict])
-
-            folder = a_tools.get_folder(timestamp)
-            try:
-                self.open_files()
+        try:
+            self.open_files()
+            for timestamp in timestamps:
+                folder = a_tools.get_folder(timestamp)
+                file_idx = self.timestamps.index(timestamp)
                 data_file = self.data_files[file_idx]
-                self.config_files.update_station(
-                    timestamp, list(params_dict.values()))
+
+                # add special items
+                if 'timestamp' in params_dict:
+                    raw_data_dict_ts['timestamp'] = timestamp
+                if 'folder' in params_dict:
+                    raw_data_dict_ts['folder'] = folder
+                if 'measurementstring' in params_dict:
+                    raw_data_dict_ts['measurementstring'] = \
+                        os.path.split(folder)[1][7:]
+                if 'measured_data' in params_dict:
+                    raw_data_dict_ts['measured_data'] = \
+                        np.array(data_file['Experimental Data']['Data']).T
+
+                # add hdf attributes and groups
                 for save_par, file_par in params_dict.items():
-                    if save_par == 'timestamp':
-                        raw_data_dict_ts['timestamp'] = timestamp
-                    elif save_par == 'folder':
-                        raw_data_dict_ts['folder'] = folder
-                    elif save_par == 'measurementstring':
-                        raw_data_dict_ts['measurementstring'] = \
-                            os.path.split(folder)[1][7:]
-                    elif save_par == 'measured_data':
-                        raw_data_dict_ts['measured_data'] = \
-                            np.array(data_file['Experimental Data']['Data']).T
+                    if save_par in raw_data_dict_ts:  # was treated above
+                        continue
                     elif file_par == 'Timers':
                         raw_data_dict_ts[save_par] = \
                             hdf5_io.read_dict_from_hdf5({}, data_file[file_par])
-                    else:
-                        if len(file_par.split('.')) == 1:
-                            par_name = file_par.split('.')[0]
-                            for group_name in data_file.keys():
+                    elif len(file_par.split('.')) == 1:
+                        # Group was not specified. The following code tries to find an
+                        # attribute or subgroup in any of the groups in the hdf file.
+                        # FIXME: is this "find anywhere" functionality really needed?
+                        #  Shouldn't child classe rather specify the precise path?
+                        #  Due to this features, it is impossible to query complete groups
+                        #  here, which is the reason why Timers needs special treatment above.
+                        par_name = file_par.split('.')[0]
+                        for i, group_name in enumerate(data_file.keys()):
+                            try:
                                 raw_data_dict_ts[save_par] = \
-                                    hdf5_io.read_from_hdf5(par_name,
-                                                           data_file[group_name])
-                                if raw_data_dict_ts[save_par] != 'not found':
-                                    break
+                                    hdf5_io.read_from_hdf5(
+                                        par_name, data_file[group_name])
+                            except KeyError:  # TODO: or whatever read_from_hdf5 raises
+                                if i == len(data_file.keys()) - 1:
+                                    # not found in any of the groups
+                                    raise  # TODO: or raise a custom error (not found in any group)
+                                else:
+                                    continue  # try next group
+                            break  # keep first found parameter
                         else:
                             raw_data_dict_ts[save_par] = \
                                 hdf5_io.read_from_hdf5(file_par, data_file)
-                            if raw_data_dict_ts[save_par] == 'not found':
-                                raw_data_dict_ts[save_par] = \
-                                    self.config_files.stations[timestamp].get(
-                                        file_par)
+
+                # add settings
+                raw_data_dict_ts.update(
+                    self.get_instrument_settings_from_timestamp(
+                        settings_dict, timestamp))
 
                 for par_name in raw_data_dict_ts:
                     if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
-            except Exception as e:
-                self.close_files()
-                raise e
             raw_data_dict.append(raw_data_dict_ts)
+        except Exception as e:
+            self.close_files()
+            raise e
+        self.close_files()
 
         if len(raw_data_dict) == 1:
             raw_data_dict = raw_data_dict[0]
-
-        self.close_files()
-
         return raw_data_dict
 
     @staticmethod
@@ -2249,6 +2279,7 @@ class BaseDataAnalysis(object):
         awg_dd = self.get_data_from_timestamp_list({
             'clock_freq': f'{awg}.clock_freq',
             'IDN': f'{awg}.IDN'})
+        # TODO: Avoid 'not found' hack.
         if awg_dd['clock_freq'] != 'not found':
             return awg_dd['clock_freq']
         model = awg_dd['IDN'].get('model', None)

@@ -321,6 +321,7 @@ class Station(DelegateAttributes):
         """
         Tries to find parameter value for given string. Returns 'not found' if
         an attribute error occurs.
+        # TODO: Avoid 'not found' hack.
         Args:
             path_to_param (str): path to parameter in form
                 %inst_name%.%param_name%
@@ -328,7 +329,7 @@ class Station(DelegateAttributes):
         Returns (str): parameter value, if parameter value is a dictionary it
             tries to get the "value" key.
         """
-        param_value = 'not found'
+        param_value = 'not found'  # TODO: Avoid 'not found' hack.
         try:
             param = eval('self.' + path_to_param + '()')
             if isinstance(param, dict):
@@ -336,6 +337,9 @@ class Station(DelegateAttributes):
             else:
                 param_value = param
         except Exception:
+            # TODO: Do not suppress raising the exception. Either
+            #  re-raise, or raise a KeyError, or a custom error type
+            #  such as defining a ParameterNotFoundError
             param_value = 'not found'
             logger.warning(f'Parameter {path_to_param} not found in station.')
         return param_value
