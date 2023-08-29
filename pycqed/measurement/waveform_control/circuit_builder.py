@@ -345,6 +345,8 @@ class CircuitBuilder:
                 device_op = self.get_cz_operation_name(
                     *qbn,
                     cz_pulse_name=None if op_type == 'CZ' else op_type)
+                # Get concrete operation implemented on the device, e.g. CZ_nztc
+                op_type = device_op.split(" ")[0]
                 # Here, we figure out if the gate should be decomposed into
                 # CZ and single-qubit gates
                 decomp_info = self.decompose_rotation_gates.get(op_type, False)
