@@ -2234,34 +2234,33 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qb_name in self.qb_names:
             slice_idxs_list = slice_idxs_1d_raw_plot.get(qb_name, [])
             # Plot all raw data (including potential active reset readouts)
-            key = 'meas_results_per_qb_raw'
-            raw_data_dict = self.proc_data_dict[key][qb_name]
-            sweep_points = self.raw_data_dict['hard_sweep_points']
-            if plot_raw_data:
-                # standard raw data plot
-                self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                             xvals=sweep_points)
-            if TwoD and len(slice_idxs_list) > 0:
-                # plot slices of the 2D raw data
-                self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
-                                                  slice_idxs_list)
-
-            # Plot raw data without the active reset readouts
-            key = 'meas_results_per_qb'
-            raw_data_dict = self.proc_data_dict[key][qb_name]
-            fig_suffix = 'filtered' if self.data_with_reset else ''  #FIXME
-            sweep_points = self.proc_data_dict[
-                'sweep_points_dict'][qb_name]['sweep_points']
-            if plot_raw_data:
-                # standard raw data plot
-                self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                             xvals=sweep_points,
-                                             fig_suffix=fig_suffix)
-            if TwoD and len(slice_idxs_list) > 0:
-                # plot slices of the 2D raw data
-                self._prepare_raw_1d_slices_plots(qb_name,
-                                                  raw_data_dict,
-                                                  slice_idxs_list)
+            if self.data_with_reset:
+                # With, then without the active reset readouts
+                keys = ['meas_results_per_qb_raw', 'meas_results_per_qb']
+                fig_suffixes = ['', 'filtered']
+            else:
+                # Raw data (no active reset readouts)
+                keys = ['meas_results_per_qb']
+                fig_suffixes = ['']
+            # For each key, create a figure with corresponding fig_suffix
+            for key, fig_suffix in zip(keys, fig_suffixes):
+                raw_data_dict = self.proc_data_dict[key][qb_name]
+                if key == 'meas_results_per_qb_raw':
+                    sweep_points = self.raw_data_dict['hard_sweep_points']
+                elif key == 'meas_results_per_qb':
+                    sweep_points = self.proc_data_dict[
+                        'sweep_points_dict'][qb_name]['sweep_points']
+                else:
+                    raise ValueError
+                if plot_raw_data:
+                    # standard raw data plot
+                    self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                                 xvals=sweep_points,
+                                                 fig_suffix=fig_suffix)
+                if TwoD and len(slice_idxs_list) > 0:
+                    # plot slices of the 2D raw data
+                    self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
+                                                      slice_idxs_list)
 
     def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
                                      slice_idxs_list):
