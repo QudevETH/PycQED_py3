@@ -299,9 +299,9 @@ class CircuitBuilder:
             #  but could be made more specific
             op_type = op_name.split(':')[0].rstrip('0123456789.e-')
             angle = op_name[len(op_type):]
-            sign = -1 if op_name[0] == 'm' else 1
+            sign = -1 if op_type[0] == 'm' else 1
             if sign == -1:
-                op_name = op_name[1:]
+                op_type = op_type[1:]
             allowed_ops = ['X', 'Y', 'Z', 'CZ']
             # startswith is needed to recognise all CZ gates, e.g. 'CZ_nztc'
             if not any([op_type.startswith(g) for g in allowed_ops]):
@@ -321,7 +321,7 @@ class CircuitBuilder:
                     else:
                         param = angle
 
-            if op_name.startswith('CZ'):  # Two-qubit gate
+            if op_type.startswith('CZ'):  # Two-qubit gate
                 if param is not None:
                     # FIXME: this code block is duplicated 3 times, for each
                     #  gate type (CZ, Z, X/Y). This should be cleaned up once
