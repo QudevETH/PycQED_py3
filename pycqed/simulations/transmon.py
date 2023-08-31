@@ -515,11 +515,12 @@ def transmon_resonator_ej_anh_frg_chi(f_tr: float, ec: float, frb: float,
         dispersive shift.
     """
 
-    def func(ej_anh_frg_chi_, ftr_ec_frb_gb, ng_, dim_charge_, dim_resonator_):
+    def func(ej_anh_frg_chi_, ftr_ec_frb_gb, ng_, dim_charge_, dim_resonator_,
+             transition_):
         ftr_, ec_, frb_, gb_ = ftr_ec_frb_gb
         ej, anh, frg, chi = ej_anh_frg_chi_
         calc_ftr_anh_frg_chi = transmon_resonator_ftr_anh_frg_chi(
-            ec_, ej, frb_, gb_, ng_, dim_charge_, dim_resonator_, transition=transition)
+            ec_, ej, frb_, gb_, ng_, dim_charge_, dim_resonator_, transition=transition_)
         return calc_ftr_anh_frg_chi - np.array([ftr_, anh, frg, chi])
 
     if transition == 'ge':
@@ -534,7 +535,8 @@ def transmon_resonator_ej_anh_frg_chi(f_tr: float, ec: float, frb: float,
     chi0 = -gb**2 * (fge + ec) / (fge - frb) / (fge - frb - ec) / 16
     ej_anh_frg_chi = sp.optimize.fsolve(func, np.array([ej0, anh0, frg0, chi0]),
                                         args=(np.array([f_tr, ec, frb, gb]),
-                                              ng, dim_charge, dim_resonator))
+                                              ng, dim_charge, dim_resonator,
+                                              transition))
     return tuple(ej_anh_frg_chi)
 
 
