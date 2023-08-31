@@ -126,14 +126,17 @@ def compute_accumulated_phase(t, states, state_freqs):
 
     Args:
         t (numpy.array): numpy array specifying the sample points in time.
-        states (tuple[str]): Tuple of 2 multi qb state strings for
+        states (tuple[str]): Tuple of 1 or 2 multi qb state strings for
             which the accumulated phase will be calculated. See docstring of
-            compute_energy_levels_from_flux_pulse for syntax.
+            compute_energy_levels_from_flux_pulse for syntax. If only one state is provided the phase will be computed from the frequency difference relative to the first frequency in state_freqs[0].
         state_freqs (np.array): Must have shape
             (len(states), len(t)).
 
     Returns:
         float: accumulated phase in deg
     """
-    diff_freq = state_freqs[1] - state_freqs[0]
+    if len(states) == 1:
+        diff_freq = state_freqs[0] - state_freqs[0][0]
+    else:
+        diff_freq = state_freqs[1] - state_freqs[0]
     return np.trapz(diff_freq, t) * 360
