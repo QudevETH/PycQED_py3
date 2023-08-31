@@ -223,20 +223,20 @@ class CircuitBuilder:
                              "the newest version - get_pulses - instead!")
         return pulses[0]
 
-    def get_pulses(self, op, parse_rotation_gates=False):
+    def get_pulses(self, op):
         """
         Gets pulse dictionaries, corresponding to the operation op, from the
         operation dictionary, and possibly parses logical indexing as well as
         arbitrary angles.
         Examples:
-             >>> get_pulses('CZ 0 2', parse_rotation_gates=True)
+             >>> get_pulses('CZ 0 2')
              will perform a CZ gate (according to cz_pulse_name)
              between the qubits with logical indices 0 and 2
-             >>> get_pulses('Z100 qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z100 qb1')
              will perform a 100 degree Z rotation
-             >>> get_pulses('Z:theta qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z:theta qb1')
              will perform a parametric Z rotation with parameter name theta
-             >>> get_pulses('Z:2*[theta] qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z:2*[theta] qb1')
              will perform a parametric Z rotation with twice the
              value of the parameter named theta. The brackets are used to
              indicated the parameter name. This feature has also been tested
@@ -258,8 +258,7 @@ class CircuitBuilder:
         Args:
             op: operation (str in the above format, or iterable
             corresponding to the splitted string)
-            parse_rotation_gates: whether or not to look for gates with
-            arbitrary angles.
+            TODO
 
         Returns: list of pulses, where each pulse is a copy (see self.copy_op)
         of the corresponding pulse dictionary
@@ -289,7 +288,7 @@ class CircuitBuilder:
         if op in self.operation_dict:
             p = [self.copy_op(self.operation_dict[op])]
 
-        elif parse_rotation_gates:
+        else:
             # assumes operation format of, e.g., f" Z{angle} qbname"
             # FIXME: This parsing is format dependent and is far from ideal but
             #  to generate parametrized pulses it is helpful to be able to
@@ -403,7 +402,11 @@ class CircuitBuilder:
                         'Single qb decomposed rotations not implemented yet.')
                 if angle == '':
                     angle = 180
-                p = self.get_pulses(f"{op_type}180 {qbn[0]}")
+                device_op = f"{op_type}180 {qbn[0]}"
+                if device_op in self.operation_dict:
+                    p = [self.copy_op(self.operation_dict[device_op])]
+                else:
+                    raise KeyError(f"Operation {op} not found.")
                 if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
@@ -442,8 +445,6 @@ class CircuitBuilder:
                         # configure drive pulse amplitude for this angle
                         p[0]['amplitude'] *= corr_func(
                             ((angle + 180) % (-360) + 180) / 180)
-        else:
-            raise KeyError(f"Operation {op} not found.")
         if len(p) == 1:
             # If only one pulse: set its op_code to the initially requested one
             # in order to keep information provided there (e.g. 2qb gate type).
