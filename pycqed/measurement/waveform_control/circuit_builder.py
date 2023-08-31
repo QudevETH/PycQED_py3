@@ -750,7 +750,7 @@ class CircuitBuilder:
         single_qb_given = not isinstance(qb_names, list)
         _, qb_names = self.get_qubits(qb_names)
         pulses = [p for qbn in qb_names for p in self.get_pulses(
-            f'Z{theta} {qbn}', True)]
+            f'Z{theta} {qbn}')]
         return pulses[0] if single_qb_given else pulses
 
     def get_ops_duration(self, operations=None, pulses=None, fill_values=None,
@@ -830,7 +830,7 @@ class CircuitBuilder:
         # the shortcut if op in self.operation_dict is for speed reasons
         p_lists = [[self.copy_op(self.operation_dict[op])]
                    if op in self.operation_dict
-                   else self.get_pulses(op, True)
+                   else self.get_pulses(op)
                    for op in operations]
         pulses = [p for p_list in p_lists for p in p_list]  # flattened
 
