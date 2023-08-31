@@ -271,19 +271,21 @@ class CircuitBuilder:
         else:
             op_split = op
             op = " ".join(op)
-        if not self.fast_mode:
-            # the call to get_qubits resolves qubits indices if needed
-            _, op_split[1:] = self.get_qubits(op_split[1:], strict=False)
-        simultaneous = False
-        if op_split[0][0] == 's':
-            simultaneous = True
-            op_split[0] = op_split[0][1:]
-        if op_split[0][-1] == 's':
-            simultaneous = True
-            op_split[0] = op_split[0][:-1]
-        # First part of the op_code, e.g. "Z:2*[theta]"
+        # Extract op_name and qbn (qubit names)
+        # op_name: first part of the op_code, e.g. "Z:2*[theta]"
         op_name = op_split[0]
-        qbn = op_split[1:]
+        if self.fast_mode:
+            qbn = op_split[1:]
+        else:
+            # the call to get_qubits resolves qubits indices if needed
+            _, qbn = self.get_qubits(op_split[1:], strict=False)
+        simultaneous = False
+        if op_name[0] == 's':
+            simultaneous = True
+            op_name = op_name[1:]
+        if op_name[-1] == 's':
+            simultaneous = True
+            op_name = op_name[:-1]
 
         if op in self.operation_dict:
             p = [self.copy_op(self.operation_dict[op])]
