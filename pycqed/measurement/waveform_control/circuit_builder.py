@@ -236,8 +236,8 @@ class CircuitBuilder:
              will perform a 100 degree Z rotation
              >>> get_pulses('Z:theta qb1')
              will perform a parametric Z rotation with parameter name theta
-             >>> get_pulses('Z:2*[theta] qb1')
-             will perform a parametric Z rotation with twice the
+             >>> get_pulses('X:2*[theta] qb1')
+             will perform a parametric X rotation with twice the
              value of the parameter named theta. The brackets are used to
              indicated the parameter name. This feature has also been tested
              with some more complicated mathematical expression.
@@ -245,20 +245,28 @@ class CircuitBuilder:
              spaces in between operands. For instance,
              'Z:2*[theta]/180+[theta]**2 qb1' and not
              'Z: 2 * [theta] / 180 + [theta]**2 qb1
+             >>> get_pulses('CZ_nztc40 qb3 qb2')
+             will perform a 40 degrees CZ gate (if allowed by the CZ operation),
+             using the CZ_nztc hardware implementation
         Adding 's' (for simultaneous) in front of an op_code (e.g.,
         'sZ:theta qb1') will reference the pulse to the start of the
         previous pulse.
         Adding 'm' (for minus) in front of an op_code (e.g.,
         'mZ:theta qb1') negates the sign. If 's' is also given,
         it has to be in the order 'sm'.
-        Note that this is only for one operation op, but may return more than
-        one pulse, for example for gate decomposition into several hardware
-        gates.
+        In addition, if self.decompose_rotation_gates is not None,
+        arbitrary-angle CZ gates are decomposed into two standard CZ gates
+        and single-qubit gates. Examples:
+            decompose_rotation_gates={'CZ_nztc': True} decomposes all CZ_nztc
+            decompose_rotation_gates={'CZ_nztc': [['qb3', 'qb2'],]} decomposes
+                all CZ_nztc between qb2 and qb3, and applies the single-qubit
+                gates to qb3 (first qubit in the pair)
+        Note that get_pulses parses one operation 'op', but may return more than
+        one pulse, for example for gate decomposition.
 
         Args:
             op: operation (str in the above format, or iterable
             corresponding to the splitted string)
-            TODO
 
         Returns: list of pulses, where each pulse is a copy (see self.copy_op)
         of the corresponding pulse dictionary
