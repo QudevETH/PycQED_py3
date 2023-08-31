@@ -891,9 +891,8 @@ class CPhase(CalibBuilder):
             determined automatically
         :param prepend_pulse_dicts: (dict) prepended pulses, see
             CircuitBuilder.block_from_pulse_dicts
-        :param cphase: (float) conditional phase of the CZ gate (relies on
-            the conditional phase being calibrated as a function of waveform
-            parameters)
+        :param cphase: (float) conditional phase of the CZ gate (degrees),
+            if allowed by the gate. Defaults to None (180 degrees).
         :param kw: further keyword arguments:
             cz_pulse_name: task-specific prefix of CZ gates (overwrites
                 global choice passed to the class init)
