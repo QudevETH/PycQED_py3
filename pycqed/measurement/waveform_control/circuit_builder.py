@@ -418,8 +418,8 @@ class CircuitBuilder:
                         else:  # angle = parameter
                             func = (lambda x, qbn=qbn[0], sign=sign:
                                     {qbn: sign * x})
-                        p[0]['basis_rotation'] = ParametricValue(
-                            param, func=func, op_split=(op_name, qbn[0]))
+                        p[0]['basis_rotation'] = {qbn[0]: ParametricValue(
+                            param, func=func, op_split=(op_name, qbn[0]))}
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
                         p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
