@@ -965,6 +965,5 @@ class TwoQubitXEBMultiCphase(MultiTaskingExperiment):
                 if key.endswith(suffix):
                     new_key = key[:-len(suffix)]
                     d[new_key] = val
-        print(sp[0].keys(), sp[1].keys())
         return sp
 
