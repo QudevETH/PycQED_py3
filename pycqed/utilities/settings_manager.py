@@ -2,7 +2,8 @@
 import logging
 import numpy as np
 
-from pycqed.instrument_drivers.mock_qcodes_interface import Station
+from pycqed.instrument_drivers.mock_qcodes_interface import Station, \
+    ParameterNotFoundError
 from pycqed.utilities.io.base_io import Loader
 import pycqed.gui.dict_viewer as dict_viewer
 from collections import OrderedDict
@@ -139,6 +140,30 @@ class SettingsManager:
                                                     param_path=param_path,
                                                     **kwargs)
                 self.stations[timestamp].update(tmp_station)
+
+    def get_parameter(self, path_to_param, timestamp):
+        '''
+        Returns the parameter value of the parameter specified by
+        'path_to_param' from the station of the timestamp. If the parameter or
+        the timestamp does not exist in the SettingsManager object, it tries to
+        update the station. See self.update_station.
+        Args:
+            path_to_param (str): path to the parameter of the form
+                %instrument%.%parameter% or %instrument%.%submodule.%parameter%
+            timestamp (int, str): timestamp or index of the station.
+
+        Returns: Parameter (raw) value, see docstring Station.get().
+        TODO: Test for qcodes stations.
+        '''
+        try:
+            return self.stations[timestamp].get(path_to_param)
+        # If station is not loaded to the SM a KeyError will be raised.
+        # If parameter does not exist in station a ParameterNotFoundError will
+        # be raised.
+        except KeyError or ParameterNotFoundError:
+            self.update_station(timestamp, [path_to_param])
+            # second try after station was updated
+            return self.stations[timestamp].get(path_to_param)
 
     def spawn_snapshot_viewer(self, timestamp, new_process=False):
         """
