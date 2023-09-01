@@ -230,7 +230,6 @@ def load_settings(instrument,
             if not update:
                 params_dict = {parameter : value for parameter, value in \
                         params_to_set}
-                a_tools.close_files([f])
                 return params_dict
 
             for parameter, value in params_to_set:
