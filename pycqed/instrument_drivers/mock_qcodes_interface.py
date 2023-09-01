@@ -8,6 +8,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class ParameterNotFoundError(Exception):
+    def __init__(self, parameter):
+        self.parameter = parameter
+        self.message = f'Parameter {parameter} not found'
+        super().__init__(self.message)
+
+
 class DelegateAttributes:
     """
     Copied from QCodes.utils.helpers (version 0.35.0)
@@ -319,9 +326,8 @@ class Station(DelegateAttributes):
 
     def get(self, path_to_param):
         """
-        Tries to find parameter value for given string. Returns 'not found' if
-        an attribute error occurs.
-        # TODO: Avoid 'not found' hack.
+        Tries to find parameter value for given string. Returns custom
+        ParameterNotFoundError if an attribute error occurs.
         Args:
             path_to_param (str): path to parameter in form
                 %inst_name%.%param_name%
@@ -329,22 +335,14 @@ class Station(DelegateAttributes):
         Returns (str): parameter value, if parameter value is a dictionary it
             tries to get the "value" key.
         """
-        param_value = 'not found'  # TODO: Avoid 'not found' hack.
         try:
             param = eval('self.' + path_to_param + '()')
             if isinstance(param, dict):
                 param_value = param.get("value", param)
             else:
                 param_value = param
-        except Exception:
-            # FIXME: This might be due to an incomplete HDF import.
-            #  Try loading the param from file. If this also fails,
-            #  raise.
-            # TODO: Do not suppress raising the exception. Either
-            #  re-raise, or raise a KeyError, or a custom error type
-            #  such as defining a ParameterNotFoundError
-            param_value = 'not found'
-            logger.warning(f'Parameter {path_to_param} not found in station.')
+        except AttributeError:
+            raise ParameterNotFoundError(path_to_param)
         return param_value
 
     def update(self, station):
