@@ -447,25 +447,44 @@ class BaseDataAnalysis(object):
         return recursive_search(param_name, search_attrs[0])
 
     def get_instrument_settings_from_timestamp(self, params_dict, timestamp):
-        """TODO
+        """
+        Returns a dictionary with the parameters loaded from the settings
+        specified by the timestamp. If the parameters are not in the station,
+        it tries to update the station, see mock_qcodes_interface.Station
+        Args:
+            params_dict (dict): Dictionary of the form
+                { 'custom parameter name': 'path_to_parameter',
+                    ...
+                }
+                where path_to_parameter is of the form %instrument%.%parameter%
+            timestamp(str, int): Timestamp of the instrument settings. If
+                integer, it is the index of the timestamp in
+                self.config_files.stations.
+
+        Returns: Returns a dictionary with the keys defined by params_dict and
+            the values from the parameters specified by 'path_to_parameter'.
+
         """
         return_dict = {}
         # TODO: the following line opens the HDF file if settings are stored
         #  in the HDF file. Does it hurt if the hdf file is already opened by
         #  self.open_files()?
+
         self.config_files.update_station(timestamp, list(params_dict.values()))
         for save_par, file_par in params_dict.items():
-            return_dict[save_par] = self.config_files.stations[timestamp].get(
-                file_par)
+            return_dict[save_par] = self.config_files.get_parameter(file_par,
+                                                                    timestamp)
         return return_dict
 
     def get_instrument_setting(self, param_name):
         """TODO
+        Function not needed, we can directly use Station.get_parameter()
 
         Remark: Note that this assumes that the station has been updated
             before (TODO explain)
             FIXME: remove this remark once the station is changed to
              auto-update itself whenever a parameter is not found
+
         """
         if len(self.timestamps) != 1:
             raise NotImplementedError(
@@ -487,6 +506,7 @@ class BaseDataAnalysis(object):
         try:
             self.open_files()
             for timestamp in timestamps:
+                raw_data_dict_ts = dict()
                 folder = a_tools.get_folder(timestamp)
                 file_idx = self.timestamps.index(timestamp)
                 data_file = self.data_files[file_idx]
