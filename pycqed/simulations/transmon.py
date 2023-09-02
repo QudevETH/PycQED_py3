@@ -500,7 +500,7 @@ def transmon_resonator_ej_anh_frg_chi(f_tr: float, ec: float, frb: float,
 
     Args:
         ec: Charging energy of the Hamiltonian.
-        ftr: The transition frequency of the transmon.
+        f_tr: The transition frequency of the transmon.
         frb: Bare resonator frequency.
         gb: Bare transmon-resonator coupling strength.
         ng: Charge offset of the Hamiltonian.
