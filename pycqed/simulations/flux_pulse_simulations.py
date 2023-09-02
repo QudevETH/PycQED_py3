@@ -81,9 +81,10 @@ def plot_state_freqs(t, states, state_freqs, additional_states_matrix=None,
         states (list[str]): Labels of the states.
         state_freqs: numpy.array of shape (len(states), len(t)) with frequency
             values computed, e.g., using `compute_energy_levels_from_flux_pulse`
-        additional_states_matrix: Matrix to compute additional states from
-            `state_freqs`, e.g., the difference between two states in `state_freqs`.
-            Example:
+        additional_states_matrix: list of additional states to plot, each
+            expressed as a linear combination of states present in
+            state_freqs.
+            For example:
                 With `state_freqs` holding the 11 and 20 state frequencies and
                 with `additional_states_matrix` being [[1, 1], [1, -1]], the
                 additionally computed energies would be 11+20 and 11-20.
