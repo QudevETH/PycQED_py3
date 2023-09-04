@@ -250,13 +250,20 @@ class BaseDataAnalysis(object):
                 self.save_fit_results()  # saving the fit results
                 self.analyze_fit_results()  # analyzing the fit results
 
-
             delegate_plotting = self.check_plotting_delegation()
             if not delegate_plotting:
-                self.prepare_plots()  # specify default plots
-                if not self.extract_only:
-                    # make the plots
-                    self.plot(key_list='auto')
+                # Update the rcParams to ensure repeatable plots independently
+                # of the rcParams set in the current python kernel.
+                # Only if options_dict['set_default_plot_formatting'] is True.
+                set_default_plot_formatting = self.options_dict.get(
+                    'set_default_plot_formatting', True)
+                params = self.get_default_plot_params(set_pars=False) if \
+                    set_default_plot_formatting else None
+                with mpl.rc_context(rc=params):
+                    self.prepare_plots()  # specify default plots
+                    if not self.extract_only:
+                        # make the plots
+                        self.plot(key_list='auto')
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
