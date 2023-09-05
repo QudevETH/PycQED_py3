@@ -75,8 +75,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         Return inter element dead time for the HDAWG based on current
         sample clock rate.
         """
-        # TODO: Check if other values commented out should be removed
-        return 8 / self.clock()  # 80 / self.clock() # 0 / self.clock()
+        # Set to 0 because HDAWG supports back-to-back waveform
+        return 0
 
     def __init__(self, pulsar, awg):
         # Store clock at init to warn users changing clocks after the init,
