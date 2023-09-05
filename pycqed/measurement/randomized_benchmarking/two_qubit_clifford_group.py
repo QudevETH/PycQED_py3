@@ -3,7 +3,7 @@ from os.path import join, dirname, abspath
 from pycqed.measurement.randomized_benchmarking.clifford_group import \
     clifford_group_single_qubit as C1, CZ, S1
 from pycqed.measurement.randomized_benchmarking.clifford_decompositions \
-    import epstein_efficient_decomposition
+    import HZ_gate_decomposition
 
 hash_dir = join(abspath(dirname(__file__)), 'clifford_hash_tables')
 
@@ -74,7 +74,7 @@ Important clifford indices:
 """
 # set as a module wide variable instead of argument to function for speed
 # reasons
-gate_decomposition = epstein_efficient_decomposition
+gate_decomposition = HZ_gate_decomposition
 
 # used to transform the S1 subgroup
 X90 = C1[16]
