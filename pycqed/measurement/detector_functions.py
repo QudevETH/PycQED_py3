@@ -1528,7 +1528,7 @@ class IntegratingAveragingPollDetector(PollDetector):
 
     def set_acq_length(self, val):
         self.integration_length = val
-        value_properties = acq_dev.get_value_properties(
+        value_properties = self.acq_dev.get_value_properties(
             self.data_type, self.integration_length)
         self.scaling_factor = value_properties['scaling_factor']
 
