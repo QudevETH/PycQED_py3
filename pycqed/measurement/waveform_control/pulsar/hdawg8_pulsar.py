@@ -81,7 +81,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     def __init__(self, pulsar, awg):
         # Store clock at init to warn users changing clocks after the init,
         # which is currently not supported
-        self._clock_at_init = awg.clock_freq()
+        self._clock_at_init = pulsar.clock(awg=awg.name)
 
         super().__init__(pulsar, awg)
 
@@ -567,7 +567,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                     if self.awg._awg_program[awg_nr] is not None])
 
     def clock(self):
-        clock = self.awg.clock_freq()
+        clock = self.pulsar.clock(awg=self.awg.name)
         if clock != self._clock_at_init:
             raise NotImplementedError('HDAWG8Pulsar: detected a change of ' +
                                       'sampling rate from ' +
