@@ -11552,7 +11552,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['Delta'] = OrderedDict()
         self.proc_data_dict['int_freq_exp'] = OrderedDict()
 
-        def pe_function(t, Delta, J=10e6, offset_freq=0):
+        def population_dynamics(t, Delta, J=7e6, offset_freq=0):
             # From Nathan's master's thesis Eq. 2.6 - fitting function
             t = t*1e9
             J = 2*np.pi*J/1e9
@@ -11561,20 +11561,53 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
-                    4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
+                    4 * J ** 2 + Delta_off ** 2)
+            # J is already in angular frequency (see J_fft)
 
+        # def J_fft(t, Delta, data):
+        #     # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
+        #     # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
+        #     J_min = None
+        #     for Delta_index in range(len(Delta)):
+        #         S = sp.fft.fft(data[Delta_index])
+        #         S[0] = 0 # Ignore DC component
+        #         xf = sp.fft.fftfreq(len(t), (t.max()-t.min())/len(t))[0:len(t)//2]
+        #         J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]/2 # 2J = 2pi/T (see thesis), but we want it in Hz
+        #         if J_min == None or J_min > J_fft:
+        #             J_min = J_fft
+        #     return J_min
+
+        def cosine_model(x, amplitude, frequency, phase, offset):
+            return amplitude * np.cos(
+                2.0 * np.pi * frequency * x + phase) + offset
         def J_fft(t, Delta, data):
             # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
             # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
             J_min = None
+            Delta_argmin = None
             for Delta_index in range(len(Delta)):
-                S = sp.fft.fft(data[Delta_index])
-                S[0] = 0 # Ignore DC component
-                xf = sp.fft.fftfreq(len(t), (t.max()-t.min())/len(t))[0:len(t)//2]
-                J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]/2 # 2J = 2pi/T (see thesis), but we want it in Hz
-                if J_min == None or J_min > J_fft:
-                    J_min = J_fft
-            return J_min
+
+                # Create an lmfit Model object
+                model = lmfit.Model(cosine_model)
+
+                # Set initial parameter values and bounds
+                params = model.make_params(amplitude=(max(
+                    data[Delta_index]) - min(data[Delta_index])) / 2,
+                                           frequency=
+                                           fit_mods.fft_freq_phase_guess(
+                                               data[Delta_index], t)[0],
+                                           phase=fit_mods.fft_freq_phase_guess(
+                                               data[Delta_index], t)[1],
+                                           offset=0.9)
+                params['frequency'].min = 0.0
+
+                result = model.fit(data[Delta_index], params, x=t)
+                J = result.params['frequency'].value/2
+
+                if J_min == None or J_min > J:
+                    J_min = J
+                    Delta_argmin = Delta_index
+            return J_min, Delta_argmin
 
         def add_fit_dict(qbH_name, qbL_name, data, key):
             """ Creates the dictionary used for fitting
@@ -11600,8 +11633,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             A fit-dictionary
             """
             model = self.get_param_value('model', 'transmon_res')
-            J_guess_boundary_scale = self.get_param_value('guess_paramater_scale', 2)
-            offset_guess_boundary = self.get_param_value('offset_guess_boundary', 2e8)
+            J_guess_boundary_scale = self.get_param_value(
+                'guess_paramater_scale', 1.5)
+            offset_guess_boundary = self.get_param_value(
+                'offset_guess_boundary', 10e6)
             hdf_file_index = self.get_param_value('hdf_file_index', 0)
 
             qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
@@ -11666,13 +11701,23 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             Delta_mod = np.delete(Delta, indices[0])
             pe = data[reduction_arr].reshape(len(Delta_mod), len(t_mod))
 
-            pe_model = lmfit.Model(pe_function, independent_vars=['t', 'Delta'])
+            pe_model = lmfit.Model(population_dynamics,
+                                   independent_vars=['t', 'Delta'])
 
-            J_guess = J_fft(t_mod, Delta_mod, pe)
+            J_guess = self.get_param_value('J_guess', J_fft(t_mod, Delta_mod,
+                                                            pe)[0])
+            offset_freq_guess = self.get_param_value('offset_freq_guess', -Delta_mod[J_fft(
+                t_mod, Delta_mod, pe)[1]])
             pe_model.set_param_hint('J', value=J_guess, min=J_guess/J_guess_boundary_scale,
                                     max=J_guess_boundary_scale*J_guess)
-            pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary,
-                                    max=offset_guess_boundary)
+            pe_model.set_param_hint('offset_freq', value=offset_freq_guess,
+                                    min=-Delta_mod[J_fft(t_mod, Delta_mod,
+                                                         pe)[
+                                        1]]-offset_guess_boundary,
+                                    max=-Delta_mod[J_fft(
+                                                    t_mod, Delta_mod,
+                                        pe)[1]]+offset_guess_boundary)
+
             guess_pars = pe_model.make_params()
             self.set_user_guess_pars(guess_pars)
 
@@ -11698,8 +11743,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         for task in self.get_param_value('task_list'):
             qbH_name, qbL_name = self._get_qbH_qbL(task)
             if qbH_name is not None:
-                data = self.proc_data_dict['projected_data_dict'][qbH_name]['pe']
-                add_fit_dict(qbH_name=qbH_name, qbL_name=qbL_name, data=data, key= f'chevron_fit_{qbH_name}_{qbL_name}')
+                data = self.proc_data_dict['projected_data_dict'][qbH_name][
+                    'pe']
+                add_fit_dict(qbH_name=qbH_name, qbL_name=qbL_name, data=data,
+                             key= f'chevron_fit_{qbH_name}_{qbL_name}')
 
     def _get_qbH_qbL(self, task):
         qbH_name, qbL_name = task['qbc'], task['qbt']
@@ -11738,7 +11785,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['analysis_params_dict'][k][
                 'amplitude2_'+self.measurement_strings[qbH].partition('_')[0]]\
                 = amplitude2
+
         self.save_processed_data(key='analysis_params_dict')
+
 
     def prepare_plots(self):
         super().prepare_plots()
@@ -11761,8 +11810,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             'msmt_sweep_points']
                         Delta = self.proc_data_dict['Delta'][qbH]
                         offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
-                        Delta_fine = np.linspace(-2*abs(min(Delta)-abs(
-                            offset_freq)), 2*(max(Delta)+offset_freq),
+                        Delta_fine = np.linspace(-10*abs(min(Delta)-abs(
+                            offset_freq)), 10*(max(Delta)+offset_freq),
                                                  steps) # for fit plotting
                         J = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['J']
                         offset = self.proc_data_dict['analysis_params_dict'][f'{qbH}_{qbL}']['offset_freq']
@@ -11773,12 +11822,14 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                         textstr = r'$J = ${:.2f} MHz'.format(J/1e6)  + '\n'
                         textstr += r'Detuning_offset = {:.2f} MHz'.format(offset/1e6) + '\n'
                         textstr += r'$t_\mathrm{CZ} = $' +  '{:.2f} ns'.format(t_CZ*1e9)
+                        data = self.proc_data_dict['projected_data_dict'][
+                            qbH]['pe']
                         self.plot_dicts[f'{base_plot_name}_main'] = {
                             'plotfn': self.plot_colorxy,
                             'fig_id': base_plot_name,
                             'xvals': xvals,
                             'yvals': Delta+offset_freq if actual_detuning else Delta,
-                            'zvals': self.proc_data_dict['projected_data_dict'][qbH]['pe'],
+                            'zvals': data,
                             'xlabel': xlabel,
                             'xunit': xunit,
                             'ylabel': ylabel,
