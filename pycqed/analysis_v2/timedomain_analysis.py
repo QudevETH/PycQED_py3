@@ -7,6 +7,7 @@ import matplotlib as mpl
 import cmath
 from collections import OrderedDict, defaultdict
 import re
+import warnings
 
 from pycqed.utilities import timer as tm_mod
 from sklearn.mixture import GaussianMixture as GM
@@ -14322,13 +14323,34 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                                                      size=(filter_size_freq,
                                                            filter_size_time),
                                                      mode='mirror')
-                # Find local minima indices
-                local_minima_indices = np.where(smoothed_data == filtered)
+                if self.get_param_value('find_optimal_OPs', True):
+                    # Find local minima indices
+                    local_minima_indices = np.where(smoothed_data == filtered)
 
-                # Find the pulse_lengths and frequencies corresponding to the
-                # minimum value(s)
-                pulse_lengths_OP = pulse_lengths[local_minima_indices[1]]
-                frequencies_OP = frequencies[local_minima_indices[0]]
+                    # Find the pulse_lengths and frequencies corresponding to the
+                    # minimum value(s)
+                    pulse_lengths_OP = pulse_lengths[local_minima_indices[1]]
+                    frequencies_OP = frequencies[local_minima_indices[0]]
+
+                else:
+                    # Find the operation point for a given pulse length by
+                    # finding the minimum of the data for this pulse length
+                    target_pulse_length = self.get_param_value(
+                        'target_pulse_length')
+                    if target_pulse_length is None:
+                        warnings.warn('Target_pulse_length must be '
+                                         'specified if find_optimal_OPs is '
+                                         'False. Using 50ns as default.')
+                        target_pulse_length = 50e-9
+                    pulse_length_index = np.argmin(np.abs(
+                        pulse_lengths -target_pulse_length))+1
+                    min_idx = np.argmin(smoothed_data[:,
+                                        :pulse_length_index])
+                    frequencies_OP = np.asarray([(frequencies[
+                        min_idx//pulse_length_index])])
+                    pulse_lengths_OP = np.asarray([(pulse_lengths[
+                        min_idx%pulse_length_index])])
+
 
                 # Save the operation points in the analysis_params_dict
                 if isinstance(pulse_lengths_OP, float):
