@@ -490,7 +490,7 @@ class BaseDataAnalysis(object):
             raise NotImplementedError(
                 'get_setting is only implemented for analyses with a single '
                 'timestamp.')
-        return self.config_files.stations[self.timestamps[0]].get(param_name)
+        return self.config_files.get_parameter(param_name, self.timestamps[0])
 
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):

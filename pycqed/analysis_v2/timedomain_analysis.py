@@ -4704,13 +4704,6 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.default_options['base_plot_name'] = 'Rabi'
-        # FIXME: the following would not be needed if the station
-        #  auto-updated itself whenever a parameter is not found
-        self.config_files.update_station(
-            self.timestamps[0],
-            [f'{qbn}.{self.get_transition_name(qbn)}_{param}'
-             for qbn in self.qb_names
-             for param in ['amp_180', 'amp90scale']])
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
