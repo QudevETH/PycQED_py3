@@ -1734,8 +1734,14 @@ class Chevron(CalibBuilder):
                 analysis_kwargs['options_dict']['TwoD'] = True
         if analysis_kwargs['options_dict'].get('new_analysis', False):
             do_fitting = analysis_kwargs['options_dict'].pop('do_fitting', True)
-            device_name = analysis_kwargs['options_dict'].pop('device_name',
-                                                              self.dev.name)
+            if 'device_name' not in analysis_kwargs['options_dict']:
+                try:
+                    analysis_kwargs['options_dict']['device_name'] = \
+                        self.dev.name
+                except Exception as e:
+                    print(e)
+                    print('Could not determine device name from device. '
+                          'Please provide it in the analysis_kwargs.')
             self.analysis = tda.ChevronAnalysis(t_start=self.timestamp,
                                                 do_fitting=do_fitting,
                                                 **analysis_kwargs)
