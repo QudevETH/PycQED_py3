@@ -23,7 +23,7 @@ from collections import OrderedDict
 from pycqed.utilities.io.base_io import Loader, file_extensions, \
     DateTimeGenerator
 from pycqed.instrument_drivers.mock_qcodes_interface import Parameter, \
-    Instrument, Station
+    Instrument, Station, ParameterNotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -237,19 +237,19 @@ def read_from_hdf5(path_to_key_or_attribute, h5_group):
 
     Returns: key (as a dict) or attribute or 'not found' if it could not find
         the specified path
-        TODO: Avoid 'not found' hack
 
     """
     try:  # try whether it is an attribute
         param_value = read_attribute_from_hdf5(
             path_to_key_or_attribute, h5_group)
-    except KeyError:  # TODO: or whatever read_attribute_from_hdf5 raises
+    except ParameterNotFoundError:
         # treat it as a group (or path to group)
         # allow '.' as an alias for the separator '/'
-        group_name = '/'.join(path_to_key_or_attribute.split('.'))
-        # TODO: put following line into try-except if we want to raise
-        #  a custom error different from what read_dict_from_hdf5 raises
-        param_value = read_dict_from_hdf5({}, h5_group[group_name])
+        try:
+            group_name = '/'.join(path_to_key_or_attribute.split('.'))
+            param_value = read_dict_from_hdf5({}, h5_group[group_name])
+        except KeyError:
+            raise ParameterNotFoundError(path_to_key_or_attribute)
     return param_value
 
 
@@ -261,28 +261,21 @@ def read_attribute_from_hdf5(path_to_attribute, h5_group):
         h5_group (hdf5 file/group): hdf5 file or group from which to read.
 
     Returns: attribute value or 'not found' if it can not find path_to_attribute
-        TODO: Avoid 'not found' hack
 
     """
-    param_value = 'not found'  # TODO: Avoid 'not found' hack
-
     try:
         if len(path_to_attribute.split('.')) == 1:
             param_value = decode_attribute_value(h5_group.attrs[path_to_attribute])
         else:
-            # allow '.' as an alias for the separator '/'
+            # allow '.' as an alias for the separator '/' only for separating
+            # groups
             group_name = '/'.join(path_to_attribute.split('.')[:-1])
             par_name = path_to_attribute.split('.')[-1]
             group = h5_group[group_name]
-            attrs = list(group.attrs)
-            if par_name in attrs:
-                param_value = decode_attribute_value(
+            param_value = decode_attribute_value(
                     group.attrs[par_name])
-    except Exception as e:  # TODO: only catch a more specifix exception
-        # TODO: Do not suppress raising the exception. Either
-        #  re-raise, or raise a KeyError, or a custom error type
-        #  such as defining a ParameterNotFoundError
-        param_value = 'not found'
+    except KeyError:
+        raise ParameterNotFoundError(path_to_attribute)
 
     return param_value
 
