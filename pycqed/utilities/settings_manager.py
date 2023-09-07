@@ -160,9 +160,10 @@ class SettingsManager:
         # If station is not loaded to the SM a KeyError will be raised.
         # If parameter does not exist in station a ParameterNotFoundError will
         # be raised.
-        except KeyError or ParameterNotFoundError:
+        except (KeyError, ParameterNotFoundError) as e:
             self.update_station(timestamp, [path_to_param])
             # second try after station was updated
+            # Exception will be raised here if update was not helpful
             return self.stations[timestamp].get(path_to_param)
 
     def spawn_snapshot_viewer(self, timestamp, new_process=False):
