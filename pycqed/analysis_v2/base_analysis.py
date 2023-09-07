@@ -13,6 +13,8 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.instrument_drivers.mock_qcodes_interface import \
+    ParameterNotFoundError
 from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
     write_warning_message_to_text_file)
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
@@ -543,16 +545,16 @@ class BaseDataAnalysis(object):
                                 raw_data_dict_ts[save_par] = \
                                     hdf5_io.read_from_hdf5(
                                         par_name, data_file[group_name])
-                            except KeyError:  # TODO: or whatever read_from_hdf5 raises
+                            except ParameterNotFoundError as e:
                                 if i == len(data_file.keys()) - 1:
                                     # not found in any of the groups
-                                    raise  # TODO: or raise a custom error (not found in any group)
+                                    raise e
                                 else:
                                     continue  # try next group
                             break  # keep first found parameter
-                        else:
-                            raw_data_dict_ts[save_par] = \
-                                hdf5_io.read_from_hdf5(file_par, data_file)
+                    else:
+                        raw_data_dict_ts[save_par] = \
+                            hdf5_io.read_from_hdf5(file_par, data_file)
 
                 # add settings
                 raw_data_dict_ts.update(
