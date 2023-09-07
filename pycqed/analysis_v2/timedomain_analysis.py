@@ -5001,7 +5001,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                 if old_pipulse_val != old_pipulse_val:
                     old_pipulse_val = 0  # FIXME: explain why
                 old_pihalfpulse_val = self.get_instrument_setting(
-                    f'{qbn}.{trans_name}_amp90scale')
+                    f'{qbn}.{trans_name}_amp90_scale')
                 # FIXME: the following condition is always False, isn't it?
                 if old_pihalfpulse_val != old_pihalfpulse_val:
                     old_pihalfpulse_val = 0  # FIXME: explain why
