@@ -509,6 +509,8 @@ class BaseDataAnalysis(object):
             self.open_files()
             for timestamp in timestamps:
                 raw_data_dict_ts = dict()
+                # FIXME do we even need this index logic? Why not using a dict
+                #  with timestamp as the key?
                 folder = a_tools.get_folder(timestamp)
                 file_idx = self.timestamps.index(timestamp)
                 data_file = self.data_files[file_idx]
@@ -536,6 +538,7 @@ class BaseDataAnalysis(object):
                         # Group was not specified. The following code tries to find an
                         # attribute or subgroup in any of the groups in the hdf file.
                         # FIXME: is this "find anywhere" functionality really needed?
+                        # it is used e.g. in BaseDataAnalysis.extract_data
                         #  Shouldn't child classe rather specify the precise path?
                         #  Due to this features, it is impossible to query complete groups
                         #  here, which is the reason why Timers needs special treatment above.
