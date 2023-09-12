@@ -1732,7 +1732,7 @@ class Chevron(CalibBuilder):
         if 'TwoD' not in analysis_kwargs['options_dict']:
             if len(self.sweep_points) == 2:
                 analysis_kwargs['options_dict']['TwoD'] = True
-        if analysis_kwargs['options_dict'].get('new_analysis', False):
+        try:
             do_fitting = analysis_kwargs['options_dict'].pop('do_fitting', True)
             if 'device_name' not in analysis_kwargs['options_dict']:
                 try:
@@ -1745,7 +1745,10 @@ class Chevron(CalibBuilder):
             self.analysis = tda.ChevronAnalysis(t_start=self.timestamp,
                                                 do_fitting=do_fitting,
                                                 **analysis_kwargs)
-        else:
+        except Exception as e:
+            log.warning('Could not run ChevronAnalysis because of '
+                        f'exception {e}. Using '
+                        'MultiQubit_TimeDomain_Analysis instead.')
             self.analysis = tda.MultiQubit_TimeDomain_Analysis(
                 qb_names=self.meas_obj_names,
                 t_start=self.timestamp, **analysis_kwargs)
@@ -1755,13 +1758,19 @@ class Chevron(CalibBuilder):
         """
         ### TODO: extend to also sweep the amplitude (not only amplitude2)
         """
-        if self.analysis.options_dict.get('new_analysis', False):
+        try:
             for task in self.task_list:
-                qbH, qbL = self.get_meas_objs_from_task(task=task)[0]
+                qbH, qbL = self.get_meas_objs_from_task(task=task)
                 gate_name = kw.get('cz_pulse_name', 'CZ')
-                self.dev.get_pulse_pars(gate_name, qbH, qbL, 'amplitude2')(
+                self.dev.get_pulse_par(gate_name, qbH, qbL, 'amplitude2')(
                     self.analysis.proc_data_dict['analysis_params_dict'][
-                        'amplitude2_Chevron'])
+                        f'{qbH.name}_{qbL.name}']['amplitude2_Chevron'])
+                self.dev.get_pulse_par(gate_name, qbH, qbL, 'pulse_length')(
+                    self.analysis.proc_data_dict['analysis_params_dict'][
+                        f'{qbH.name}_{qbL.name}']['t_CZ_Chevron'])
+        except Exception as e:
+            log.warning('Could not update pulse parameters due to '
+                        f'exception {e}.')
 
     @classmethod
     def gui_kwargs(cls, device):
