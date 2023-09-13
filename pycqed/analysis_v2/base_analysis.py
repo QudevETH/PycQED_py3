@@ -496,9 +496,12 @@ class BaseDataAnalysis(object):
 
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):
+        print(params_dict)
         SETTINGS_PREFIX = 'Instrument settings.'
-        settings_keys = [k for k in params_dict if k.startswith(SETTINGS_PREFIX)]
-        settings_dict = {k[len(SETTINGS_PREFIX):]: v for k, v in params_dict.items()
+        settings_keys = [k for k, v in params_dict.items() if
+                         v.startswith(SETTINGS_PREFIX)]
+        settings_dict = {k: v[len(SETTINGS_PREFIX):] for k, v in
+                         params_dict.items()
                          if k in settings_keys}
         params_dict = {k: v for k, v in params_dict.items()
                          if k not in settings_keys}
