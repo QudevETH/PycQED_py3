@@ -115,10 +115,7 @@ class Parameter(DelegateAttributes):
         Returns: dictionary
         """
         if reduced:
-            if isinstance(self._value, dict):
-                snap = self._value.get('value', self._value)
-            else:
-                snap = self._value
+            snap = self.get()
         else:
             snap: dict[any, any] = self._value
         return snap
@@ -139,7 +136,14 @@ class Parameter(DelegateAttributes):
                                           f' Parameter {self.name}')
 
     def get(self):
-        return self._value
+        """
+        Returns value of the parameter dictionary, if the entire dictionary
+        excists. Otherwise, it returns whatever is stored in self._value.
+        """
+        if isinstance(self._value, dict):
+            return self._value.get('value', self._value)
+        else:
+            return self._value
 
     def set(self, value):
         self._value = value
@@ -210,6 +214,23 @@ class Instrument(DelegateAttributes):
                 'parameter of that name is already registered to '
                 'the instrument')
         self.parameters[namestr] = param
+
+    def get(self, path_to_param):
+        """
+        Tries to find parameter value for given string. Returns custom
+        ParameterNotFoundError if an attribute error occurs.
+        Args:
+            path_to_param (str): path to parameter in form
+                %inst_name%.%param_name%
+
+        Returns (str): parameter value, if parameter value is a dictionary it
+            tries to get the "value" key.
+        """
+        try:
+            return _get_value_from_parameter(self, path_to_param)
+        except KeyError or NotImplementedError:
+            # errors thrown by helper function _get_value_from_parameter
+            raise ParameterNotFoundError(path_to_param)
 
     def add_classname(self, name: str):
         self.classname = name
@@ -336,14 +357,10 @@ class Station(DelegateAttributes):
             tries to get the "value" key.
         """
         try:
-            param = eval('self.' + path_to_param + '()')
-            if isinstance(param, dict):
-                param_value = param.get("value", param)
-            else:
-                param_value = param
-        except AttributeError:
+            return _get_value_from_parameter(self, path_to_param)
+        except KeyError or NotImplementedError:
+            # errors thrown by helper function _get_value_from_parameter
             raise ParameterNotFoundError(path_to_param)
-        return param_value
 
     def update(self, station):
         """
@@ -359,3 +376,39 @@ class Station(DelegateAttributes):
                 self.components[comp_name].update(comp_inst)
             else:
                 self.components[comp_name] = comp_inst
+
+
+def _get_value_from_parameter(obj, path_to_param):
+    """
+    Helper function to extract recursively parameter value from a parameter
+    path.
+    Args:
+        obj (Station, Instrument, Parameter): Object of which the parameter
+            should be extracted.
+        path_to_param (str): Path to the parameter with '.' as the delimiter.
+
+    Returns (str): parameter value, if parameter value is a dictionary it
+        tries to get the "value" key.
+
+    """
+    path_split = path_to_param.split('.')
+    if len(path_split) == 1:
+        # If path_to_param is not divided by a dot it is the parameter name.
+        if isinstance(obj, Parameter):
+            return obj.get()
+        else:
+            # Parameter is inside the parameter list of the Instrument or
+            # Stations object.
+            return obj.parameters[path_split[0]].get()
+    else:
+        # the first string until the dot in path_to_param indicates the Station
+        # or Instrument (submodule).
+        if isinstance(obj, Station):
+            return obj.components[path_split[0]].get(
+                '.'.join(path_split[1:]))
+        elif isinstance(obj, Instrument):
+            return obj.submodules[path_split[0]].get(
+                '.'.join(path_split[1:]))
+        else:
+            raise NotImplementedError(f"Cannot retrieve parameter "
+                                      f"{path_to_param} from object {obj}.")
