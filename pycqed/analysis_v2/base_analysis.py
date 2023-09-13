@@ -478,21 +478,23 @@ class BaseDataAnalysis(object):
                                                                     timestamp)
         return return_dict
 
-    def get_instrument_setting(self, param_name):
-        """TODO
-        Function not needed, we can directly use Station.get_parameter()
-
-        Remark: Note that this assumes that the station has been updated
-            before (TODO explain)
-            FIXME: remove this remark once the station is changed to
-             auto-update itself whenever a parameter is not found
-
+    def get_instrument_setting(self, param_name, timestamp=-1):
         """
-        if len(self.timestamps) != 1:
-            raise NotImplementedError(
-                'get_setting is only implemented for analyses with a single '
-                'timestamp.')
-        return self.config_files.get_parameter(param_name, self.timestamps[0])
+        Extracts a parameter from the instrument settings and updates the
+        station if needed. See SettingsManager.get_parameter for more
+        information.
+
+        Args:
+            param_name(str):path to the parameter of the form
+                %instrument%.%parameter% or %instrument%.%submodule.%parameter%
+            timestamp (int, str): timestamp or index of the station inside the
+                settings manager self.config_files. If the timestamp is given as
+                a string it loads the file if the station does not exist in the
+                SM.
+                Default is -1, i.e. the most recent added station.
+        """
+
+        return self.config_files.get_parameter(param_name, timestamp)
 
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):
