@@ -15,6 +15,8 @@ from pycqed.utilities.io.hdf5 import read_dict_from_hdf5, decode_attribute_value
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement import sweep_points as sp_mod
 import pycqed.utilities.settings_manager as setman
+from pycqed.instrument_drivers.mock_qcodes_interface import \
+    ParameterNotFoundError
 
 
 def convert_attribute(attr_val):
@@ -115,9 +117,10 @@ def get_param_from_group(group_name, param_name=None, timestamp=None,
                 raise ValueError('Please provide either timestamp or folder.')
             folder = a_tools.get_folder(timestamp)
 
-        group = get_params_from_files(
-            {}, {'group': group_name}, folder=folder)
-        if group['group'] == 'not found':
+        try:
+            group = get_params_from_files(
+                {}, {'group': group_name}, folder=folder)
+        except ParameterNotFoundError:
             raise KeyError(f'Group "{group_name}" was not found.')
         group = group['group']
     else:
@@ -179,8 +182,9 @@ def get_instr_param_from_file(instr_name, param_name=None, timestamp=None,
 
     See docstring of get_param_from_group for more details.
     """
-    return get_param_from_group(instr_name, param_name, timestamp, folder,
-                                **params)
+    SETTINGS_PREFIX = 'Instrument settings.'
+    return get_param_from_group(SETTINGS_PREFIX+instr_name, param_name,
+                                timestamp, folder, **params)
 
 
 def get_param_from_fit_res(param, fit_res, split_char='.'):
@@ -591,6 +595,31 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
             passed to get_param, add_param, open_hdf_file, open_config_file
             close_file (bool; default: True): whether to close the files
     """
+
+    def _get_data_dict_location(data_dict, save_par):
+        """
+        Helper function to get the location inside the data dictionary where to
+        append the parameter.
+        Args:
+            data_dict(dict): dictionary where to save the parameter
+            save_par (str): Name of the key where the parameter should be saved.
+                Separations by '.' correspond to an additional layer in the
+                nested dictionary.
+
+        Returns: The location of the dictionary where the parameter should be
+            saved in and save_par as a list split by '.'.
+        """
+        epd = data_dict
+        all_keys = save_par.split('.')
+        for i in range(len(all_keys) - 1):
+            if all_keys[i] not in epd:
+                epd[all_keys[i]] = OrderedDict()
+            epd = epd[all_keys[i]]
+
+        if isinstance(epd, list):
+            epd = epd[-1]
+        return epd, all_keys
+
     if params_dict is None:
         params_dict = get_param('params_dict', data_dict, raise_error=True,
                                 **params)
@@ -604,28 +633,30 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
         if len(folder) > 0:
             folder = folder[-1]
 
+    SETTINGS_PREFIX = 'Instrument settings.'
+    settings_keys = [k for k, v in params_dict.items() if
+                     v.startswith(SETTINGS_PREFIX)]
+    settings_dict = {k: v[len(SETTINGS_PREFIX):] for k, v in
+                     params_dict.items()
+                     if k in settings_keys}
+    params_dict = {k: v for k, v in params_dict.items()
+                   if k not in settings_keys}
+
     h5mode = get_param('h5mode', data_dict, default_value='r', **params)
     data_file = a_tools.open_hdf_file(folder=folder, mode=h5mode, **params)
-    try:
-        config_station = setman.get_station_from_file(
-            folder=folder, param_path=params_dict.values(), **params)
-    except KeyError:
+
+    if settings_keys:
         # Some hdf files only contain analysis information without instrument
-        # settings.
-        log.warning(f'No instrument settings found in file {folder}.')
+        # settings. In that case trying to open the file leads to a KeyError
+        # because group ['Instrument settings'] does not exist.
+        config_station = setman.get_station_from_file(
+            folder=folder, param_path=settings_dict.values(), **params)
+    else:
         config_station = None
 
     try:
         for save_par, file_par in params_dict.items():
-            epd = data_dict
-            all_keys = save_par.split('.')
-            for i in range(len(all_keys)-1):
-                if all_keys[i] not in epd:
-                    epd[all_keys[i]] = OrderedDict()
-                epd = epd[all_keys[i]]
-
-            if isinstance(epd, list):
-                epd = epd[-1]
+            epd, all_keys = _get_data_dict_location(data_dict, save_par)
 
             if file_par == 'measurementstring':
                 add_param(all_keys[-1],
@@ -633,18 +664,19 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
                           epd, add_param_method='append')
                 continue
             tmp_param = extract_from_data_files([data_file], file_par)
-            if tmp_param == 'not found':
-                tmp_param = config_station.get(file_par)
-            # if parameter still not found, parameter will be added to the
-            # data dict with 'not found'. This is needed for
-            # hlp_mod.get_param_from_group()
             add_param(all_keys[-1], tmp_param,
                       epd, add_param_method=add_param_method)
-
         a_tools.close_files([data_file])
     except Exception as e:
         a_tools.close_files([data_file])
         raise e
+
+    # adding instrument settings parameter
+    for save_par, file_par in settings_dict.items():
+        tmp_param = config_station.get(file_par)
+        epd, all_keys = _get_data_dict_location(data_dict, save_par)
+        add_param(all_keys[-1], tmp_param,
+                  epd, add_param_method=add_param_method)
 
     for par_name in data_dict:
         if par_name in numeric_params:
@@ -660,7 +692,8 @@ def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
 
 def extract_from_hdf_file(file, path_to_param):
     """
-    Extracts the value of a parameter from an open HDF file.
+    Extracts the value of a parameter from an open HDF file. If a group name is
+    given as path_to_param, it returns the hdf structure as a dictionary.
 
     Args:
         file (h5py._hl.files.File, h5py._hl.group.Group): an open HDF file or
@@ -672,59 +705,71 @@ def extract_from_hdf_file(file, path_to_param):
 
     Returns:
         the value of the parameter
-        If the parameter is not found, the string 'not found' is returned.
+        If the parameter is not found, a ParameterNotFoundError is raised
     """
-    param_value = 'not found'
     group_name = '/'.join(path_to_param.split('.')[:-1])
     par_name = path_to_param.split('.')[-1]
 
     if group_name == '':
+        # if path_to_param is already as the lowest layer
         group = file
         attrs = []
     else:
         try:
+            # tries to go to the subgroup which contains the desired
+            # parameter/group
             group = file[group_name]
         except KeyError:
-            return param_value
+            raise ParameterNotFoundError(path_to_param)
         attrs = list(group.attrs)
 
     if par_name in attrs:
-        param_value = decode_attribute_value(group.attrs[par_name])
+        return decode_attribute_value(group.attrs[par_name])
     elif par_name in list(group.keys()) or path_to_param == '':
+        # if parameter is a group itself
         par = group[par_name] if par_name != '' else group
         if isinstance(par, h5py._hl.dataset.Dataset):
-            param_value = np.array(par)
+            # if the parameter is a dataset, e.g. measurement data, it returns
+            # the data as a numpy array
+            return np.array(par)
         else:
             try:
+                # It tries to return the entire subgroup as a dictionary.
                 param_value = {}
                 read_from_hdf(param_value, par, raise_exceptions=True)
                 param_value = get_param(f'{group_name}.{par_name}', param_value)
+                return param_value
             except Exception:
                 # This is a legacy fallback. For instance, read_from_hdf
                 # tries to instantiate a SweepPoints class but this might
                 # fail for some legacy sweep points
-                param_value = read_dict_from_hdf5({}, par)
+                return read_dict_from_hdf5({}, par)
 
-    if param_value == 'not found':
-        # search through the keys and attributes of all groups
-        for group_name in file.keys():
-            if par_name in list(file[group_name].keys()):
-                try:
-                    param_value = {}
-                    read_from_hdf(param_value, file[group_name][par_name],
-                                  raise_exceptions=True)
-                    param_value = get_param(f'{group_name}.{par_name}',
-                                            param_value)
-                except Exception:
-                    # This is a legacy fallback. For instance, read_from_hdf
-                    # tries to instantiate a SweepPoints class but this might
-                    # fail for some legacy sweep points
-                    param_value = read_dict_from_hdf5(
-                        {}, file[group_name][par_name])
-            if par_name in list(file[group_name].attrs):
-                param_value = decode_attribute_value(
-                    file[group_name].attrs[par_name])
-    return param_value
+    # search through the keys and attributes of all groups
+    # Like that one can directly request for attributes or groups from the
+    # second-highest layer, e.g. path_to_param='value_names' yields the same
+    # results as path_to_param='Experimental Data.value_names' for an attribute
+    # or 'Processed Data' instead of 'Analysis.Processed Data'.
+    for group_name in file.keys():
+        if par_name in list(file[group_name].keys()):
+            try:
+                param_value = {}
+                read_from_hdf(param_value, file[group_name][par_name],
+                              raise_exceptions=True)
+                return get_param(f'{group_name}.{par_name}',
+                                        param_value)
+            except Exception:
+                # This is a legacy fallback. For instance, read_from_hdf
+                # tries to instantiate a SweepPoints class but this might
+                # fail for some legacy sweep points
+                return read_dict_from_hdf5(
+                    {}, file[group_name][par_name])
+        if par_name in list(file[group_name].attrs):
+            return decode_attribute_value(
+                file[group_name].attrs[par_name])
+
+    # param_value could not be found
+    raise ParameterNotFoundError(path_to_param)
 
 
 def extract_from_data_files(files, path_to_param):
@@ -740,19 +785,23 @@ def extract_from_data_files(files, path_to_param):
 
     Returns:
         the value of the parameter
-        If the parameter is not found, the string 'not found' is returned.
+        If the parameter is not found, ParameterNotFoundError is raised.
     """
-    param_value = 'not found'
-    for file in files:
-        if isinstance(file, (h5py._hl.files.File, h5py._hl.group.Group)):
-            # HDF file
-            param_value = extract_from_hdf_file(file, path_to_param)
-        else:
-            raise NotImplementedError('Currently only HDF files '
+    for i, file in enumerate(files):
+        # searches in all files
+        try:
+            if isinstance(file, (h5py._hl.files.File, h5py._hl.group.Group)):
+                # HDF file
+                param_value = extract_from_hdf_file(file, path_to_param)
+                # if no ParameterNotFoundError is raise, parameter is found and
+                # search is completed.
+                return param_value
+            else:
+                raise NotImplementedError('Currently only HDF files '
                                       'are supported.')
-        if param_value != 'not found':
-            break
-    return param_value
+        except ParameterNotFoundError:
+            if i == len(files)-1:
+                raise
 
 
 def get_data_to_process(data_dict, keys_in):
