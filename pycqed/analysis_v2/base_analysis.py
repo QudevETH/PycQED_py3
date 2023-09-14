@@ -468,9 +468,9 @@ class BaseDataAnalysis(object):
 
         """
         return_dict = {}
-        # TODO: the following line opens the HDF file if settings are stored
-        #  in the HDF file. Does it hurt if the hdf file is already opened by
-        #  self.open_files()?
+        # The following line opens the HDF file if settings are stored
+        # in the HDF file. Does it hurt if the hdf file is already opened by
+        # self.open_files()?
 
         self.config_files.update_station(timestamp, list(params_dict.values()))
         for save_par, file_par in params_dict.items():
@@ -498,7 +498,6 @@ class BaseDataAnalysis(object):
 
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):
-        print(params_dict)
         SETTINGS_PREFIX = 'Instrument settings.'
         settings_keys = [k for k, v in params_dict.items() if
                          v.startswith(SETTINGS_PREFIX)]
@@ -543,7 +542,7 @@ class BaseDataAnalysis(object):
                         # Group was not specified. The following code tries to find an
                         # attribute or subgroup in any of the groups in the hdf file.
                         # FIXME: is this "find anywhere" functionality really needed?
-                        # it is used e.g. in BaseDataAnalysis.extract_data
+                        #  it is used e.g. in BaseDataAnalysis.extract_data
                         #  Shouldn't child classe rather specify the precise path?
                         #  Due to this features, it is impossible to query complete groups
                         #  here, which is the reason why Timers needs special treatment above.
