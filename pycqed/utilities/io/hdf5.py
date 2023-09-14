@@ -235,8 +235,8 @@ def read_from_hdf5(path_to_key_or_attribute, h5_group):
             separated by '.'
         h5_group (hdf5 file/group): hdf5 file or group from which to read.
 
-    Returns: key (as a dict) or attribute or 'not found' if it could not find
-        the specified path
+    Returns: key (as a dict) or attribute or raises ParameterNotFoundError if it
+     could not find the specified path
 
     """
     try:  # try whether it is an attribute
@@ -260,12 +260,14 @@ def read_attribute_from_hdf5(path_to_attribute, h5_group):
         path_to_attribute (str): path to the attribute separated by '.'
         h5_group (hdf5 file/group): hdf5 file or group from which to read.
 
-    Returns: attribute value or 'not found' if it can not find path_to_attribute
+    Returns: attribute value or raises ParameterNotFoundError if it can not find
+        path_to_attribute
 
     """
     try:
         if len(path_to_attribute.split('.')) == 1:
-            param_value = decode_attribute_value(h5_group.attrs[path_to_attribute])
+            param_value = decode_attribute_value(
+                h5_group.attrs[path_to_attribute])
         else:
             # allow '.' as an alias for the separator '/' only for separating
             # groups
@@ -423,12 +425,15 @@ class HDF5Loader(Loader):
                     station.add_component(inst)
             else:
                 for path_to_param in param_path:
-                    param_value = read_attribute_from_hdf5(path_to_param,
-                                                           config_file)
-                    if param_value == 'not found':
-                        # TODO: Avoid 'not found' hack. Catch an exception
-                        #  raised by read_attribute_from_hdf5
-                        # TODO: comment to explain why it is OK to continue
+                    try:
+                        param_value = read_attribute_from_hdf5(path_to_param,
+                                                               config_file)
+                    except ParameterNotFoundError:
+                        # Exception is not raised here to not break the flow of
+                        # loading the station. It is raised when user tries to
+                        # get access to the parameter either via Station.get()
+                        # or SettingsManager.get_parameter().
+                        # One could add a logger.warning at this point.
                         continue
                     # if param path is only an instrument (%inst_name%)
                     if len(path_to_param.split('.')) == 1:
