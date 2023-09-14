@@ -2315,17 +2315,13 @@ class BaseDataAnalysis(object):
         if awg is None:
             assert pulsar is not None and channel is not None, \
                 'If awg is not provided, channel and pulsar must be provided.'
-            pulsar_dd = self.get_data_from_timestamp_list({
-                'awg': f'{pulsar}.{channel}_awg'})
-            awg = pulsar_dd['awg']
-
-        awg_dd = self.get_data_from_timestamp_list({
-            'clock_freq': f'{awg}.clock_freq',
-            'IDN': f'{awg}.IDN'})
-        # TODO: Avoid 'not found' hack.
-        if awg_dd['clock_freq'] != 'not found':
-            return awg_dd['clock_freq']
-        model = awg_dd['IDN'].get('model', None)
+            awg = self.get_instrument_setting(f'{pulsar}.{channel}_awg')
+        try:
+            return self.get_instrument_setting(
+                f'{awg}.clock_freq')
+        except ParameterNotFoundError:
+            model = self.get_instrument_setting(
+                f'{awg}.IDN').get('model', None)
         if model == 'HDAWG8':
             return 2.4e9
         elif model == 'UHFQA':
