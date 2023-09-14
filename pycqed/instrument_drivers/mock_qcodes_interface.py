@@ -388,7 +388,8 @@ def _get_value_from_parameter(obj, path_to_param):
         path_to_param (str): Path to the parameter with '.' as the delimiter.
 
     Returns (str): parameter value, if parameter value is a dictionary it
-        tries to get the "value" key.
+        tries to get the "value" key. If the given path_to_param is pointing
+        to an instrument, it returns the reduced snapshot.
 
     """
     path_split = path_to_param.split('.')
@@ -397,9 +398,22 @@ def _get_value_from_parameter(obj, path_to_param):
         if isinstance(obj, Parameter):
             return obj.get()
         else:
-            # Parameter is inside the parameter list of the Instrument or
-            # Stations object.
-            return obj.parameters[path_split[0]].get()
+            try:
+                # Parameter is inside the parameter list of the Instrument or
+                # Stations object.
+                return obj.parameters[path_split[0]].get()
+            except KeyError:
+                # Parameter is not inside the parameter list, if it is an
+                # instrument itself, the snapshot will be returned
+                if isinstance(obj, Station):
+                    # the parent is a station, therefore the instrument is in
+                    # the components
+                    return obj.components[path_split[0]].snapshot(reduced=True)
+                elif isinstance(obj, Instrument):
+                    # if the parent is an Instrument, the instrument which the
+                    # key is referring to, is in the submodules
+                    return obj.submodules[path_split[0]].snapshot(reduced=True)
+
     else:
         # the first string until the dot in path_to_param indicates the Station
         # or Instrument (submodule).

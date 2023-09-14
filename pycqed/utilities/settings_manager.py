@@ -141,7 +141,7 @@ class SettingsManager:
                                                     **kwargs)
                 self.stations[timestamp].update(tmp_station)
 
-    def get_parameter(self, path_to_param, timestamp):
+    def get_parameter(self, path_to_param, timestamp,):
         '''
         Returns the parameter value of the parameter specified by
         'path_to_param' from the station of the timestamp. If the parameter or
@@ -156,6 +156,10 @@ class SettingsManager:
         TODO: Test for qcodes stations.
         '''
         try:
+            # FIXME: If an instrument is requested (e.g. .get('qb1')), but the
+            #  instrument was just partially loaded (e.g. only 'qb1.T1' exists),
+            #  it will return what was partially loaded and not what is in the
+            #  file.
             return self.stations[timestamp].get(path_to_param)
         # If station is not loaded to the SM a KeyError will be raised.
         # If parameter does not exist in station a ParameterNotFoundError will

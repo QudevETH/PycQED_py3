@@ -428,25 +428,38 @@ class HDF5Loader(Loader):
                     try:
                         param_value = read_attribute_from_hdf5(path_to_param,
                                                                config_file)
+                        if len(path_to_param.split('.')) == 1:
+                            # parameter is an attribute of 'Instrument settings'
+                            param = Parameter(path_to_param, param_value)
+                            station.parameters[path_to_param] = param
+                            continue
+                        else:
+                            param_name = path_to_param.split('.')[-1]
+                            param = Parameter(param_name, param_value)
+
+                            inst_path = path_to_param.split('.')[:-1]
+
+                            inst = Instrument(inst_path[-1])
+                            inst.add_parameter(param)
                     except ParameterNotFoundError:
-                        # Exception is not raised here to not break the flow of
-                        # loading the station. It is raised when user tries to
-                        # get access to the parameter either via Station.get()
-                        # or SettingsManager.get_parameter().
-                        # One could add a logger.warning at this point.
-                        continue
-                    # if param path is only an instrument (%inst_name%)
-                    if len(path_to_param.split('.')) == 1:
-                        inst_path = path_to_param
-                        inst = Instrument(inst_path[-1])
-                    else:
-                        param_name = path_to_param.split('.')[-1]
-                        param = Parameter(param_name, param_value)
+                        try:
+                            # Parameter is in fact an instrument, entire
+                            # instrument will be loaded
+                            group_name = '/'.join(path_to_param.split('.'))
+                            inst = self.load_instrument(
+                                path_to_param.split('.')[-1],
+                                config_file[group_name])
+                            # path to the instrument
+                            inst_path = path_to_param.split('.')
 
-                        inst_path = path_to_param.split('.')[:-1]
-
-                        inst = Instrument(inst_path[-1])
-                        inst.add_parameter(param)
+                        except ParameterNotFoundError:
+                            # Exception is not raised here to not break the
+                            # flow of loading the station. It is raised when
+                            # user tries to get access to the parameter
+                            # either via Station.get() or
+                            # SettingsManager.get_parameter(). One could add
+                            # a logger.warning at this point.
+                            continue
 
                     # if more than one element in inst_path name exists
                     # (e.g. inst.submod1.submod2.param), the above created inst
