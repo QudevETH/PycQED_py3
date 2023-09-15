@@ -1351,7 +1351,8 @@ class Spectroscopy(ba.BaseDataAnalysis):
         self.params_dict = {'measurementstring': 'measurementstring'}
         self.param_2d = options_dict.get('param_2d', None)
         if self.param_2d is not None:
-            self.params_dict.update({'param_2d': self.param_2d})
+            pname = 'Instrument settings.' + self.param_2d
+            self.params_dict.update({'param_2d': pname})
             self.numeric_params = ['param_2d']
 
         if auto:

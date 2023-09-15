@@ -21,9 +21,9 @@ class CoherenceTimesAnalysisSingle(ba.BaseDataAnalysis):
                  tau_key='Analysis.Fitted Params F|1>.tau.value',
                  tau_std_key='Analysis.Fitted Params F|1>.tau.stderr',
                  plot_versus_dac=True,
-                 dac_key='fluxcurrent.Q',
+                 dac_key='Instrument settings.fluxcurrent.Q',
                  plot_versus_frequency=True,
-                 frequency_key='Q.freq_qubit',
+                 frequency_key='Instrument settings.Q.freq_qubit',
                  ):
         '''
         Plots and Analyses the coherence time (e.g. T1, T2 OR T2*) of one measurement series.
@@ -42,10 +42,10 @@ class CoherenceTimesAnalysisSingle(ba.BaseDataAnalysis):
                             e.g. 'Analysis.Fitted Params F|1>.tau.stderr'
         :param plot_versus_dac: Extract and plot dac value?
                                     E.g. set False if you did not vary the dac for this measurement.
-        :param dac_key: key for the dac current values, e.g. 'fluxcurrent.Q'
+        :param dac_key: key for the dac current values, e.g. 'Instrument settings.fluxcurrent.Q'
         :param plot_versus_frequency: Extract and plot frequency value?
                                       E.g. set False if you did not use the Qubit object.
-        :param frequency_key: key for the dac current values, e.g. 'Q.freq_qubit'
+        :param frequency_key: key for the dac current values, e.g. 'Instrument settings.Q.freq_qubit'
         '''
         super().__init__(t_start=t_start, t_stop=t_stop,
                          label=label,
@@ -223,9 +223,9 @@ class CoherenceTimesAnalysis(ba.BaseDataAnalysis):
                  tau_keys: dict = None,
                  tau_std_keys: dict = None,
                  plot_versus_dac: bool = True,
-                 dac_key_pattern: str = 'fluxcurrent.{DAC}',
+                 dac_key_pattern: str = 'Instrument settings.fluxcurrent.{DAC}',
                  plot_versus_frequency: bool = True,
-                 frequency_key_pattern: str = '{Q}.freq_qubit',
+                 frequency_key_pattern: str = 'Instrument settings.{Q}.freq_qubit',
                  res_freq: list = None, res_Qc: list = None, chi_shift: list = None,
                  do_fitting: bool = True, close_figs: bool = True,
                  ):
@@ -266,11 +266,11 @@ class CoherenceTimesAnalysis(ba.BaseDataAnalysis):
                             e.g. {CoherenceTimesAnalysis.T1 : 'Analysis.Fitted Params F|1>.tau.stderr', ...}
         :param plot_versus_dac: Extract and plot dac value?
                                     E.g. set False if you did not vary the dac for this measurement.
-        :param dac_key_pattern: key pattern for the dac current values, e.g. 'fluxcurrent.{DAC}'
+        :param dac_key_pattern: key pattern for the dac current values, e.g. 'Instrument settings.fluxcurrent.{DAC}'
                                     use {Q} to replace by qubit_instr_names and {DAC} to replace by dac_instr_names.
         :param plot_versus_frequency: Extract and plot frequency value?
                                       E.g. set False if you did not use the Qubit object.
-        :param frequency_key_pattern: keys for the dac current values, e.g. '{Q}.freq_qubit'
+        :param frequency_key_pattern: keys for the dac current values, e.g. 'Instrument settings.{Q}.freq_qubit'
                                     use {Q} to replace by qubit_instr_names and {DAC} to replace by dac_instr_names.
         :param res_freq: Frequency of the resonator
         :param res_Qc: Quality factor of the resonator

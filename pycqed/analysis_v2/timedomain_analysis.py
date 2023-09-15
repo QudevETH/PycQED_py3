@@ -124,8 +124,9 @@ class PhaseErrorsAnalysisMixin():
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
-            params_dict[f'{trans_name}_qscale_'+qbn] = \
-                f'{qbn}.{trans_name}_motzoi'
+            s = 'Instrument settings.'+qbn
+            params_dict[f'{trans_name}_{self.pulse_par_name}_'+qbn] = \
+                s+f'.{trans_name}_{self.pulse_par_name}'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -2057,9 +2058,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         n_shots = self.get_param_value("n_shots")
         if n_shots is None:
             # FIXME: this extraction of number of shots won't work with soft repetitions.
+            # FIXME: refactor to use settings manager instead of raw_data_dict
             n_shots_from_hdf = [
                 int(self.get_data_from_timestamp_list({
-                    f'sh': f"{qbn}.acq_shots"})['sh']) for qbn in self.qb_names]
+                    f'sh': f"Instrument settings.{qbn}.acq_shots"})['sh']) for qbn in self.qb_names]
             if len(np.unique(n_shots_from_hdf)) > 1:
                 log.warning("Number of shots extracted from hdf are not all the same:"
                             "assuming n_shots=max(qb.acq_shots() for qb in qb_names)")
@@ -2077,7 +2079,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # get classification parameters
         if classifier_params is None:
             classifier_params = self.get_data_from_timestamp_list({
-                f'{qbn}': f"{qbn}.acq_classifier_params"
+                f'{qbn}': f"Instrument settings.{qbn}.acq_classifier_params"
                 for qbn in self.qb_names})
 
         # prepare preselection mask
@@ -4420,7 +4422,8 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                       'flux_amplitude_bias_ratio',
                       'flux_parking']:
             params_dict.update({
-                f'{qbn}.{param}': f'{qbn}.{param}' for qbn in qb_names})
+                f'{qbn}.{param}': f'Instrument settings.{qbn}.{param}'
+                for qbn in qb_names})
         kwargs['params_dict'] = kwargs.get('params_dict', {})
         kwargs['params_dict'].update(params_dict)
         super().__init__(qb_names, *args, **kwargs)
@@ -5066,8 +5069,10 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
-            params_dict[f'drive_ch_{qbn}'] = f'{qbn}.ge_I_channel'
-            params_dict[f'ge_freq_{qbn}'] = f'{qbn}.ge_freq'
+            params_dict[f'drive_ch_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_I_channel'
+            params_dict[f'ge_freq_{qbn}'] = \
+                f'Instrument settings.{qbn}.ge_freq'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -5092,7 +5097,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
         for qbn in self.qb_names:
             drive_ch = self.raw_data_dict[f'drive_ch_{qbn}']
             pd = self.get_data_from_timestamp_list({
-                f'ch_amp': f'Pulsar.{drive_ch}_amp'})
+                f'ch_amp': f'Instrument settings.Pulsar.{drive_ch}_amp'})
             fit_res_L = self.fit_dicts[f'amplitude_fit_left_{qbn}']['fit_res']
             fit_res_R = self.fit_dicts[f'amplitude_fit_right_{qbn}']['fit_res']
             rabi_model_lo = \
@@ -5244,7 +5249,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
                 # max ch amp line
                 drive_ch = self.raw_data_dict[f'drive_ch_{qbn}']
                 pd = self.get_data_from_timestamp_list({
-                    f'ch_amp': f'Pulsar.{drive_ch}_amp'})
+                    f'ch_amp': f'Instrument settings.Pulsar.{drive_ch}_amp'})
                 self.plot_dicts[f'ch_amp_line_{qbn}'] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_hlines,
@@ -5261,7 +5266,9 @@ class ThermalPopulationAnalysis(RabiAnalysis):
         # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
-            params_dict[f'ge_freq_'+qbn] = f'{qbn}.ge_freq'
+            s = 'Instrument settings.'+qbn
+            params_dict[f'ge_freq_'+qbn] = \
+                s + '.ge_freq'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -5373,8 +5380,9 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
+            s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_T1_'+qbn] = \
-                qbn + ('.T1' if trans_name == 'ge' else f'.T1_{trans_name}')
+                s + ('.T1' if trans_name == 'ge' else f'.T1_{trans_name}')
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -5484,7 +5492,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
-            params_dict[f'{trans_name}_freq_'+qbn] = f'{qbn}.{trans_name}_freq'
+            s = 'Instrument settings.'+qbn
+            params_dict[f'{trans_name}_freq_'+qbn] = s+f'.{trans_name}_freq'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -6396,7 +6405,8 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
             params_dict[f'{trans_name}_T2_{qbn}'] = \
-                qbn + ('.T2' if trans_name == 'ge' else f'.T2_{trans_name}')
+                'Instrument settings.' + qbn + \
+                ('.T2' if trans_name == 'ge' else f'.T2_{trans_name}')
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -6690,8 +6700,9 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
+            s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_'+qbn] = \
-                f'{qbn}.{trans_name}_amp180'
+                s+f'.{trans_name}_amp180'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -7487,7 +7498,8 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
         kwargs['options_dict'] = options_dict
         params_dict = {}
         for qbn in qb_names:
-            params_dict[f'ge_freq_{qbn}'] = f'{qbn}.ge_freq'
+            s = f'Instrument settings.{qbn}'
+            params_dict[f'ge_freq_{qbn}'] = s+f'.ge_freq'
         kwargs['params_dict'] = params_dict
         kwargs['numeric_params'] = list(params_dict)
         super().__init__(qb_names, *args, **kwargs)
@@ -7641,26 +7653,38 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
         # Flux pulse parameters
         # Needs to be changed when support for other pulses is added.
         op_dict = {
-            'pulse_type': f'{qbn}.flux_pulse_type',
-            'channel': f'{qbn}.flux_pulse_channel',
-            'aux_channels_dict': f'{qbn}.flux_pulse_aux_channels_dict',
-            'amplitude': f'{qbn}.flux_pulse_amplitude',
-            'frequency': f'{qbn}.flux_pulse_frequency',
-            'phase': f'{qbn}.flux_pulse_phase',
-            'pulse_length': f'{qbn}.flux_pulse_pulse_length',
-            'truncation_length': f'{qbn}.flux_pulse_truncation_length',
-            'buffer_length_start': f'{qbn}.flux_pulse_buffer_length_start',
-            'buffer_length_end': f'{qbn}.flux_pulse_buffer_length_end',
-            'extra_buffer_aux_pulse': f'{qbn}.flux_pulse_extra_buffer_aux_pulse',
-            'pulse_delay': f'{qbn}.flux_pulse_pulse_delay',
-            'basis_rotation': f'{qbn}.flux_pulse_basis_rotation',
-            'gaussian_filter_sigma': f'{qbn}.flux_pulse_gaussian_filter_sigma',
+            'pulse_type': f'Instrument settings.{qbn}.flux_pulse_type',
+            'channel': f'Instrument settings.{qbn}.flux_pulse_channel',
+            'aux_channels_dict': f'Instrument settings.{qbn}.'
+                                 f'flux_pulse_aux_channels_dict',
+            'amplitude': f'Instrument settings.{qbn}.flux_pulse_amplitude',
+            'frequency': f'Instrument settings.{qbn}.flux_pulse_frequency',
+            'phase': f'Instrument settings.{qbn}.flux_pulse_phase',
+            'pulse_length': f'Instrument settings.{qbn}.'
+                            f'flux_pulse_pulse_length',
+            'truncation_length': f'Instrument settings.{qbn}.'
+                                 f'flux_pulse_truncation_length',
+            'buffer_length_start': f'Instrument settings.{qbn}.'
+                                   f'flux_pulse_buffer_length_start',
+            'buffer_length_end': f'Instrument settings.{qbn}.'
+                                 f'flux_pulse_buffer_length_end',
+            'extra_buffer_aux_pulse': f'Instrument settings.{qbn}.'
+                                      f'flux_pulse_extra_buffer_aux_pulse',
+            'pulse_delay': f'Instrument settings.{qbn}.'
+                           f'flux_pulse_pulse_delay',
+            'basis_rotation': f'Instrument settings.{qbn}.'
+                              f'flux_pulse_basis_rotation',
+            'gaussian_filter_sigma': f'Instrument settings.{qbn}.'
+                                     f'flux_pulse_gaussian_filter_sigma',
         }
 
         params_dict = {
-            'volt_freq_conv': f'{qbn}.fit_ge_freq_from_flux_pulse_amp',
-            'flux_channel': f'{qbn}.flux_pulse_channel',
-            'instr_pulsar': f'{qbn}.instr_pulsar',
+            'volt_freq_conv': f'Instrument settings.{qbn}.'
+                              f'fit_ge_freq_from_flux_pulse_amp',
+            'flux_channel': f'Instrument settings.{qbn}.'
+                            f'flux_pulse_channel',
+            'instr_pulsar': f'Instrument settings.{qbn}.'
+                            f'instr_pulsar',
             **op_dict
         }
 
@@ -7716,7 +7740,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         if qb_names is not None:
             self.params_dict = {}
             for qbn in qb_names:
-                self.params_dict[f'ro_mod_freq_' + qbn] = f'{qbn}.ro_mod_freq'
+                self.params_dict[f'ro_mod_freq_' + qbn] = \
+                    f'Instrument settings.{qbn}.ro_mod_freq'
             self.numeric_params = list(self.params_dict)
 
         self.qb_names = qb_names
@@ -8884,7 +8909,8 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
         # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
-            params_dict[f'fp_length_{qbn}'] = f'{qbn}.flux_pulse_pulse_length'
+            params_dict[f'fp_length_{qbn}'] = \
+                f'Instrument settings.{qbn}.flux_pulse_pulse_length'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -9589,9 +9615,9 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                             do_fitting=do_fitting, options_dict=options_dict,
                             extract_only=extract_only, params_dict=params_dict,
                             numeric_params=numeric_params, **kwargs)
-        self.params_dict = {f"{tm_mod.Timer.HDF_GRP_NAME}":
-                                f"{tm_mod.Timer.HDF_GRP_NAME}",
-                            "repetition_rate": "TriggerDevice.pulse_period",
+        self.params_dict = {
+            f"{tm_mod.Timer.HDF_GRP_NAME}": f"{tm_mod.Timer.HDF_GRP_NAME}",
+            "repetition_rate": "Instrument settings.TriggerDevice.pulse_period",
                             }
 
         if auto:
@@ -9711,13 +9737,12 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
     def _extract_nr_averages(self):
         try:
-            sa = self.get_data_from_timestamp_list({'sa': 'MC.soft_avg'})['sa']
+            sa = self.get_instrument_setting('MC.soft_avg')
             if sa is not None and sa != 1:
                 log.warning('Currently, soft averages are not taken into account'
                           'when extracting the number of averages. This might lead'
                           'to unexpected timings.')
-            sr = self.get_data_from_timestamp_list(
-                {'sr': 'MC.soft_repetitions'})['sr']
+            sr = self.get_instrument_setting('MC.soft_repetitions')
             if sr is not None and sr != 1:
                 log.warning('Currently, soft repetitions are not taken into account'
                           'when extracting the number of shots. This might lead'
@@ -10453,14 +10478,15 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
+            s = 'Instrument settings.'+qbn
             params_dict[f'{trans_name}_amp180_{qbn}'] = \
-                f'{qbn}.{trans_name}_amp180'
+                s+f'.{trans_name}_amp180'
             params_dict[f'{trans_name}_sigma_{qbn}'] = \
-                f'{qbn}.{trans_name}_sigma'
+                s+f'.{trans_name}_sigma'
             params_dict[f'{trans_name}_nr_sigma_{qbn}'] = \
-                f'{qbn}.{trans_name}_nr_sigma'
-            params_dict[f'T1_{qbn}'] = f'{qbn}.T1'
-            params_dict[f'T2_{qbn}'] = f'{qbn}.T2'
+                s+f'.{trans_name}_nr_sigma'
+            params_dict[f'T1_{qbn}'] = s+f'.T1'
+            params_dict[f'T2_{qbn}'] = s+f'.T2'
         self.raw_data_dict.update(
             self.get_data_from_timestamp_list(params_dict))
 
@@ -11082,7 +11108,8 @@ class DriveAmplitudeNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
                 # take the qubit amp180 from the data file
                 task = [t for t in task_list if t['qb'] == qbn][0]
                 trans_name = task.get('transition_name_input', trans_name)
-                params_dict = {'amp180': f'{qbn}.{trans_name}_amp180'}
+                s = 'Instrument settings.' + qbn
+                params_dict = {'amp180': s + f'.{trans_name}_amp180'}
                 amp180 = self.get_data_from_timestamp_list(
                     params_dict, timestamps=[ts])['amp180']
                 # ideal scaling
@@ -11283,7 +11310,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp',
                   'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
         for qbn in self.qb_names:
-            params_dict = {f"{p}_{qbn}": f'{qbn}.{p}' for p in params}
+            params_dict = {f"{p}_{qbn}": f'Instrument settings.{qbn}.{p}'
+                           for p in params}
             self.raw_data_dict.update(
                 self.get_data_from_timestamp_list(params_dict))
 
@@ -11425,8 +11453,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     raise KeyError('For old data, the device name has to be given as an input "device_name" ')
 
             path = f"{device_name}.{cz_name}_{qbH_name}_{qbL_name}_amplitude"
-            amp = self.get_data_from_timestamp_list({'amp': path})['amp']
-
+            amp = self.get_instrument_setting(path)
             qbL_tuned_freq_arr = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
                 vfc=qbL_vfc, model= model, bias=qbL_bias)
