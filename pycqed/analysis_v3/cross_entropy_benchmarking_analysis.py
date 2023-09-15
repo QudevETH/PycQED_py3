@@ -486,9 +486,10 @@ def get_z_rotations(nr_cycles, nr_seq, z_angles=None, seed=None,
 def get_sg_qb_gate_lengths(timestamp):
     meas_obj_names = hlp_mod.get_param_from_metadata_group(timestamp,
                                                            'meas_objs')
-    params_dict = {f'{qbn}_ge_sigma': f'{qbn}.ge_sigma'
+    params_dict = {f'{qbn}_ge_sigma': f'Instrument settings.{qbn}.ge_sigma'
                    for qbn in meas_obj_names}
-    params_dict.update({f'{qbn}_ge_nr_sigma': f'{qbn}.ge_nr_sigma'
+    params_dict.update({f'{qbn}_ge_nr_sigma':
+                            f'Instrument settings.{qbn}.ge_nr_sigma'
                         for qbn in meas_obj_names})
     dd = hlp_mod.get_params_from_files({}, params_dict,
                                        folder=a_tools.get_folder(timestamp))
@@ -504,13 +505,13 @@ def get_two_qb_gate_length(timestamp, dev_name, gate_name='CZ_nztc',
                                                                'meas_objs')
     assert len(meas_obj_names) == 2
     params_dict = {f'pulse_length':
-                       f'{dev_name}.{gate_name}_{meas_obj_names[0]}_'
+                       f'Instrument settings.{dev_name}.{gate_name}_{meas_obj_names[0]}_'
                        f'{meas_obj_names[1]}_pulse_length'}
     dd = hlp_mod.get_params_from_files({}, params_dict,
                                        folder=a_tools.get_folder(timestamp))
     if dd['pulse_length'] == 0:
         params_dict = {f'pulse_length':
-                           f'{dev_name}.{gate_name}_{meas_obj_names[1]}_'
+                           f'Instrument settings.{dev_name}.{gate_name}_{meas_obj_names[1]}_'
                            f'{meas_obj_names[0]}_pulse_length'}
         dd = hlp_mod.get_params_from_files(
             {}, params_dict, folder=a_tools.get_folder(timestamp))

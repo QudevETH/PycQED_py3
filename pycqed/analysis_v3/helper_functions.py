@@ -317,12 +317,13 @@ def get_qb_channel_map_from_file(qb_names, file_path, value_names, **kw):
         ro_type = 'w'
 
     for qbn in qb_names:
-        params_dict = {'instr_acq': f'{qbn}.instr_acq',
-                       'instr_uhf': f'{qbn}.instr_uhf',
-                       'acq_unit': f'{qbn}.acq_unit',
-                       'acq_I_channel': f'{qbn}.acq_I_channel',
-                       'acq_Q_channel': f'{qbn}.acq_Q_channel',
-                       'acq_weights_type': f'{qbn}.acq_weights_type',
+        SETTINGS_PREFIX = 'Instrument settings.'
+        params_dict = {'instr_acq': f'{SETTINGS_PREFIX}{qbn}.instr_acq',
+                       'instr_uhf': f'{SETTINGS_PREFIX}{qbn}.instr_uhf',
+                       'acq_unit': f'{SETTINGS_PREFIX}{qbn}.acq_unit',
+                       'acq_I_channel': f'{SETTINGS_PREFIX}{qbn}.acq_I_channel',
+                       'acq_Q_channel': f'{SETTINGS_PREFIX}{qbn}.acq_Q_channel',
+                       'acq_weights_type': f'{SETTINGS_PREFIX}{qbn}.acq_weights_type',
                        }
         params = get_params_from_files({}, params_dict, folder=file_path, **kw)
         uhf = params.get('instr_acq')

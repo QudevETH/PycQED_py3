@@ -114,22 +114,33 @@ def fd_create_pulse(data_dict, keys_in, keys_out, **params):
         # Flux pulse parameters
         # Needs to be changed when support for other pulses is added.
         params_dict = {
-            'pulse_type': f'{mobjn}.flux_pulse_type',
-            'channel': f'{mobjn}.flux_pulse_channel',
-            'aux_channels_dict': f'{mobjn}.flux_pulse_aux_channels_dict',
-            'amplitude': f'{mobjn}.flux_pulse_amplitude',
-            'frequency': f'{mobjn}.flux_pulse_frequency',
-            'phase': f'{mobjn}.flux_pulse_phase',
-            'pulse_length': f'{mobjn}.flux_pulse_pulse_length',
-            'truncation_length': f'{mobjn}.flux_pulse_truncation_length',
-            'buffer_length_start': f'{mobjn}.flux_pulse_buffer_length_start',
-            'buffer_length_end': f'{mobjn}.flux_pulse_buffer_length_end',
-            'extra_buffer_aux_pulse': f'{mobjn}.flux_pulse_extra_buffer_aux_pulse',
-            'pulse_delay': f'{mobjn}.flux_pulse_pulse_delay',
-            'basis_rotation': f'{mobjn}.flux_pulse_basis_rotation',
-            'gaussian_filter_sigma': f'{mobjn}.flux_pulse_gaussian_filter_sigma',
-            'volt_freq_conv': f'{mobjn}.fit_ge_freq_from_flux_pulse_amp',
-            'flux_channel': f'{mobjn}.flux_pulse_channel',
+            'pulse_type': f'Instrument settings.{mobjn}.flux_pulse_type',
+            'channel': f'Instrument settings.{mobjn}.flux_pulse_channel',
+            'aux_channels_dict': f'Instrument settings.{mobjn}.'
+                                 f'flux_pulse_aux_channels_dict',
+            'amplitude': f'Instrument settings.{mobjn}.flux_pulse_amplitude',
+            'frequency': f'Instrument settings.{mobjn}.flux_pulse_frequency',
+            'phase': f'Instrument settings.{mobjn}.flux_pulse_phase',
+            'pulse_length': f'Instrument settings.{mobjn}.'
+                            f'flux_pulse_pulse_length',
+            'truncation_length': f'Instrument settings.{mobjn}.'
+                                 f'flux_pulse_truncation_length',
+            'buffer_length_start': f'Instrument settings.{mobjn}.'
+                                   f'flux_pulse_buffer_length_start',
+            'buffer_length_end': f'Instrument settings.{mobjn}.'
+                                 f'flux_pulse_buffer_length_end',
+            'extra_buffer_aux_pulse': f'Instrument settings.{mobjn}.'
+                                      f'flux_pulse_extra_buffer_aux_pulse',
+            'pulse_delay': f'Instrument settings.{mobjn}.'
+                           f'flux_pulse_pulse_delay',
+            'basis_rotation': f'Instrument settings.{mobjn}.'
+                              f'flux_pulse_basis_rotation',
+            'gaussian_filter_sigma': f'Instrument settings.{mobjn}.'
+                                     f'flux_pulse_gaussian_filter_sigma',
+            'volt_freq_conv': f'Instrument settings.{mobjn}.'
+                              f'fit_ge_freq_from_flux_pulse_amp',
+            'flux_channel': f'Instrument settings.{mobjn}.'
+                            f'flux_pulse_channel',
         }
         hlp_mod.get_params_from_files(pulse_params_dict, params_dict,
                                       folder=a_tools.get_folder(timestamp),
@@ -167,7 +178,7 @@ def fd_load_qb_params(data_dict, params_dict, timestamp=None, **params):
         data_dict, props_to_extract=['mobjn'], **params)
     if timestamp is None:
         timestamp = hlp_mod.get_param('timestamps', data_dict, **params)[0]
-    params_dict = {k: f'{mobjn}.{v}'
+    params_dict = {k: f'Instrument settings.{mobjn}.{v}'
                    for k, v in params_dict.items()}
     if params.get('add_param_method', None) is None:
         params['add_param_method'] = 'replace'
@@ -185,12 +196,14 @@ def fd_load_distortion_dict(data_dict, timestamp=None,
     params_dict = {}
     hlp_mod.get_params_from_files(
         params_dict,
-        {'ch': f'{mobjn}.flux_pulse_channel'},
+        {'ch': f'Instrument settings.{mobjn}.flux_pulse_channel'},
         folder=a_tools.get_folder(timestamp), **params)
     hlp_mod.get_params_from_files(
         params_dict,
-        {'distortion': f"Pulsar.{params_dict['ch']}_distortion",
-         'distortion_dict': f"Pulsar.{params_dict['ch']}_distortion_dict",
+        {'distortion': f"Instrument settings.Pulsar."
+                       f"{params_dict['ch']}_distortion",
+         'distortion_dict': f"Instrument settings.Pulsar."
+                            f"{params_dict['ch']}_distortion_dict",
         },
         folder=a_tools.get_folder(timestamp), **params)
     if params_dict['distortion'] == 'off':
@@ -999,7 +1012,8 @@ def fd_read_cryoscope_data(data_dict, keys_out, keys_out_stderr=None,
         folders = [a_tools.get_folder(timestamps[-1])]
     tmpdict = copy(data_dict)
     hlp_mod.get_params_from_files(tmpdict, folder=folders[-1], params_dict={
-        'bls': f'{mobjn}.flux_pulse_buffer_length_start',
+        'bls':
+            f'Instrument settings.{mobjn}.flux_pulse_buffer_length_start',
         'tvals': f'Analysis.Processed data.tvals.{mobjn}',
         'freqs':
             f'Analysis.Processed data.analysis_params_dict.freq_{mobjn}.val',

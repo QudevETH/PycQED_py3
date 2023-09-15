@@ -221,10 +221,11 @@ def get_rabi_textbox_properties(data_dict, textstr='',
     # Get from the hdf5 file any parameters specified in
     # params_dict and numeric_params.
     params_dict = {}
+    s = 'Instrument settings.' + mobjn
     params_dict[f'{mobjn}.{transition}_amp180'] = \
-        f'{mobjn}.{transition}_amp180'
+        s + f'.{transition}_amp180'
     params_dict[f'{mobjn}.{transition}_amp90scale'] = \
-        f'{mobjn}.{transition}_amp90_scale'
+        s + f'.{transition}_amp90_scale'
     hlp_mod.get_params_from_files(data_dict, params_dict=params_dict,
                                   numeric_params=list(params_dict), **params)
 
