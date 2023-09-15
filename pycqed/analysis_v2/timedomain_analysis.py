@@ -11654,6 +11654,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
 
             # Re-organise data to keep the delay as vertical axis
             label_orthogonal = 'buffer_length_start'
+            label_orthogonal = list(task['sweep_points'][0])[0]
             if sp.find_parameter(label_orthogonal) == 0:
                 pop = pop.T
                 sp[0], sp[1] = sp[1], sp[0]
@@ -11727,7 +11728,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             plt.suptitle(
                 f"{ts} Leakage ampl. {qbn}{task['qbt']}\n"
                 f"{sp_dims[0]} seg. * {sp_dims[2]} hard seq. * "
-                f"{sp_dims[1] // sp_dims[2]} soft seq.\n"
+                f"{int(np.ceil(sp_dims[1] / sp_dims[2]))} soft seq.\n"
                 f"{task['num_cz_gates']} {task['cz_pulse_name']} gates, "
                 f"{acq_averages} avg."
             )
