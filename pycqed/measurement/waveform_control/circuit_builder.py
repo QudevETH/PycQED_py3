@@ -376,6 +376,10 @@ class CircuitBuilder:
                                 # qubits in the order passed in
                                 # decompose_rotation_gates
                                 qb_dec = gate_to_decomp
+                # Force resolving to a single CZ if no cphase is required
+                # (note that CZ180 will still be decomposed)
+                if cphase is None:
+                    qb_dec = None
                 # If qb_dec is not None, we decompose the gate
                 if qb_dec:
                     if isinstance(cphase, ParametricValue):
