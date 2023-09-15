@@ -11732,8 +11732,9 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 f"{acq_averages} avg."
             )
             save_folder = a_tools.get_folder(ts)
+            figname = f'{ts}_leakage_amplification_{qbn}'
             filename = os.path.abspath(os.path.join(
-                save_folder, f'{ts}_leakage_amplification_{qbn}.png'))
+                save_folder, figname + '.png'))
             fig.savefig(filename, bbox_inches='tight')
 
             id_opt = np.argmin(y_max)
@@ -11741,8 +11742,9 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'x': coords[0],
                 'x_label': labels[0],
                 'y': y_max / task['num_cz_gates'] ** 2,
+                'yerr': y_err / task['num_cz_gates'] ** 2,
                 'x_opt': sp[labels[0]][id_opt],
             }
-
+            self.figs[figname] = fig
         plt.show()
         plt.close('all')
