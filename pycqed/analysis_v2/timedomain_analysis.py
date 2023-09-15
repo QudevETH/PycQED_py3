@@ -11670,7 +11670,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
                     )
 
     def get_leakage_best_val(self, qbH_name, qbL_name, minimize=True,
-                             save_fig=True, show_fig=False, fig=None,
+                             save_fig=True, show_fig=False, fig=None, ax=None,
                              xtransform=None, xlabel=None, colors=None):
 
         if colors is None:
@@ -11700,7 +11700,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
         best_val = res.best_values['b'] / fact
         if fig is None:
             fig, ax = plt.subplots(1)
-        ax = fig.get_axes()[0]
+            ax = fig.get_axes()[0]
         ax.plot(x / fact, data, 'o', label='Meas.', color=colors[0])
         x_resampled = np.linspace(x[0], x[-1], 100)
         ax.plot(x_resampled / fact,
