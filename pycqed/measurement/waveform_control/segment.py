@@ -322,9 +322,8 @@ class Segment:
             chs_def = set()
             is_RO = (p.operation_type == "RO")
             for ch in channels:
-                ch_awg = self.pulsar.get(f'{ch}_awg')
-                join_or_split = self.pulsar.get(
-                    f"{ch_awg}_join_or_split_elements")
+                join_or_split = self.pulsar.get_join_or_split_elements(
+                    f"{ch}")
                 if join_or_split == 'ese':
                     chs_ese.add(ch)
                 elif join_or_split == 'split':
