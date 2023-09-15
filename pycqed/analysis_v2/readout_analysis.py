@@ -1562,6 +1562,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
                 "if the channel map is not specified"
             value_names = self.raw_data_dict['value_names']
             if 'w' in value_names[0]:
+                # FIXME: avoid dependencies ana_v2 -> ana_v3 or vice versa
                 self.channel_map = get_qb_channel_map_from_file(
                     self.get_param_value('qb_names'), value_names=value_names,
                     file_path=self.raw_data_dict['folder'])

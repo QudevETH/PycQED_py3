@@ -467,6 +467,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if np.ndim(value_names) > 0:
                     value_names = value_names
                 if 'w' in value_names[0]:
+                    # FIXME: avoid dependency ana_v2 - ana_v3
                     self.channel_map = get_qb_channel_map_from_file(
                         self.qb_names, value_names=value_names,
                         file_path=self.raw_data_dict['folder'])
@@ -7768,6 +7769,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             if np.ndim(value_names) > 0:
                 value_names = value_names
             if 'w' in value_names[0]:
+                # FIXME: avoid dependency ana_v2 - ana_v3
                 self.channel_map = get_qb_channel_map_from_file(
                     self.qb_names, value_names=value_names,
                     file_path=self.raw_data_dict['folder'])
@@ -10660,16 +10662,16 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
         if any([v is None for v in [T1, T2, t_gate]]):
             assert mobjn is not None
             assert ts is not None
+        if ts is not None:
+            from pycqed.utilities.settings_manager import SettingsManager
+            sm = SettingsManager()
         if t_gate is None:
-            from pycqed.analysis_v3 import helper_functions as hlp_mod
-            t_gate = \
-                hlp_mod.get_instr_param_from_file(mobjn, 'ge_sigma', ts) * \
-                hlp_mod.get_instr_param_from_file(mobjn, 'ge_nr_sigma', ts)
+            t_gate = sm.get_parameter(mobjn + '.ge_sigma', ts) * \
+                     sm.get_parameter(mobjn + '.ge_nr_sigma', ts)
         if t_gate == 0:
             raise ValueError('Please specify t_gate.')
         if T1 is None:
-            from pycqed.analysis_v3 import helper_functions as hlp_mod
-            T1 = hlp_mod.get_instr_param_from_file(mobjn, 'T1', ts)
+            T1 = sm.get_parameter(mobjn + '.T1', ts)
         if T1 == 0:
             raise ValueError('Please specify T1.')
 
