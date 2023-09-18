@@ -629,7 +629,9 @@ def multi_plot(timers, **plot_kwargs):
     # create dummy timer that contains checkpoints of other timers
     tm = Timer(auto_start=False)
     for t in timers:
-        tt = copy(t) # do not modify original timer
+        # Do not modify original timer. Copying is enough since below we only
+        # rename checkpoints and don't modify them
+        tt = copy(t)
         tt.rename_checkpoints(tt.name + "_", which="all")
         tm.update(tt)
 
