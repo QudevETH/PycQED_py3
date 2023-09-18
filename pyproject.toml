@@ -29,7 +29,7 @@ dependencies = [
     "numpy",
     "pandas",
     'pyqtgraph',
-    'pyside2',
+    'pyside6',
     'qcodes',
     'qcodes-loop',
     'qutip',
