@@ -1601,9 +1601,12 @@ class Segment:
         basis_phases = {}
 
         for pulse in self.resolved_pulses:
-            # the following if statement allows pulse objects to specify a
-            # basis_rotation different from the one in the instrument settings
-            # (needed, e.g., for C-ARB gates)
+            # The following if statement allows pulse objects to specify a
+            # basis_rotation different from the one in the instrument settings.
+            # Needed, e.g., for arbitrary-phase CZ gates, since, when resolved,
+            # the pulse objects updates some of its attributes based on the
+            # conditional phase, which may include the basis rotation. In
+            # that case, the correct value is needed here.
             if getattr(pulse.pulse_obj, 'basis_rotation', None) is not None:
                 pulse.basis_rotation = pulse.pulse_obj.basis_rotation
 
