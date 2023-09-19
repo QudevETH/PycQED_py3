@@ -87,6 +87,13 @@ class Timer(OrderedDict):
             result[(deepcopy(k, memo))] = deepcopy(v, memo)
         return result
 
+    def __copy__(self):
+        # See comment in __deepcopy__
+        cls = self.__class__
+        result = cls.__new__(cls,  auto_start=False)
+        result.__dict__.update(self.__dict__)
+        return result
+
     def __call__(self, func):
         # this function implements a decorator for methods (they can be
         # decorated using @Timer()), which will create a checkpoint
