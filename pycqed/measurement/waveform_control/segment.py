@@ -2259,6 +2259,9 @@ class Segment:
                     num_two_qb += 1
                     pulse_name = op_code.rstrip('0123456789.')
                     if len(val := op_code[len(pulse_name):]):
+                        # FIXME this - sign comes from the convention that
+                        #  CZ = diag(1,1,1,e^-i*phi). We should at some point
+                        #  verify that all code respects a single convention.
                         val = -float(val)
                         gate_formatted = f'{gate_type}{(factor * val):.1f}'.replace(
                             '.0', '')
