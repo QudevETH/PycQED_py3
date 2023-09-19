@@ -189,6 +189,8 @@ class CircuitBuilder:
         :param qb1: name of qubit object of one of the gate qubits
         :param qb2: name of qubit object of the other gate qubit
         :param op_code: provide an op_code instead of qb1 and qb2
+        :param cz_pulse_name: specify a CZ pulse name different from
+            self.cz_pulse_name (if not specified in the op_code)
 
         :param kw: keyword arguments:
             cz_pulse_name: a custom cz_pulse_name instead of the stored one
@@ -198,8 +200,8 @@ class CircuitBuilder:
         assert (qb1 is None and qb2 is None and op_code is not None) or \
                (qb1 is not None and qb2 is not None and op_code is None), \
             "Provide either qb1&qb2 or op_code!"
-        cz_pulse_name = cz_pulse_name if cz_pulse_name is not None \
-                                         else self.cz_pulse_name
+        if cz_pulse_name is None:
+            cz_pulse_name = self.cz_pulse_name
         if op_code is not None:
             op_split = op_code.split(' ')
             qb1, qb2 = op_split[1:]
