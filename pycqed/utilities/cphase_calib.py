@@ -49,6 +49,7 @@ def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
         tdma = analysis_object
     cphases = tdma.proc_data_dict[
         'analysis_params_dict'][f'cphase_{qbt.name}']['val']
+    cphases = np.unwrap(cphases, period=2 * np.pi)
 
     sweep_pts = list(soft_sweep_points.values())[0]['values']
     if tangent_fit:
@@ -76,12 +77,12 @@ def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
 
 def plot_and_save_cz_amp_sweep(cphases, soft_sweep_params_dict, fit_res,
                                qbc_name, qbt_name, save_fig=True, show=True,
-                               plot_guess=False, timestamp=None):
+                               plot_guess=False, timestamp=None, phi=180):
 
     sweep_param_name = list(soft_sweep_params_dict)[0]
     sweep_points = soft_sweep_params_dict[sweep_param_name]['values']
     unit = soft_sweep_params_dict[sweep_param_name]['unit']
-    best_val = fit_res.model.func(np.pi, **fit_res.best_values)
+    best_val = fit_res.model.func(phi*np.pi/180, **fit_res.best_values)
     fit_points_init = fit_res.model.func(cphases, **fit_res.init_values)
     fit_points = fit_res.model.func(cphases, **fit_res.best_values)
 
@@ -91,13 +92,14 @@ def plot_and_save_cz_amp_sweep(cphases, soft_sweep_params_dict, fit_res,
     if plot_guess:
         ax.plot(cphases*180/np.pi, fit_points_init, '--k')
     ax.hlines(best_val, cphases[0]*180/np.pi, cphases[-1]*180/np.pi)
-    ax.vlines(180, sweep_points.min(), sweep_points.max())
+    ax.vlines(phi, sweep_points.min(), sweep_points.max())
     ax.set_ylabel('Flux pulse {} ({})'.format(sweep_param_name, unit))
-    ax.set_xlabel('Conditional phase (rad)')
+    ax.set_xlabel('Conditional phase (deg)')
     ax.set_title('CZ {}-{}'.format(qbc_name, qbt_name))
 
     ax.text(0.5, 0.95, 'Best {} = {:.6f} ({})'.format(
-        sweep_param_name, best_val*1e9 if unit=='s' else best_val, unit),
+        sweep_param_name, best_val*1e9 if unit == 's' else best_val,
+        'ns' if unit == 's' else unit),
             horizontalalignment='center', verticalalignment='top',
             transform=ax.transAxes)
     if save_fig:

@@ -582,7 +582,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     break
                 qb_sweep_functions = []
                 for qb in qbs:
-                    mod_freq = self.get_pulse(f"X180 {qb.name}")[
+                    mod_freq = self.get_pulses(f"X180 {qb.name}")[0][
                         'mod_frequency']
                     pulsar = qb.instr_pulsar.get_instr()
                     # Pulsar assumes that the first channel in a pair is the
@@ -1093,7 +1093,7 @@ class Cryoscope(CalibBuilder):
             continuous_trunc_lengths = len(flux_pulse_dicts) * ['']
             for i, fpd in enumerate(flux_pulse_dicts):
                 pd_temp = {'element_name': 'dummy'}
-                pd_temp.update(self.get_pulse(fpd['op_code']))
+                pd_temp.update(self.get_pulses(fpd['op_code'])[0])
                 pulse_length = seg_mod.UnresolvedPulse(pd_temp).pulse_obj.length
                 if 'truncation_lengths' in fpd:
                     tr_lens = fpd['truncation_lengths']
@@ -1854,7 +1854,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
                 ge --> ''
                 ef --> '_ef'
                 fh --> '_fh'
-        :param prepend_pulse_dicts: (dict) prepended pulses, see
+        :param prepend_pulse_dicts: (list of dict) prepended pulses, see
             block_from_pulse_dicts
         :param kw: keyword arguments
         :return: list with prepended block and prepended transition block
@@ -2351,6 +2351,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
             For Ramsey measurement:
                 - transition frequency: tr_name_freq
                 - averaged dephasing time: T2_star_tr_name
+            In addition, for Ramsey ef measurement:
+                - anharmonicity
             For Echo measurement:
                 - dephasing time: T2_tr_name
 
