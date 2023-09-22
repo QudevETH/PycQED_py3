@@ -318,19 +318,29 @@ def get_qb_channel_map_from_file(qb_names, file_path, value_names, **kw):
 
     for qbn in qb_names:
         SETTINGS_PREFIX = 'Instrument settings.'
-        params_dict = {'instr_acq': f'{SETTINGS_PREFIX}{qbn}.instr_acq',
-                       'instr_uhf': f'{SETTINGS_PREFIX}{qbn}.instr_uhf',
-                       'acq_unit': f'{SETTINGS_PREFIX}{qbn}.acq_unit',
-                       'acq_I_channel': f'{SETTINGS_PREFIX}{qbn}.acq_I_channel',
+        params_dict = {'acq_I_channel': f'{SETTINGS_PREFIX}{qbn}.acq_I_channel',
                        'acq_Q_channel': f'{SETTINGS_PREFIX}{qbn}.acq_Q_channel',
                        'acq_weights_type': f'{SETTINGS_PREFIX}{qbn}.acq_weights_type',
                        }
-        params = get_params_from_files({}, params_dict, folder=file_path, **kw)
-        uhf = params.get('instr_acq')
-        if uhf is None:  # Compatibility with older setting files where key
+        try:
+            uhf = get_params_from_files(
+                {}, {'instr_acq': f'{SETTINGS_PREFIX}{qbn}.instr_acq'},
+                folder=file_path, **kw)['instr_acq']
+        except KeyError:
+            # Compatibility with older setting files where key
             # instr_acq was named instr_uhf
-            uhf = params.get('instr_uhf')
-        acq_unit = params.get('acq_unit')
+            uhf = get_params_from_files(
+                {}, {'instr_uhf': f'{SETTINGS_PREFIX}{qbn}.instr_uhf'},
+                folder=file_path, **kw)['instr_uhf']
+        try:
+            acq_unit = get_params_from_files(
+                {}, {'acq_unit': f'{SETTINGS_PREFIX}{qbn}.acq_unit'},
+                folder=file_path, **kw)
+            acq_unit = acq_unit['acq_unit']
+        except KeyError:
+            # compatibility with older setting files
+            acq_unit = None
+        params = get_params_from_files({}, params_dict, folder=file_path, **kw)
         qbchs = [str(params['acq_I_channel'])]
         ro_acq_weight_type = params['acq_weights_type']
 
