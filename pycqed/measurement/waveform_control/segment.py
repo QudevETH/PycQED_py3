@@ -27,7 +27,7 @@ import functools
 
 def _with_pulsar_tmp_vals(f):
     """A decorator enabling the usage of temporary values for plotting & hashing
-       
+
        The temporary values are collected from self.pulsar_tmp_vals.
     """
     @functools.wraps(f)
@@ -1848,6 +1848,10 @@ class Segment:
                 tvals = self.tvals(channel_set, element)
                 wfs = {}
                 element_start_time = self.get_element_start(element, group)
+                # FIXME: not so nice to hard code
+                #   names of bypasses here (and in pulse parameter)
+                filter_bypasses = ['FIR', 'IIR', 'all']
+                pulses_to_add_after_filtering = {f'bypass_{b}': [] for b in filter_bypasses}
                 for pulse in self.elements[element]:
                     # checks whether pulse is played on AWG
                     pulse_channels = pulse.masked_channels() & channel_set
@@ -1887,6 +1891,17 @@ class Segment:
                     pulse_wfs = pulse.waveforms(chan_tvals)
 
                     # insert the waveforms at the correct position in wfs
+                                        if pulse.filter_bypass is not None:
+                        assert pulse.filter_bypass in filter_bypasses,\
+                            (f'Filter bypass type: {pulse.filter_bypass} not '
+                             f'in {filter_bypasses}')
+                        # add these pulses to a list which will be added to
+                        # the waveform only after the FIR predistortion
+                        pulses_to_add_after_filtering[
+                            f'bypass_{pulse.filter_bypass}'].append((pulse_start,
+                                                                      pulse_end,
+                                                                      pulse_wfs))
+                    else:
                     # offset by the pulsar software channel delay
                     el_buffer = self.pulsar.min_element_buffer() or 0.
                     for channel in pulse_channels:
@@ -1939,18 +1954,30 @@ class Segment:
                                     default_dt=1 / self.pulsar.clock(
                                         channel=c))
 
-                        fir_kernels = distortion_dict.get('FIR', None)
-                        if fir_kernels is not None:
-                            if hasattr(fir_kernels, '__iter__') and not \
-                            hasattr(fir_kernels[0], '__iter__'): # 1 kernel
-                                wf = flux_dist.filter_fir(fir_kernels, wf)
-                            else:
-                                for kernel in fir_kernels:
-                                    wf = flux_dist.filter_fir(kernel, wf)
+                        wf = self._fir_filtering(wf, distortion_dict)
+
+                        # add remaining pulses to the channel waveforms,
+                        # i.e. pulses that have the FIR bypass only
+                        for ps, pe, pwf in pulses_to_add_after_filtering[f'bypass_FIR']:
+                            wf[ps:pe] += pwf.get(c, 0)
+
                         iir_filters = distortion_dict.get('IIR', None)
                         if iir_filters is not None:
                             wf = flux_dist.filter_iir(iir_filters[0],
                                                       iir_filters[1], wf)
+                        # add pulses that have the IIR filter bypass, FIR filtering
+                        # is done on the pulse waveform
+                        for ps, pe, pwf in pulses_to_add_after_filtering['bypass_IIR']:
+                            pwf_channel = pwf.get(c, None)
+                            if pwf_channel is not None:
+                                wf[ps:pe] += self._fir_filtering(pwf_channel,
+                                                                 distortion_dict)
+
+                        # add remaining pulses to the channel waveforms,
+                        # i.e. pulses that have the full filter bypass
+                        for ps, pe, pwf in pulses_to_add_after_filtering[f'bypass_all']:
+                            wf[ps:pe] += pwf.get(c, 0)
+
                         wfs[codeword][c] = wf
 
                 # truncation and normalization
@@ -1991,6 +2018,37 @@ class Segment:
                                 wfs[codeword][channel])
 
         return awg_wfs
+
+    @staticmethod
+    def _fir_filtering(wf, distortion_dict):
+        """
+        Apply Finite Impulse Response (FIR) filtering to a waveform.
+
+        Args:
+            wf (numpy.ndarray): The input waveform to be filtered.
+            distortion_dict (dict): A dictionary containing distortion parameters,
+                including FIR filter kernels.
+
+        Returns:
+            numpy.ndarray: The filtered waveform after applying the FIR filtering.
+
+        This function filters a waveform using FIR filter kernels specified in the
+        distortion_dict.  The filtering can be a single FIR kernel or a list
+        of kernels, allowing for multiple filtering operations.
+
+        Note:
+            This function uses the 'flux_dist' module for FIR filtering.
+
+        """
+        fir_kernels = distortion_dict.get('FIR', None)
+        if fir_kernels is not None:
+            if hasattr(fir_kernels, '__iter__') and not \
+                    hasattr(fir_kernels[0], '__iter__'):  # 1 kernel
+                wf = flux_dist.filter_fir(fir_kernels, wf)
+            else:
+                for kernel in fir_kernels:
+                    wf = flux_dist.filter_fir(kernel, wf)
+        return wf
 
     def get_element_codewords(self, element, awg=None, trigger_group=None):
         """

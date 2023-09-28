@@ -412,6 +412,14 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                  '_trans_length', initial_value=0,
                                  vals=vals.Numbers(0),
                                  docstring="Used for NZTransitionControlledPulse")
+        self.add_pulse_parameter(op_name, ps_name + '_filter_bypass',
+                                 'filter_bypass', initial_value=None,
+                                 vals=vals.Enum(None, 'FIR', 'IIR', 'all'),
+                                 docstring=
+            "Allows to (partially) bypass filters for the FP operation. "
+            " 'FIR': bypasses FIR filters only. 'IIR': bypasses IIR filters only. "
+            "FIR is done individually on each pulse waveform with that "
+            "bypass in that case. 'all': bypasses both FIR and IIR filters.")
 
         # DC flux parameters
         self.add_parameter('dc_flux_parameter', initial_value=None,
