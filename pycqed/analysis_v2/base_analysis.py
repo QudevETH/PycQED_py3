@@ -60,6 +60,10 @@ class BaseDataAnalysis(object):
 
     """
 
+    # Constant used to identify a `job` element which is saved in
+    # the hdf5 file under 'Analysis' group
+    JOB: str = 'job'
+
     fit_res = None
     '''
     Dictionary containing fitting objects
@@ -353,8 +357,8 @@ class BaseDataAnalysis(object):
             kwargs['t_stop'] = self.timestamps[-1]
         kwargs_list = [f'{k}={v if not isinstance(v, str) else repr(v)}'
                        for k, v in kwargs.items()]
-
-        job_lines = f"{class_name}({', '.join(args)}{sep}{', '.join(kwargs_list)})"
+        job_lines = f"analysis_object = {class_name}" \
+                    f"({', '.join(args)}{sep}{', '.join(kwargs_list)})"
         self.job = f"{import_lines}{job_lines}"
 
     def check_plotting_delegation(self):
@@ -1050,6 +1054,9 @@ class BaseDataAnalysis(object):
                         # If the analysis group already exists.
                         analysis_group = data_file['Analysis']
 
+                    # Write job to Analysis group
+                    write_dict_to_hdf5({BaseDataAnalysis.JOB: self.job
+                                        }, entry_point=analysis_group)
                     # Iterate over all the fit result dicts as not to
                     # overwrite old/other analysis
                     for fr_key, fit_res in self.fit_res.items():
@@ -1116,6 +1123,9 @@ class BaseDataAnalysis(object):
                         # If the analysis group already exists.
                         analysis_group = data_file['Analysis']
 
+                    # Write job to Analysis group
+                    write_dict_to_hdf5({BaseDataAnalysis.JOB: self.job
+                                        }, entry_point=analysis_group)
                     try:
                         proc_data_group = \
                             analysis_group.create_group('Processed data')
