@@ -11687,9 +11687,19 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             acq_averages = self.get_hdf_param_value(
                 f"Instrument settings/{qbn}", "acq_averages")
 
-            fig, axs = plt.subplots(2, 1, figsize=(6, 8),
-                                    sharex=True, constrained_layout=True)
-            axs = np.append(axs, axs[1].twinx())
+            if 'fig' in kw:
+                fig, axs = kw['fig'], kw['axs']
+            else:
+                fig, axs = plt.subplots(
+                    2, 2,
+                    figsize=(6, 8), sharex='col',
+                    gridspec_kw={'width_ratios': [10, 1]},
+                )
+                plt.subplots_adjust(wspace=0.1,)
+                axs = [ax for axs_1D in axs for ax in axs_1D]
+                axs.pop(-1).set_axis_off()
+
+            axs = np.append(axs, axs[2].twinx())
             X, Y = np.meshgrid(*coords)
             pcm = axs[0].pcolormesh(
                 X, Y, pop, vmin=cmap_lim[0], vmax=cmap_lim[1])
@@ -11700,29 +11710,32 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             for i in range(len(coords[1])):
                 y = np.take(pop, [i], axis=0).flatten()
                 y_max = np.maximum(y_max, y)
-                axs[2].errorbar(
+                axs[3].errorbar(
                     x, y, yerr=0, color='k', alpha=0.1, linestyle='-', zorder=0)
-                axs[2].scatter(
+                axs[3].scatter(
                     x, y, color=pcm.cmap(norm(y)), alpha=0.3, zorder=1)
 
             y_err_f = lambda pop, n: np.sqrt(pop * (1 - pop) / n)
             # The error bar is computed from the total pop for N gates
             y_err = y_err_f(y_max / 100, acq_averages) * 100
-            axs[2].errorbar(
+            axs[3].errorbar(
                 x, y_max, yerr=y_err, color='k', linestyle='-', zorder=0)
-            axs[2].scatter(
+            axs[3].scatter(
                 x, y_max, color=pcm.cmap(norm(y_max)), alpha=1, zorder=1)
 
             # axs[0].set_yticklabels(axs[0].get_yticks()/1e9)  # could use to avoid rescaling coords
-            axs[2].set_ylim(cmap_lim[0], cmap_lim[1])
-            axs[1].set_ylim(axs[2].get_ylim() / task['num_cz_gates'] ** 2)
+            axs[0].set_ylim(coords[1][0], coords[1][-1])
+            axs[3].set_ylim(cmap_lim[0], cmap_lim[1])
+            axs[2].set_ylim(axs[3].get_ylim() / task['num_cz_gates'] ** 2)
             axs[0].set_ylabel(nice_labels[1])
-            axs[1].set_xlabel(nice_labels[0])
-            axs[2].set_ylabel(
+            axs[2].set_xlabel(nice_labels[0])
+            axs[3].set_ylabel(
                 'Total leakage (%)\n($\\approx$Leakage * $n_{gates}^2$)')
-            axs[1].set_ylabel('Leakage per gate (%)')
-            cbar = plt.colorbar(pcm, ax=axs[0], label='Total leakage (%)',
-                                pad=-0.25)
+            axs[2].set_ylabel('Leakage per gate (%)')
+            cbar = fig.colorbar(pcm, cax=axs[1], label='Total leakage (%)',
+                                pad=-0.2,
+                                anchor=(1,0.5),
+                                )
 
             sp_dims = sp.length() + [self.metadata['compression_factor']]
             plt.suptitle(
@@ -11736,7 +11749,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             figname = f'{ts}_leakage_amplification_{qbn}'
             filename = os.path.abspath(os.path.join(
                 save_folder, figname + '.png'))
-            fig.savefig(filename, bbox_inches='tight')
+            fig.savefig(filename)
 
             id_opt = np.argmin(y_max)
             self.leakage_ymax = {
