@@ -1286,54 +1286,22 @@ def get_multi_xeb_results_from_dd(dd1, dd2, meas_obj_names=None):
         meas_obj_names (list): mobj names in case they aren't saved by the
             experiment in the correct order, preventing to recalculate the
             quantum circuits here. FIXME this should be saved correctly instead
-    This adds a few print statements, but there's a lot in this module anyway.
     """
-    pauli_error_from_average_error = lambda avg_err, d: (d + 1) * avg_err / d
-    average_error_from_pauli_error = lambda pauli_err, d: d * pauli_err / \
-                                                          (d + 1)
-
     results = {}
     for dd in dd2:
-        print(f"ts 1qb: {dd1['timestamps'][0]}")
-        print(f"ts 2qb: {dd['timestamps'][0]}")
-        try:
-            cphase = dd['exp_metadata']['cphase']
-            results[cphase] = {}
-            res = results[cphase]
-
-            res['e_qb1'] = \
-            dd1[meas_obj_names[0]]['fit_res_fidelity'].best_values['e']
-            res['std_e_qb1'] = \
-            dd1[meas_obj_names[0]]['fit_res_fidelity'].params['e'].stderr
-            res['e_qb2'] = \
-            dd1[meas_obj_names[1]]['fit_res_fidelity'].best_values['e']
-            res['std_e_qb2'] = \
-            dd1[meas_obj_names[1]]['fit_res_fidelity'].params['e'].stderr
-            res['e_2qb'] = \
-            dd[','.join(meas_obj_names)]['fit_res_fidelity'].best_values['e']
-            res['std_e_2qb'] = \
-            dd[','.join(meas_obj_names)]['fit_res_fidelity'].params['e'].stderr
-            res['pauli_e_cz'] = res['e_2qb'] - res['e_qb1'] - res['e_qb2']
-            res['std_pauli_e_cz'] = np.sqrt(
-                res['std_e_qb1'] ** 2 + res['std_e_qb2'] ** 2 + res[
-                    'std_e_2qb'] ** 2)
-            res['e_cz'] = average_error_from_pauli_error(res['pauli_e_cz'], 4)
-            res['std_e_cz'] = average_error_from_pauli_error(
-                res['std_pauli_e_cz'], 4)
-
-            print(f"cphase = "
-                  f"{'None' if cphase is None or cphase == '' else cphase}")
-            print(f"Total error 2qb + 1qb (%): {res['e_2qb'] * 100}")
-            print(
-                f"CZ Pauli error (%): {res['pauli_e_cz'] * 100} +/- "
-                f"{res['std_pauli_e_cz'] * 100}")
-            print(
-                f"CZ average error (%): {res['e_cz'] * 100} +/- "
-                f"{res['std_e_cz'] * 100}")
-            print()
-
-        except Exception as e:
-            raise e
+        cphase = dd['exp_metadata']['cphase']
+        results[cphase] = res = {}
+        res['tot'] = calculate_cz_error(
+            dd1, dd, meas_obj_names=meas_obj_names,
+            metric='fidelity', error_type='average')
+        res['inc'] = calculate_cz_error(
+            dd1, dd, meas_obj_names=meas_obj_names,
+            metric='purity', error_type='average')
+        res['coh'] = {
+            'value': res['tot']['value'] - res['inc']['value'],
+            'stderr': np.linalg.norm(
+                [res['tot']['stderr'], res['inc']['stderr']], 2),
+        }
     return results
 
 
