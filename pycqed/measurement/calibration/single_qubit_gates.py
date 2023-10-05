@@ -3354,6 +3354,7 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
                              n_pulses_pi=n_pulses_pi,
                              fixed_scaling=fixed_scaling,
                              analysis_class=tda.NPulseAmplitudeCalibAnalysis,
+                             force_2D_sweep=kw.get('force_2D_sweep', True),
                              **kw)
         except Exception as x:
             self.exception = x

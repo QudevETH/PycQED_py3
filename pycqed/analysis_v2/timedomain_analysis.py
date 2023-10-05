@@ -5487,6 +5487,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     - fit_gaussian_decay (bool; default: True): whether to fit with a Gaussian
         envelope for the oscillations in addition to the exponential decay
         envelope.
+    Note: if cal points have been measured, the fit amplitude is fixed to 0.5,
+        otherwise it is optimised.
     """
     def extract_data(self):
         super().extract_data()
@@ -5514,8 +5516,14 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 guess_pars = fit_mods.exp_damp_osc_guess(
                     model=exp_damped_decay_mod, data=data, t=sweep_points,
                     n_guess=i+1)
-                guess_pars['amplitude'].vary = False
                 guess_pars['amplitude'].value = 0.5
+                if len(self.options_dict.get('cal_states', [])):
+                    # If there are cal states, we expect a 0.5 amplitude
+                    guess_pars['amplitude'].vary = False
+                else:
+                    # If no cal states, the oscillation amplitude in the IQ
+                    # plane depends on readout
+                    guess_pars['amplitude'].vary = True
                 guess_pars['frequency'].vary = True
                 guess_pars['tau'].vary = True
                 guess_pars['tau'].min = 0
@@ -8730,6 +8738,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'ylabel': 'Population, $P$',
                                 'yunit': '',
                                 'yscale': self.get_param_value("yscale", "log"),
+                                'yrange': self.get_param_value("yrange", None),
+                                'grid': True,
                                 'setlabel': self._get_pop_label(state, k,
                                                                 not self._has_reset_pulses(seq_nr),
                                                                 ),
