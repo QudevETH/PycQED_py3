@@ -474,7 +474,7 @@ def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
         hlp_mod.add_param(f'{mobjn}.xeb_probabilities_ideal', pops_ideal_all,
                           data_dict, **params)
         hlp_mod.add_param(f'{mobjn}.fidelities', fidelities, data_dict, **params)
-        # THESE ARE SQRT PURITIES !!!
+        # FIXME THESE ARE SQRT PURITIES !!!
         hlp_mod.add_param(f'{mobjn}.purities', purities, data_dict, **params)
 
 
