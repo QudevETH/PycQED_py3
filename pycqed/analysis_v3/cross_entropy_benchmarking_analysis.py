@@ -1144,10 +1144,8 @@ def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None):
     TODO
     """
     try:
-        # TODO: could automatically reload analysis results saved by pp.save().
-        #  Requires pp.save() to correctly save all the data_dict.
-        # dd1 = hlp_mod.read_analysis_file(timestamp, raise_errors=True)
-        raise FileNotFoundError
+        dd1 = hlp_mod.read_analysis_file(timestamp, raise_errors=True)
+        # raise FileNotFoundError
     except FileNotFoundError:
         pp, meas_obj_names1, cycles, nr_seq = single_qubit_xeb_analysis(
             timestamp,
@@ -1172,7 +1170,7 @@ def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None):
         pp.save()
         plt.close('all')
         dd1 = pp.data_dict
-        return dd1
+    return dd1
 
 
 def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
