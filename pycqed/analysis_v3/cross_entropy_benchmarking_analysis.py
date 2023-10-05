@@ -1750,7 +1750,7 @@ cdf_PT = lambda x, d: 1 - (1 - x) ** (d - 1)
 def get_cdfs(pops, d):
     x_sample = pops
     x = np.sort(x_sample)
-    y_cdf_experiment = np.linspace(0, 1, len(x), endpoint=False)
+    y_cdf_experiment = np.linspace(0, 1, len(x)+1, endpoint=True)[1:]
     y_cdf_theory = cdf_PT(x, d)
     return x, y_cdf_experiment, y_cdf_theory, \
            np.mean(np.abs(y_cdf_experiment - y_cdf_theory))
