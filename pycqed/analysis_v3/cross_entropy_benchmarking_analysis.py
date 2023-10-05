@@ -1085,6 +1085,10 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
     hlp_mod.add_param(f'{container}.purities', y_purity, data_dict, **params)
 
 
+pauli_error_from_average_error = lambda avg_err, d: (1 + 1/d) * avg_err
+average_error_from_pauli_error = lambda pauli_err, d: pauli_err / (1 + 1/d)
+
+
 def calculate_cz_error(data_dict1, data_dict2, **params):
     timestamp = data_dict1['timestamps'][0]
     meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict1, **params)
@@ -1092,33 +1096,44 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
         meas_obj_names = hlp_mod.get_param_from_metadata_group(
             timestamp, 'meas_objs')
     container = ",".join(meas_obj_names)
+    metric = params.get('metric', 'fidelity')
+    type = params.get('error_type', 'pauli')
 
     try:
-        e1_1 = data_dict1[meas_obj_names[0]]['fit_res_fidelity'].best_values['e']
-        e1_2 = data_dict1[meas_obj_names[1]]['fit_res_fidelity'].best_values['e']
-        e1_1e = data_dict1[meas_obj_names[0]]['fit_res_fidelity'].params['e'].stderr
-        e1_2e = data_dict1[meas_obj_names[1]]['fit_res_fidelity'].params['e'].stderr
+        e1_1 = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'].best_values['e']
+        e1_2 = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'].best_values['e']
+        e1_1e = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'].params[
+            'e'].stderr
+        e1_2e = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'].params[
+            'e'].stderr
     except AttributeError:
-        e1_1 = data_dict1[meas_obj_names[0]]['fit_res_fidelity'][
+        e1_1 = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'][
             'params']['e']['value']
-        e1_2 = data_dict1[meas_obj_names[1]]['fit_res_fidelity'][
+        e1_2 = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'][
             'params']['e']['value']
-        e1_1e = data_dict1[meas_obj_names[0]]['fit_res_fidelity'][
+        e1_1e = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'][
             'params']['e']['stderr']
-        e1_2e = data_dict1[meas_obj_names[1]]['fit_res_fidelity'][
+        e1_2e = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'][
             'params']['e']['stderr']
 
     try:
-        e2 = data_dict2[container]['fit_res_fidelity'].best_values['e']
-        e2e = data_dict2[container]['fit_res_fidelity'].params['e'].stderr
+        e2 = data_dict2[container][f'fit_res_{metric}'].best_values['e']
+        e2e = data_dict2[container][f'fit_res_{metric}'].params['e'].stderr
     except AttributeError:
-        e2 = data_dict2[container]['fit_res_fidelity'][
+        e2 = data_dict2[container][f'fit_res_{metric}'][
             'params']['e']['value']
-        e2e = data_dict2[container]['fit_res_fidelity'][
+        e2e = data_dict2[container][f'fit_res_{metric}'][
             'params']['e']['stderr']
 
     cz_error_rate = {'value': e2 - e1_1 - e1_2,
                      'stderr': np.sqrt(e2e**2 + e1_1e**2 + e1_2e**2)}
+    if type == 'pauli':
+        pass
+    elif type == 'average':
+        cz_error_rate = {k: average_error_from_pauli_error(v, 4)
+                         for k, v in cz_error_rate.items()}
+    else:
+        raise NotImplementedError
     hlp_mod.add_param(f"{container}.cz_error_rate", cz_error_rate,
                       data_dict2, add_param_method='replace')
     return cz_error_rate
