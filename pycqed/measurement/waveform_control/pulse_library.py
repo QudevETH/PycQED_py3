@@ -647,6 +647,8 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             if self.fixed_pulse_length is not None:
                 current_length = np.sum(self.lengths[-1])
                 difference = self.fixed_pulse_length - current_length
+                # lengths[-1] is the set of lengths created at this iteration
+                # of the for loop
                 self.lengths[-1][0] += difference / 2
                 self.lengths[-1][-1] += difference / 2
         while len(self.lengths) < len(self.channels):
