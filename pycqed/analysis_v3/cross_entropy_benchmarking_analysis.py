@@ -976,6 +976,10 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
     container = ",".join(meas_obj_names)
 
     try:
+        # FIXME This try except is used since the fits saved in the data dict
+        #  have slightly different formats if the data has been extracted
+        #  from a previous analysis run saved in an hdf file. This should be
+        #  fixed in the data extraction instead.
         e1_1 = data_dict1[meas_obj_names[0]]['fit_res_fidelity'].best_values['e']
         e1_2 = data_dict1[meas_obj_names[1]]['fit_res_fidelity'].best_values['e']
         e1_1e = data_dict1[meas_obj_names[0]]['fit_res_fidelity'].params['e'].stderr
