@@ -1463,8 +1463,7 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
                 return_dict[mobjn] += [fit_res_f, fit_res_p]
 
             if plot:
-                params = plot_mod.get_default_plot_params(set_params=False)
-                with mpl.rc_context(rc=params):
+                with mpl.rc_context(rc={}):
                     fig, ax = plt.subplots()
                     if cz_error_rate is None:
                         cz_error_rate = hlp_mod.get_param(
@@ -1673,8 +1672,10 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
         show (bool): whether to show the figure or not
         **params: keyword arguments: passed to extract_leakage_classified_shots
     """
-    fig, axs = plt.subplots(3, sharex=True,
-                            figsize=(plt.rcParams['figure.figsize'][0], 3))
+    fig, axs = plt.subplots(
+        3, sharex=True,
+        figsize=([plt.rcParams['figure.figsize'][0],]*2)
+    )
     try:
         fit_res_all = {}
         swpts = hlp_mod.get_measurement_properties(data_dict, ['sp'])
@@ -1756,8 +1757,9 @@ def get_cdfs(pops, d):
 
 
 def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
-                            savefig=True, fmts=None, figure_width='1col',
-                            figure_height=4.1, filename=None, filename_prefix='',
+                            savefig=True, fmts=None,
+                            figure_width=None, figure_height=None,
+                            filename=None, filename_prefix='',
                             numcols=None, numrows=None, renormalize=True,
                             show=False, nr_sp_2d=None, **params):
     try:
@@ -1794,14 +1796,16 @@ def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
                     numrows = len(cycles) // numr
                     break
         print(numrows, numcols)
-        if numcols == 1:
-            figure_width = 2
+        if figure_width is None:
+            figure_width = plt.rcParams['figure.figsize'][0]/2*numcols
+        if figure_height is None:
+            figure_height = plt.rcParams['figure.figsize'][1]/2*numrows
         return_dict = {}
 
-        params = plot_mod.get_default_plot_params(set_params=False,
-                                                  figure_width=figure_width,
-                                                  figure_height=figure_height)
-        with mpl.rc_context(rc=params):
+        rc_params = {
+            'figure.figsize': (figure_width, figure_height),
+        }
+        with mpl.rc_context(rc=rc_params):
             for mobjn in meas_obj_names:
                 proba_exp_all = hlp_mod.get_param(f'{mobjn}.xeb_probabilities',
                                                   data_dict)
@@ -1813,6 +1817,10 @@ def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
 
                 fig, axs = plt.subplots(numrows, numcols,
                                         sharex=True, sharey=True)
+                big_ax = fig.add_subplot(111, frameon=False)
+                big_ax.tick_params(
+                    labelcolor='none', which='both', top=False, bottom=False,
+                    left=False, right=False)
                 for i, nrc in enumerate(cycles):
                     proba_exp = proba_exp_all
 
@@ -1869,16 +1877,13 @@ def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
                 ax.legend(frameon=False, loc='lower center', ncol=2,
                           bbox_to_anchor=(0.5 if odd_nr_cols else 1.05, 0.965))
 
-                fig.text(0, 0.5, r'Cumulative distribution', ha='left',
-                         va='center', rotation=90)
-                fig.text(0.5, 0, f'Basis-state prob., $p$', va='bottom',
-                         ha='center')
+                big_ax.set_ylabel('Cumulative distribution')
+                big_ax.set_xlabel('Basis-state prob., $p$')
                 cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}"\
                     if 'cphase' in data_dict['exp_metadata'] else ''
-                fig.text(0.5, 1, f'{filename_prefix}XEB{cz_name} {mobjn} - {timestamp}',
-                         ha='center', va='top')
-                fig.subplots_adjust(0.11, 0.075, 0.99, 0.92,
-                                    wspace=0.05, hspace=0.05)
+                fig.suptitle(f'{filename_prefix}XEB{cz_name} {mobjn} - '
+                                 f'{timestamp}', y=1.0)
+                fig.subplots_adjust(wspace=0.05, hspace=0.05)
                 return_dict[mobjn] = [fig, axs]
 
                 if savefig:
@@ -1948,8 +1953,7 @@ def calculate_optimal_nr_cycles(data_dict, idx0=0, joint_processing=False,
             nrc_opt_all[mobjn] = nrc_opt
 
             if plot:
-                params = plot_mod.get_default_plot_params(set_params=False)
-                with mpl.rc_context(rc=params):
+                with mpl.rc_context(rc={}):
                     fig, ax = plt.subplots()
 
                     # plot data
@@ -2045,8 +2049,7 @@ def plot_ctrl_errors(data_dict, unitary_label, data_dict_cepc=None,
     if fig_margins is None:
         fig_margins = [0.17, 0.2, 0.99, 0.90]
     try:
-        params = plot_mod.get_default_plot_params(set_params=False)
-        with mpl.rc_context(rc=params):
+        with mpl.rc_context(rc={}):
             for mobjn in meas_obj_names:
                 process_errs = hlp_mod.get_param(f'{mobjn}.optimization_result_process_errs',
                                                  data_dict, default_value=process_errs,
@@ -2124,10 +2127,10 @@ def plot_opt_res(data_dict, param_labels, savefig=True, fmts=None,
         if fig_margins is None:
             fig_margins = [0.2, 0.14, 0.99, 0.99]
 
-        params = plot_mod.get_default_plot_params(set_params=False,
-                                                  figure_width=figure_width,
-                                                  figure_height=figure_height)
-        with mpl.rc_context(rc=params):
+        rc_params = {
+            'figure.figsize': (figure_width, figure_height),
+        }
+        with mpl.rc_context(rc=rc_params):
             for mobjn in meas_obj_names:
                 opt_res = hlp_mod.get_param(f'{mobjn}.optimization_result',
                                             data_dict, raise_error=True,
