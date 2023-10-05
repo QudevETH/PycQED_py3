@@ -5487,6 +5487,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     - fit_gaussian_decay (bool; default: True): whether to fit with a Gaussian
         envelope for the oscillations in addition to the exponential decay
         envelope.
+    Note: if cal points have been measured, the fit amplitude is fixed to 0.5,
+        otherwise it is optimised.
     """
     def extract_data(self):
         super().extract_data()
