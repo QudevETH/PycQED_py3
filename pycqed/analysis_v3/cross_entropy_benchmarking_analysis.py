@@ -9,7 +9,7 @@ import traceback
 import qutip as qt
 import numpy as np
 import scipy as sp
-from copy import deepcopy
+from copy import copy, deepcopy
 from functools import reduce
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -1111,7 +1111,7 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
                                        **params)
         swpts = hlp_mod.get_measurement_properties(data_dict,
                                                    props_to_extract=['sp'])
-        cycles = deepcopy(swpts.get_sweep_params_property('values', sweep_type['cycles']))
+        cycles = copy(swpts.get_sweep_params_property('values', sweep_type['cycles']))
         start_idx = 1 if cycles[0] == 0 else 0
         cycles = cycles[start_idx:]
         nr_seq = swpts.length(sweep_type['seqs'])
@@ -1244,7 +1244,7 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
                     if savefig:
                         if fmts is None:
                             fmts = ['png']
-                        fn = deepcopy(filename)
+                        fn = copy(filename)
                         if fn is None:
                             fn = f'XEB_{mobjn}_{cycles[-1]}cycles_{nr_seq}seqs_' \
                                  f'{timestamp}'
@@ -1581,7 +1581,7 @@ def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
                 if savefig:
                     if fmts is None:
                         fmts = ['png']
-                    fn = deepcopy(filename)
+                    fn = copy(filename)
                     if fn is None:
                         fn = f'Porter_Thomas_Cumulative_{mobjn}_' \
                              f'{cycles[-1]}cycles_{nr_sp_2d}seqs_' \
@@ -1693,7 +1693,7 @@ def calculate_optimal_nr_cycles(data_dict, idx0=0, joint_processing=False,
                     if savefig:
                         if fmts is None:
                             fmts = ['png']
-                        fn = deepcopy(filename)
+                        fn = copy(filename)
                         if fn is None:
                             fn = f'Opt_nr_cycles_{mobjn}_{swpts.length(1)}seqs_' \
                                  f'{timestamp}'
@@ -1775,7 +1775,7 @@ def plot_ctrl_errors(data_dict, unitary_label, data_dict_cepc=None,
                 if savefig:
                     if fmts is None:
                         fmts = ['png']
-                    fn = deepcopy(filename)
+                    fn = copy(filename)
                     if fn is None:
                         fn = f'Opt_res_ctrl_errs_{mobjn}_' \
                              f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
@@ -1852,7 +1852,7 @@ def plot_opt_res(data_dict, param_labels, savefig=True, fmts=None,
                 if savefig:
                     if fmts is None:
                         fmts = ['png']
-                    fn = deepcopy(filename)
+                    fn = copy(filename)
                     if fn is None:
                         fn = f'Opt_res_{mobjn}_' \
                              f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
