@@ -582,7 +582,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     break
                 qb_sweep_functions = []
                 for qb in qbs:
-                    mod_freq = self.get_pulse(f"X180 {qb.name}")[
+                    mod_freq = self.get_pulses(f"X180 {qb.name}")[0][
                         'mod_frequency']
                     pulsar = qb.instr_pulsar.get_instr()
                     # Pulsar assumes that the first channel in a pair is the
@@ -1093,7 +1093,7 @@ class Cryoscope(CalibBuilder):
             continuous_trunc_lengths = len(flux_pulse_dicts) * ['']
             for i, fpd in enumerate(flux_pulse_dicts):
                 pd_temp = {'element_name': 'dummy'}
-                pd_temp.update(self.get_pulse(fpd['op_code']))
+                pd_temp.update(self.get_pulses(fpd['op_code'])[0])
                 pulse_length = seg_mod.UnresolvedPulse(pd_temp).pulse_obj.length
                 if 'truncation_lengths' in fpd:
                     tr_lens = fpd['truncation_lengths']
@@ -1779,7 +1779,8 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
     def define_cal_states_rotations(self):
         """
         Creates cal_states_rotations for each qubit based on the information
-        in the preprocessed_task_list, and adds it to exp_metadata.
+        in the preprocessed_task_list and self.meas_obj_names, 
+        and adds it to exp_metadata.
         This is of the form {qb_name: {cal_state: cal_state_order_index}}
         and will be used by the analyses.
         """
@@ -1788,37 +1789,39 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
             return
 
         cal_states_rotations = {}
+        # add cal state rotations which are task-specific
         for task in self.preprocessed_task_list:
             qb_name = task['qb']
             if 'cal_states_rotations' in task:
                 # specified by user
                 cal_states_rotations.update(task['cal_states_rotations'])
-            else:
-                if len(self.cal_states) > 3:
-                    # Analysis can handle at most 3-state rotations
-                    # If we've got more than 3 cal states, we choose a subset of
-                    # 3: the states of the transition to be tuned up + the state
-                    # below the lowest state of the transition.
-                    # Ex: transition name = fh --> ['e', 'f', 'h']
-                    transition_name = task['transition_name_input']
-                    if transition_name == 'ge':
-                        # Exception: there no state below g, so here we
-                        # include f
-                        states = ['g', 'e', 'f']
-                    else:
-                        indices = [self.state_order.index(s)
-                                   for s in transition_name]
-                        states = self.state_order[
-                                 min(indices)-1:max(indices)+1]
-                    rots = [(s, self.cal_states.index(s)) for s in states]
-                    # sort by index of cal_state
-                    rots.sort(key=lambda t: t[1])
-                    cal_states_rotations[qb_name] = {t[0]: i for i, t in
-                                                     enumerate(rots)}
+            elif len(self.cal_states) > 3:
+                # Analysis can handle at most 3-state rotations
+                # If we've got more than 3 cal states, we choose a subset of
+                # 3: the states of the transition to be tuned up + the state
+                # below the lowest state of the transition.
+                # Ex: transition name = fh --> ['e', 'f', 'h']
+                transition_name = task['transition_name_input']
+                if transition_name == 'ge':
+                    # Exception: there no state below g, so here we
+                    # include f
+                    states = ['g', 'e', 'f']
                 else:
-                    # Use all the cal states for rotation
-                    cal_states_rotations[qb_name] = \
-                        {s: self.state_order.index(s) for s in self.cal_states}
+                    indices = [self.state_order.index(s)
+                               for s in transition_name]
+                    states = self.state_order[
+                             min(indices)-1:max(indices)+1]
+                rots = [(s, self.cal_states.index(s)) for s in states]
+                # sort by index of cal_state
+                rots.sort(key=lambda t: t[1])
+                cal_states_rotations[qb_name] = {t[0]: i for i, t in
+                                                 enumerate(rots)}
+
+        # Add task-independent cal states rotations
+        for qb_name in self.meas_obj_names:
+            if qb_name not in cal_states_rotations:
+                cal_states_rotations[qb_name] = \
+                    {s: self.state_order.index(s) for s in self.cal_states}
 
         self.exp_metadata.update({'cal_states_rotations': cal_states_rotations})
 
@@ -1851,7 +1854,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
                 ge --> ''
                 ef --> '_ef'
                 fh --> '_fh'
-        :param prepend_pulse_dicts: (dict) prepended pulses, see
+        :param prepend_pulse_dicts: (list of dict) prepended pulses, see
             block_from_pulse_dicts
         :param kw: keyword arguments
         :return: list with prepended block and prepended transition block
@@ -2348,6 +2351,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
             For Ramsey measurement:
                 - transition frequency: tr_name_freq
                 - averaged dephasing time: T2_star_tr_name
+            In addition, for Ramsey ef measurement:
+                - anharmonicity
             For Echo measurement:
                 - dephasing time: T2_tr_name
 

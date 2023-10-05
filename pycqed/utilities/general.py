@@ -701,45 +701,50 @@ def check_keyboard_interrupt():
         pass
 
 
-
-def temporary_value(*param_value_pairs):
+class TemporaryValue:
     """
     This context manager allows to change a given QCodes parameter
     to a new value, and the original value is reverted upon exit of the context
     manager.
 
     Args:
-        *param_value_pairs: 2-tuples of qcodes parameters and their temporary 
+        *param_value_pairs: 2-tuples of qcodes parameters and their temporary
                             values
-    
+
     Example:
-        # measure qubit spectroscopy at a different readout frequency without 
+        # measure qubit spectroscopy at a different readout frequency without
         # setting the parameter value
-        with temporary_values((qb1.ro_freq, 6e9)):
+        with TemporaryValue((qb1.ro_freq, 6e9)):
             qb1.measure_spectroscopy(...)
     """
 
-    class TemporaryValueContext:
-        def __init__(self, *param_value_pairs):
-            if len(param_value_pairs) > 0 and \
-                    not isinstance(param_value_pairs[0], (tuple, list)):
-                param_value_pairs = (param_value_pairs,)
-            self.param_value_pairs = param_value_pairs
-            self.old_value_pairs = []
+    def __init__(self, *param_value_pairs):
+        if len(param_value_pairs) > 0 and \
+                not isinstance(param_value_pairs[0], (tuple, list)):
+            param_value_pairs = (param_value_pairs,)
+        self.param_value_pairs = param_value_pairs
+        self.old_value_pairs = []
 
-        def __enter__(self):
-            log.debug('Entered TemporaryValueContext')
+    def __enter__(self):
+        log.debug('Entered TemporaryValueContext')
+        try:
             self.old_value_pairs = \
                 [(param, param()) for param, value in self.param_value_pairs]
             for param, value in self.param_value_pairs:
                 param(value)
-    
-        def __exit__(self, type, value, traceback):
-            for param, value in self.old_value_pairs: 
-                param(value)
-            log.debug('Exited TemporaryValueContext')
-    
-    return TemporaryValueContext(*param_value_pairs)
+        except Exception:
+            self.__exit__(None, None, None)
+            raise
+
+    def __exit__(self, type, value, traceback):
+        for param, value in self.old_value_pairs:
+            param(value)
+        log.debug('Exited TemporaryValueContext')
+
+
+# Alias in order to have the class definition in camel case, but keep
+# backwards compatibility
+temporary_value = TemporaryValue
 
 
 def configure_qubit_mux_drive(qubits, lo_freqs_dict):

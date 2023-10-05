@@ -6988,7 +6988,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 'plotsize': plotsize,
                 'xvals': phases,
                 'xlabel': xlabel,
-                'xunit': xunit,
+                'xunit': 'rad',  # overriden from deg to rad in process_data
                 'yvals': data,
                 'ylabel': self.get_yaxis_label(qbn, prob_label),
                 'yunit': '',
@@ -7152,22 +7152,22 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             'val': contrast, 'stderr': contrast_stderr}
 
                         # contrast_loss = (cos_amp_g - cos_amp_e)/ cos_amp_g
-                        population_loss = (amps[1::2] - amps[0::2])/amps[1::2]
+                        contrast_loss = (amps[1::2] - amps[0::2])/amps[1::2]
                         x = amps[1::2] - amps[0::2]
                         x_err = np.array(amps_errs[0::2]**2 + amps_errs[1::2]**2,
                                          dtype=np.float64)
                         y = amps[1::2]
                         y_err = amps_errs[1::2]
                         try:
-                            population_loss_stderrs = np.sqrt(np.array(
+                            contrast_loss_stderrs = np.sqrt(np.array(
                                 ((y * x_err) ** 2 + (x * y_err) ** 2) / (y ** 4),
                                 dtype=np.float64))
                         except:
-                            population_loss_stderrs = float("nan")
+                            contrast_loss_stderrs = float("nan")
                         self.proc_data_dict['analysis_params_dict'][
-                            f'population_loss_{qbn}'] = \
-                            {'val': population_loss,
-                             'stderr': population_loss_stderrs}
+                            f'contrast_loss_{qbn}'] = \
+                            {'val': contrast_loss,
+                             'stderr': contrast_loss_stderrs}
 
                 else:
                     self.proc_data_dict['analysis_params_dict'][
@@ -7268,10 +7268,10 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                    '{:.3f} $\\pm$ {:.3f}'.format(
                                        self.proc_data_dict[
                                            'analysis_params_dict'][
-                                           f'population_loss_{qbn}']['val'][0],
+                                           f'contrast_loss_{qbn}']['val'][0],
                                        self.proc_data_dict[
                                            'analysis_params_dict'][
-                                           f'population_loss_{qbn}'][
+                                           f'contrast_loss_{qbn}'][
                                            'stderr'][0])
                         pdap = self.proc_data_dict.get(
                             'percent_data_after_presel', False)
@@ -7477,6 +7477,45 @@ class DynamicPhaseAnalysis(MultiCZgate_Calib_Analysis):
         self.phase_key = 'dynamic_phase'
         self.legend_label_func = lambda qbn, row: 'no FP' \
             if row % 2 != 0 else 'with FP'
+
+
+class SingleRowChevronAnalysis(MultiQubit_TimeDomain_Analysis):
+    """Analysis for 1-dimensional Chevron QuantumExperiment
+
+    This is used for instance for the 1-D measurements performed as part of
+    CZ gate calibration
+    """
+
+    def extract_data(self):
+        # Necessary for data processing and plotting since sweep_points are 2D
+        self.default_options['TwoD'] = True
+        super().extract_data()
+
+    def prepare_projected_data_plots(self):
+        # FIXME this overrides the super method but does almost the same. One
+        #  should clean up the logic in the super to get rid of this, see below.
+        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
+            for k, v in dd.items():
+                # FIXME this plot is almost the same as in the super method,
+                #  but with plot_cal_points=True. The problem is that TwoD is
+                #  True, meaning that the super does not plot the cal points,
+                #  even though it correctly resolves that the data is really 1D.
+                self.prepare_projected_data_plot(
+                    fig_name=f'SingleRowChevron_{qbn}_{k}',
+                    data=v[0],
+                    data_axis_label=f'|{k[1:]}> state population',
+                    qb_name=qbn, TwoD=False, plot_cal_points=True,
+                )
+                # FIXME this is the same as the projected plot, just rescaled.
+                if k == 'pf':
+                    self.prepare_projected_data_plot(
+                        fig_name=f'Leakage_{qbn}',
+                        data=v[0],
+                        data_axis_label=f'|{k[1:]}> state population',
+                        qb_name=qbn, TwoD=False, plot_cal_points=True,
+                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
+                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
+                    )
 
 
 class CryoscopeAnalysis(DynamicPhaseAnalysis):
