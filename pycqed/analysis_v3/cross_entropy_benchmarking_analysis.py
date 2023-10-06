@@ -1098,6 +1098,7 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
     container = ",".join(meas_obj_names)
     metric = params.get('metric', 'fidelity')
     type = params.get('error_type', 'pauli')
+    s1qb = params.get('subtract_1qb_errors', True)
 
     try:
         # FIXME This try except is used since the fits saved in the data dict
@@ -1129,8 +1130,8 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
         e2e = data_dict2[container][f'fit_res_{metric}'][
             'params']['e']['stderr']
 
-    cz_error_rate = {'value': e2 - e1_1 - e1_2,
-                     'stderr': np.sqrt(e2e**2 + e1_1e**2 + e1_2e**2)}
+    cz_error_rate = {'value': e2 - s1qb * (e1_1 + e1_2),
+                     'stderr': np.sqrt(e2e**2 + s1qb*e1_1e**2 + s1qb*e1_2e**2)}
     if type == 'pauli':
         pass
     elif type == 'average':
@@ -1288,7 +1289,7 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
     return dd2
 
 
-def get_multi_xeb_results_from_dd(dd1, dd2, meas_obj_names=None):
+def get_multi_xeb_results_from_dd(dd1, dd2, meas_obj_names=None, **kw):
     """
     TODO
 
@@ -1303,10 +1304,10 @@ def get_multi_xeb_results_from_dd(dd1, dd2, meas_obj_names=None):
         results[cphase] = res = {}
         res['tot'] = calculate_cz_error(
             dd1, dd, meas_obj_names=meas_obj_names,
-            metric='fidelity', error_type='average')
+            metric='fidelity', error_type='average', **kw)
         res['inc'] = calculate_cz_error(
             dd1, dd, meas_obj_names=meas_obj_names,
-            metric='purity', error_type='average')
+            metric='purity', error_type='average', **kw)
         res['coh'] = {
             'value': res['tot']['value'] - res['inc']['value'],
             'stderr': np.linalg.norm(
