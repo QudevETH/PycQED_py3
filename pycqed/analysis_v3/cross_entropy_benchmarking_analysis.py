@@ -1143,7 +1143,8 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
     return cz_error_rate
 
 
-def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None):
+def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
+                         idx0f=0, idx0p=0,):
     """
     TODO
     """
@@ -1163,13 +1164,13 @@ def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None):
         )
         _ = fit_plot_fidelity_purity(
             pp.data_dict,
-            idx0f=1, idx0p=1,
+            idx0f=0, idx0p=0,
             savefig=True,
             log_scale=False
         )
         fit_plot_leakage_1qb(pp.data_dict, meas_obj_names,
                                      data_key='correct_readout',
-                                     idx0f=1, idx0p=1,
+                                     idx0f=idx0f, idx0p=idx0p,
                                      savefig=True, show=False)
         pp.save()
         plt.close('all')
@@ -1178,7 +1179,8 @@ def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None):
 
 
 def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
-                         meas_data_dtype=None, meas_obj_names=None):
+                         meas_data_dtype=None, meas_obj_names=None,
+                         idx0f=0, idx0p=0,):
     """
     TODO
     """
@@ -1237,25 +1239,31 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
             timer.checkpoint('plot_porter_thomas_dist.end')
         if timer:
             timer.checkpoint('calculate_fidelities_purities_2qb.start')
-        calculate_fidelities_purities_2qb(pp.data_dict,
-                                                  data_key='correct_readout',
-                                                  timer=timer,
-                                                  )
+        calculate_fidelities_purities_2qb(
+            pp.data_dict,
+            data_key='correct_readout',
+            timer=timer,
+        )
         if timer:
             timer.checkpoint('calculate_fidelities_purities_2qb.end')
         if timer:
             timer.checkpoint('fit_plot_fidelity_purity.start')
-        _ = fit_plot_fidelity_purity(pp.data_dict,
-                                                        joint_processing=True,
-                                                        savefig=True,
-                                                        log_scale=False)
+        _ = fit_plot_fidelity_purity(
+            pp.data_dict,
+            idx0f=idx0f, idx0p=idx0p,
+            joint_processing=True,
+            savefig=True,
+            log_scale=False
+        )
         if timer:
             timer.checkpoint('fit_plot_fidelity_purity.end')
         if timer:
             timer.checkpoint('fit_plot_leakage_2qb.start')
-        fit_plot_leakage_2qb(pp.data_dict, meas_obj_names,
-                                     data_key='correct_readout',
-                                     savefig=True, show=False, timer=timer)
+        fit_plot_leakage_2qb(
+            pp.data_dict, meas_obj_names,
+            data_key='correct_readout',
+            savefig=True, show=False, timer=timer
+        )
         if timer:
             timer.checkpoint('fit_plot_leakage_2qb.end')
         plt.close('all')
