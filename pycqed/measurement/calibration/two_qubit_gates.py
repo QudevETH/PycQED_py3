@@ -833,7 +833,7 @@ class CPhase(CalibBuilder):
 
             # initialize properties specific to the CPhase measurement
             self.cphases = None
-            self.population_losses = None
+            self.contrast_losses = None
             self.leakage = None
             self.delta_leakage = None
             self.swap_errors = None
@@ -879,7 +879,7 @@ class CPhase(CalibBuilder):
 
     def cphase_block(self, sweep_points,
                      qbl, qbr, num_cz_gates=1, max_flux_length=None,
-                     prepend_pulse_dicts=None, **kw):
+                     prepend_pulse_dicts=None, cphase=None, **kw):
         """
         This function creates the blocks for a single CPhase measurement task.
         :param sweep_points: sweep points
@@ -891,6 +891,8 @@ class CPhase(CalibBuilder):
             determined automatically
         :param prepend_pulse_dicts: (dict) prepended pulses, see
             CircuitBuilder.block_from_pulse_dicts
+        :param cphase: (float) conditional phase of the CZ gate (degrees),
+            if allowed by the gate. Defaults to None (180 degrees).
         :param kw: further keyword arguments:
             cz_pulse_name: task-specific prefix of CZ gates (overwrites
                 global choice passed to the class init)
@@ -914,6 +916,8 @@ class CPhase(CalibBuilder):
 
         fp = self.block_from_ops('flux', [f"{kw.get('cz_pulse_name', 'CZ')} "
                                           f"{qbl} {qbr}"] * num_cz_gates)
+        for p in fp.pulses:
+            p['cphase'] = cphase
         # TODO here, we could do DD pulses (CH 2020-06-19)
 
         for k in sweep_points.get_sweep_dimension(1, default={}):
@@ -986,7 +990,7 @@ class CPhase(CalibBuilder):
              plot_all_traces: (bool) TODO, default: True
              plot_all_probs: (bool) TODO, default: True
              ref_pi_half: (bool) TODO, default: False
-        :return: cphases, population_losses, leakage, and the analysis instance
+        :return: cphases, contrast_losses, leakage, and the analysis instance
         """
         plot_all_traces = kw.get('plot_all_traces', True)
         plot_all_probs = kw.get('plot_all_probs', True)
@@ -1009,17 +1013,17 @@ class CPhase(CalibBuilder):
                           'channel_map': channel_map,
                           'ref_pi_half': ref_pi_half})
         self.cphases = {}
-        self.population_losses = {}
+        self.contrast_losses = {}
         self.leakage = {}
         self.delta_leakage = {}
         self.swap_errors = {}
         for task in self.task_list:
             self.cphases.update({task['prefix'][:-1]: self.analysis.proc_data_dict[
                 'analysis_params_dict'][f"cphase_{task['qbr']}"]['val']})
-            self.population_losses.update(
+            self.contrast_losses.update(
                 {task['prefix'][:-1]: self.analysis.proc_data_dict[
                     'analysis_params_dict'][
-                    f"population_loss_{task['qbr']}"]['val']})
+                    f"contrast_loss_{task['qbr']}"]['val']})
             if ref_pi_half:
                 self.swap_errors.update(
                     {task['prefix'][:-1]: self.analysis.proc_data_dict[
@@ -1034,7 +1038,7 @@ class CPhase(CalibBuilder):
                     'analysis_params_dict'][
                     f"leakage_increase_{task['qbl']}"]['val']})
 
-        return self.cphases, self.population_losses, self.leakage, \
+        return self.cphases, self.contrast_losses, self.leakage, \
                self.analysis, self.swap_errors
 
 

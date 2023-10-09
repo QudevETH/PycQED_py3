@@ -1601,6 +1601,15 @@ class Segment:
         basis_phases = {}
 
         for pulse in self.resolved_pulses:
+            # The following if statement allows pulse objects to specify a
+            # basis_rotation different from the one in the instrument settings.
+            # Needed, e.g., for arbitrary-phase CZ gates, since, when resolved,
+            # the pulse objects updates some of its attributes based on the
+            # conditional phase, which may include the basis rotation. In
+            # that case, the correct value is needed here.
+            if getattr(pulse.pulse_obj, 'basis_rotation', None) is not None:
+                pulse.basis_rotation = pulse.pulse_obj.basis_rotation
+
             for basis, rotation in pulse.basis_rotation.items():
                 basis_phases[basis] = basis_phases.get(basis, 0) + rotation
 
@@ -1687,6 +1696,13 @@ class Segment:
             ...
             }
         """
+
+        # FIXME: this routine is only used for plotting waveforms of a segment.
+        #        Consider removing this routine and adding functionality to plot
+        #        single segments to the sequence.plot() routine.
+        #        This routine might be less maintained than the sequence routine
+        #        generate_waveforms_sequences().
+
         if awgs is None:
             awgs = set(self.pulsar.get_awg_from_trigger_group(group)
                        for group in self.elements_on_awg)
@@ -2241,8 +2257,12 @@ class Segment:
                     op_code = op_code[:-1]
                 if op_code[:2] == 'CZ' or op_code[:4] == 'upCZ':
                     num_two_qb += 1
-                    if len(op_code) > 4:
-                        val = -float(op_code[4:])
+                    pulse_name = op_code.rstrip('0123456789.')
+                    if len(val := op_code[len(pulse_name):]):
+                        # FIXME this - sign comes from the convention that
+                        #  CZ = diag(1,1,1,e^-i*phi). We should at some point
+                        #  verify that all code respects a single convention.
+                        val = -float(val)
                         gate_formatted = f'{gate_type}{(factor * val):.1f}'.replace(
                             '.0', '')
                         output += f'\\draw({t / tscale:.4f},-{qb})  node[CZdot] {{}} -- ({t / tscale:.4f},-{qbt}) node[gate, minimum height={l / tscale * 100:.4f}mm] {{\\tiny {gate_formatted}}};\n'

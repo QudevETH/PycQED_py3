@@ -7,6 +7,7 @@ import numpy as np
 import scipy as sp
 from pycqed.measurement.waveform_control import pulse
 import logging
+from scipy.interpolate import interp1d
 
 log = logging.getLogger(__name__)
 
@@ -362,8 +363,9 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
             `len(lengths) == len(channels)`.
         amplitudes (list of list of float): The amplitudes of all pulse
             segments. The shape must match that of `lengths`.
-        gaussian_filter_sigma (float): The width of the gaussian filter sigma
-            of the pulse.
+        gaussian_filter_sigma (float or list of float): The width of the
+            gaussian filter sigma of the pulse. If this is a list, indicates
+            a value for each channel in self.channels.
         codeword (int or 'no_codeword'): The codeword that the pulse belongs in.
             Defaults to 'no_codeword'.
     """
@@ -406,14 +408,19 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
         idx = self.channels.index(channel)
         wave = np.zeros_like(t)
 
-        if self.gaussian_filter_sigma > 0:
-            timescale = 1 / (np.sqrt(2) * self.gaussian_filter_sigma)
+        if isinstance(self.gaussian_filter_sigma, list):
+            gaussian_filter_sigma = self.gaussian_filter_sigma[idx]
+        else:
+            gaussian_filter_sigma = self.gaussian_filter_sigma
+
+        if gaussian_filter_sigma > 0:
+            timescale = 1 / (np.sqrt(2) * gaussian_filter_sigma)
         else:
             timescale = 0
 
         for seg_len, seg_amp in zip(self.lengths[idx], self.amplitudes[idx]):
             t1 = t0 + seg_len
-            if self.gaussian_filter_sigma > 0:
+            if gaussian_filter_sigma > 0:
                 wave += 0.5 * seg_amp * (sp.special.erf((t - t0) * timescale) -
                                          sp.special.erf((t - t1) * timescale))
             else:
@@ -439,13 +446,39 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
     """
     A zero-area pulse shape that allows to control the accumulated phase when
     transitioning from the first pulse half to the second pulse half, by having
-    an additional, low-amplitude segment between the two main pulse-halves.
+    an additional, low-amplitude segment between the two main pulse halves.
 
-    The zero area is achieved by adjusting the lengths for the intermediate
-    pulses.
+    Pulse shape:
+            1
+        ---------
+       |         | 2
+       |          ---
+       |             | 3
+       |              ---
+       |                 |
+    ---                  |                  ---
+                         |                 |
+                          ---              |
+                           3 |             |
+                              ---          |
+                               2 |         |
+                                  ---------
+                                      1
+    1: Main pulse halves
+        - amplitude: amplitude +/- amplitude_offset
+        - duration: pulse_length/2 + offset correction to keep a zero area
+    2: (Optional) secondary transition step
+        - amplitude: trans2_amplitude
+        - duration: trans2_length
+    3: Mid-pulse step (typically used to set the cphase via its time integral)
+        - amplitude: trans_amplitude
+        - duration: trans_length
+    This pulse is meant to be played on the flux channels of two
+    qubits in parallel; attributes ending with '2' refer to the second channel.
     """
     def __init__(self, element_name, name='NZTC pulse', **kw):
         super().__init__(name, element_name, **kw)
+        self._update_cphase()
         self._update_lengths_amps_channels()
 
 
@@ -465,12 +498,117 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'trans_amplitude': 0,
             'trans_amplitude2': 0,
             'trans_length': 0,
+            'trans2_amplitude': 0,
+            'trans2_amplitude2': 0,
+            'trans2_length': 0,
             'buffer_length_start': 30e-9,
             'buffer_length_end': 30e-9,
             'channel_relative_delay': 0,
             'gaussian_filter_sigma': 1e-9,
+            'cphase': None,
+            'cphase_calib_dict': None,
+            'cphase_ctrl_params': ['trans_amplitude2', 'basis_rotation'],
+            'fixed_pulse_length': None,
         }
         return params
+
+    @staticmethod
+    def calc_cphase_params(cphase, cphase_calib_dict, cphase_ctrl_params,
+                           target=0, interpolation_type='quadratic'):
+        """Calculates pulse parameters to implement a given conditional phase
+
+        During the calibration, cphase_calib_dict is measured:
+            {main_control_param: [...], 'cphase': [...], 'other_param': [...]}
+        The goal of this function is to interpolate between all parameter
+        values, for a given value of cphase.
+
+        Args:
+            cphase (float): Value of the conditional phase
+            cphase_calib_dict (dict): Calibration dictionary, containing
+                measurement values of the cphase as a function of the control
+                parameters of the pulse
+            cphase_ctrl_params (list): List of pulse parameter names that
+                should be interpolated to set the conditional phase
+            target (float): Since there might be several sets of parameters
+                yielding a given cphase (if the calibrated range is wide
+                enough to cover strictly more than 360 degrees), we choose
+                one main parameter, cphase_ctrl_params[0], and select the value
+                of this parameter which is closest to 'target'
+
+        Returns:
+            Dict of control parameters names and values
+        """
+
+        # Currently cphase_calib_dict = {'param': [values...] ...} including
+        # 'cphase', all with the same number of points.
+        # Could be extended to instead hold tuples of (cphase_vals,
+        # param_vals) for each param, to allow different granularities
+        param_vals = {}
+
+        cp_list = cphase_calib_dict['cphase']
+        # The calib dict may be calibrated over a range > 360 degrees.
+        # Here, get all possible values of cphase, contained in the range of
+        # the calib dict, which match the requested cphase modulo 360 degrees.
+        # e.g. if cp_list = [273.2, ..., 1215.1] and cphase = 10.0, then
+        # possible_cp = [370.,  730., 1090.] are all the ways one can
+        # implement 10 degrees within the range of the calibration dict.
+        # In details: min(cp_list)+(cphase-min(cp_list))%360 is the minimum
+        # value of cp_list which is equal to cphase modulo 360. We then
+        # recover all values equal to cphase modulo 360 by doing an arange.
+        # Note that the arange does not include the upper bound, but this
+        # would mean missing one possible cphase only if
+        # max(cp_list) = cphase (mod. 360).
+        possible_cp = np.arange(min(cp_list)+(cphase-min(cp_list))%360,
+                                 max(cp_list), 360)
+        # Get values of the main control parameter which yield these cphases
+        f = interp1d(cp_list, cphase_calib_dict[cphase_ctrl_params[0]],
+                     kind=interpolation_type)
+        possible_param_vals = f(possible_cp)
+        # Choose the value of the main control param closest to target
+        id_closest = np.abs(possible_param_vals-target).argmin()
+        # This is the cphase (not modulo 360) from the calibration dict which:
+        # - equals the requested cphase modulo 360 degrees
+        # - requires a value of the main control parameter closest to target
+        cphase = possible_cp[id_closest]
+
+        # Now that we have chosen one point of the calib dict, interpolate all
+        # control params needed to reach this value of cphase
+        for param_name in cphase_ctrl_params:
+            cal_data = cphase_calib_dict[param_name]
+            if isinstance(cal_data, dict):  # for 'basis_rotation'
+                param_vals_dict = {}
+                for qbn, qbn_data in cal_data.items():
+                    f = interp1d(cp_list, qbn_data, kind=interpolation_type)
+                    param_vals_dict.update({qbn: float(f(cphase))})
+                param_vals[param_name] = param_vals_dict
+            else:
+                f = interp1d(cp_list, cal_data, kind=interpolation_type)
+                param_vals[param_name] = float(f(cphase))
+        return param_vals
+
+    def _update_cphase(self, cphase=None):
+        """Update cphase parameter and update all pulse parameters accordingly.
+
+        Args:
+            cphase (float, optional): Will be set as pulse parameter. If None
+                the currently set cphase parameter is used to compute all pulse
+                parameters. Defaults to None.
+        """
+        if cphase is not None:
+            self.cphase = cphase
+        if not (self.cphase is None
+                or hasattr(self.cphase, '_is_parametric_value')):
+            param_dict = \
+                self.calc_cphase_params(
+                    cphase=self.cphase,
+                    cphase_calib_dict=self.cphase_calib_dict,
+                    cphase_ctrl_params=self.cphase_ctrl_params,
+                    # target the main control param to be close to the
+                    # currently calibrated value for the CZ180 gate
+                    target=getattr(self, self.cphase_ctrl_params[0])
+                )
+            for param_name, param_value in param_dict.items():
+                setattr(self, param_name, param_value)
 
     def _update_lengths_amps_channels(self):
         self.channels = [c for c in [self.channel, self.channel2]
@@ -483,16 +621,19 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         self.amplitudes = []
 
         # add amplitudes and lengths for gate pulses
-        for ma, ta, ao, d, c in [
+        for ma, ta, ao, d, c, ia in [
             (self.amplitude, self.trans_amplitude, self.amplitude_offset,
-             -self.channel_relative_delay/2, self.channel),
+             -self.channel_relative_delay/2, self.channel,
+             self.trans2_amplitude),
             (self.amplitude2, self.trans_amplitude2, self.amplitude_offset2,
-             self.channel_relative_delay/2, self.channel2),
+             self.channel_relative_delay/2, self.channel2,
+             self.trans2_amplitude2),
         ]:
             if c is None:
                 continue
             ml = self.pulse_length
             tl = self.trans_length
+            il = self.trans2_length
             bs = self.buffer_length_start
             be = self.buffer_length_end
             ca0 = ma + ao
@@ -500,9 +641,16 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             cl0 = max(-(ml * ao) / ca0, 0) if ca0 else 0
             cl1 = max(-(ml * ao) / ca1, 0) if ca1 else 0
 
-            self.amplitudes.append([0, ma + ao, ta, -ta, -ma + ao, 0])
-            self.lengths.append([bs + d - cl0, cl0 + ml / 2, tl / 2,
-                                 tl / 2, ml / 2 + cl1, be - d - cl1])
+            self.amplitudes.append([0, ma + ao, ia, ta, -ta, -ia, -ma + ao, 0])
+            self.lengths.append([bs + d - cl0, cl0 + ml / 2, il, tl / 2,
+                                 tl / 2, il, ml / 2 + cl1, be - d - cl1])
+            if self.fixed_pulse_length is not None:
+                current_length = np.sum(self.lengths[-1])
+                difference = self.fixed_pulse_length - current_length
+                # lengths[-1] is the set of lengths created at this iteration
+                # of the for loop
+                self.lengths[-1][0] += difference / 2
+                self.lengths[-1][-1] += difference / 2
         while len(self.lengths) < len(self.channels):
             self.lengths += [[]]
         while len(self.amplitudes) < len(self.channels):
