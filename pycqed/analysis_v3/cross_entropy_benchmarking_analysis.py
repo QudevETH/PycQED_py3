@@ -1101,27 +1101,6 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
     s1qb = params.get('subtract_1qb_errors', True)
 
     try:
-        # FIXME This try except is used since the fits saved in the data dict
-        #  have slightly different formats if the data has been extracted
-        #  from a previous analysis run saved in an hdf file. This should be
-        #  fixed in the data extraction instead.
-        e1_1 = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'].best_values['e']
-        e1_2 = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'].best_values['e']
-        e1_1e = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'].params[
-            'e'].stderr
-        e1_2e = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'].params[
-            'e'].stderr
-    except AttributeError:
-        e1_1 = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'][
-            'params']['e']['value']
-        e1_2 = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'][
-            'params']['e']['value']
-        e1_1e = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'][
-            'params']['e']['stderr']
-        e1_2e = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'][
-            'params']['e']['stderr']
-
-    try:
         e2 = data_dict2[container][f'fit_res_{metric}'].best_values['e']
         e2e = data_dict2[container][f'fit_res_{metric}'].params['e'].stderr
     except AttributeError:
@@ -1130,8 +1109,33 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
         e2e = data_dict2[container][f'fit_res_{metric}'][
             'params']['e']['stderr']
 
-    cz_error_rate = {'value': e2 - s1qb * (e1_1 + e1_2),
-                     'stderr': np.sqrt(e2e**2 + s1qb*e1_1e**2 + s1qb*e1_2e**2)}
+    if s1qb:
+        try:
+            # FIXME This try except is used since the fits saved in the data
+            #  dict have slightly different formats if the data has been
+            #  extracted from a previous analysis run saved in an hdf file.
+            #  This should be fixed in the data extraction instead.
+            e1_1 = data_dict1[meas_obj_names[0]][
+                f'fit_res_{metric}'].best_values['e']
+            e1_2 = data_dict1[meas_obj_names[1]][
+                f'fit_res_{metric}'].best_values['e']
+            e1_1e = data_dict1[meas_obj_names[0]][
+                f'fit_res_{metric}'].params['e'].stderr
+            e1_2e = data_dict1[meas_obj_names[1]][
+                f'fit_res_{metric}'].params['e'].stderr
+        except AttributeError:
+            e1_1 = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'][
+                'params']['e']['value']
+            e1_2 = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'][
+                'params']['e']['value']
+            e1_1e = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'][
+                'params']['e']['stderr']
+            e1_2e = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'][
+                'params']['e']['stderr']
+        e2 = e2 - e1_1 - e1_2
+        e2e = np.sqrt(e2e**2 + e1_1e**2 + e1_2e**2)
+
+    cz_error_rate = {'value': e2, 'stderr': e2e}
     if type == 'pauli':
         pass
     elif type == 'average':
