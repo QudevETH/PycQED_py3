@@ -3840,14 +3840,14 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 abs(self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay'])
                 for i in range(len(self.metadata['amplitudes']))])
             pdd['T2_err'][qb] = np.array([
-                abs(self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr)
+                self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr
                 for i in range(len(self.metadata['amplitudes']))])
 
             pdd['mask'][qb] = []
             for i in range(len(self.metadata['amplitudes'])):
                 try:
-                    if self.fit_res[f'exp_fit_{qb}_{i}']\
-                                            .params['decay'].stderr >= 1e-5:
+                    s = self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr
+                    if s is None or s >= 1e-5:
                         pdd['mask'][qb].append(False)
                     else:
                         pdd['mask'][qb].append(True)
@@ -3886,6 +3886,8 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
             colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
+                if not mask[i]:
+                    continue
                 color = colormap(i/(len(self.metadata['amplitudes'])-1))
                 label = f'exp_fit_{qb}_{i}'
                 freqs = self.get_param_value('frequencies')
