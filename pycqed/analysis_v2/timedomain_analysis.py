@@ -3941,7 +3941,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'plotfn': self.plot_line,
                     'xvals': self.metadata['phases'],
                     'linestyle': '',
-                    'yvals': pdd['data_reshaped_no_cp'][qb][i,:],
+                    'yvals': pdd['data_reshaped_no_cp'][qb][i,:].T,
                     'color': color,
                     'setlabel': f'freq={fitid:.4f}' if freqs
                                         else f'amp={fitid:.4f}',
