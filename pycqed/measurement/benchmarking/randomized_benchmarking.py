@@ -807,7 +807,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         # E.g. to set every second gate to a CZ180
         # This is a string so it stays readable in the experiment metadata
         cphases_modifier = eval(
-            gate_modifs.get('cphases_modifier', 'lambda x: x'))
+            gate_modifs.get('cphases_modifier', 'lambda cphases: cphases'))
 
         list_all_seqs = []
         for _ in range(nr_seqs):
@@ -815,7 +815,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             lis = []
             for length in cycles:
                 cphases = np.random.uniform(0, 1, length) * 360 \
-                    if cphase=='randomized' else np.repeat([cphase], length)
+                    if cphase == 'randomized' else np.repeat([cphase], length)
                 cphases = cphases_modifier(cphases)
                 gates = [
                     s_gates[1] + " qb_1",
