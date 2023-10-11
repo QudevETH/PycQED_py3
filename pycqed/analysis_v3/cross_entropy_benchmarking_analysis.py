@@ -1153,6 +1153,8 @@ def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
     """
     TODO
     """
+    if timestamp is None:
+        return {}
     try:
         dd1 = hlp_mod.read_analysis_file(timestamp, raise_errors=True)
         # raise FileNotFoundError
