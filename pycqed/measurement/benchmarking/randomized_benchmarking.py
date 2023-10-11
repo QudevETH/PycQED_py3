@@ -824,7 +824,8 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                     s_gates[2] + "s qb_2",
                 ]
                 last_1qb_gates = [s_gates[2], s_gates[2]]
-                gates += [f"CZ{cphases[0]} qb_1 qb_2"]*n_gates
+                if cphases[0] != 'nogate':
+                    gates += [f"CZ{cphases[0]} qb_1 qb_2"]*n_gates
                 gates += append_gates
                 if length > 0:
                     for i in range(1, length):
@@ -845,7 +846,8 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                         gates.append(new_1qb_gates[1] + simultaneous + " qb_2")
                         last_1qb_gates = new_1qb_gates
 
-                        gates += [f"CZ{cphases[i]} qb_1 qb_2"]*n_gates
+                        if cphases[i] != 'nogate':
+                            gates += [f"CZ{cphases[i]} qb_1 qb_2"]*n_gates
                         gates += append_gates
                 lis.append(gates)
             list_all_seqs.append(lis)
