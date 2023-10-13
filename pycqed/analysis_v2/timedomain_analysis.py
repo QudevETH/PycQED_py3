@@ -9622,7 +9622,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         for t, v in timers_dicts.items():
             self.timers[t] = tm_mod.Timer(name=t, **v)
 
-        self._extract_nr_averages_shots()
+        self.extract_nr_runs_per_segment()
 
         # Extract and build raw measurement timer
         self.timers['BareMeasurement'] = self.bare_measurement_timer(
@@ -9728,7 +9728,12 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         return tm
 
-    def _extract_nr_averages_shots(self):
+    def extract_nr_runs_per_segment(self):
+        """Extracts the total number of times each segment has been measured
+
+        Sets self.nr_averages and self.nr_shots, by extracting them either
+        from the metadata (see self.get_param_value), or from the options_dict .
+        """
         try:
             sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
             if sa is not None and sa != 1:
@@ -9852,6 +9857,10 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             self.proc_data_dict["segment_durations"] = \
                 {ck:d for ck, d in zip(ckpts, segment_durations)}
 
+            # Typically nr_shots = 1 for an averaged measurement, and
+            # nr_averages = 1 for a single-shot measurement, so the total
+            # number of runs is their product. This assumes that both were
+            # passed in the hdf file by the detector function.
             tot_secs = np.sum(segment_durations) * nr_averages * nr_shots
             return tot_secs
         except Exception as e:
