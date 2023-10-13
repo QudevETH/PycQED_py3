@@ -9744,13 +9744,17 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # in case some of the attributes do not exist
             pass
         #TODO Currently does not support soft averages or soft repetitions
-        self.nr_averages = self.get_param_value(
-            'nr_averages', self._extract_param_from_det('nr_averages'))
-        if self.nr_averages is None:
-            raise ValueError('Could not extract nr_averages from hdf file.'
-                             'Please specify "nr_averages" in options_dict.')
-        self.nr_shots = self.get_param_value(
-            'nr_shots', self._extract_param_from_det('nr_shots', 1))
+        for param in ['nr_averages', 'nr_shots']:
+            val = self.get_param_value(
+                param, self._extract_param_from_det(param))
+            if val is None:
+                # Note that both nr_averages and nr_shots are required,
+                # see self.bare_experiment_time.
+                raise ValueError(
+                    f'Could not extract "{param}" from hdf file. Please make '
+                    f'sure that your measurement stores it (or pass it '
+                    f'via the options_dict).')
+            setattr(self, param, val)
 
     def _extract_param_from_det(self, param, default=None):
         det_metadata = self.metadata.get("Detector Metadata", None)
