@@ -1090,7 +1090,7 @@ average_error_from_pauli_error = lambda pauli_err, d: pauli_err / (1 + 1/d)
 
 
 def calculate_cz_error(data_dict1, data_dict2, **params):
-    timestamp = data_dict1['timestamps'][0]
+    timestamp = data_dict2['timestamps'][0]
     meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict1, **params)
     if meas_obj_names is None:
         meas_obj_names = hlp_mod.get_param_from_metadata_group(
