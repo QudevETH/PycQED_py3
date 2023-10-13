@@ -140,8 +140,7 @@ class BaseDataAnalysis(object):
         try:
             # set error-handling behavior
             self.raise_exceptions = raise_exceptions
-            # set container for data_files and config files
-            self.data_files = []
+            # set container for config files
             self.config_files = setman.SettingsManager()
 
             # initialize an empty dict to store results of analysis
@@ -228,17 +227,6 @@ class BaseDataAnalysis(object):
             else:
                 log.error("Unhandled error during init of analysis!")
                 log.error(traceback.format_exc())
-
-    def open_files(self):
-        # open data files
-        h5mode = self.options_dict.get('h5mode', 'r')
-        self.data_files = []
-        for ts in self.timestamps:
-            self.data_files += [a_tools.open_hdf_file(ts, mode=h5mode)]
-
-    def close_files(self):
-        # close data and config files
-        a_tools.close_files(self.data_files)
 
     def run_analysis(self):
         """
@@ -510,14 +498,13 @@ class BaseDataAnalysis(object):
             timestamps = self.timestamps
         raw_data_dict = []
         try:
-            self.open_files()
-            for timestamp in timestamps:
+            h5mode = self.options_dict.get('h5mode', 'r')
+            # open all hdf-files
+            data_files = [a_tools.open_hdf_file(ts, mode=h5mode)
+                          for ts in timestamps]
+            for timestamp, data_file in zip(timestamps, data_files):
                 raw_data_dict_ts = dict()
-                # FIXME do we even need this index logic? Why not using a dict
-                #  with timestamp as the key?
                 folder = a_tools.get_folder(timestamp)
-                file_idx = self.timestamps.index(timestamp)
-                data_file = self.data_files[file_idx]
 
                 # add special items
                 if 'timestamp' in params_dict:
@@ -574,10 +561,9 @@ class BaseDataAnalysis(object):
                             np.double(raw_data_dict_ts[par_name])
             raw_data_dict.append(raw_data_dict_ts)
         except Exception as e:
-            self.close_files()
+            a_tools.close_files(data_files)
             raise e
-        self.close_files()
-
+        a_tools.close_files(data_files)
         if len(raw_data_dict) == 1:
             raw_data_dict = raw_data_dict[0]
         return raw_data_dict
