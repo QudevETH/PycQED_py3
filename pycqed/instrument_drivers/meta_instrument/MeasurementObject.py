@@ -91,7 +91,8 @@ class MeasurementObject(Instrument):
             # of configure_mod_freqs the next time that method gets called.
             docstring='Acquitision frequency. If None, ro_freq is used.')
         self.add_parameter(
-            'acq_mod_freq', initial_value=None,
+            'acq_mod_freq', initial_value=None, unit='Hz',
+            label='acquisition intermediate frequency',
             set_parser=lambda f, s=self: s.configure_mod_freqs(
                 'acq', acq_mod_freq=f) if f is not None else f,
             # Separate treatment as for acq_freq (see above)
