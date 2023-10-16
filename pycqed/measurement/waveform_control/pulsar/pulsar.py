@@ -170,7 +170,9 @@ class PulsarAWGInterface(ABC):
                                        "for making sure the master AWG has "
                                        "only one waveform per segment. If "
                                        "split: Split all pulses into individual "
-                                       "elements. TODO extend (dict)")
+                                       "elements. Can alternatively be a dict "
+                                       "indexed by trigger groups, see "
+                                       f"parameter {name}_trigger_groups.")
         pulsar.add_parameter(f"{name}_granularity",
                              get_cmd=lambda: self.GRANULARITY)
         pulsar.add_parameter(f"{name}_element_start_granularity",
