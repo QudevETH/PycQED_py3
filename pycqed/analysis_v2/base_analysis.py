@@ -33,7 +33,6 @@ import copy
 import traceback
 import logging
 log = logging.getLogger(__name__)
-log.addHandler(logging.StreamHandler())
 
 class BaseDataAnalysis(object):
     """
@@ -251,13 +250,20 @@ class BaseDataAnalysis(object):
                 self.save_fit_results()  # saving the fit results
                 self.analyze_fit_results()  # analyzing the fit results
 
-
             delegate_plotting = self.check_plotting_delegation()
             if not delegate_plotting:
-                self.prepare_plots()  # specify default plots
-                if not self.extract_only:
-                    # make the plots
-                    self.plot(key_list='auto')
+                # Update the rcParams to ensure repeatable plots independently
+                # of the rcParams set in the current python kernel.
+                # Only if options_dict['set_default_plot_formatting'] is True.
+                set_default_plot_formatting = self.options_dict.get(
+                    'set_default_plot_formatting', True)
+                params = self.get_default_plot_params(set_pars=False) if \
+                    set_default_plot_formatting else None
+                with mpl.rc_context(rc=params):
+                    self.prepare_plots()  # specify default plots
+                    if not self.extract_only:
+                        # make the plots
+                        self.plot(key_list='auto')
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
@@ -2349,6 +2355,17 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
         to partition the timestamps into groups to reconstruct the
         N-dimensional measurements.
         See MultiTWPA_SNR_Analysis for an example.
+
+        FIXME: Currently only works for NDimMultiTaskingExperiment, since it
+         relies on sweep_points stored in the task_list of each experiment to
+         reconstruct the individual N-dim sweep_points of each measurement
+         object. This should be fixed by instead relying on the
+         meas_obj_sweep_points_map and global sweep_points stored in the
+         experimental metadata. This requires either fixing
+         NDimMultiTaskingExperiment to correctly store the entire
+         N-dimensional sweep_points in the metadata, or extending this
+         analysis to automatically reconstruct the N-dim sweep_points from
+         the 2-D sweep_points of all individual experiments.
 
         """
 
