@@ -9732,7 +9732,11 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         """Extracts the total number of times each segment has been measured
 
         Sets self.nr_averages and self.nr_shots, by extracting them either
-        from the metadata (see self.get_param_value), or from the options_dict .
+        from the metadata (see self.get_param_value), or from the options_dict.
+        Note that for average readout, the number of averages is > 1 in the
+        detectors while nr_shots is =1 (and vice-versa for single-shot readout).
+        Warning: this code currently does not support soft averages or soft
+        repetitions /!\
         """
         try:
             sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
@@ -9830,6 +9834,10 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         Note: unlike bare_measurement_time,
             for now this function always accounts for the full experiment time
             even if the measurement was interrupted.
+        Note: Typically nr_shots = 1 for an averaged measurement, and
+            nr_averages = 1 for a single-shot measurement, so the total
+            number of runs is their product. This assumes that both were
+            passed in the hdf file by the detector function.
         Args:
             nr_averages: Number of averages for each segment. Defaults to
                 self.nr_averages
@@ -9857,10 +9865,6 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             self.proc_data_dict["segment_durations"] = \
                 {ck:d for ck, d in zip(ckpts, segment_durations)}
 
-            # Typically nr_shots = 1 for an averaged measurement, and
-            # nr_averages = 1 for a single-shot measurement, so the total
-            # number of runs is their product. This assumes that both were
-            # passed in the hdf file by the detector function.
             tot_secs = np.sum(segment_durations) * nr_averages * nr_shots
             return tot_secs
         except Exception as e:
