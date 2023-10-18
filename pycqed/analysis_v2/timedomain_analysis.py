@@ -9661,7 +9661,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         for t, v in timers_dicts.items():
             self.timers[t] = tm_mod.Timer(name=t, **v)
 
-        self.nr_averages = self._extract_nr_averages()
+        self.extract_nr_runs_per_segment()
 
         # Extract and build raw measurement timer
         self.timers['BareMeasurement'] = self.bare_measurement_timer(
@@ -9767,7 +9767,16 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         return tm
 
-    def _extract_nr_averages(self):
+    def extract_nr_runs_per_segment(self):
+        """Extracts the total number of times each segment has been measured
+
+        Sets self.nr_averages and self.nr_shots, by extracting them either
+        from the metadata (see self.get_param_value), or from the options_dict.
+        Note that for average readout, the number of averages is > 1 in the
+        detectors while nr_shots is =1 (and vice-versa for single-shot readout).
+        Warning: this code currently does not support soft averages or soft
+        repetitions /!\
+        """
         try:
             sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
             if sa is not None and sa != 1:
@@ -9783,21 +9792,32 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # in case some of the attributes do not exist
             pass
         #TODO Currently does not support soft averages or soft repetitions
+        for param in ['nr_averages', 'nr_shots']:
+            val = self.get_param_value(
+                param, self._extract_param_from_det(param))
+            if val is None:
+                # Note that both nr_averages and nr_shots are required,
+                # see self.bare_experiment_time.
+                raise ValueError(
+                    f'Could not extract "{param}" from hdf file. Please make '
+                    f'sure that your measurement stores it (or pass it '
+                    f'via the options_dict).')
+            setattr(self, param, val)
+
+    def _extract_param_from_det(self, param, default=None):
         det_metadata = self.metadata.get("Detector Metadata", None)
-        nr_averages = self.get_param_value('nr_averages', None)
-        if det_metadata is not None and nr_averages is None:
+        val = None
+        if det_metadata is not None:
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
-            nr_averages = det_metadata.get('nr_averages',
-                                           det_metadata.get('nr_shots', None))
-            if nr_averages is None:
+            val = det_metadata.get(param, None)
+            if val is None:
                 det = list(det_metadata.get('detectors', {}).values())[0]
-                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
-        if nr_averages is None:
-            raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
-                             'Please specify "nr_averages" in options_dict.')
-        return nr_averages
+                val = det.get(param, None)
+        if val is None:
+            val = default
+        return val
 
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
                               count_nan_measurements=False):
@@ -9825,7 +9845,14 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # No scaling needed, since all hsp are contained in one hardware run
             n_hsp = 1
         else:
+            # Note that the number of shots is already included in n_hsp
             n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+            prep_params = self.metadata['preparation_params']
+            if 'active' in prep_params['preparation_type']:
+                # If reset: n_hsp already includes the number of shots
+                # and the final readout is interleaved with n_reset readouts
+                n_resets = prep_params['reset_reps']
+                n_hsp = n_hsp // (1 + n_resets)
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]
@@ -9839,17 +9866,22 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
                                            nr_averages, perc_meas)
 
-    def bare_experiment_time(self, nr_averages=None):
+    def bare_experiment_time(self, nr_averages=None, nr_shots=None):
         """
         Computes the bare experiment time from the segments durations,
         which are extracted from the segment timers.
         Note: unlike bare_measurement_time,
             for now this function always accounts for the full experiment time
             even if the measurement was interrupted.
+        Note: Typically nr_shots = 1 for an averaged measurement, and
+            nr_averages = 1 for a single-shot measurement, so the total
+            number of runs is their product. This assumes that both were
+            passed in the hdf file by the detector function.
         Args:
-            nr_averages: Number of averages for each segment.
-                Defaults to self.nr_averages, which is extracted by
-                self._extract_nr_averages()
+            nr_averages: Number of averages for each segment. Defaults to
+                self.nr_averages
+            nr_shots: Number of shots for each segment. Defaults to
+                self.nr_shots
 
         Returns:
             Total experiment time (in seconds)
@@ -9857,6 +9889,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         if nr_averages is None:
             nr_averages = self.nr_averages
+        if nr_shots is None:
+            nr_shots = self.nr_shots
         try:
             # duration of segments are stored with the .dt checkpoint end
             ckpts = self.timers['Sequences'].find_keys('.dt',
@@ -9870,7 +9904,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             self.proc_data_dict["segment_durations"] = \
                 {ck:d for ck, d in zip(ckpts, segment_durations)}
 
-            tot_secs = np.sum(segment_durations) * nr_averages
+            tot_secs = np.sum(segment_durations) * nr_averages * nr_shots
             return tot_secs
         except Exception as e:
             log.error(f'Could not compute bare experiment time : {e}.'
