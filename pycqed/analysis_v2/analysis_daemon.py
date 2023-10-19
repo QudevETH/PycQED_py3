@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.analysis_v2 import base_analysis as ba
+
 
 class AnalysisDaemon:
     """
@@ -186,4 +188,5 @@ if __name__ == "__main__":
         a_tools.datadir = args.data_dir
     if args.t_start == "now":
         args.t_start = None
+    ba.BaseDataAnalysis.get_default_plot_params()
     ad = AnalysisDaemon(t_start=args.t_start)

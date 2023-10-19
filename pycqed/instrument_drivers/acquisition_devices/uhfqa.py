@@ -1,3 +1,4 @@
+import numpy as np
 from pycqed.instrument_drivers.acquisition_devices.base import \
     ZI_AcquisitionDevice
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
@@ -27,7 +28,7 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
     acq_length_granularity = 4
     n_acq_int_channels = 10
     acq_sampling_rate = 1.8e9
-    acq_weights_n_samples = 4097
+    acq_weights_n_samples = 4096
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
                      'int_avg': ['raw', 'digitized', 'lin_trans', 'raw_corr',
                                  'digitized_corr'],
@@ -195,8 +196,10 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                 f'sweep points, or the nr_shots.')
 
     def _acquisition_set_weight(self, channel, weight):
+        # The following copies(!) the weights and potentially appends zeros
+        # to wipe out the register content after the end of the weight vector.
+        weight = [np.concatenate([w, np.zeros(max(
+            0, self.acq_weights_n_samples - len(w)))]) for w in weight]
         self.set(f'qas_0_rotations_{channel[1]}', 1.0 - 1.0j)
-        self.set(f'qas_0_integration_weights_{channel[1]}_real',
-                 weight[0].copy())
-        self.set(f'qas_0_integration_weights_{channel[1]}_imag',
-                 weight[1].copy())
+        self.set(f'qas_0_integration_weights_{channel[1]}_real', weight[0])
+        self.set(f'qas_0_integration_weights_{channel[1]}_imag', weight[1])

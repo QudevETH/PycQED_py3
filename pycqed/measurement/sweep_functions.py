@@ -386,7 +386,7 @@ class multi_sweep_function(Soft_Sweep):
                              f'All sweep functions must have the same '
                              f'sweep_control.')
 
-        if isinstance(sweep_function, qcodes.Parameter):
+        if not isinstance(sweep_function, Sweep_function):
             sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
                 sweep_function
             )
@@ -449,7 +449,7 @@ class Transformed_Sweep(Soft_Sweep):
                  parameter_name=None,
                  unit=None):
         super().__init__()
-        if isinstance(sweep_function, qcodes.Parameter):
+        if not isinstance(sweep_function, Sweep_function):
             sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
                 sweep_function)
         if sweep_function.sweep_control != 'soft':
@@ -549,11 +549,11 @@ class MajorMinorSweep(Soft_Sweep):
 
         self.major_sweep_function = \
             mc_parameter_wrapper.wrap_par_to_swf(major_sweep_function) \
-                if isinstance(major_sweep_function, qcodes.Parameter) \
+                if not isinstance(major_sweep_function, Sweep_function) \
                 else major_sweep_function
         self.minor_sweep_function = \
             mc_parameter_wrapper.wrap_par_to_swf(minor_sweep_function) \
-                if isinstance(minor_sweep_function, qcodes.Parameter) \
+                if not isinstance(minor_sweep_function, Sweep_function) \
                 else minor_sweep_function
         if self.major_sweep_function.sweep_control != 'soft' or \
                 self.minor_sweep_function.sweep_control != 'soft':

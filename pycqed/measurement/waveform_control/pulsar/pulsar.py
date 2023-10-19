@@ -161,14 +161,18 @@ class PulsarAWGInterface(ABC):
                               if v else None), )
         pulsar.add_parameter(f"{name}_join_or_split_elements",
                              initial_value="default",
-                             vals=vals.Enum("default", "split", "ese"),
+                             vals=vals.MultiType(
+                                 vals.Enum("default", "split", "ese"),
+                                 vals.Dict()),
                              parameter_class=ManualParameter,
                              docstring="If ese: Group all the pulses on this "
                                        "AWG into a single element. Useful "
                                        "for making sure the master AWG has "
                                        "only one waveform per segment. If "
                                        "split: Split all pulses into individual "
-                                       "elements.")
+                                       "elements. Can alternatively be a dict "
+                                       "indexed by trigger groups, see "
+                                       f"parameter {name}_trigger_groups.")
         pulsar.add_parameter(f"{name}_granularity",
                              get_cmd=lambda: self.GRANULARITY)
         pulsar.add_parameter(f"{name}_element_start_granularity",
@@ -655,9 +659,9 @@ class Pulsar(Instrument):
         self._awgs_with_waveforms = set()
         self.channel_groups = {}
         self.num_channel_groups = {}
-        self.mcc_finalize_callbacks = {}
-        """A dict of methods which requires execution after multi-core 
-        compilation. Keys are AWG names, and values are methods to execute."""
+
+        self.multi_core_compilers = []
+        """Multi-core AWG bitstream compilers"""
 
         self._awgs_prequeried_state = False
 
@@ -969,6 +973,17 @@ class Pulsar(Instrument):
             group = self.get_trigger_group(ch)
             return enforce_single_element[group]
 
+    def get_join_or_split_elements(self, ch:str) -> bool:
+        awg = self.get_channel_awg(ch).name
+
+        join_or_split_elements = self.get(f"{awg}_join_or_split_elements")
+
+        if isinstance(join_or_split_elements, str):
+            return join_or_split_elements
+        else:
+            group = self.get_trigger_group(ch)
+            return join_or_split_elements[group]
+
     def clock(self, channel:str=None, awg:str=None):
         """Returns the clock rate of channel or AWG.
 
@@ -1088,22 +1103,6 @@ class Pulsar(Instrument):
         awg = self.find_instrument(self.get(ch + '_awg'))
         self.awg_interfaces[awg.name].sigout_on(ch, on)
 
-    def get_unique_mccs(self):
-        """
-        Returns list of unique multi_core_compiler instances from
-        PulsarAWGInterface._pulsar_interfaces.
-        """
-        return set([awg_int.multi_core_compiler
-                    for awg_int in self.awg_interfaces.values()
-                    if hasattr(awg_int, 'multi_core_compiler')])
-
-    def reset_active_awgs_mcc(self):
-        """
-        Resets the active awgs on the unique multi_core_compilers.
-        """
-        for mcc in self.get_unique_mccs():
-            mcc.reset_active_awgs()
-
     def program_awgs(self, sequence, awgs:Union[List[str], str]="all"):
         """Program the AWGs to play a sequence.
 
@@ -1129,7 +1128,8 @@ class Pulsar(Instrument):
         self.last_sequence = sequence
 
         # resets the parallel compilation active AWG list
-        self.reset_active_awgs_mcc()
+        for mcc in self.multi_core_compilers:
+            mcc.reset_upload_cache()
 
         if awgs == 'all':
             awgs = None  # default value for generate_waveforms_sequences
@@ -1172,7 +1172,8 @@ class Pulsar(Instrument):
                                  '{}_prepend_zeros',
                                  '{}_use_command_table',
                                  '{}_join_or_split_elements',
-                                 'prepend_zeros']
+                                 'prepend_zeros',
+                                 'use_mcc']
             # Some of the settings are specified for each generator AWG module.
             # We should check these parameters as well.
             generator_settings_to_check = [
@@ -1363,16 +1364,8 @@ class Pulsar(Instrument):
         if self.use_mcc():
             # Use parallel compilation and upload if the _awgs_with_waveforms
             # support it.
-            for mcc in self.get_unique_mccs():
-                if mcc is not None and len(mcc._awgs) > 0:
-                    mcc.wait_compile()
-                    mcc.upload()
-
-            # Finalize callbacks allow individual AWG interfaces to do final
-            # upload steps (e.g., uploading waveforms).
-            for awg, callback in self.mcc_finalize_callbacks.items():
-                if awg in self._awgs_with_waveforms:
-                    callback()
+            for mcc in self.multi_core_compilers:
+                mcc.execute_mcc()
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.

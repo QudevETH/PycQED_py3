@@ -37,7 +37,6 @@ import copy
 import traceback
 import logging
 log = logging.getLogger(__name__)
-log.addHandler(logging.StreamHandler())
 
 class BaseDataAnalysis(object):
     """
@@ -260,13 +259,20 @@ class BaseDataAnalysis(object):
                 self.save_fit_results()  # saving the fit results
                 self.analyze_fit_results()  # analyzing the fit results
 
-
             delegate_plotting = self.check_plotting_delegation()
             if not delegate_plotting:
-                self.prepare_plots()  # specify default plots
-                if not self.extract_only:
-                    # make the plots
-                    self.plot(key_list='auto')
+                # Update the rcParams to ensure repeatable plots independently
+                # of the rcParams set in the current python kernel.
+                # Only if options_dict['set_default_plot_formatting'] is True.
+                set_default_plot_formatting = self.options_dict.get(
+                    'set_default_plot_formatting', True)
+                params = self.get_default_plot_params(set_pars=False) if \
+                    set_default_plot_formatting else None
+                with mpl.rc_context(rc=params):
+                    self.prepare_plots()  # specify default plots
+                    if not self.extract_only:
+                        # make the plots
+                        self.plot(key_list='auto')
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
@@ -1655,6 +1661,7 @@ class BaseDataAnalysis(object):
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
+        plot_grid = pdict.get('grid', None)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         if pdict.get('color', False):
             plot_linekws['color'] = pdict.get('color')
@@ -1750,6 +1757,8 @@ class BaseDataAnalysis(object):
             axs.set_yscale(plot_yscale)
         if plot_xscale is not None:
             axs.set_xscale(plot_xscale)
+        if plot_grid:
+            axs.grid(True)
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -2448,6 +2457,17 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
         to partition the timestamps into groups to reconstruct the
         N-dimensional measurements.
         See MultiTWPA_SNR_Analysis for an example.
+
+        FIXME: Currently only works for NDimMultiTaskingExperiment, since it
+         relies on sweep_points stored in the task_list of each experiment to
+         reconstruct the individual N-dim sweep_points of each measurement
+         object. This should be fixed by instead relying on the
+         meas_obj_sweep_points_map and global sweep_points stored in the
+         experimental metadata. This requires either fixing
+         NDimMultiTaskingExperiment to correctly store the entire
+         N-dimensional sweep_points in the metadata, or extending this
+         analysis to automatically reconstruct the N-dim sweep_points from
+         the 2-D sweep_points of all individual experiments.
 
         """
 
