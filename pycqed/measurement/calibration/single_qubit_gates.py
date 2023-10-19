@@ -3314,6 +3314,11 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
      n_repetitions and amp_scalings. Miscalibrations will be signaled by an
      oscillation of the excited state probability around 50% with increasing N.
 
+    Note: this measurement is built with 2D sweep points (where the second
+     dimension possibly has length 1), and hence needs force_2D_sweep=True
+     (defaults to False in SingleQubitGateCalibExperiment) to correctly store
+     the data in a 2D format as well.
+
     Keyword args
         Can be used to provide keyword arguments to sweep_n_dim, autorun,
         and to the parent classes.
