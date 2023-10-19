@@ -197,3 +197,36 @@ def powerset(iterable):
     """
     s = list(iterable)
     return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
+
+
+def reinitialize_toolbar(toolbar: qt.NavigationToolbar2QT):
+    """Reinitializes values to ensure toolbar function after figure change.
+
+    Args:
+        toolbar: NavigationToolbar2QT object to reinitialize.
+    """
+    # upon changing the figure associated to the FigureCanvasQTAgg
+    # instance self.view, the zoom and pan tools of the toolbar can't be
+    # used to manipulate the figure unless the corresponding callback
+    # methods are reinitialized. Reinitialization of callback methods
+    # corresponds to the __init__ method of the FigureCanvasQTAgg class.
+    toolbar._id_press = toolbar.canvas.mpl_connect(
+        'button_press_event', toolbar._zoom_pan_handler)
+    toolbar._id_release = toolbar.canvas.mpl_connect(
+        'button_release_event', toolbar._zoom_pan_handler)
+    toolbar._id_drag = toolbar.canvas.mpl_connect(
+        'motion_notify_event', toolbar.mouse_move)
+    toolbar._pan_info = None
+    toolbar._zoom_info = None
+    toolbar.update()
+
+
+class TriggerResizeEventMixin:
+    """Mixin for `_trigger_resize_event()` function."""
+    def _trigger_resize_event(self):
+        """Manually resize the window to trigger resize event."""
+        # ugly hack to trigger a resize event (otherwise the figure in the
+        # canvas is not displayed properly)
+        size = self.size()
+        self.resize(self.width() + 1, self.height())
+        self.resize(size)

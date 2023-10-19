@@ -143,13 +143,36 @@ class AnalysisDaemon:
         job_file.write("".join(new_lines))
         job_file.close()
 
-    def run_job(self, job):
+    @staticmethod
+    def execute_job(job: str):
+        """Executes the job provided.
+
+        Args:
+            job: string of python code to be executed.
+
+        Returns:
+            Union[pycqed.analysis_v2.base_analysis.BaseDataAnalysis, None]:
+                analysis object reconstructed from `job` string or None.
+        """
+        analysis_object = None
+        _locals = locals() | {"analysis_object": analysis_object}
+        exec(job, globals(), _locals)
+        plt.close('all')
+        analysis_object = _locals["analysis_object"]
+        return analysis_object
+
+    def run_job(self, job: str):
+        """Tries to execute job and logs the errors.
+
+        Args:
+            job: string of python code to be executed.
+        """
         try:
-            exec(job)
-            plt.close('all')
+            AnalysisDaemon.execute_job(job)
         except Exception as e:
             log.error(f"Error in job: {job}:\n{e}")
             self.job_errs.append(traceback.format_exc())
+
 
 if __name__ == "__main__":
     import argparse

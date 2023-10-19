@@ -7,7 +7,7 @@ import time
 import h5py
 import datetime
 import numpy as np
-# used by compare_istrument_settings_timestamp():
+# used by compare_instrument_settings_timestamp():
 from numpy import array  # DO not remove;
 from copy import deepcopy
 from matplotlib.colors import LogNorm
@@ -19,6 +19,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import Bounds, LinearConstraint, minimize
 from pycqed.analysis.tools.plotting import *
 from matplotlib import cm
+from typing import Union
 
 latest_data_match_whole_words = False
 datadir = get_default_datadir()
@@ -59,6 +60,28 @@ def verify_timestamp(timestamp):
         raise Exception("Cannot interpret timestamp '%s'" % timestamp)
 
     return daystamp, tstamp
+
+
+def verify_daystamp(daystamp: str) -> str:
+    """Raises exception if `daystamp` is not in "YYYYmmdd" ("%Y%m%d") format.
+
+    Args:
+        daystamp: str daystamp string in "YYYYmmdd" ("%Y%m%d") format.
+
+    Raises:
+        ValueError: if passed `daystamp` is not a valid date in "YYYYmmdd"
+            ("%Y%m%d") format.
+
+    Returns:
+        str: passed daystamp.
+    """
+    try:
+        datetime.datetime.strptime(daystamp, "%Y%m%d")
+    except ValueError:
+        raise ValueError("Cannot interpret daystamp '%s'. Daystamp must be in "
+                        "\"YYYYmmdd\" (\"%%Y%%m%%d\") format." %
+                        daystamp)
+    return daystamp
 
 
 def is_older(ts0, ts1, or_equal=False):
@@ -102,6 +125,31 @@ def get_last_n_timestamps(n, contains=''):
                                           older_than=timestamps[-1],
                                           return_timestamp=True)[0])
     return timestamps
+
+
+def get_all_daystamps(data_folder: str) -> list:
+    """Gets all folders named with a valid daystamp in the provided
+    `data_folder`.
+
+    Args:
+        data_folder: path to a folder from which to get folders with
+            daystamps for names.
+
+    Returns:
+        list: list of daystamp strings. For example ['20221215',
+            '20230420'] or None.
+    """
+    day_directories = []
+    subdirectories = os.listdir(data_folder)
+    if len(subdirectories) == 0:
+        log.warning('No data found in datadir')
+        return []
+    for directory in subdirectories:
+        try:
+            day_directories.append(verify_daystamp(directory))
+        except ValueError:
+            pass
+    return day_directories
 
 
 def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
@@ -1907,3 +1955,33 @@ def copy_data_in_range(timestamp_start, timestamp_end=None, source_dir=None,
                                  folder=source_dir, **kw)
     copy_data(ts, source_dir, target_dir=target_dir,
               delete_if_exists=delete_if_exists)
+
+
+def get_timestamps_by_daystamp(daystamp: str) -> tuple:
+    """Gets all experiment paths for a given `daystamp`.
+
+    Args:
+        `daystamp`: string of format "YYYYmmdd" ("%Y%m%d").
+
+    Raises:
+        ValueError: if passed `daystamp` is not a valid date in "YYYYmmdd"
+            ("%Y%m%d") format.
+
+    Returns:
+        tuple: array of timestamp/experiment paths in a given `daystamp`
+            folder. For example: [
+                'C:\\Users\\Name\\pycqed\\data\\20231002\\133806_Rabi_ge_qb1',
+                'C:\\Users\\Name\\pycqed\\data\\20231002\\133824_Rabi_ge_qb1qb2',
+                'C:\\Users\\Name\\pycqed\\data\\20231002\\133847_Rabi_ge_qb1qb2'
+            ]
+    """
+    verify_daystamp(daystamp)
+    timestamps = latest_data(
+        newer_than=(daystamp + '_000000'),
+        older_than=(daystamp + '_235959'),
+        or_equal=True,
+        return_all=True,
+        return_timestamp=True,
+        return_path=True
+    )
+    return timestamps

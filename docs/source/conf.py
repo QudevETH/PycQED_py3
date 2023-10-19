@@ -76,7 +76,8 @@ autosummary_generate = True
 
 autodoc_default_options = {
     "undoc-members": True, # Include members with no docstrings
-    "special-members": "__init__", # Include following dunder functions in docs
+    # Include following dunder functions in docs
+    "special-members": "__init__, __iter__, __next__"
 }
 
 

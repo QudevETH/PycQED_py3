@@ -1,5 +1,5 @@
 """
-File containing the BaseDataAnalyis class.
+File containing the BaseDataAnalysis class.
 """
 from inspect import signature
 import os
@@ -9,10 +9,13 @@ import copy
 from collections import OrderedDict
 from inspect import signature
 import numbers
+from matplotlib.axes import Axes
 from matplotlib import pyplot as plt
 import matplotlib as mpl
+from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.analysis_v2.analysis_daemon import AnalysisDaemon
 from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
     write_warning_message_to_text_file)
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
@@ -21,6 +24,7 @@ from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
     flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from typing import Tuple, Union
 import datetime
 import json
 import lmfit
@@ -120,6 +124,7 @@ class BaseDataAnalysis(object):
                                 should be loaded. Note: data_file_path has
                                 priority, i.e. if this argument is given time
                                 stamps are ignored.
+                                FIXME: `data_file_path` not used anymore
         :param close_figs: Close the figure (do not display)
         :param options_dict: available options are:
                                 -'presentation_mode'
@@ -397,6 +402,43 @@ class BaseDataAnalysis(object):
             return eval(s)
         except Exception:
             return s
+
+    @staticmethod
+    def get_analysis_object_from_hdf5_file_path(data_file_path: str):
+        """Reconstructs `BaseDataAnalysis` object from HDF5 file.
+
+        Checks the HDF5 file for `BaseDataAnalysis.JOB` value under
+        'Analysis' group and if it exists, gets analysis object from the value.
+
+        Args:
+            data_file_path: string path to an HDF5 file.
+
+        Raises:
+            LookupError: when the file does not contain `BaseDataAnalysis.JOB`
+                value under 'Analysis'.
+
+        Returns:
+            Union[BaseDataAnalysis, None]: analysis object reconstructed from
+                the job string saved in the HDF5 file or None.
+        """
+        with h5py.File(data_file_path, 'r') as data_file:
+            try:
+                job = BaseDataAnalysis.get_hdf_datafile_param_value(
+                    data_file['Analysis'],
+                    BaseDataAnalysis.JOB
+                )
+            except Exception as exception:
+                raise LookupError(f"File '{data_file_path}' contains no "
+                                  f"{BaseDataAnalysis.JOB} in 'Analysis' group")
+
+        # HACK: assuming the job is saved with "extract_only=False",
+        # "'save_figs': True" and "'close_figs': True" (which should be the
+        # case), changing them speeds up the process significantly
+        job = job.replace("extract_only=False", "extract_only=True")
+        job = job.replace("'save_figs': True", "'save_figs': False")
+        job = job.replace("'close_figs': True", "'close_figs': False")
+
+        return AnalysisDaemon.execute_job(job)
 
     def get_hdf_param_value(self, path_to_group, attribute, hdf_file_index=0):
         """
@@ -1169,14 +1211,18 @@ class BaseDataAnalysis(object):
         return dic
 
     def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
-             transparent_background=None, no_label=False):
-        """
-        Plot figures defined in self.plot_dict.
+             transparent_background=None, no_label=False, fig_id=None):
+        """Plot figures defined in self.plot_dict.
+
         Args.
-            key_list (list): list of keys in self.plot_dicts
-            axs_dict (dict): will be used to define self.axs
-            presentation_mode (bool): whether to prepare for presentation
-            no_label (bool): whether figure should have a label
+            key_list (list): list of keys in self.plot_dicts.
+            axs_dict (dict): will be used to define self.axs.
+            presentation_mode (bool): whether to prepare for presentation.
+            transparent_background (bool): if true, figures will have
+                transparent background.
+            no_label (bool): whether figure should have a label.
+            fig_id (str): figure id. If passed, only specified figure will be
+                plotted.
         """
         self._prepare_for_plot(key_list, axs_dict, no_label)
         if presentation_mode is None:
@@ -1186,7 +1232,30 @@ class BaseDataAnalysis(object):
         if presentation_mode:
             self.plot_for_presentation(self.key_list, transparent_background)
         else:
-            self._plot(self.key_list, transparent_background)
+            self._plot(self.key_list, transparent_background, fig_id=fig_id)
+
+    def plot_for_gui(self, fig_id: str) \
+            -> Tuple[Figure, Union[Axes, np.array]]:
+        """Prepares and creates a plot for GUI and returns one figure and axes.
+
+        Args:
+            fig_id: figure id from `self.plot_dicts` to be plotted.
+
+        Returns:
+            tuple: with `Figure` and either `Axes` or `np.array` with
+                multiple `Axes`.
+        """
+        self._prepare_for_plot(key_list='auto')
+        self._plot(key_list=self.key_list, fig_id=fig_id)
+
+        figure = None
+        if isinstance(self.axs[fig_id], Axes):
+            figure = self.axs[fig_id].get_figure()
+        elif isinstance(self.axs[fig_id], np.ndarray):
+            for axis in self.axs[fig_id]:
+                figure = axis.get_figure()
+
+        return figure, self.axs[fig_id]
 
     def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
         """
@@ -1253,15 +1322,23 @@ class BaseDataAnalysis(object):
                 if isinstance(i := pdict.get(ak + '_id'), int):
                     pdict[ak] = self.axs[pdict['fig_id']].flatten()[i]
 
-    def _plot(self, key_list, transparent_background=False):
-        """
-        Creates the figures specified by key_list.
+    def _plot(self, key_list, transparent_background=False, fig_id=None):
+        """Creates the figures specified by key_list.
 
-        Args.
-            key_list (list): list of keys in self.plot_dicts
+        Args:
+            key_list (list): list of keys in self.plot_dicts.
+            transparent_background (bool): if true, figures will have
+                transparent background.
+            fig_id (str): figure id. If passed only specified figure will be
+                plotted.
+
+        Raises:
+            ValueError: in case the used plot function is not valid.
         """
         for key in key_list:
             pdict = self.plot_dicts[key]
+            if fig_id and pdict['fig_id'] != fig_id:
+                continue
             plot_touching = pdict.get('touching', False)
 
             if type(pdict['plotfn']) is str:
@@ -1312,6 +1389,18 @@ class BaseDataAnalysis(object):
 
         self.format_datetime_xaxes(key_list)
         self.add_to_plots(key_list=key_list)
+
+    def get_fig_ids(self) -> np.ndarray:
+        """Gets unique figure ids from `self.plot_dicts`.
+
+        Returns:
+            np.ndarray: array of unique figure ids.
+        """
+        fig_ids = []
+        for name, item in self.plot_dicts.items():
+            fig_ids.append(item['fig_id'])
+
+        return np.unique(fig_ids)
 
     def add_to_plots(self, key_list=None):
         pass
