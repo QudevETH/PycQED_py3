@@ -484,12 +484,18 @@ class BaseDataAnalysis(object):
 
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):
+        # Instrument settings are specified with the SETTINGS_PREFIX due to
+        # legacy reasons (used to be stored in the group Instrument settings
+        # inside the hdf-file). This prefix is used to distinguish instrument
+        # settings from other parameters, e.g. metadata.
         SETTINGS_PREFIX = 'Instrument settings.'
+        # Extracting all instrument settings from the params_dict
         settings_keys = [k for k, v in params_dict.items() if
                          v.startswith(SETTINGS_PREFIX)]
         settings_dict = {k: v[len(SETTINGS_PREFIX):] for k, v in
                          params_dict.items()
                          if k in settings_keys}
+        # extracting the remaining parameters
         params_dict = {k: v for k, v in params_dict.items()
                          if k not in settings_keys}
         if timestamps is None:

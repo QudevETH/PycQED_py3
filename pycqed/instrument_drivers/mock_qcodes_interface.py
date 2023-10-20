@@ -233,6 +233,7 @@ class Instrument(DelegateAttributes):
             raise ParameterNotFoundError(path_to_param)
 
     def add_classname(self, name: str):
+        # Not existing in qcodes.instrument.base.instrument.
         self.classname = name
 
     def add_submodule(self, name: str, submod: Instrument):
@@ -251,6 +252,7 @@ class Instrument(DelegateAttributes):
     def update(self, instrument: Instrument):
         """
         Updates self with attributes from a given instrument object.
+        Not existing in qcodes.instrument.base.instrument.
         Args:
             instrument (Instrument): Instrument which attributes should be added
                 to self.
@@ -349,6 +351,7 @@ class Station(DelegateAttributes):
         """
         Tries to find parameter value for given string. Returns custom
         ParameterNotFoundError if an attribute error occurs.
+        Not existing in qcodes.station
         Args:
             path_to_param (str): path to parameter in form
                 %inst_name%.%param_name%
@@ -365,6 +368,7 @@ class Station(DelegateAttributes):
     def update(self, station):
         """
         Updates the station with instruments and parameters from another station
+        Not existing in qcodes.instrument.base.instrument.
         Args:
             station(Station): Station which is included to self
         """

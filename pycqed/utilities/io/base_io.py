@@ -12,7 +12,9 @@ from pycqed.instrument_drivers.mock_qcodes_interface import Parameter, \
 
 logger = logging.getLogger(__name__)
 
-# constant file extensions, ordered in most desired file type
+# file extensions used to dump and load files. Extensions are ordered beginning
+# with the filetype which should be favoured when opening a file with the same
+# filenames.
 file_extensions = {
     'msgpack': '.msg', 'msgpack_comp': '.msgc', 'pickle': '.pickle',
     'pickle_comp': '.picklec', 'hdf5': '.hdf5'}
@@ -86,8 +88,8 @@ class Loader:
 
     def __init__(self, timestamp: str = None, filepath: str = None, **kwargs):
         """
-        Initialization of generic loader. Should not be initialized but rather
-        its heritages.
+        Initialization of generic loader. Not intended to be used as standalone
+        instance, but only via its children classes.
         Args:
             timestamp (str): timestamp of the file in the format. Supports all
                 formats from a_tools.get_folder
@@ -131,6 +133,9 @@ class Loader:
                         file_id=None):
         """
         Returns the file format of a given timestamp.
+        If several files with the same filename but different file extensions
+        are found, the file with the extension first mentioned in
+        file_extensions will be considered.
         Args:
             timestamp (str): timestamp of the file
             folder (str): folder of the file if different from a_tools.datadir
