@@ -456,9 +456,6 @@ class BaseDataAnalysis(object):
 
         """
         return_dict = {}
-        # The following line opens the HDF file if settings are stored
-        # in the HDF file. Does it hurt if the hdf file is already opened by
-        # self.open_files()?
 
         self.config_files.update_station(timestamp, list(params_dict.values()))
         for save_par, file_par in params_dict.items():
@@ -497,12 +494,12 @@ class BaseDataAnalysis(object):
         if timestamps is None:
             timestamps = self.timestamps
         raw_data_dict = []
-        try:
-            h5mode = self.options_dict.get('h5mode', 'r')
-            # open all hdf-files
-            data_files = [a_tools.open_hdf_file(ts, mode=h5mode)
-                          for ts in timestamps]
-            for timestamp, data_file in zip(timestamps, data_files):
+        h5mode = self.options_dict.get('h5mode', 'r')
+        for timestamp in timestamps:
+            # open current hdf-file
+            data_file = a_tools.open_hdf_file(timestamp, mode=h5mode)
+            try:
+
                 raw_data_dict_ts = dict()
                 folder = a_tools.get_folder(timestamp)
 
@@ -549,21 +546,22 @@ class BaseDataAnalysis(object):
                     else:
                         raw_data_dict_ts[save_par] = \
                             hdf5_io.read_from_hdf5(file_par, data_file)
-
+                a_tools.close_files([data_file])
                 # add settings
                 raw_data_dict_ts.update(
-                    self.get_instrument_settings_from_timestamp(
+                    self.get_instrument_settings(
                         settings_dict, timestamp))
 
                 for par_name in raw_data_dict_ts:
                     if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
-            raw_data_dict.append(raw_data_dict_ts)
-        except Exception as e:
-            a_tools.close_files(data_files)
-            raise e
-        a_tools.close_files(data_files)
+                raw_data_dict.append(raw_data_dict_ts)
+
+            except Exception as e:
+                a_tools.close_files([data_file])
+                raise e
+
         if len(raw_data_dict) == 1:
             raw_data_dict = raw_data_dict[0]
         return raw_data_dict
