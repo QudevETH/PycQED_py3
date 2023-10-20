@@ -118,7 +118,6 @@ class Loader:
         from pycqed.analysis import analysis_toolbox as a_tools
         if self.timestamp is not None:
             self.folder = a_tools.get_folder(self.timestamp,
-                                         suppress_printing=False,
                                          **kwargs)
         else:
             self.folder = kwargs.get('folder', None)
