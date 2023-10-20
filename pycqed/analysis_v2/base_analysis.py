@@ -436,10 +436,11 @@ class BaseDataAnalysis(object):
                                                          1])
         return recursive_search(param_name, search_attrs[0])
 
-    def get_instrument_settings_from_timestamp(self, params_dict, timestamp):
+    def get_instrument_settings(self, params_dict, timestamp=-1):
         """
         Returns a dictionary with the parameters loaded from the settings
-        specified by the timestamp. If the parameters are not in the station,
+        specified by the timestamp (default is the first timestamp in
+        self.timestamps). If the parameters are not in the station,
         it tries to update the station, see mock_qcodes_interface.Station
         Args:
             params_dict (dict): Dictionary of the form
