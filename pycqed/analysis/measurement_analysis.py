@@ -8,7 +8,7 @@ import matplotlib.lines as mlines
 import matplotlib
 from matplotlib import pyplot as plt
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.analysis_v3.helper_functions import get_instr_param_from_file
+import pycqed.utilities.settings_manager as setman
 from pycqed.analysis import fitting_models as fit_mods
 import pycqed.utilities.io.hdf5 as h5d
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
@@ -4933,10 +4933,11 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
                                            unit=self.sweep_unit[0])[0]
         if analyze_ef:
             try:
-                old_freq = get_instr_param_from_file(
-                    self.qb_name, 'ge_freq', self.timestamp)
-                old_freq_ef = get_instr_param_from_file(
-                    self.qb_name, 'ef_freq', self.timestamp)
+                sm = setman.SettingsManager()
+                old_freq = sm.get_parameter(self.qb_name + '.ge_freq',
+                                            self.timestamp)
+                old_freq_ef = sm.get_parameter(self.qb_name + '.ef_freq',
+                                               self.timestamp)
                 label = 'f0={:.5f} GHz ' \
                         '\nold f0={:.5f} GHz' \
                         '\nkappa0={:.4f} MHz' \
