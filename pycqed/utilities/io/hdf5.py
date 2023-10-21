@@ -249,7 +249,7 @@ def read_from_hdf5(path_to_key_or_attribute, h5_group):
             group_name = '/'.join(path_to_key_or_attribute.split('.'))
             param_value = read_dict_from_hdf5({}, h5_group[group_name])
         except KeyError:
-            raise ParameterNotFoundError(path_to_key_or_attribute)
+            raise ParameterNotFoundError(path_to_key_or_attribute, h5_group)
     return param_value
 
 
@@ -277,7 +277,7 @@ def read_attribute_from_hdf5(path_to_attribute, h5_group):
             param_value = decode_attribute_value(
                     group.attrs[par_name])
     except KeyError:
-        raise ParameterNotFoundError(path_to_attribute)
+        raise ParameterNotFoundError(path_to_attribute, h5_group)
 
     return param_value
 

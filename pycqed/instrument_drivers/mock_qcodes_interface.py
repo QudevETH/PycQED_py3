@@ -9,9 +9,11 @@ logger = logging.getLogger(__name__)
 
 
 class ParameterNotFoundError(Exception):
-    def __init__(self, parameter):
+    def __init__(self, parameter, object=None):
         self.parameter = parameter
         self.message = f'Parameter {parameter} not found'
+        if object is not None:
+            self.message += f' inside {object}'
         super().__init__(self.message)
 
 
@@ -230,7 +232,7 @@ class Instrument(DelegateAttributes):
             return _get_value_from_parameter(self, path_to_param)
         except KeyError or NotImplementedError:
             # errors thrown by helper function _get_value_from_parameter
-            raise ParameterNotFoundError(path_to_param)
+            raise ParameterNotFoundError(path_to_param, self.name)
 
     def add_classname(self, name: str):
         # Not existing in qcodes.instrument.base.instrument.
@@ -363,7 +365,8 @@ class Station(DelegateAttributes):
             return _get_value_from_parameter(self, path_to_param)
         except KeyError or NotImplementedError:
             # errors thrown by helper function _get_value_from_parameter
-            raise ParameterNotFoundError(path_to_param)
+            raise ParameterNotFoundError(path_to_param,
+                                         f"Station {self.timestamp}")
 
     def update(self, station):
         """
