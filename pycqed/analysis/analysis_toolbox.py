@@ -439,7 +439,7 @@ def _compare_instrument_settings_groups(sets_a, sets_b, name_a, name_b,
 
 def compare_instrument_settings(a, b, folder=None, instruments='all',
                                 output='print'):
-    """Compare instrument settings from two config files.
+    """Compare instrument settings from two hdf files.
 
     Args:
         a (str, obj): first hdf file identified by a timestamp or by giving an
@@ -463,32 +463,33 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
                 'files. Please use the settings manager '
                 '(pycqed.utilitities.settings_manager.SettingsManager) and the'
                 'function compare_stations().')
+    h5mode = 'r'
     files_to_close = []
     try:
         if isinstance(a, str):
-            file_a = open_config_file(folder=get_folder(a, folder=folder))
+            h5filepath = measurement_filename(get_folder(a, folder=folder))
+            file_a = h5py.File(h5filepath, h5mode)
             files_to_close += [file_a]
         else:
-            file_a = a.data_file['Instrument settings']
+            file_a = a.data_file
             a = getattr(a, 'timestamp', 'file a').replace('/', '_')
         if isinstance(b, str):
-            file_b = open_config_file(folder=get_folder(b, folder=folder))
+            h5filepath = measurement_filename(get_folder(b, folder=folder))
+            file_b = h5py.File(h5filepath, h5mode)
             files_to_close += [file_b]
         else:
-            file_b = b.data_file['Instrument settings']
+            file_b = b.data_file
             b = getattr(b, 'timestamp', 'file b').replace('/', '_')
-
-        sets_a = file_a
-        sets_b = file_b
+        sets_a = file_a['Instrument settings']
+        sets_b = file_b['Instrument settings']
 
         msg, diff = _compare_instrument_settings_groups(
             sets_a, sets_b, a, b, instruments=instruments,
             verbose=(output == 'print'))
-        close_files(files_to_close)
     except Exception:
-        close_files(files_to_close)
+        for f in files_to_close:
+            f.close()
         raise
-
     if output == 'str':
         return msg
     elif output == 'dict':
