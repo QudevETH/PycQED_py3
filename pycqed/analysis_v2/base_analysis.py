@@ -2326,8 +2326,8 @@ class BaseDataAnalysis(object):
         """
         Returns all instrument names of a given class
         """
-        instruments = \
-            list(self.config_files.stations[file_index].components.values())
+        instruments = self.config_files.get_instrument_objects(
+            timestamp=file_index)
         dev_names = []
         for instrument in instruments:
             if instrument.classname == instr_class:

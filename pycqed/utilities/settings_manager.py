@@ -170,6 +170,19 @@ class SettingsManager:
             # Exception will be raised here if update was not helpful
             return self.stations[timestamp].get(path_to_param)
 
+    def get_instrument_objects(self, timestamp=-1):
+        """
+        Returns a list of Instrument objects which are assigned to the station
+        with a given timestamp.
+        Args:
+            timestamp(str, int): timestamp or index of the station. Default -1
+                refers to the last station added to self.stations.
+
+        Returns: List of Instrument objects.
+
+        """
+        return list(self.stations[timestamp].components.values())
+
     def spawn_snapshot_viewer(self, timestamp, new_process=False):
         """
         Opens a gui window to display the snapshot of the given station.0

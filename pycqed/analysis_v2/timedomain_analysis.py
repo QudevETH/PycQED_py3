@@ -25,7 +25,7 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
-from pycqed.analysis_v3.helper_functions import get_qb_channel_map_from_file
+import pycqed.analysis_v3.helper_functions as hlp_mod
 import logging
 
 from pycqed.utilities import math
@@ -468,7 +468,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     value_names = value_names
                 if 'w' in value_names[0]:
                     # FIXME: avoid dependency ana_v2 - ana_v3
-                    self.channel_map = get_qb_channel_map_from_file(
+                    self.channel_map = hlp_mod.get_qb_channel_map_from_file(
                         self.qb_names, value_names=value_names,
                         file_path=self.raw_data_dict['folder'])
                 else:
@@ -7770,7 +7770,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 value_names = value_names
             if 'w' in value_names[0]:
                 # FIXME: avoid dependency ana_v2 - ana_v3
-                self.channel_map = get_qb_channel_map_from_file(
+                self.channel_map = hlp_mod.get_qb_channel_map_from_file(
                     self.qb_names, value_names=value_names,
                     file_path=self.raw_data_dict['folder'])
             else:
