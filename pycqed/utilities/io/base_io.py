@@ -61,20 +61,6 @@ class Dumper:
         if not os.path.isdir(self.folder):
             os.makedirs(self.folder)
 
-    def rdg_to_dict(self, raw_dict: dict):
-        # helper function to convert Relative_Delay_Graph type to dict
-        from pycqed.instrument_drivers.meta_instrument.device \
-            import RelativeDelayGraph
-        new_snap = {}
-        for key, item in raw_dict.items():
-            if isinstance(item, dict):
-                new_snap[key] = self.rdg_to_dict(item)
-            elif isinstance(item, RelativeDelayGraph):
-                new_snap[key] = item._reld
-            else:
-                new_snap[key] = item
-        return new_snap
-
     @staticmethod
     def compress_file(file):
         import blosc2
