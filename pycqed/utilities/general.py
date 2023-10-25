@@ -180,7 +180,7 @@ def load_settings(instrument,
     '''
     from numpy import array  # DO not remove. Used in eval(array(...))
     from collections import OrderedDict  # DO NOT remove. Used in eval()
-    from pycqed.utilities.settings_manager import get_station_from_file
+    from pycqed.utilities import settings_manager as setman
     if folder is None:
         folder_specified = False
     else:
@@ -204,7 +204,8 @@ def load_settings(instrument,
             print('Folder used: {}'.format(folder))
 
         try:
-            station = get_station_from_file(folder=folder)
+            station = setman.get_station_from_file(folder=folder,
+                                                   param_path=[instrument_name])
             ins_loaded = station.components[instrument_name]
 
             if verbose:

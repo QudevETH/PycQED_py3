@@ -225,13 +225,18 @@ class Loader:
         Returns a station build from a snapshot. This snapshot is loaded from
         a file using self.get_snapshot() and the timestamp given by the
         initialization of the Loader object.
+        Args:
+            param_path (list(str)): List of paths to the parameter or instrument
+                which should be loaded from the file. For files which are not
+                HDF5, the entire file will be loaded into the station regardless
+                of param_path.
         Returns (Station): station build from the snapshot.
         """
         if param_path is not None:
-            logger.warning("For files which are not HDF5, the entire file will"
-                           " be loaded in to the station regardless of "
-                           "param_path.")
-        station = Station(timestamp=self.timestamp)
+            # For files which are not HDF5, the entire file will be loaded into
+            # the station regardless of param_path.
+            pass
+        station = mqcodes.Station(timestamp=self.timestamp)
         snap = self.get_snapshot()
         for inst_name, inst_dict in snap['instruments'].items():
             inst = self.load_instrument(inst_name, inst_dict)
