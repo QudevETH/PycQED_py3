@@ -80,11 +80,12 @@ class MsgLoader(Loader):
     def load_parameter(self, param_name, param_value):
         """
         Creates a mock qcodes parameter object from the name and value given as
-        input. If the value is a tuple, it will be converted to a list.
-        (Same for the entry 'value' in the dictionary)
-        This is because msgpack deserializes all list and tuple objects as
-        tuples (these objects are indistinguishable for msgpack) but some qcodes
-         parameters need lists as input (e.g. device.qb_names).
+        input. If the value is a (nested) tuple, it will be converted to a
+        (nested) list.
+        (Same for the entry 'value' if param_value is a dictionary).
+        This is needed, because msgpack deserializes all list and tuple objects
+        as tuples (these objects are indistinguishable for msgpack) but some
+        qcodes parameters need lists as input (e.g. device.qb_names).
         Args:
             param_name (str): Name of the parameter.
             param_value (dict, obj): Value of the parameter.
@@ -92,10 +93,15 @@ class MsgLoader(Loader):
         Returns: mock_qcodes_interface.Parameter object
 
         """
+        def convert_tuple_to_list(tp):
+            # converts recursively a nested tuple into a nested list
+            return list(convert_tuple_to_list(t) for t in tp) \
+                if isinstance(tp, tuple) else tp
         if isinstance(param_value, tuple):
-            param_value = list(param_value)
+            param_value = convert_tuple_to_list(param_value)
         elif isinstance(param_value, dict):
             if 'value' in param_value.keys():
                 if isinstance(param_value['value'], tuple):
-                    param_value['value'] = list(param_value['value'])
+                    param_value['value'] = \
+                        convert_tuple_to_list(param_value['value'])
         return mqcodes.Parameter(param_name, param_value)
