@@ -671,7 +671,8 @@ class QuDev_transmon(MeasurementObject):
             required bias. See note below.
         :param transition: (str, default: 'ge') the transition whose
             frequency should be calculated. Currently, only 'ge' is
-            implemented.
+            implemented for all models. The model 'transmon_res' also allows to
+            compute the 'ef' and 'gf' transition.
         :param model: (str, default: 'transmon_res') the model to use.
             Currently 'transmon_res' and 'approx' are supported. See
             docstring of self.calculate_frequency
@@ -698,9 +699,12 @@ class QuDev_transmon(MeasurementObject):
 
         if frequency is None:
             frequency = self.ge_freq()
-        if transition not in ['ge']:
+        if model != 'transmon_res' and transition not in ['ge']:
             raise NotImplementedError(
                 'Currently, only ge transition is implemented.')
+        elif transition not in ['ge', 'ef', 'gf']:
+            raise NotImplementedError(
+                'Currently, only the ge, ef & gf transitions are implemented.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
 
         if model in ['transmon', 'transmon_res']:
@@ -740,7 +744,8 @@ class QuDev_transmon(MeasurementObject):
             val = fit_mods.Qubit_freq_to_dac(frequency, **vfc, branch=branch)
         elif model == 'transmon_res':
             val = fit_mods.Qubit_freq_to_dac_res(
-                frequency, **vfc, branch=branch, single_branch=True)
+                frequency, **vfc, branch=branch, single_branch=True,
+                transition=transition)
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx' and"

@@ -5486,6 +5486,8 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     - fit_gaussian_decay (bool; default: True): whether to fit with a Gaussian
         envelope for the oscillations in addition to the exponential decay
         envelope.
+    Note: if cal points have been measured, the fit amplitude is fixed to 0.5,
+        otherwise it is optimised.
     """
     def extract_data(self):
         super().extract_data()
@@ -5514,8 +5516,14 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 guess_pars = fit_mods.exp_damp_osc_guess(
                     model=exp_damped_decay_mod, data=data, t=sweep_points,
                     n_guess=i+1)
-                guess_pars['amplitude'].vary = False
                 guess_pars['amplitude'].value = 0.5
+                if len(self.options_dict.get('cal_states', [])):
+                    # If there are cal states, we expect a 0.5 amplitude
+                    guess_pars['amplitude'].vary = False
+                else:
+                    # If no cal states, the oscillation amplitude in the IQ
+                    # plane depends on readout
+                    guess_pars['amplitude'].vary = True
                 guess_pars['frequency'].vary = True
                 guess_pars['tau'].vary = True
                 guess_pars['tau'].min = 0
@@ -6999,7 +7007,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 'plotsize': plotsize,
                 'xvals': phases,
                 'xlabel': xlabel,
-                'xunit': xunit,
+                'xunit': 'rad',  # overriden from deg to rad in process_data
                 'yvals': data,
                 'ylabel': self.get_yaxis_label(qbn, prob_label),
                 'yunit': '',
@@ -7163,22 +7171,22 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             'val': contrast, 'stderr': contrast_stderr}
 
                         # contrast_loss = (cos_amp_g - cos_amp_e)/ cos_amp_g
-                        population_loss = (amps[1::2] - amps[0::2])/amps[1::2]
+                        contrast_loss = (amps[1::2] - amps[0::2])/amps[1::2]
                         x = amps[1::2] - amps[0::2]
                         x_err = np.array(amps_errs[0::2]**2 + amps_errs[1::2]**2,
                                          dtype=np.float64)
                         y = amps[1::2]
                         y_err = amps_errs[1::2]
                         try:
-                            population_loss_stderrs = np.sqrt(np.array(
+                            contrast_loss_stderrs = np.sqrt(np.array(
                                 ((y * x_err) ** 2 + (x * y_err) ** 2) / (y ** 4),
                                 dtype=np.float64))
                         except:
-                            population_loss_stderrs = float("nan")
+                            contrast_loss_stderrs = float("nan")
                         self.proc_data_dict['analysis_params_dict'][
-                            f'population_loss_{qbn}'] = \
-                            {'val': population_loss,
-                             'stderr': population_loss_stderrs}
+                            f'contrast_loss_{qbn}'] = \
+                            {'val': contrast_loss,
+                             'stderr': contrast_loss_stderrs}
 
                 else:
                     self.proc_data_dict['analysis_params_dict'][
@@ -7279,10 +7287,10 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                    '{:.3f} $\\pm$ {:.3f}'.format(
                                        self.proc_data_dict[
                                            'analysis_params_dict'][
-                                           f'population_loss_{qbn}']['val'][0],
+                                           f'contrast_loss_{qbn}']['val'][0],
                                        self.proc_data_dict[
                                            'analysis_params_dict'][
-                                           f'population_loss_{qbn}'][
+                                           f'contrast_loss_{qbn}'][
                                            'stderr'][0])
                         pdap = self.proc_data_dict.get(
                             'percent_data_after_presel', False)
@@ -7488,6 +7496,45 @@ class DynamicPhaseAnalysis(MultiCZgate_Calib_Analysis):
         self.phase_key = 'dynamic_phase'
         self.legend_label_func = lambda qbn, row: 'no FP' \
             if row % 2 != 0 else 'with FP'
+
+
+class SingleRowChevronAnalysis(MultiQubit_TimeDomain_Analysis):
+    """Analysis for 1-dimensional Chevron QuantumExperiment
+
+    This is used for instance for the 1-D measurements performed as part of
+    CZ gate calibration
+    """
+
+    def extract_data(self):
+        # Necessary for data processing and plotting since sweep_points are 2D
+        self.default_options['TwoD'] = True
+        super().extract_data()
+
+    def prepare_projected_data_plots(self):
+        # FIXME this overrides the super method but does almost the same. One
+        #  should clean up the logic in the super to get rid of this, see below.
+        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
+            for k, v in dd.items():
+                # FIXME this plot is almost the same as in the super method,
+                #  but with plot_cal_points=True. The problem is that TwoD is
+                #  True, meaning that the super does not plot the cal points,
+                #  even though it correctly resolves that the data is really 1D.
+                self.prepare_projected_data_plot(
+                    fig_name=f'SingleRowChevron_{qbn}_{k}',
+                    data=v[0],
+                    data_axis_label=f'|{k[1:]}> state population',
+                    qb_name=qbn, TwoD=False, plot_cal_points=True,
+                )
+                # FIXME this is the same as the projected plot, just rescaled.
+                if k == 'pf':
+                    self.prepare_projected_data_plot(
+                        fig_name=f'Leakage_{qbn}',
+                        data=v[0],
+                        data_axis_label=f'|{k[1:]}> state population',
+                        qb_name=qbn, TwoD=False, plot_cal_points=True,
+                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
+                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
+                    )
 
 
 class CryoscopeAnalysis(DynamicPhaseAnalysis):
@@ -8698,6 +8745,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'ylabel': 'Population, $P$',
                                 'yunit': '',
                                 'yscale': self.get_param_value("yscale", "log"),
+                                'yrange': self.get_param_value("yrange", None),
+                                'grid': True,
                                 'setlabel': self._get_pop_label(state, k,
                                                                 not self._has_reset_pulses(seq_nr),
                                                                 ),
@@ -9631,7 +9680,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         for t, v in timers_dicts.items():
             self.timers[t] = tm_mod.Timer(name=t, **v)
 
-        self.nr_averages = self._extract_nr_averages()
+        self.extract_nr_runs_per_segment()
 
         # Extract and build raw measurement timer
         self.timers['BareMeasurement'] = self.bare_measurement_timer(
@@ -9737,7 +9786,16 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         return tm
 
-    def _extract_nr_averages(self):
+    def extract_nr_runs_per_segment(self):
+        """Extracts the total number of times each segment has been measured
+
+        Sets self.nr_averages and self.nr_shots, by extracting them either
+        from the metadata (see self.get_param_value), or from the options_dict.
+        Note that for average readout, the number of averages is > 1 in the
+        detectors while nr_shots is =1 (and vice-versa for single-shot readout).
+        Warning: this code currently does not support soft averages or soft
+        repetitions /!\
+        """
         try:
             sa = self.get_instrument_setting('MC.soft_avg')
             if sa is not None and sa != 1:
@@ -9753,21 +9811,32 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # in case some of the attributes do not exist
             pass
         #TODO Currently does not support soft averages or soft repetitions
+        for param in ['nr_averages', 'nr_shots']:
+            val = self.get_param_value(
+                param, self._extract_param_from_det(param))
+            if val is None:
+                # Note that both nr_averages and nr_shots are required,
+                # see self.bare_experiment_time.
+                raise ValueError(
+                    f'Could not extract "{param}" from hdf file. Please make '
+                    f'sure that your measurement stores it (or pass it '
+                    f'via the options_dict).')
+            setattr(self, param, val)
+
+    def _extract_param_from_det(self, param, default=None):
         det_metadata = self.metadata.get("Detector Metadata", None)
-        nr_averages = self.get_param_value('nr_averages', None)
-        if det_metadata is not None and nr_averages is None:
+        val = None
+        if det_metadata is not None:
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
-            nr_averages = det_metadata.get('nr_averages',
-                                           det_metadata.get('nr_shots', None))
-            if nr_averages is None:
+            val = det_metadata.get(param, None)
+            if val is None:
                 det = list(det_metadata.get('detectors', {}).values())[0]
-                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
-        if nr_averages is None:
-            raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
-                             'Please specify "nr_averages" in options_dict.')
-        return nr_averages
+                val = det.get(param, None)
+        if val is None:
+            val = default
+        return val
 
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
                               count_nan_measurements=False):
@@ -9795,7 +9864,14 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # No scaling needed, since all hsp are contained in one hardware run
             n_hsp = 1
         else:
+            # Note that the number of shots is already included in n_hsp
             n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+            prep_params = self.metadata['preparation_params']
+            if 'active' in prep_params['preparation_type']:
+                # If reset: n_hsp already includes the number of shots
+                # and the final readout is interleaved with n_reset readouts
+                n_resets = prep_params['reset_reps']
+                n_hsp = n_hsp // (1 + n_resets)
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]
@@ -9809,17 +9885,22 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
                                            nr_averages, perc_meas)
 
-    def bare_experiment_time(self, nr_averages=None):
+    def bare_experiment_time(self, nr_averages=None, nr_shots=None):
         """
         Computes the bare experiment time from the segments durations,
         which are extracted from the segment timers.
         Note: unlike bare_measurement_time,
             for now this function always accounts for the full experiment time
             even if the measurement was interrupted.
+        Note: Typically nr_shots = 1 for an averaged measurement, and
+            nr_averages = 1 for a single-shot measurement, so the total
+            number of runs is their product. This assumes that both were
+            passed in the hdf file by the detector function.
         Args:
-            nr_averages: Number of averages for each segment.
-                Defaults to self.nr_averages, which is extracted by
-                self._extract_nr_averages()
+            nr_averages: Number of averages for each segment. Defaults to
+                self.nr_averages
+            nr_shots: Number of shots for each segment. Defaults to
+                self.nr_shots
 
         Returns:
             Total experiment time (in seconds)
@@ -9827,6 +9908,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         if nr_averages is None:
             nr_averages = self.nr_averages
+        if nr_shots is None:
+            nr_shots = self.nr_shots
         try:
             # duration of segments are stored with the .dt checkpoint end
             ckpts = self.timers['Sequences'].find_keys('.dt',
@@ -9840,7 +9923,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             self.proc_data_dict["segment_durations"] = \
                 {ck:d for ck, d in zip(ckpts, segment_durations)}
 
-            tot_secs = np.sum(segment_durations) * nr_averages
+            tot_secs = np.sum(segment_durations) * nr_averages * nr_shots
             return tot_secs
         except Exception as e:
             log.error(f'Could not compute bare experiment time : {e}.'

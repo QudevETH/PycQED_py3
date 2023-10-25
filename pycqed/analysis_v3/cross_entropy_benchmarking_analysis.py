@@ -1035,7 +1035,6 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                              **params):
 
     plot_mod.get_default_plot_params()
-    fig, ax = plt.subplots()
     try:
         if legend_kw is None:
             legend_kw = {}
@@ -1131,6 +1130,7 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                 return_dict[mobjn] += [fit_res_f, fit_res_p]
 
             if plot:
+                fig, ax = plt.subplots()
                 if cz_error_rate is None:
                     cz_error_rate = hlp_mod.get_param(
                         f'{mobjn}.cz_error_rate', data_dict)
@@ -1225,7 +1225,11 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
 
         return return_dict
     except Exception:
-        plt.close(fig)
+        try:
+            plt.close(fig)
+        except NameError:
+            # fig does not exist: no need to close it
+            pass
         traceback.print_exc()
         return
 

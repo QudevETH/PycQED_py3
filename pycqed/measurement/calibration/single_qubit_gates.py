@@ -582,7 +582,7 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     break
                 qb_sweep_functions = []
                 for qb in qbs:
-                    mod_freq = self.get_pulse(f"X180 {qb.name}")[
+                    mod_freq = self.get_pulses(f"X180 {qb.name}")[0][
                         'mod_frequency']
                     pulsar = qb.instr_pulsar.get_instr()
                     # Pulsar assumes that the first channel in a pair is the
@@ -1093,7 +1093,7 @@ class Cryoscope(CalibBuilder):
             continuous_trunc_lengths = len(flux_pulse_dicts) * ['']
             for i, fpd in enumerate(flux_pulse_dicts):
                 pd_temp = {'element_name': 'dummy'}
-                pd_temp.update(self.get_pulse(fpd['op_code']))
+                pd_temp.update(self.get_pulses(fpd['op_code'])[0])
                 pulse_length = seg_mod.UnresolvedPulse(pd_temp).pulse_obj.length
                 if 'truncation_lengths' in fpd:
                     tr_lens = fpd['truncation_lengths']
@@ -1854,7 +1854,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
                 ge --> ''
                 ef --> '_ef'
                 fh --> '_fh'
-        :param prepend_pulse_dicts: (dict) prepended pulses, see
+        :param prepend_pulse_dicts: (list of dict) prepended pulses, see
             block_from_pulse_dicts
         :param kw: keyword arguments
         :return: list with prepended block and prepended transition block
@@ -2351,6 +2351,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
             For Ramsey measurement:
                 - transition frequency: tr_name_freq
                 - averaged dephasing time: T2_star_tr_name
+            In addition, for Ramsey ef measurement:
+                - anharmonicity
             For Echo measurement:
                 - dephasing time: T2_tr_name
 
@@ -3312,6 +3314,11 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
      n_repetitions and amp_scalings. Miscalibrations will be signaled by an
      oscillation of the excited state probability around 50% with increasing N.
 
+    Note: this measurement is built with 2D sweep points (where the second
+     dimension possibly has length 1), and hence needs force_2D_sweep=True
+     (defaults to False in SingleQubitGateCalibExperiment) to correctly store
+     the data in a 2D format as well.
+
     Keyword args
         Can be used to provide keyword arguments to sweep_n_dim, autorun,
         and to the parent classes.
@@ -3352,6 +3359,7 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
                              n_pulses_pi=n_pulses_pi,
                              fixed_scaling=fixed_scaling,
                              analysis_class=tda.NPulseAmplitudeCalibAnalysis,
+                             force_2D_sweep=kw.get('force_2D_sweep', True),
                              **kw)
         except Exception as x:
             self.exception = x
@@ -4147,8 +4155,8 @@ class ActiveReset(CalibBuilder):
             # perpare correspondance between integration unit (key)
             # and uhf channel; check if only one channel is asked for
             # (not asked for all qb channels and weight type uses only 1)
-            chs = {i: ch for i, ch in enumerate([
-                qb.get_acq_int_channels(2 if all_qb_channels else None)])}
+            chs = {i: ch[1] for i, ch in enumerate(
+                qb.get_acq_int_channels(2 if all_qb_channels else None))}
 
             #get clf thresholds
             if from_clf_params:
