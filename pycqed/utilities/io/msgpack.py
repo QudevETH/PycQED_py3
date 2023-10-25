@@ -1,4 +1,5 @@
 from pycqed.utilities.io.base_io import Dumper, file_extensions, Loader
+from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
 
 
 class MsgDumper(Dumper):
@@ -75,3 +76,26 @@ class MsgLoader(Loader):
             snap = msgpack.unpackb(
                 byte_data, use_list=False, strict_map_key=False)
         return snap
+
+    def load_parameter(self, param_name, param_value):
+        """
+        Creates a mock qcodes parameter object from the name and value given as
+        input. If the value is a tuple, it will be converted to a list.
+        (Same for the entry 'value' in the dictionary)
+        This is because msgpack deserializes all list and tuple objects as
+        tuples (these objects are indistinguishable for msgpack) but some qcodes
+         parameters need lists as input (e.g. device.qb_names).
+        Args:
+            param_name (str): Name of the parameter.
+            param_value (dict, obj): Value of the parameter.
+
+        Returns: mock_qcodes_interface.Parameter object
+
+        """
+        if isinstance(param_value, tuple):
+            param_value = list(param_value)
+        elif isinstance(param_value, dict):
+            if 'value' in param_value.keys():
+                if isinstance(param_value['value'], tuple):
+                    param_value['value'] = list(param_value['value'])
+        return mqcodes.Parameter(param_name, param_value)

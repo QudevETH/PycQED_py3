@@ -7,8 +7,7 @@ import time
 from pathlib import Path
 import logging
 
-from pycqed.instrument_drivers.mock_qcodes_interface import Parameter, \
-    Instrument, Station
+from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
 
 logger = logging.getLogger(__name__)
 
@@ -172,8 +171,7 @@ class Loader:
         raise KeyError(f"File extension '{file_extension}' not in "
                        f"standard form '{file_extensions}'")
 
-    @staticmethod
-    def load_instrument(inst_name, inst_dict):
+    def load_instrument(self, inst_name, inst_dict):
         """
         Loads instrument object from settings given as a dictionary.
         Args:
@@ -183,12 +181,11 @@ class Loader:
         Returns: Instrument object
 
         """
-        inst = Instrument(inst_name)
+        inst = mqcodes.Instrument(inst_name)
         # load parameters
         if 'parameters' in inst_dict:
-            for param_name, param_values in inst_dict['parameters'].items():
-                par = Parameter(param_name, param_values)
-                inst.add_parameter(par)
+            for param_name, param_value in inst_dict['parameters'].items():
+                inst.add_parameter(self.load_parameter(param_name, param_value))
         # load class name
         if '__class__' in inst_dict:
             inst.add_classname(inst_dict['__class__'])
@@ -197,10 +194,13 @@ class Loader:
             if k not in inst_dict:
                 continue
             for submod_name, submod_dict in inst_dict[k].items():
-                submod_inst = Loader.load_instrument(
+                submod_inst = self.load_instrument(
                     submod_name, submod_dict)
                 inst.add_submodule(submod_name, submod_inst)
         return inst
+
+    def load_parameter(self, param_name, param_value):
+        return mqcodes.Parameter(param_name, param_value)
 
     @staticmethod
     def load_component(comp_name, comp):
