@@ -27,7 +27,7 @@ class MsgDumper(Dumper):
         msg_np.patch()
 
         with open(self.filepath, mode=mode) as file:
-            packed = msgpack.packb(self.rdg_to_dict(self.data))
+            packed = msgpack.packb(self.data)
             if self.compression:
                 packed = Dumper.compress_file(packed)
             file.write(packed)

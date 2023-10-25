@@ -910,7 +910,7 @@ class Device(Instrument):
                 raise e
 
 
-class RelativeDelayGraph:
+class RelativeDelayGraph(dict):
     """
     Contains the information about relative delays of channels of the device.
 
@@ -935,13 +935,7 @@ class RelativeDelayGraph:
     """
 
     def __init__(self, reld=None):
-        if isinstance(reld, RelativeDelayGraph):
-            self._reld = deepcopy(reld._reld)
-        else:
-            if reld is None:
-                self._reld = {}
-            else:
-                self._reld = deepcopy(reld)
+        super().__init__({} if reld is None else reld)
 
     def increment_relative_delay(self, parent, child, delta_delay):
         """Increment a relative delay between two nodes.
@@ -956,10 +950,10 @@ class RelativeDelayGraph:
                 Measured delay difference between the parent and the
                 child node that will be added to the graph.
         """
-        if child in self._reld[parent]:
-            self._reld[parent][child] += delta_delay
-        elif parent in self._reld[child]:
-            self._reld[child][parent] -= delta_delay
+        if child in self[parent]:
+            self[parent][child] += delta_delay
+        elif parent in self[child]:
+            self[child][parent] -= delta_delay
         else:
             raise KeyError(f'No direct connection between {parent} and {child}'
                            ' in relative delay graph')
@@ -973,10 +967,10 @@ class RelativeDelayGraph:
         Returns:
             relative delay between parent and child
         """
-        if child in self._reld[parent]:
-            return self._reld[parent][child]
-        elif parent in self._reld[child]:
-            return -self._reld[child][parent]
+        if child in self[parent]:
+            return self[parent][child]
+        elif parent in self[child]:
+            return -self[child][parent]
         else:
             raise KeyError(f'No direct connection between {parent} and {child}'
                            f' in relative delay graph')
@@ -993,10 +987,10 @@ class RelativeDelayGraph:
             delay: float
                 Raw delay delay difference between parent and child node.
         """
-        if child in self._reld[parent]:
-            self._reld[parent][child] = delay
-        elif parent in self._reld[child]:
-            self._reld[child][parent] = -delay
+        if child in self[parent]:
+            self[parent][child] = delay
+        elif parent in self[child]:
+            self[child][parent] = -delay
         else:
             raise KeyError(f'No connection between {parent} and {child} in '
                             'relative delay graph')
@@ -1014,9 +1008,9 @@ class RelativeDelayGraph:
         min_delay = np.inf
         refs = set()
         children = set()
-        for ref in self._reld:
+        for ref in self:
             refs.add(ref)
-            for child in self._reld[ref]:
+            for child in self[ref]:
                 refs.add(child)
                 children.add(child)
         roots = refs - children
@@ -1025,8 +1019,8 @@ class RelativeDelayGraph:
 
         while len(roots) > 0:
             ref = list(roots)[0]
-            for child in self._reld.get(ref, []):
-                abs_delays[child] = abs_delays[ref] - self._reld[ref][child]
+            for child in self.get(ref, []):
+                abs_delays[child] = abs_delays[ref] - self[ref][child]
                 min_delay = min(min_delay, abs_delays[child])
                 roots.add(child)
             roots.remove(ref)
@@ -1035,6 +1029,3 @@ class RelativeDelayGraph:
             abs_delays[ref] -= min_delay
 
         return abs_delays
-
-    def __repr__(self):
-        return self._reld.__repr__()

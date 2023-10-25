@@ -52,7 +52,7 @@ class PickleDumper(Dumper):
         """
         import pickle
         with open(self.filepath, mode=mode) as file:
-            packed = pickle.dumps(self.rdg_to_dict(self.data))
+            packed = pickle.dumps(self.data)
             if self.compression:
                 packed = Dumper.compress_file(packed)
             file.write(packed)
