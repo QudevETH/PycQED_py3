@@ -3655,7 +3655,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 suffix = '_amp' if p == 0 else '_freq'
                 mask = pdd['mask'][qb]
                 xlabel = r'Flux pulse amplitude' if p == 0 else \
-                    r'Derived qubit frequency'
+                    r'Derived qubit ge frequency'
 
                 if self.do_fitting:
                     # Plot T1 vs flux pulse amplitude
@@ -3866,7 +3866,7 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.metadata['frequencies'][mask]
             xlabel = r'Flux pulse amplitude' if \
                 self.metadata['frequencies'] is None else \
-                r'Derived qubit frequency'
+                r'Derived qubit ge frequency'
             self.plot_dicts[label] = {
                 'plotfn': self.plot_line,
                 'linestyle': '-',
