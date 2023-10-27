@@ -111,9 +111,10 @@ class TWPAObject(MeasurementObject):
 
         # Prepare MWG states
         self.instr_pump.get_instr().pulsemod_state('Off')
-        self.instr_signal.get_instr().pulsemod_state('Off')
+        if not self.pulsed():
+            self.instr_signal.get_instr().pulsemod_state('Off')
+            self.instr_signal.get_instr().on()
         self.instr_lo.get_instr().pulsemod_state('Off')
-        self.instr_signal.get_instr().on()
         self.instr_lo.get_instr().on()
         # make sure that the lo frequency is set correctly
         self.signal_freq(self.signal_freq())
