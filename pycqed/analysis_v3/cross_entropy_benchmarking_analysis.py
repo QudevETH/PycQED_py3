@@ -666,6 +666,7 @@ def translate(info):
     else:  # C-phase gate
         gate_name = 'CPHASE'
         angle = 180 if info[0][2:]=='' else float(info[0][2:])
+        # FIXME minus sign to match inconsistent pycqed sign conventions
         angle = -angle*np.pi/180
     if int(info[1][3]) == 1:
         qubit = 0
