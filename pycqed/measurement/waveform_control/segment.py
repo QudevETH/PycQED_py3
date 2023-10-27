@@ -90,7 +90,7 @@ class Segment:
                 for allowed values.
             fast_mode (bool):  If True, copying pulses is avoided. In this
                 case, the pulse_pars_list passed to Segment will be modified
-                (default: False).
+                (default: False). See the docstring of CircuitBuilder.
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
@@ -101,7 +101,7 @@ class Segment:
         self.pulsar = ps.Pulsar.get_instance()
         self.unresolved_pulses = []
         self.resolved_pulses = []
-        self.destroyed = False
+        self.destroyed = False  # Used if fast_mode==True
         self.extra_pulses = []  # trigger and charge compensation pulses
         self.previous_pulse = None
         self._init_end_name = None  # to detect end of init block in self.add
@@ -313,7 +313,6 @@ class Segment:
                 'destroyed in a previous resolution in fast mode. The segment '
                 'cannot be resolved again.')
         if self.fast_mode:
-            # TODO document this effect of fast mode
             self.destroyed = True
         default_ese_element = f'default_ese_{self.name}'
         index = 1
@@ -938,6 +937,8 @@ class Segment:
             if self.pulsar.get('{}_charge_buildup_compensation'.format(c)):
                 compensation_chan.add(c)
 
+        # Caches {c: self.pulsar.get_trigger_group(c)}
+        # Note that groups is modified by self.tvals
         groups = {}
         # * generate the pulse_area dictionary containing for each channel
         #   that has to be compensated the sum of all pulse areas on that
@@ -1657,8 +1658,15 @@ class Segment:
                     self.PHASE_ROUNDING_DIGITS)
 
     def add_pulse_to_element(self, element, pulse):
-        """
-        TODO docstring
+        """Adds pulse to self.elements, and updates cached start and end times
+
+        Args:
+            element: element to which the pulse should be added
+            pulse: pulse object
+        In addition to adding pulse to self.elements[element], this method
+        caches the corresponding start and end times of the element, for the
+        corresponding trigger group. Start/end times are cached for each
+        combination (element, group) in self._element_start_end_raw.
         """
         self.elements[element].append(pulse)
         for el_group in self._element_start_end_raw:
@@ -1824,7 +1832,6 @@ class Segment:
                         awg=awg)
                     for channel in pulse_channels:
                         if self.fast_mode:
-                            # TODO document this effect of fast mode
                             t_vals_ch = tvals[channel]
                         else:
                             t_vals_ch = tvals[channel].copy()
@@ -2062,7 +2069,8 @@ class Segment:
         Returns a dictionary with channel names of the used channels in the
         element as keys and the tvals array for the channel as values.
 
-        TODO document modification of mutable
+        Note that groups is modified by this method. This allows to cache
+        groups for each channel, to limit calls to pulsar.get_trigger_group
         """
 
         tvals = {}
