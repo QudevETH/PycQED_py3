@@ -11669,7 +11669,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
                                 max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
                     )
 
-    def get_leakage_best_val(self, qbH_name, qbL_name, minimize=True,
+    def get_leakage_best_val(self, qbH_name, qbL_name, minimize='auto',
                              save_fig=True, show_fig=False, fig=None, ax=None,
                              xtransform=None, xlabel=None, colors=None):
 
