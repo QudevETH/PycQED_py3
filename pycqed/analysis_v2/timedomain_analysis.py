@@ -11672,6 +11672,28 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
     def get_leakage_best_val(self, qbH_name, qbL_name, minimize='auto',
                              save_fig=True, show_fig=False, fig=None, ax=None,
                              xtransform=None, xlabel=None, colors=None):
+        """Gets sweep parameter value corresponding to minimum/maximum leakage
+
+        Fits a second-order polynomial and extracts extremum qbH f population.
+        Args:
+            qbH_name, qbL_name: names of high- and low-frequency qubits
+            minimize (bool or 'auto'): Whether to explicitly look for a
+            minimum or maximum, by setting initial fit parameters to help the
+                fit converge. If minimize=='auto', this is guessed by comparing
+                the middle point to a linear fit through the end points.
+            save_fig: Whether to save the figure.
+            show_fig: Whether to show the figure.
+            fig: Optionally pass a figure on which to plot the data.
+            ax: Optional axis of fig on which to plot the data.
+            xtransform: Optional transformation to apply to sweep parameters in
+                the plot (e.g. change of units).
+            xlabel: x axis label. If None: extracted from the sweep points.
+            colors: Optionally set colours of the plot.
+        Returns:
+            Sweep parameter corresponding to the extremum of the fitted model.
+        Note that this method could be generalised to fit populations from
+            other states than the f state of the high-frequency qubit.
+        """
 
         if colors is None:
             colors = ['C0', 'C1']
@@ -11689,7 +11711,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             c = 1
         if xtransform:
             x = xtransform(x)
-        label = xlabel or self.sp.get_sweep_params_property('label')
+        xlabel = xlabel or self.sp.get_sweep_params_property('label')
         fact = 1
         while abs(max(x)) < 1e-3:
             x *= 1e3
@@ -11708,7 +11730,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
                 color=colors[1])
         ax.vlines(best_val, np.min(data), np.max(data), linestyle='--',
                   color=colors[1])
-        ax.set_xlabel(label)
+        ax.set_xlabel(xlabel)
         ax.set_ylabel('$|2\\rangle$ state pop.')
         if save_fig:
             import datetime
