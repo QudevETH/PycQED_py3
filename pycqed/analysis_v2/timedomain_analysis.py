@@ -7831,11 +7831,21 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                          is substracted. Can also be passed as a dictionary where
                          keys are the qubit names and the values are lists of basis states
                          in case different bases should be used for different qubits.
-                    orthonormalize (bool): Whether or not to orthonormalize the
-                        weight basis
+                    orthonormalize (bool): Whether to orthonormalize the weight basis
                     scale_weights (bool): scales the weights near unity to avoid
                         loss of precision on FPGA if weights are too small
-
+                    filter_residual_tones (bool): Whether to filter the measured
+                        weights. Specify filter using 'residual_tone_filter_fcn'.
+                        Creates new field 'optimal_weights_unfiltered' in
+                        'analysis_params_dict' to save weights before filtering
+                    residual_tone_filter_fcn (fcn, str): function (freq, ro_freq) ->
+                        float specifying the filtering amplitude in frequency
+                        space (in Hz) for given (absolute) frequency 'freq' and
+                        readout frequency 'ro_freq'. Can be a str that parses
+                        into a function using eval(). Defaults to Gaussian with
+                        sigma 'residual_tone_filter_sigma'
+                    residual_tone_filter_sigma (float): specifies the width
+                        of the Gaussian filter. Defaults to 1e7 (10 MHz)
         """
 
         if qb_names is not None:
@@ -7861,8 +7871,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 self.get_param_value('cal_points', None, 0))
             self.qb_names = deepcopy(cp.qb_names)
 
-        self.channel_map = self.get_param_value('channel_map', None,
-                                                index=0)
+        self.channel_map = self.get_param_value(
+            'meas_obj_value_names_map', self.get_param_value('channel_map'))
         if self.channel_map is None:
             # assume same channel map for all timetraces (pick 0th)
             value_names = self.raw_data_dict[0]['value_names']
@@ -7891,6 +7901,26 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ana_params['optimal_weights'] = defaultdict(dict)
         ana_params['optimal_weights_basis_labels'] = defaultdict(dict)
         ana_params['means'] = defaultdict(dict)
+
+        if self.get_param_value('filter_residual_tones', True):
+            ana_params['optimal_weights_unfiltered'] = defaultdict(dict)
+            filter_fcn = self.get_param_value(
+                'residual_tone_filter_fcn', None)
+            if filter_fcn is None:
+                # if no filter is given, use gaussian filter with width sigma
+                sigma = self.get_param_value('residual_tone_filter_sigma', 1e7)
+                filter_fcn = lambda f, f0: np.exp(
+                    -.5 * (f - f0) ** 2 / sigma ** 2)
+            else:
+                try:
+                    filter_fcn = eval(filter_fcn) if \
+                        isinstance(filter_fcn, str) else filter_fcn
+                except SyntaxError:
+                    log.warning(
+                        'Could not parse the custom filter function. '
+                        'Either pass a valid lambda function '
+                        'directly or as a string')
+
         for qb_indx, qbn in enumerate(self.qb_names):
             # retrieve time traces
 
@@ -7970,6 +8000,39 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 k = np.amax([(np.max(np.abs(b.real)),
                               np.max(np.abs(b.imag))) for b in basis])
                 basis /= k
+
+            # residual/spurious tone filtering, only if supported if called by
+            # OptimalWeights
+            if self.get_param_value('filter_residual_tones', twoD):
+                # safe copy for comparison
+                ana_params['optimal_weights_unfiltered'][qbn] = deepcopy(basis)
+                # TODO: Per qb sampling rate
+                sampling_rate = self.get_param_value('acq_sampling_rate', 1.8e9)
+                try:
+                    filter_options = self.get_param_value(
+                        'residual_tone_filter_options', {})[qbn]
+                except KeyError:
+                    raise ValueError(
+                        "Please provide 'residual_tone_filter_options' dict "
+                        "containing per qb dicts containing ro_freq and "
+                        "ro_mod_freq keys and values.")
+
+                if np.ndim(basis) == 1:
+                    basis = self._filter_residual_tones(basis,
+                                                  filter_options['ro_freq'],
+                                                  filter_options['ro_mod_freq'],
+                                                  sampling_rate,
+                                                  filter_fcn)
+                else:
+                    assert np.ndim(basis) == 2, "Basis arr should only be 2D."
+                    for i in range(len(basis)):
+                        basis[i] = self._filter_residual_tones(
+                            basis[i],
+                            filter_options['ro_freq'],
+                            filter_options['ro_mod_freq'],
+                            sampling_rate,
+                            filter_fcn)
+
             ana_params['optimal_weights'][qbn] = basis
             ana_params['optimal_weights_basis_labels'][qbn] = basis_labels
 
@@ -7981,6 +8044,32 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 for state in 'gef'[:n_labels + 1]]
 
             self.save_processed_data()
+
+    @staticmethod
+    def _filter_residual_tones(w, ro_freq, ro_mod_freq, sampling_rate,
+                               filter_fcn):
+        """
+        Fitering of timetraces. Filtering is carried out in fourier space in MHz.
+
+        Args:
+            w: complex weigths I + .j * Q to be filtered
+            ro_freq: ro freq of qb (in Hz)
+            ro_mod_freq: ro modulation freq of qb (in Hz)
+            sampling_rate: sampling rate of timetrace acq_instr
+            filter_fcn: filter to be applied around ro_freq
+
+        Returns:
+            filtered complex weights in time space
+        """
+        w_spec = np.fft.fft(np.conj(w))
+        w_spec = np.fft.fftshift(w_spec)
+        f = np.fft.fftfreq(len(w_spec), 1e6 / sampling_rate)
+        f = np.fft.fftshift(f) + ro_freq / 1e6 - ro_mod_freq / 1e6
+        w_spec *= filter_fcn(f * 1e6, ro_freq)
+        w = np.fft.ifftshift(w_spec)
+        w = np.fft.ifft(w)
+        w /= np.max(np.abs(w))
+        return np.conj(w)
 
     def prepare_plots(self):
 
