@@ -339,7 +339,7 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         try:
             ro_freq, mode2_freq, _ = self._get_two_dips_freqs(qubit)
             return np.mean([ro_freq, mode2_freq])
-        except (AttributeError, KeyError, TypeError):
+        except (AttributeError, KeyError, TypeError, IndexError):
             return qubit.ro_freq()
 
     def get_adaptive_freq_range(self,
@@ -383,7 +383,7 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
                     min_distance_from_nearest_dip, distance_from_nearest_dip)
             return min(min_distance_from_nearest_dip, 3 * max_two_dips_distance)
 
-        except (AttributeError, KeyError, TypeError) as err:
+        except (AttributeError, KeyError, TypeError, IndexError) as err:
             log.warning(f'Error in `get_adaptive_freq_range`: {err}. '
                         f'Using fallback_freq_range instead.')
             freq_range = self.get_param_value('fallback_freq_range')
