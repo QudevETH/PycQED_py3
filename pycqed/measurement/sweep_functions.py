@@ -386,7 +386,11 @@ class multi_sweep_function(Soft_Sweep):
                              f'All sweep functions must have the same '
                              f'sweep_control.')
 
-        if not isinstance(sweep_function, Sweep_function):
+        # sweep_function can either be an object from a class inherited from
+        # Sweep_function or it can be a class (to be instantiated later). If
+        # it is neither of the two, we assume that it is a qcodes parameter
+        # and try to wrap it into a sweep function.
+        if not isinstance(sweep_function, (Sweep_function, type)):
             sweep_function = mc_parameter_wrapper.wrap_par_to_swf(
                 sweep_function
             )
