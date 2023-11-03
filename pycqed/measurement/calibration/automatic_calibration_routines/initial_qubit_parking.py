@@ -336,6 +336,9 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
         Args:
             qubit: The qubit instance.
         """
+
+        # in case there is no information on readout resonator dips
+        # the routine should fall back to using the qubit.ro_freq()
         try:
             ro_freq, mode2_freq, _ = self._get_two_dips_freqs(qubit)
             return np.mean([ro_freq, mode2_freq])
@@ -358,6 +361,8 @@ class ResonatorSpectroscopyFluxSweepStep(spec.ResonatorSpectroscopyFluxSweep,
             two dips of the same qubit.
         """
 
+        # in case there is no information on readout resonator dips
+        # the routine should fall back to using the qubit.ro_freq()
         try:
             max_two_dips_distance = 0
             min_distance_from_nearest_dip = np.inf
