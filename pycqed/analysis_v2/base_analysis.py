@@ -371,20 +371,18 @@ class BaseDataAnalysis(object):
         """Saves `self.job` in analysis result file under "Analysis" group.
 
         Raises:
-            Exception: in case `write_dict_to_hdf5` fails.
+            RuntimeError: in case `write_dict_to_hdf5` fails.
         """
         file_path = self._get_analysis_result_file_path()
         with h5py.File(file_path, 'a') as data_file:
-            try:
-                analysis_group = get_hdf_group_by_name(data_file,
-                                                       "Analysis")
-                if isinstance(analysis_group, h5py.Group):
-                    write_dict_to_hdf5(
-                        {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job
-                         }, entry_point=analysis_group)
-            except Exception as e:
-                data_file.close()
-                raise e
+            analysis_group = get_hdf_group_by_name(data_file,
+                                                   "Analysis")
+            if isinstance(analysis_group, h5py.Group):
+                write_dict_to_hdf5(
+                    {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
+                    entry_point=analysis_group
+                )
+
 
     def check_plotting_delegation(self):
         """
