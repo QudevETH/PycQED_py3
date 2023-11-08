@@ -592,6 +592,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # all RO pulses that are different are programmed to the AWG.
         repeat_ro = kw.pop('repeat_ro', False)
         try:
+            if task_list is None and (qubits := kw.get('qubits')):
+                task_list = [dict(qb=qb) for qb in qubits]
             super().__init__(task_list, sweep_points=sweep_points,
                              trigger_separation=trigger_separation,
                              drive=drive,
@@ -1032,6 +1034,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             drive += '_modulated' if self.modulated else ''
             self.default_experiment_name += '_pulsed' if self.pulsed \
                                                     else '_continuous'
+            if task_list is None and (qubits := kw.get('qubits')):
+                task_list = [dict(qb=qb) for qb in qubits]
             super().__init__(task_list, sweep_points=sweep_points,
                             drive=drive,
                             trigger_separation=trigger_separation,
