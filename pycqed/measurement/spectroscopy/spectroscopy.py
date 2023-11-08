@@ -525,6 +525,19 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         return (lo if isinstance(lo, str)
                 else '_'.join([f'{s}' for s in lo])) + '_freq'
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            MultiTaskingSpectroscopyExperiment.__name__: {
+                0: {
+                    'freq': 'Hz',
+                },
+                1: {},
+            }
+        })
+        return d
+
 
 class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """Base class to be able to perform 1d and 2d feedline spectroscopies on one
