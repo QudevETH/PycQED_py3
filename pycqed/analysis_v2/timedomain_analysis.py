@@ -8774,27 +8774,29 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'plotfn': self.plot_text,
                                 'text_string': textstr}
 
-                            # add thermal population line
-                            g_state_prep_g = \
-                                data_qbi.get("pg", {}).get('prep_g', None)
-                            # taking first ro of first sequence as estimate for
-                            # thermal population
-                            if g_state_prep_g is not None and seq_nr == 0:
-                                p_therm = 1 - g_state_prep_g.flatten()[0]
-                                self.plot_dicts[plt_key + "_thermal"] = {
-                                    'plotfn': self.plot_line,
-                                    'fig_id': fig_key,
-                                    'xvals': np.arange(len(pop)),
-                                    'yvals': p_therm * np.ones_like(pop),
-                                    'setlabel': "$P_\mathrm{therm}$",
-                                    'linestyle': '--',
-                                    'marker': "",
-                                    'color': 'k',
-                                    'do_legend': True,
-                                    'legend_ncol': legend_ncol,
-                                    'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                                    'legend_pos': legend_pos,
-                                }
+                            # add thermal population line (for each plot j)
+                            if i == 0:
+                                g_state_prep_g = \
+                                    data_qbi.get("pg", {}).get('prep_g', None)
+                                # taking first ro of first sequence as estimate
+                                # for thermal population
+                                if g_state_prep_g is not None and seq_nr == 0:
+                                    p_therm = 1 - g_state_prep_g.flatten()[0]
+                                    self.plot_dicts[plt_key + "_thermal"] = {
+                                        'plotfn': self.plot_line,
+                                        'fig_id': fig_key,
+                                        'xvals': np.arange(len(pop)),
+                                        'yvals': p_therm * np.ones_like(pop),
+                                        'setlabel': "$P_\\mathrm{therm}$",
+                                        'linestyle': '--',
+                                        'marker': "",
+                                        'color': 'k',
+                                        'do_legend': True,
+                                        'legend_ncol': legend_ncol,
+                                        'legend_bbox_to_anchor':
+                                            legend_bbox_to_anchor,
+                                        'legend_pos': legend_pos,
+                                    }
 
                             # plot fit results
                             fit_key = \
