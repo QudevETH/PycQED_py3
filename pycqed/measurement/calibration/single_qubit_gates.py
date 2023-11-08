@@ -12,6 +12,7 @@ from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
+from pycqed.utilities import general as gen
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
@@ -4043,7 +4044,7 @@ class ActiveReset(CalibBuilder):
                 qb.preparation_params()['threshold_mapping'] = \
                     classifier_params['mapping']
         if self.set_thresholds:
-            self._set_thresholds(self.qubits)
+            [gen.upload_classif_thresholds(qb) for qb in self.qubits]
         self.exp_metadata.update({"thresholds":
                                       self._get_thresholds(self.qubits)})
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
@@ -4093,43 +4094,6 @@ class ActiveReset(CalibBuilder):
 
     def run_update(self, **kw):
         print('Update')
-
-    @staticmethod
-    def _set_thresholds(qubits, clf_params=None):
-        """
-        Sets the thresholds in clf_params to the corresponding UHF channel(s)
-        for each qubit in qubits.
-        Args:
-            qubits (list, QuDevTransmon): (list of) qubit(s)
-            clf_params (dict): dictionary containing the thresholds that must
-                be set on the corresponding UHF channel(s).
-                If several qubits are passed, then it assumes clf_params if of the form:
-                {qbi: clf_params_qbi, ...}, where clf_params_qbi contains at least
-                the "threshold" key.
-                If a single qubit qbi is passed (not in a list), then expects only
-                clf_params_qbi.
-                If None, then defaults to qb.acq_classifier_params().
-
-        Returns:
-
-        """
-
-        # check if single qubit provided
-        if np.ndim(qubits) == 0:
-            clf_params = {qubits.name: deepcopy(clf_params)}
-            qubits = [qubits]
-
-        if clf_params is None:
-            clf_params = {qb.name: qb.acq_classifier_params() for qb in qubits}
-
-        for qb in qubits:
-            # perpare correspondance between integration unit (key)
-            # and uhf channel
-            channels = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
-            # set thresholds
-            for unit, thresh in clf_params[qb.name]['thresholds'].items():
-                qb.instr_acq.get_instr().set(
-                    f'qas_0_thresholds_{channels[unit]}_level', thresh)
 
     @staticmethod
     def _get_thresholds(qubits, from_clf_params=False, all_qb_channels=False):
