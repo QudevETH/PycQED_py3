@@ -240,7 +240,7 @@ class MeasurementControl(Instrument):
         '''
         label = '' if label is None else '_' + label
         self.set_measurement_name('Instrument_settings' + label)
-        self.last_timestamp(time.strftime('%Y%m%d_%H%M%S', time.localtime()))
+        self.last_timestamp(self.get_datetimestamp())
         if self.settings_file_format() == 'hdf5':
             with h5d.Data(name=self.get_measurement_name(),
                           datadir=self.datadir(),
@@ -330,7 +330,7 @@ class MeasurementControl(Instrument):
         if self.skip_measurement():
             return return_dict
 
-        self.last_timestamp(time.strftime('%Y%m%d_%H%M%S', time.localtime()))
+        self.last_timestamp(self.get_datetimestamp())
         with h5d.Data(name=self.get_measurement_name(),
                       datadir=self.datadir(),
                       timestamp=self.last_timestamp()) \
