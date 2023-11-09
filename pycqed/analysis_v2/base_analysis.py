@@ -526,6 +526,11 @@ class BaseDataAnalysis(object):
                 if 'measured_data' in params_dict:
                     raw_data_dict_ts['measured_data'] = \
                         np.array(data_file['Experimental Data']['Data']).T
+                if 'measured_values' in params_dict:
+                    log.warning('Deprecation warning: Parameter measured_values'
+                                ' is not extracted from the file. '
+                                'An empty list will be returned.')
+                    raw_data_dict_ts['measured_values'] = []
 
                 # add hdf attributes and groups
                 for save_par, file_par in params_dict.items():
