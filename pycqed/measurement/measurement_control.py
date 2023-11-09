@@ -1934,44 +1934,48 @@ class MeasurementControl(Instrument):
         '''
 
         if self.settings_file_format() == 'hdf5':
+            def save_settings_in_hdf(data_object):
+                if not hasattr(self, 'station'):
+                    log.warning('No station object specified, could not save '
+                                'instrument settings')
+                else:
+                    # # This saves the snapshot of the entire setup
+                    # snap_grp = data_object.create_group('Snapshot')
+                    # snap = self.station.snapshot()
+                    # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
+
+                    # Below is old style saving of snapshot, exists for the sake of
+                    # preserving deprecated functionality. Here only the values
+                    # of the parameters are saved.
+                    set_grp = data_object.create_group('Instrument settings')
+                    inslist = dict_to_ordered_tuples(self.station.components)
+                    for (iname, ins) in inslist:
+                        instrument_grp = set_grp.create_group(iname)
+                        inst_snapshot = ins.snapshot()
+                        self.store_snapshot_parameters(inst_snapshot,
+                                                       entry_point=instrument_grp,
+                                                       instrument=ins)
+                numpy.set_printoptions(**opt)
             import numpy
             import sys
             opt = numpy.get_printoptions()
             numpy.set_printoptions(threshold=sys.maxsize)
-            new_object = False
             if data_object is None:
                 data_object = self.data_object
-                # checks if data object is closed and opens it if neccessary,
-                # hdf5 file needs to be closed in the end
+                # checks if data object is closed and opens it if necessary in ,
+                # a context manager, such that it is closed after save method.
                 if not data_object.__bool__():
-                    new_object = True  # tags if a new object was opened
-                    data_object = h5d.Data(name=self.get_measurement_name(),
+                    with h5d.Data(name=self.get_measurement_name(),
                       datadir=self.datadir(),
                       timestamp=self.last_timestamp(),
-                                           auto_increase=False)
-            if not hasattr(self, 'station'):
-                log.warning('No station object specified, could not save '
-                            'instrument settings')
-            else:
-                # # This saves the snapshot of the entire setup
-                # snap_grp = data_object.create_group('Snapshot')
-                # snap = self.station.snapshot()
-                # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
-
-                # Below is old style saving of snapshot, exists for the sake of
-                # preserving deprecated functionality. Here only the values
-                # of the parameters are saved.
-                set_grp = data_object.create_group('Instrument settings')
-                inslist = dict_to_ordered_tuples(self.station.components)
-                for (iname, ins) in inslist:
-                    instrument_grp = set_grp.create_group(iname)
-                    inst_snapshot = ins.snapshot()
-                    self.store_snapshot_parameters(inst_snapshot,
-                                                   entry_point=instrument_grp,
-                                                   instrument=ins)
-            numpy.set_printoptions(**opt)
-            if new_object:
-                data_object.close() # new
+                                           auto_increase=False) as data_object:
+                        save_settings_in_hdf(data_object)
+                else:
+                    # hdf file was already opened and does not need to be
+                    # closed at the end, because save_instrument_settings was
+                    # called inside a context manager and may be used
+                    # after calling save_instrument_settings (e.g. MC.run())
+                    save_settings_in_hdf(data_object)
 
         else:
             if self.settings_file_format() == 'msgpack':
