@@ -43,9 +43,9 @@ class Test_Cryoscope_analysis(unittest.TestCase):
         a = ma.CoherenceTimesAnalysisSingle(t_start=t_start, t_stop=t_stop, label=labels[key],
                                             auto=True, extract_only=False,
                                             tau_key=tau_keys[key], tau_std_key=tau_std_keys[key],
-                                            plot_versus_dac=True, dac_key='fluxcurrent.' + dac,
+                                            plot_versus_dac=True, dac_key='Instrument settings.fluxcurrent.' + dac,
                                             plot_versus_frequency=True,
-                                            frequency_key=qubit + '.freq_qubit')
+                                            frequency_key='Instrument settings.' + qubit + '.freq_qubit')
 
         #np.testing.assert_('dac_arc_fitfct' in a.fit_res.keys())
         #np.testing.assert_('flux_values' in a.fit_res.keys())
@@ -58,8 +58,8 @@ class Test_Cryoscope_analysis(unittest.TestCase):
                                       t_start=t_start, t_stop=t_stop, labels=labels,
                                       tau_keys=tau_keys, tau_std_keys=tau_std_keys,
                                       plot_versus_dac=True,
-                                      dac_key_pattern='fluxcurrent.{DAC}',
+                                      dac_key_pattern='Instrument settings.fluxcurrent.{DAC}',
                                       plot_versus_frequency=True,
-                                      frequency_key_pattern='{Q}.freq_qubit',
+                                      frequency_key_pattern='Instrument settings.{Q}.freq_qubit',
                                       auto=True, extract_only=False, close_figs=False, options_dict={'verbose': False})
 
