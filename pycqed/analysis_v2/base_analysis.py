@@ -504,6 +504,11 @@ class BaseDataAnalysis(object):
         h5mode = self.options_dict.get('h5mode', 'r')
         for timestamp in timestamps:
             # open current hdf-file
+            # FIXME: Use a context manager instead of opening the file and
+            #  dress it around a try-except statement.
+            #  Can we avoid using a_tools.open_hdf_file() at all instances by
+            #  using a context manager?
+
             data_file = a_tools.open_hdf_file(timestamp, mode=h5mode)
             try:
 
