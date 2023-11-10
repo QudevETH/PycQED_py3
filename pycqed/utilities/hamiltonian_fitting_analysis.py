@@ -10,6 +10,7 @@ from pycqed.utilities.state_and_transition_translation import *
 import h5py
 from pycqed.instrument_drivers.mock_qcodes_interface \
     import ParameterNotFoundError
+from pycqed.utilities import settings_manager as setman
 
 log = logging.getLogger(__name__)
 
@@ -1010,7 +1011,6 @@ class HamiltonianFittingAnalysis:
             fluxlines_dict: dictionary containing the fluxline ids (necessary
                 to determine voltage)
         """
-        from pycqed.utilities.settings_manager import get_station_from_file
         path = a_tools.get_folder(timestamp)
         data = a_tools.open_hdf_file(folder=path)
 
@@ -1040,8 +1040,8 @@ class HamiltonianFittingAnalysis:
             ][qubit_name]["exp_decay"].attrs["new_qb_freq_stderr"]
             dc_source_key = fluxlines_dict[qubit_name].instrument.name
             param = f'{dc_source_key}.{fluxlines_dict[qubit_name].name}'
-            station = get_station_from_file(timestamp=timestamp,
-                                            param_path=[param])
+            station = setman.get_station_from_file(timestamp=timestamp,
+                                                   param_path=[param])
             voltage = float(station.get(param))
             HamiltonianFittingAnalysis._fill_experimental_values(
                 experimental_values, voltage, transition, freq
@@ -1096,11 +1096,10 @@ class HamiltonianFittingAnalysis:
 
             # Remove results from pre-reparking if exists
             dc_source_key = fluxlines_dict[qubit_name].instrument.name
-            old_voltage = float(
-                data["Instrument settings"][dc_source_key].attrs[
-                    fluxlines_dict[qubit_name].name
-                ]
-            )
+            param = f'{dc_source_key}.{fluxlines_dict[qubit_name].name}'
+            station = setman.get_station_from_file(timestamp=timestamp,
+                                            param_path=[param])
+            old_voltage = float(station.get(param))
 
             HamiltonianFittingAnalysis._fill_experimental_values(
                 experimental_values, voltage, transition, freq, old_voltage
