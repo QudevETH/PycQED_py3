@@ -8,6 +8,8 @@ import pycqed.simulations.transmon as transmon
 import scipy
 from pycqed.utilities.state_and_transition_translation import *
 import h5py
+from pycqed.instrument_drivers.mock_qcodes_interface \
+    import ParameterNotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -1011,7 +1013,6 @@ class HamiltonianFittingAnalysis:
         from pycqed.utilities.settings_manager import get_station_from_file
         path = a_tools.get_folder(timestamp)
         data = a_tools.open_hdf_file(folder=path)
-        station = get_station_from_file(folder=path)
 
         if "_ge_" in path:
             transition = "ge"
@@ -1038,13 +1039,14 @@ class HamiltonianFittingAnalysis:
                 "analysis_params_dict"
             ][qubit_name]["exp_decay"].attrs["new_qb_freq_stderr"]
             dc_source_key = fluxlines_dict[qubit_name].instrument.name
-            voltage = \
-                float(station.get(f'{dc_source_key}.'
-                                  f'{fluxlines_dict[qubit_name].name}'))
+            param = f'{dc_source_key}.{fluxlines_dict[qubit_name].name}'
+            station = get_station_from_file(timestamp=timestamp,
+                                            param_path=[param])
+            voltage = float(station.get(param))
             HamiltonianFittingAnalysis._fill_experimental_values(
                 experimental_values, voltage, transition, freq
             )
-        except KeyError:
+        except KeyError or ParameterNotFoundError:
             log.warning(f"Could not get ramsey data from file {path}")
 
     @staticmethod
