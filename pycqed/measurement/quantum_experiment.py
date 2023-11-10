@@ -1,6 +1,8 @@
 import traceback
 
 import time
+
+import h5py
 import numpy as np
 from pycqed.analysis import analysis_toolbox as a_tools
 
@@ -804,9 +806,12 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     def save_timers(self, quantum_experiment=True, sequence=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
             return
-        data_file = a_tools.open_hdf_file(self.timestamp,
-                                          filepath=filepath, mode="r+")
-        try:
+        if filepath is None:
+            # retrieve filepath from MC.datadir() and timestamp
+            folder = a_tools.get_folder(self.timestamp,
+                                        folder=self.MC.datadir())
+            filepath = a_tools.measurement_filename(folder)
+        with h5py.File(filepath, mode="r+") as data_file:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
                 timer_group = data_file.create_group(Timer.HDF_GRP_NAME)
@@ -830,9 +835,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
                     except AttributeError:
                         pass # in case some sequences don't have timers
-        except Exception as e:
-            data_file.close()
-            raise e
 
 
     def plot(self, sequences=0, segments=0, qubits=None,
