@@ -395,9 +395,8 @@ class HDF5Loader(Loader):
             par = Parameter(param_name, param_value)
             inst.add_parameter(par)
         # load class name
-        if '__class__' in inst_group:
-            inst.add_classname(
-                decode_attribute_value(inst_group.attrs['__class__']))
+        if '__class__' in inst_group.attrs:
+            inst.add_classname(inst_group.attrs['__class__'])
         # load submodules
         for submod_name, submod_group in list(inst_group.items()):
             submod_inst = HDF5Loader.load_instrument(submod_name, submod_group)
