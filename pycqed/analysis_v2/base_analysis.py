@@ -2339,6 +2339,9 @@ class BaseDataAnalysis(object):
         """
         Returns all instrument names of a given class
         """
+        # loads the entire settings file to the station in case it was just
+        # partially loaded
+        self.config_files.update_station(timestamp=file_index,)
         instruments = self.config_files.get_instrument_objects(
             timestamp=file_index)
         dev_names = []
