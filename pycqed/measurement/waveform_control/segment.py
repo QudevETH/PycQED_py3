@@ -55,6 +55,20 @@ class Segment:
     in _internal_mod_update_params method. If this parameter has value n, then 
     the waveform frequency will be rounded to the n-th digit of Hz."""
 
+    default_pycqed_to_stim_transpiling_dict = {
+        'X180': ['X'],
+        'X90': ['SQRT_X'],
+        'mX90': ["SQRT_X_DAG"],
+        'Y90': ['SQRT_Y'],
+        'Y180': ["Y"],
+        'mY90': ["SQRT_Y_DAG"],
+        'CZ': ['CZ'],
+        'Z180': ["Z"],
+        'PFM_ef': [],
+        'RO': ['M'],
+    }
+
+
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
                  fast_mode=False, **kw):
         """
@@ -2331,6 +2345,92 @@ class Segment:
         output += '\\end{tikzpicture}}\end{document}'
         output += f'\n% {num_single_qb} single-qubit gates, {num_two_qb} two-qubit gates, {num_virtual} virtual gates'
         return output
+
+    def export_stim(self, qubit_coords=None,
+                    transpiling_dict=None, resolve_segment=True, tol=1e-9):
+        """
+        Export the segment to stim format.
+
+        Parameters:
+        - qubit_coords (dict): dict of coordinites for each qubit,
+         Useful to later display the stim circuit on a grid. Format like:
+         {"qb1": (x, y), "qb2": (x2, y2), ...}
+
+        - transpiling_dict (dict): Dictionary for transpiling operations.
+            If None, use the default dictionary in
+            Segment.default_pycqed_to_stim_transpiling_dict
+        - resolve_segment (bool): Whether to resolve the segment.
+        - tol (float): Tolerance for "same timing operation". only used to detect
+         where to put TICKS in stim circuit, has no influence on the
+         outcome of the circuit since there is no notion of "time" in stim
+
+        Returns:
+        - str: Stim-formatted string.
+        """
+        def strip_qb_prefix(input_string):
+            """
+            Strip 'qb' prefix from the input string.
+            """
+            return re.sub(r'qb(\d+)', r'\1', input_string)
+
+        def transpile_operation(op, transpiling_dict):
+            output = ""
+
+            if op.split(' ')[0] not in transpiling_dict:
+                log.warning(f'Operation {op.split(" ")[0]} not in known '
+                            f'operations: {transpiling_dict.keys()}')
+            for stim_op in transpiling_dict.get(op.split(' ')[0], []):
+                output += " ".join([stim_op] + strip_qb_prefix(op).split(' ')[1:]) + '\n'
+            return output
+
+        if resolve_segment:
+            self.resolve_segment()
+        if transpiling_dict is None:
+            transpiling_dict = self.default_pycqed_to_stim_transpiling_dict
+        # sort pulses by start time
+        pulses = sorted(self.resolved_pulses, key=lambda p: p.pulse_obj._t0)
+        ops = [(p.op_code, p.pulse_obj._t0) for p in pulses if
+               hasattr(p, 'op_code') and p.op_code != '']
+
+        tprev = np.min([op[1] for op in ops]) # earliest time
+        circuit_str = f"# {self.name}\n"
+
+        if qubit_coords is not None:
+            for key, coords in qubit_coords.items():
+                circuit_str += f"QUBIT_COORDS({', '.join(map(str, coords))}) {key[2:]}\n"
+
+        for op, t in ops:
+            if np.abs(t - tprev) > tol:
+                circuit_str += 'TICK\n'
+                tprev = t
+            circuit_str += transpile_operation(op, transpiling_dict)
+
+        return circuit_str
+
+    def get_stim_circuit(self, qubit_coords=None,
+                         transpiling_dict=None,
+                         resolve_segment=True):
+        """
+        Get a stim Circuit from the current segment.
+
+        See documentation of export_stim for more details.
+
+        Returns:
+        - Union[stim.Circuit, str]: Stim Circuit or string output of export_stim.
+        """
+        stim_circuit_str = self.export_stim(qubit_coords, transpiling_dict,
+                                            resolve_segment=resolve_segment)
+
+        try:
+            import stim
+        except ImportError:
+            log.error("Stim module could not be found. Cannot return the circuit. "
+                      "Please install the 'stim' module. Will return the string"
+                      "of the stim circuit.")
+            return stim_circuit_str
+
+        return stim.Circuit(stim_circuit_str)
+
 
     def rename(self, new_name):
         """
