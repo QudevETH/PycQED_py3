@@ -122,6 +122,12 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         preprocessed_task = super().preprocess_task(task, global_sweep_points,
                                                     sweep_points, **kw)
 
+        if self.dev and (fld := getattr(self.dev, 'fluxlines_dict', None)):
+            preprocessed_task.setdefault('sweep_functions_dict', {})
+            if (param := fld.get(self.get_qubit(preprocessed_task).name)):
+                preprocessed_task['sweep_functions_dict'].setdefault(
+                    'volt', param)
+
         prefix = preprocessed_task['prefix']
         for k, v in preprocessed_task.get('sweep_functions_dict', {}).items():
             # add task sweep functions to the global sweep_functions_dict with
