@@ -534,6 +534,9 @@ class MultiTaskingSpectroscopyExperiment(twoqbcal.CalibBuilder):
     @classmethod
     def gui_kwargs(cls, device):
         d = super().gui_kwargs(device)
+        d['kwargs'][twoqbcal.MultiTaskingExperiment.__name__].update({
+            'n_cal_points_per_state': (int, 0),
+        })
         d['sweeping_parameters'].update({
             MultiTaskingSpectroscopyExperiment.__name__: {
                 0: {
@@ -768,6 +771,16 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             ResonatorSpectroscopy.__name__: OrderedDict({
                 'trigger_separation': (float, 5e-6)
             })
+        })
+        d['sweeping_parameters'].update({
+            ResonatorSpectroscopy.__name__: {
+                0: {},
+                1: {
+                    'volt': 'V',
+                    'amplitude': 'V',
+                    'pulse_length': 's',
+                },
+            }
         })
         return d
 
@@ -1281,6 +1294,19 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 self.temporary_values.append((amp,
                                               dbm_to_vp(qb.spec_power())))
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            QubitSpectroscopy.__name__: {
+                0: {},
+                1: {
+                    'volt': 'V',
+                    'spec_power': 'dBm',
+                },
+            }
+        })
+        return d
 
 
 class QubitSpectroscopy1D(QubitSpectroscopy):
