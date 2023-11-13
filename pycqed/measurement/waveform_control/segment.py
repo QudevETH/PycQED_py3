@@ -20,6 +20,7 @@ import pycqed.measurement.waveform_control.pulsar as ps
 import pycqed.measurement.waveform_control.block as block_mod
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as flux_dist
 from collections import OrderedDict as odict
+import re
 
 
 class Segment:
@@ -2225,7 +2226,18 @@ class Segment:
             string_repr += f"{i}: " + repr(p) + "\n"
         return string_repr
 
-    def export_tikz(self, qb_names, tscale=1e-6):
+    def export_tikz(self, qb_names, tscale=1e-6, include_readout=True):
+        def extract_qb(op_code, raise_error=True):
+            pattern = r'qb(\d+)$'
+            match = re.search(pattern, op_code)
+
+            if match:
+                return match.group(0)
+            elif raise_error:
+                raise ValueError(
+                    "Invalid op_code format: should end with 'qb' followed by an integer.")
+            else:
+                return None
         last_z = [(-np.inf, 0)] * len(qb_names)
 
         output = ''
@@ -2242,17 +2254,29 @@ class Segment:
         num_virtual = 0
         self.resolve_segment()
         for p in self.resolved_pulses:
-            if p.op_code != '' and p.op_code[:2] != 'RO':
+            if p.op_code != '':
                 l = p.pulse_obj.length
                 t = p.pulse_obj._t0 + l / 2
                 tmin = min(tmin, p.pulse_obj._t0)
                 tmax = max(tmax, p.pulse_obj._t0 + p.pulse_obj.length)
-                qb = qb_names.index(p.op_code[-3:])
-                op_code = p.op_code[:-4]
+                qb = qb_names.index(extract_qb(p.op_code))
+                op_code = p.op_code[:-len(extract_qb(p.op_code))]
                 qbt = 0
-                if op_code[-3:-1] == 'qb':
-                    qbt = qb_names.index(op_code[-3:])
-                    op_code = op_code[:-4]
+                if (qbt_name := extract_qb(op_code.strip(), raise_error=False)) is not None:
+                    qbt = qb_names.index(qbt_name)
+                    op_code = op_code.strip()[:-len(qbt_name)]
+
+                if p.op_code.startswith('RO'):
+                    if include_readout:
+                        qb = qb_names.index(extract_qb(p.op_code))
+                        output += f'\\draw[fill=white] ({t / tscale:.4f},-{qb} + 0.1) rectangle ++({l / tscale:.4f}, -0.2) node[midway] {{RO}};\n'
+                    continue
+
+                if p.op_code.startswith('PFM'):
+                    qb = qb_names.index(extract_qb(p.op_code))
+                    output += f'\\draw({t / tscale:.4f},-{qb}) node[ gate, minimum height={l / tscale * 10:.4f}mm] {{ \\tiny {op_code.replace("_", "")}}};\n'
+                    continue
+
                 if op_code[-1:] == 's':
                     op_code = op_code[:-1]
                 if op_code[:2] == 'CZ' or op_code[:4] == 'upCZ':
