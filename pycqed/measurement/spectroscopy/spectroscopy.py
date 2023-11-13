@@ -4,7 +4,7 @@ import traceback
 from pycqed.utilities.general import assert_not_none, \
     configure_qubit_mux_readout
 from pycqed.utilities.math import dbm_to_vp
-from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
+from pycqed.measurement.calibration import two_qubit_gates as twoqbcal
 from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.sweep_functions as swf
@@ -15,7 +15,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class MultiTaskingSpectroscopyExperiment(CalibBuilder):
+class MultiTaskingSpectroscopyExperiment(twoqbcal.CalibBuilder):
     """Adds functionality to sweep LO and modulation frequencies in
     a spectroscopy experiment. Automatically determines whether the LO, the
     mod. freq. or both are swept. Compatible with hard sweeps.
