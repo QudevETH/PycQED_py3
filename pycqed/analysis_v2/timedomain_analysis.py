@@ -11495,6 +11495,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             model = self.get_param_value('model', 'transmon_res')
             J_guess_boundary_scale = self.get_param_value('guess_paramater_scale', 2)
             offset_guess_boundary = self.get_param_value('offset_guess_boundary', 2e8)
+            t_offset_boundary = self.get_param_value('t_offset_boundary', 5e-9)
             hdf_file_index = self.get_param_value('hdf_file_index', 0)
 
             qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
@@ -11566,6 +11567,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                                     max=J_guess_boundary_scale*J_guess)
             pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary,
                                     max=offset_guess_boundary)
+            pe_model.set_param_hint('t_offset', value=0,
+                                    min=0,
+                                    max=t_offset_boundary)
             guess_pars = pe_model.make_params()
             self.set_user_guess_pars(guess_pars)
 
