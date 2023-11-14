@@ -11403,7 +11403,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         self.fit_dicts = OrderedDict()
         self.proc_data_dict['Delta'] = OrderedDict()
 
-        def pe_function(t, Delta, J=10e6, offset_freq=0):
+        def pe_function(t, Delta, J=10e6, offset_freq=0, t_offset=0):
             # From Nathan's master's thesis Eq. 2.6 - fitting function
             t = t*1e9
             J = 2*np.pi*J/1e9
@@ -11411,6 +11411,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             Delta = Delta/1e9
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
+            t += t_offset # to account for the effective sigma
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
                     4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
 
