@@ -8151,14 +8151,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
     def __init__(self,
                  options_dict: dict = None, auto=True, **kw):
         '''
-        options dict options:
-            'nr_bins' : number of bins to use for the histograms
-            'post_select' :
-            'post_select_threshold' :
-            'nr_samples' : amount of different samples (e.g. ground and excited = 2)
-            'sample_0' : index of first sample (ground-state)
-            'sample_1' : index of second sample (first excited-state)
-            'max_datapoints' : maximum amount of datapoints for culumative fit
+        options_dict keywords:
             'hist_scale' : scale for the y-axis of the 1D histograms: "linear" or "log"
             'verbose' : see BaseDataAnalysis
             'presentation_mode' : see BaseDataAnalysis
@@ -8166,10 +8159,33 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 'ncc' : default. Nearest Cluster Center
                 'gmm': gaussian mixture model.
                 'threshold': finds optimal vertical and horizontal thresholds.
-            'classif_kw': kw to pass to the classifier
-            see BaseDataAnalysis for more.
-            'plot_all_matrices' : output all plots for every slice of
-            a sweep as it is in the case where there's no sweep.
+            'classif_kw': kw to pass to the classifier, see BaseDataAnalysis.
+            'multiplexed_ssro' (bool): whether to perform multiplexed analysis
+            'plot_single_qb_plots' (bool): Whether to plot the state assignment
+                probability matrices and classification plots (for every qb and
+                sweep point)
+            'plot_mtplx_plots' (bool): Whether to plot the multiplexed state
+                probability matrix (for every sweep point)
+            'plot_sweep_plots' (bool): Whether to plot single qb trend plots in
+                sweeps
+            'plot_mtplx_sweep_plots' (bool): Whether to plot multiplexed trend
+                plots in sweeps
+            'plot_metrics' (list of dicts): Custom metrics of the state
+                assignment probability matrix to be plotted when sweeping. The
+                dictionaries contain the keys:
+                'metric' (str, required): string can be parsed into a lambda
+                    expression using eval(). The lambda takes the state assignment
+                    probability matrices as a 2D-np.array and returns a float.
+                'plot_name' (str): Title of the custom plot
+                'yscale' (str): 'linear' or 'log'
+            'multiplexed_plot_metrics' (list of dict): Same as 'plot_metrics',
+                but 'metric' lambda takes the multiplexed state assignment
+                probability matrices.
+            'plot_init_columns' (bool): Whether to plot additional column
+                representing the percentage of shots that were not filtered in
+                preselection
+            'n_shots_to_plot' (int): Truncates the number of shots to be
+                plotted if not None
         '''
         super().__init__(options_dict=options_dict, auto=False,
                          **kw)
@@ -8872,6 +8888,19 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             return states_labels
 
     def plot(self, **kwargs):
+        """
+        Main plotting function for MeasureSSRO.
+
+        Infers which measurement was run (multiplexed and/or sweep) and which
+        single, multiplexed and trend plots should be prepared. See docstring
+        of __init__ for details on plotting keywords.
+
+        Args:
+            **kwargs: not used
+
+        Returns:
+
+        """
         # prepares the processed data before plotting
         n_sweep_points = self.proc_data_dict['n_dim_2_sweep_points']
 
@@ -8932,8 +8961,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         # plots fidelity trend plot
         super().plot(**kwargs)
 
-    def plot_single_qb_plots(self, qbn, slice_title=None, sweep_indx=0,
-                             **kw):
+    def plot_single_qb_plots(self, qbn, slice_title=None, sweep_indx=0, **kw):
         """
         Plots IQ plane scatter plots and state assignment probability matrices
         for a given qbn and sweep index (2nd dimension).
@@ -9101,6 +9129,22 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             self.figs[fig_key] = fig
 
     def plot_multiplexed_plots(self, slice_title=None, sweep_indx=0, **kw):
+        """
+        Plots the state assignment probability matrices for a given qbn and
+        sweep index (2nd dimension).
+
+        Plots the keys ``mtplx_state_prob_mtx`` and ``mtplx_state_prob_mtx_masked``
+        as fidelity matrices.
+
+        Args:
+            slice_title (str): additional info if sweep in 2nd dimension was
+                performed
+            sweep_indx (int): sweep point (in the 2nd dim) to be plotted
+            **kw: not used
+
+        Returns:
+
+        """
         cmap = roa.MultiQubit_SingleShot_Analysis.get_highcontrast_colormap()
         show = self.options_dict.get("show", False)
         plot_norm = mc.Normalize(vmin=0., vmax=1.)
@@ -9151,6 +9195,12 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             self.figs[fig_key] = fig
 
     def prepare_plots(self):
+        """
+        Prepares sweep plots: Prepare fidelity (linear) and infidelity (log)
+        plots as well as parse custom plotting metrics given in ``plot_metrics``
+        or ``multiplexed_plot_metrics``. See __init__ docstring for details
+        on custom plotting metrics.
+        """
         # don't prepare sweep plots if there was no sweep
         if self.proc_data_dict['n_dim_2_sweep_points'] == 1: return
         was_mtplx = self.get_param_value('multiplexed_ssro', False)
@@ -9194,6 +9244,19 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
 
 
     def prepare_sweep_plot(self, qbn, plot_settings, multiplexed=False):
+        """
+        Helper function for ``prepare_plots``: Prepares (single qb) trend plots
+        and custom (single qb) trend plots when sweeping in 2nd dimension.
+
+        Args:
+            qbn (str): Name of qb
+            plot_settings (dict): Same as 'metrics' kwarg in __init__ docstring
+                without the outer list.
+            multiplexed (bool): Whether the plot is shows multiplexed data
+
+        Returns:
+
+        """
         metric = plot_settings.get('metric', None)
         try:
             metric = eval(metric) if isinstance(metric, str) else metric
@@ -9267,6 +9330,17 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'ymax': ymax, })
 
     def get_base_sweep_plot_options(self, qbn, plot_name, multiplexed=False):
+        """
+        Helper function for prepare_sweep_plot. Prepares default trend plots.
+
+        Args:
+            qbn (str): Name of qb
+            plot_name (str): Name of plot
+            multiplexed (bool): Whether the plot is shows multiplexed data
+
+        Returns:
+
+        """
         pdd = self.proc_data_dict
         sp_dict = pdd['sweep_points_2D_dict'][qbn]
         if len(sp_dict) != 1:
