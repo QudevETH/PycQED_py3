@@ -94,11 +94,11 @@ class Segment:
                 - Avoiding copying pulses. In this case, the pulse_pars_list
                   passed to Segment will be modified
                 - "Destroying" segments after resolving them, meaning that they
-                    cannot be resolved again. Not assuming that segments can be
-                    reused allows to use less deepcopy operations.
-                - Not copying time values between calls to Pulse.waveforms,
-                    see Segment. This might be an issue in case someone has the
-                    weird idea to modify tvals in Pulse.waveforms.
+                  cannot be resolved again. Not assuming that segments can be
+                  reused allows to use less deepcopy operations.
+                - Not copying time values between calls to Pulse.waveforms.
+                  This might be an issue in case someone has the weird idea
+                  to modify tvals in Pulse.waveforms.
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
