@@ -5428,6 +5428,8 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
             # k is of the form exp_decay_qbn_i if TwoD else exp_decay_qbn
+            # replace k with qbn_i or qbn
+            k = k.replace('exp_decay_', '')
             fit_res = fit_dict['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
