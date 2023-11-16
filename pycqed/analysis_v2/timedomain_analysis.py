@@ -6453,34 +6453,45 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
 
+        # If OneD, qbn_idx will be of the form qb2
+        # If TwoD, qbn_idx wil lbe of the form qb2_1
+        for qbn_idx in (
+                self.echo_analysis.proc_data_dict[
+                    'analysis_params_dict'].keys()
+        ):
+            self.proc_data_dict['analysis_params_dict'][qbn_idx] = OrderedDict()
             params_dict = self.echo_analysis.proc_data_dict[
-                'analysis_params_dict'][qbn]
+                'analysis_params_dict'][qbn_idx]
             if 'T1' in params_dict:
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo'] = params_dict['T1']
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo_stderr'] = params_dict['T1_stderr']
             else:
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo'] = params_dict['exp_decay']['T2_star']
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
-
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
         if self.do_fitting:
-            for qbn in self.qb_names:
+            # If OneD, qbn_idx will be of the form qb2
+            # If TwoD, qbn_idx wil lbe of the form qb2_1
+            for qbn_idx in (
+                    self.echo_analysis.proc_data_dict[
+                        'analysis_params_dict'].keys()
+            ):
+                qbn = (qbn_idx + "_").split("_")[0]
                 # rename base plot
-                figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
+                figure_name = (f'Echo_{qbn_idx}_'
+                               f'{self.echo_analysis.data_to_fit[qbn]}')
                 echo_plot_key_t1 = [key for key in self.echo_analysis.plot_dicts
-                                    if 'T1_'+qbn in key]
+                                    if 'T1_'+qbn_idx in key]
                 echo_plot_key_rm = [key for key in self.echo_analysis.plot_dicts
-                                    if 'Ramsey_'+qbn in key]
+                                    if 'Ramsey_'+qbn_idx in key]
                 if len(echo_plot_key_t1) != 0:
                     echo_plot_name = echo_plot_key_t1[0]
                 elif len(echo_plot_key_rm) != 0:
@@ -6494,7 +6505,7 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                     'legend_bbox_to_anchor'] = (1, -0.15)
 
                 for plot_label in self.echo_analysis.plot_dicts:
-                    if qbn in plot_label:
+                    if qbn_idx in plot_label:
                         if 'raw' not in plot_label and \
                                 'projected' not in plot_label:
                             self.echo_analysis.plot_dicts[
@@ -6510,13 +6521,13 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 art_det = self.artificial_detuning_dict[qbn]*1e-6
                 textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
                 textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
-                    T2_dict[qbn]['T2_echo']*1e6) \
+                    T2_dict[qbn_idx]['T2_echo']*1e6) \
                           + ' $\pm$ {:.2f} $\mu$s'.format(
-                    T2_dict[qbn]['T2_echo_stderr']*1e6) \
+                    T2_dict[qbn_idx]['T2_echo_stderr']*1e6) \
                           + '\nold $T_2$ echo = {:.2f} $\mu$s'.format(
                     old_T2e_val*1e6)
 
-                self.echo_analysis.plot_dicts['text_msg_' + qbn][
+                self.echo_analysis.plot_dicts['text_msg_' + qbn_idx][
                     'text_string'] = textstr
                 # Set text colour to black.
                 # When the change in qubit frequency is larger than artificial
@@ -6528,7 +6539,8 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 # since we do not use it to estimate the qubit frequency.
                 # Not resetting the colour here will cause an error in the case
                 # of multi-coloured text strings.
-                self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
+                self.echo_analysis.plot_dicts['text_msg_' + qbn_idx]['color'] \
+                    = 'k'
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
