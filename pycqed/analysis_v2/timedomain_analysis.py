@@ -8572,6 +8572,12 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        params_dict = {
+            'pulse_period': 'Instrument settings.TriggerDevice.pulse_period',
+        }
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
+
         if self.qb_names is None:
             # try to get qb_names from cal_points
             try:
@@ -8728,7 +8734,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                             fig_key = f"populations_{qbn}_{prep_state}{keys[k]}"
                             self.plot_dicts[plt_key] = {
                                 'plotfn': self.plot_line,
-                                'fig_id':fig_key,
+                                'fig_id': fig_key,
                                 'xvals': np.arange(len(pop)),
                                 'xlabel': "Reset cycle, $n$",
                                 'xunit': "",
@@ -8746,7 +8752,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'title': self.raw_data_dict['timestamp'] + ' ' +
                                          self.raw_data_dict['measurementstring']
                                          + " " + prep_state,
-                                'titlepad': 0.2,
+                                'titlepad': 0.25,
                                 'linestyle': '-',
                                 'color': f'C{i}',
                                 'alpha': 0.5 if seq_nr == 0 else 1,
@@ -8754,42 +8760,43 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'legend_ncol': legend_ncol,
                                 'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                 'legend_pos': legend_pos,
-                                'legend_fontsize': 5}
+                            }
 
                             # add feedback params info to plot
                             textstr = self._get_feedback_params_text_str(qbn)
                             self.plot_dicts[f'text_msg_{qbn}_' \
                                             f'{prep_state}{keys[k]}'] = {
                                 'fig_id': f"populations_{qbn}_{prep_state}{keys[k]}",
-                                'ypos': -0.21,
+                                'ypos': -0.32,
                                 'xpos': 0,
                                 'horizontalalignment': 'left',
                                 'verticalalignment': 'top',
                                 'plotfn': self.plot_text,
-                                "fontsize": "x-small",
                                 'text_string': textstr}
 
-                            # add thermal population line
-                            g_state_prep_g = \
-                                data_qbi.get("pg", {}).get('prep_g', None)
-                            # taking first ro of first sequence as estimate for
-                            # thermal population
-                            if g_state_prep_g is not None and seq_nr == 0:
-                                p_therm = 1 - g_state_prep_g.flatten()[0]
-                                self.plot_dicts[plt_key + "_thermal"] = {
-                                    'plotfn': self.plot_line,
-                                    'fig_id': fig_key,
-                                    'xvals': np.arange(len(pop)),
-                                    'yvals': p_therm * np.ones_like(pop),
-                                    'setlabel': "$P_\mathrm{therm}$",
-                                    'linestyle': '--',
-                                    'marker': "",
-                                    'color': 'k',
-                                    'do_legend': True,
-                                    'legend_ncol': legend_ncol,
-                                    'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                                    'legend_pos': legend_pos,
-                                    'legend_fontsize': 5}
+                            # add thermal population line (for each plot j)
+                            if i == 0:
+                                g_state_prep_g = \
+                                    data_qbi.get("pg", {}).get('prep_g', None)
+                                # taking first ro of first sequence as estimate
+                                # for thermal population
+                                if g_state_prep_g is not None and seq_nr == 0:
+                                    p_therm = 1 - g_state_prep_g.flatten()[0]
+                                    self.plot_dicts[plt_key + "_thermal"] = {
+                                        'plotfn': self.plot_line,
+                                        'fig_id': fig_key,
+                                        'xvals': np.arange(len(pop)),
+                                        'yvals': p_therm * np.ones_like(pop),
+                                        'setlabel': "$P_\\mathrm{therm}$",
+                                        'linestyle': '--',
+                                        'marker': "",
+                                        'color': 'k',
+                                        'do_legend': True,
+                                        'legend_ncol': legend_ncol,
+                                        'legend_bbox_to_anchor':
+                                            legend_bbox_to_anchor,
+                                        'legend_pos': legend_pos,
+                                    }
 
                             # plot fit results
                             fit_key = \
@@ -8827,7 +8834,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
-                                'legend_fontsize': 5}
+                                }
 
                                 self.plot_dicts[fit_key + 'data'] = {
                                     'plotfn': self.plot_line,
@@ -8852,7 +8859,6 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
-                                    'legend_fontsize': 5
                                     }
 
     def _has_reset_pulses(self, seq_nr):
@@ -8922,12 +8928,17 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
     def _get_feedback_params_text_str(self, qbn):
         str = "Reset cycle time: "
         ro_sep = self.prep_params.get("ro_separation", None)
-        str += f"{1e6 * ro_sep:.2f}$\mu s$" if ro_sep is not None else "Unknown"
+        str += f"{1e6 * ro_sep:.2f} $\mu s$" if ro_sep is not None else \
+            "Unknown"
         str += "\n"
 
         str += "RO to feedback time: "
         prow = self.prep_params.get("post_ro_wait", None)
-        str += f"{1e6 * prow:.2f}$\mu s$" if ro_sep is not None else "Unknown"
+        str += f"{1e6 * prow:.2f} $\mu s$" if ro_sep is not None else "Unknown"
+        str += "\n"
+        str += "Trigger rate: "
+        pp = self.raw_data_dict['pulse_period']
+        str += f"{1e6 * pp:.2f} $\mu s$" if pp is not None else "Unknown"
         str += "\n"
         thresholds = self.get_param_value('thresholds', {})
         str += "Threshold(s):\n{}".format(
