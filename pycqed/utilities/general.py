@@ -826,9 +826,17 @@ def configure_qubit_feedback_params(qubits, set_thresholds=False):
             AWG.dios_0_mode(2)
             vawg = (int(pulsar.get(f'{ge_ch}_id')[2:])-1)//2
             AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
-            for_ef = len(qb.acq_classifier_params()['thresholds']) == 2
-            AWG.set(f'awgs_{vawg}_dio_mask_value', 0b11 if for_ef else 1)
+
+            if qb.acq_weights_type()=='optimal_qutrit':
+                AWG.set(f'awgs_{vawg}_dio_mask_value', 0b11)
+            elif qb.acq_weights_type()=='SSB':
+                AWG.set(f'awgs_{vawg}_dio_mask_value', 1)
+            else:
+                log.warning(f"Weights type {qb.acq_weights_type()} not "
+                            f"recognised!")
+                AWG.set(f'awgs_{vawg}_dio_mask_value', 0b11)
             # assumes channel I and Q are consecutive on same AWG.
+
         acq_dev = qb.instr_acq.get_instr()
         acq_dev.dios_0_mode(2)
         if set_thresholds:
