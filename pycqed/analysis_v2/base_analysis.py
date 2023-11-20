@@ -383,7 +383,6 @@ class BaseDataAnalysis(object):
                     entry_point=analysis_group
                 )
 
-
     def check_plotting_delegation(self):
         """
         Check whether the plotting and saving of figures should be delegated to an
