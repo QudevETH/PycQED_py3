@@ -2,7 +2,7 @@
 
 Used to iterate through experiments/timestamps and figures inside them.
 """
-from typing import Union
+from typing import Any, Optional, Self
 
 from pycqed.analysis import analysis_toolbox
 from pycqed.analysis_v2 import base_analysis
@@ -28,7 +28,7 @@ class BidirectionalIterator(object):
         self.collection = collection
         self.index: int = -1
 
-    def next(self):
+    def next(self) -> Any:
         """Gets next element and points `index` to it.
 
         Raises:
@@ -45,7 +45,7 @@ class BidirectionalIterator(object):
             raise StopIteration
         return result
 
-    def prev(self):
+    def prev(self) -> Any:
         """Gets previous element and points `index` to it.
 
         Raises:
@@ -60,7 +60,7 @@ class BidirectionalIterator(object):
         self.index = index
         return self.collection[self.index]
 
-    def last(self):
+    def last(self) -> Any:
         """Gets the last element and points `index` to it.
 
         Returns:
@@ -69,7 +69,7 @@ class BidirectionalIterator(object):
         self.index = len(self.collection) - 1
         return self.collection[-1]
 
-    def __iter__(self):
+    def __iter__(self) -> Self:
         """Ensures compliance with python iterator interface.
 
         Returns:
@@ -77,7 +77,7 @@ class BidirectionalIterator(object):
         """
         return self
 
-    def __next__(self):
+    def __next__(self) -> Any:
         """Ensures compliance with python iterator interface.
 
         Returns:
@@ -187,7 +187,7 @@ class TimestampBidirectionalIterator(object):
                 raise StopIteration
         return result
 
-    def __iter__(self):
+    def __iter__(self) -> Self:
         """Ensures compliance with python iterator interface.
 
         Returns:
@@ -233,7 +233,7 @@ class ExperimentIterator(object):
                 `TimestampBidirectionalIterator` used for actual iteration,
                 from whose elements `BaseDataAnalysis` objects are recovered.
         """
-        self.timestamp_bidirectional_iterator: TimestampBidirectionalIterator\
+        self.timestamp_bidirectional_iterator: TimestampBidirectionalIterator \
             = timestamp_bidirectional_iterator
 
     def set_pointer_to_timestamp(self, timestamp_folder: str):
@@ -293,14 +293,15 @@ class ExperimentIterator(object):
         return analysis_object
 
     @staticmethod
-    def _get_analysis_object(experiment_folder_path: str):
+    def _get_analysis_object(experiment_folder_path: str) -> Optional[
+        base_analysis.BaseDataAnalysis]:
         """Reconstructs `BaseDataAnalysis` from `experiment_folder_path`.
 
         Args:
             `experiment_folder_path`: string which specifies full path to a
                 folder that holds the HDF5 file of the experiment.
         Returns:
-            Union[base_analysis.BaseDataAnalysis, None]: `BaseDataAnalysis`
+            Optional[base_analysis.BaseDataAnalysis]: `BaseDataAnalysis`
                 object reconstructed from job string in the file or None.
         """
         file_path = analysis_toolbox.measurement_filename(
@@ -312,7 +313,7 @@ class ExperimentIterator(object):
         except Exception:
             return None
 
-    def __iter__(self):
+    def __iter__(self) -> Self:
         """Ensures compliance with python iterator interface.
 
         Returns:

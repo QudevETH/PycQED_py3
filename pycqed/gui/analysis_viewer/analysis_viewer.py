@@ -4,7 +4,7 @@ Enables scrolling through all experiments in the data directory that have job
 string saved in their HDF5 file (skips unsupported experiments).
 """
 import sys
-from typing import Union
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy
@@ -84,7 +84,7 @@ class AnalysisViewer(object):
                                f"{type(base_data_analysis)} instead.")
 
     @staticmethod
-    def resolve_file_path(timestamp: str = None):
+    def resolve_file_path(timestamp: str = None) -> str:
         """Gets the path of measurement for provided or the most recent
         `timestamp`.
 
@@ -191,8 +191,8 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
         # Set attributes for GUI and plot display parts of functionality.
         self._canvas: FigureCanvasQTAgg = FigureCanvasQTAgg()
         self._toolbar: NavigationToolbar = NavigationToolbar(self._canvas, self)
-        self._figure: Union[Figure, None] = None
-        self._axes: Union[Axes, None] = None
+        self._figure: Optional[Figure] = None
+        self._axes: Optional[Axes] = None
 
         self.plot(self._plot_iterator.next())
 

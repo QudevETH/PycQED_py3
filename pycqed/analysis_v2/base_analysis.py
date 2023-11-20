@@ -24,7 +24,7 @@ from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
     flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 import datetime
 import json
 import lmfit
@@ -438,6 +438,11 @@ class BaseDataAnalysis(object):
         Checks the HDF5 file for `BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF`
         value under 'Analysis' group and if it exists, gets analysis object
         from the value.
+        FIXME. Can't have return types for static methods that return class
+         instances in Python <= 3.9. Both Optional[BaseDataAnalysis] and
+         Optional[Self] are invalid. Fix when Python >= 3.10 syntax becomes
+         standard (we stop being backwards compatible with 3.9). Use
+         BaseDataAnalysis.
 
         Args:
             data_file_path: string path to an HDF5 file.
@@ -448,7 +453,7 @@ class BaseDataAnalysis(object):
                 'Analysis'.
 
         Returns:
-            Union[BaseDataAnalysis, None]: analysis object reconstructed from
+            Optional[BaseDataAnalysis]: analysis object reconstructed from
                 the job string saved in the HDF5 file or None.
         """
         with h5py.File(data_file_path, 'r') as data_file:
@@ -1251,8 +1256,7 @@ class BaseDataAnalysis(object):
         else:
             self._plot(self.key_list, transparent_background, fig_id=fig_id)
 
-    def plot_for_gui(self, fig_id: str) \
-            -> Tuple[Figure, Union[Axes, np.array]]:
+    def plot_for_gui(self, fig_id: str) -> Tuple[Figure, Union[Axes, np.array]]:
         """Prepares and creates a plot for GUI and returns one figure and axes.
 
         Args:

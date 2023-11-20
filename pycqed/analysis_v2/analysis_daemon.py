@@ -7,6 +7,7 @@ import os
 import matplotlib.pyplot as plt
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
+from typing import Optional
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v2 import base_analysis as ba
 
@@ -146,14 +147,14 @@ class AnalysisDaemon:
         job_file.close()
 
     @staticmethod
-    def execute_job(job: str):
+    def execute_job(job: str) -> Optional[ba.BaseDataAnalysis]:
         """Executes the job provided.
 
         Args:
             job: string of python code to be executed.
 
         Returns:
-            Union[pycqed.analysis_v2.base_analysis.BaseDataAnalysis, None]:
+            Optional[pycqed.analysis_v2.base_analysis.BaseDataAnalysis]:
                 analysis object reconstructed from `job` string or None.
         """
         analysis_object = None
