@@ -570,8 +570,10 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         if self.pulsar.awgs_prequeried:
             clock = self.pulsar.clock(awg=self.awg.name)
         else:
-            # this else statement is added for the init phase, because at
-            # that time pulsar doesn't have information about AWG clocks yet.
+            # This if-else statement is to prevent the infinite loop between
+            # this method and pulsar.clock(). If the AWG clock info is not
+            # pre-queried in pulsar, then the pulsar AWG interface will directly
+            # ask the device for the information.
             clock = self.awg.clock_freq()
 
         if clock != self._clock_at_init:
