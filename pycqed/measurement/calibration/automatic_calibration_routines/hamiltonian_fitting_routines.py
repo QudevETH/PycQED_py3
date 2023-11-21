@@ -271,6 +271,9 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         super().create_routine_template()  # Create empty routine template
         qubit = self.qubit
 
+        # Counter for mixer calibration steps
+        n_update_frequency = 0
+
         # Measurements at fluxes with provided guess voltage/freq
         for i, flux in enumerate([
             self.ss1_flux,
@@ -297,6 +300,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                      "frequencies": [ge_freq_guess],
                                      "transition": transition}
                     self.add_step(UpdateFrequency, step_label, step_settings)
+                    n_update_frequency += 1
 
                     # Finding the ge-transition frequency at this voltage
                     step_label = f'find_frequency_{transition}_{i}'
@@ -339,7 +343,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                             step_label,
                             {
                                 "index_reparking":
-                                    len(self.routine_template) - 1,
+                                    len(self.routine_template) - 1 + 2*n_update_frequency,
                                 "settings": {
                                     step_label: {
                                         "flux": flux
@@ -369,6 +373,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                      "transition": transition,
                                      "use_model": False}
                     self.add_step(UpdateFrequency, step_label, step_settings)
+                    n_update_frequency += 1
 
                     # Finding the ef-frequency
                     step_label = f"find_frequency_{transition}"
@@ -421,6 +426,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                  "fluxes": [flux],
                                  "transition": transition}
                 self.add_step(UpdateFrequency, step_label, step_settings)
+                n_update_frequency += 1
 
                 # Set temporary values for Find Frequency
                 step_label = 'set_tmp_values_flux_pulse_ro_' + \
@@ -451,8 +457,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         # Determining final model based on all data
         self.add_step(self.DetermineModel, 'determine_model_final', {})
 
-        # FIXME: add mixer calibration step
-        #  self.add_mixer_calib_steps(**self.kw)
+        # Mixer calibration
+        self.add_mixer_calib_steps(**self.kw)
 
     def post_run(self):
         """
@@ -479,18 +485,16 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
         Configuration parameters (coming from the configuration parameter
         dictionary):
-            include_mixer_calib_carrier (bool): If True, include mixer
-                calibration for the carrier.
+            include_mixer_calib (bool): If True, include mixer
+                calibration for the carrier and for the skewness.
             mixer_calib_carrier_settings (dict): Settings for the mixer
                 calibration for the carrier.
-            include_mixer_calib_skewness (bool): If True, include mixer
-                calibration for the skewness.
             mixer_calib_skewness_settings (dict): Settings for the mixer
                 calibration for the skewness.
         """
 
         # Carrier settings
-        include_mixer_calib_carrier = kw.get("include_mixer_calib_carrier",
+        include_mixer_calib_carrier = kw.get("include_mixer_calib",
                                              False)
         mixer_calib_carrier_settings = kw.get("mixer_calib_carrier_settings",
                                               {})
@@ -500,7 +504,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         })
 
         # Skewness settings
-        include_mixer_calib_skewness = kw.get("include_mixer_calib_skewness",
+        include_mixer_calib_skewness = kw.get("include_mixer_calib",
                                               False)
         mixer_calib_skewness_settings = kw.get("mixer_calib_skewness_settings",
                                                {})
@@ -984,7 +988,7 @@ class MixerCalibrationSkewness(IntermediateStep):
             calibrate_drive_mixer_skewness_function: method for calibrating to
                 be used. Default is to use calibrate_drive_mixer_skewness_model.
         """
-        super().__init__(routine, **kw)
+        super().__init__(routine=routine, **kw)
 
     def run(self):
         kw = self.kw
@@ -998,7 +1002,12 @@ class MixerCalibrationSkewness(IntermediateStep):
         function = getattr(self.qubit, calibrate_drive_mixer_skewness_function)
         new_kw = keyword_subset_for_function(kw, function)
 
-        function(**new_kw)
+        qb.self.qubit
+        pulsar = qb.find_instrument('Pulsar')
+        with temporary_value(
+                (pulsar.prepend_zeros, 0),
+        ):
+            function(**new_kw)
 
 
 class MixerCalibrationCarrier(IntermediateStep):
@@ -1015,7 +1024,7 @@ class MixerCalibrationCarrier(IntermediateStep):
             calibrate_drive_mixer_carrier_function: method for calibrating to
                 be used. Default is to use calibrate_drive_mixer_carrier_model.
         """
-        super().__init__(routine, **kw)
+        super().__init__(routine=routine, **kw)
 
     def run(self):
         kw = self.kw
@@ -1028,6 +1037,13 @@ class MixerCalibrationCarrier(IntermediateStep):
 
         function = getattr(self.qubit, calibrate_drive_mixer_carrier_function)
         new_kw = keyword_subset_for_function(kw, function)
+
+        qb = self.qubit
+        pulsar = qb.find_instrument('Pulsar')
+        with temporary_value(
+                 (pulsar.prepend_zeros, 0),
+        ):
+            function(**new_kw)
 
         function(**new_kw)
 
