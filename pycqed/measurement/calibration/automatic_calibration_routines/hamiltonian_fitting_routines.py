@@ -493,9 +493,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 calibration for the skewness.
         """
 
-        # Carrier settings
-        include_mixer_calib_carrier = kw.get("include_mixer_calib",
+        include_mixer_calib = kw.get("include_mixer_calib",
                                              False)
+
+        # Carrier settings
         mixer_calib_carrier_settings = kw.get("mixer_calib_carrier_settings",
                                               {})
         mixer_calib_carrier_settings.update({
@@ -504,8 +505,6 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
         })
 
         # Skewness settings
-        include_mixer_calib_skewness = kw.get("include_mixer_calib",
-                                              False)
         mixer_calib_skewness_settings = kw.get("mixer_calib_skewness_settings",
                                                {})
         mixer_calib_skewness_settings.update({
@@ -513,7 +512,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             "update": True
         })
 
-        if include_mixer_calib_carrier or include_mixer_calib_skewness:
+        if include_mixer_calib:
             i = 0
 
             while i < len(self.routine_template):
@@ -521,8 +520,9 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
                 if step_class == UpdateFrequency:
 
-                    # Include mixer calibration skewness
-                    if include_mixer_calib_skewness:
+                    # Include mixer calibration
+                    if include_mixer_calib:
+                        # Skewness calibration
                         self.add_step(
                             MixerCalibrationSkewness,
                             'mixer_calibration_skewness',
@@ -531,8 +531,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         )
                         i += 1
 
-                    # Include mixer calibration carrier
-                    if include_mixer_calib_carrier:
+                        # Carrier calibration
                         self.add_step(
                             MixerCalibrationCarrier,
                             'mixer_calibration_carrier',
