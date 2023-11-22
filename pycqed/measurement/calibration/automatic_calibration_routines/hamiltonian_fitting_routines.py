@@ -526,7 +526,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         self.add_step(
                             MixerCalibrationSkewness,
                             'mixer_calibration_skewness',
-                            mixer_calib_carrier_settings,
+                            mixer_calib_skewness_settings,
                             index=i + 1,
                         )
                         i += 1
@@ -535,7 +535,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                         self.add_step(
                             MixerCalibrationCarrier,
                             'mixer_calibration_carrier',
-                            mixer_calib_skewness_settings,
+                            mixer_calib_carrier_settings,
                             index=i + 1,
                         )
                         i += 1
@@ -1001,7 +1001,7 @@ class MixerCalibrationSkewness(IntermediateStep):
         function = getattr(self.qubit, calibrate_drive_mixer_skewness_function)
         new_kw = keyword_subset_for_function(kw, function)
 
-        qb.self.qubit
+        qb = self.qubit
         pulsar = qb.find_instrument('Pulsar')
         with temporary_value(
                 (pulsar.prepend_zeros, 0),
