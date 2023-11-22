@@ -147,12 +147,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 and the default value is False.
             method (str): optimization method to use. Default is Nelder-
                 Mead.
-            include_mixer_calib_carrier (bool): If True, include mixer
-                calibration for the carrier.
+            include_mixer_calib (bool): If True, include mixer
+                calibration for both carrier and skewness.
             mixer_calib_carrier_settings (bool): Settings for the mixer
                 calibration for the carrier.
-            include_mixer_calib_skewness (bool): If True, include mixer
-                calibration for the skewness.
             mixer_calib_skewness_settings (bool): Settings for the mixer
                 calibration for the skewness.
             get_parameters_from_qubit_object (bool): if True, the routine will
