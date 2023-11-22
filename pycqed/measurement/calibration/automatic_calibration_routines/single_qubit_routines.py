@@ -712,6 +712,12 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 by (only relevant for displaying results)
             delta_f_unit (str): Unit of the frequency difference (only relevant
                 for displaying results)
+            include_mixer_calib (bool): If True, include mixer
+                calibration for both carrier and skewness.
+            mixer_calib_carrier_settings (bool): Settings for the mixer
+                calibration for the carrier.
+            mixer_calib_skewness_settings (bool): Settings for the mixer
+                calibration for the skewness.
 
         For key words of super().__init__(), see
         :obj:`AutomaticCalibrationRoutine` for more details.
