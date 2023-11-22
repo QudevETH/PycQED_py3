@@ -1000,13 +1000,7 @@ class MixerCalibrationSkewness(IntermediateStep):
 
         function = getattr(self.qubit, calibrate_drive_mixer_skewness_function)
         new_kw = keyword_subset_for_function(kw, function)
-
-        qb = self.qubit
-        pulsar = qb.find_instrument('Pulsar')
-        with temporary_value(
-                (pulsar.prepend_zeros, 0),
-        ):
-            function(**new_kw)
+        function(**new_kw)
 
 
 class MixerCalibrationCarrier(IntermediateStep):
@@ -1036,14 +1030,6 @@ class MixerCalibrationCarrier(IntermediateStep):
 
         function = getattr(self.qubit, calibrate_drive_mixer_carrier_function)
         new_kw = keyword_subset_for_function(kw, function)
-
-        qb = self.qubit
-        pulsar = qb.find_instrument('Pulsar')
-        with temporary_value(
-                 (pulsar.prepend_zeros, 0),
-        ):
-            function(**new_kw)
-
         function(**new_kw)
 
 
