@@ -892,7 +892,9 @@ class FindFrequency(AutomaticCalibrationRoutine):
         self.add_step(self.Decision, 'decision', decision_settings)
 
         # Mixer calibration
-        self.add_mixer_calib_steps(**self.kw)
+        include_mixer_calib = self.kw.get("include_mixer_calib", False)
+        if include_mixer_calib:
+            self.add_mixer_calib_steps(**self.kw)
 
     def add_next_pipulse_step(self):
         """Adds a next pipulse step"""
@@ -975,9 +977,6 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 calibration for the skewness.
         """
 
-        include_mixer_calib = kw.get("include_mixer_calib",
-                                             False)
-
         # Carrier settings
         mixer_calib_carrier_settings = kw.get("mixer_calib_carrier_settings",
                                               {})
@@ -994,34 +993,31 @@ class FindFrequency(AutomaticCalibrationRoutine):
             "update": True
         })
 
-        if include_mixer_calib:
-            i = 0
+        i = 0
 
-            while i < len(self.routine_template):
-                step_class = self.get_step_class_at_index(i)
+        while i < len(self.routine_template):
+            step_class = self.get_step_class_at_index(i)
 
-                if step_class == AdaptiveQubitSpectroscopy:
-
-                    # Include mixer calibration
-                    if include_mixer_calib:
-                        # Skewness calibration
-                        self.add_step(
-                            MixerCalibrationSkewness,
-                            'mixer_calibration_skewness',
-                            mixer_calib_skewness_settings,
-                            index=i + 1,
-                        )
-                        i += 1
-
-                        # Carrier calibration
-                        self.add_step(
-                            MixerCalibrationCarrier,
-                            'mixer_calibration_carrier',
-                            mixer_calib_carrier_settings,
-                            index=i + 1,
-                        )
-                        i += 1
+            if step_class == AdaptiveQubitSpectroscopy:
+                # Include mixer calibration
+                # Skewness calibration
+                self.add_step(
+                    MixerCalibrationSkewness,
+                    'mixer_calibration_skewness',
+                    mixer_calib_skewness_settings,
+                    index=i + 1,
+                )
                 i += 1
+
+                # Carrier calibration
+                self.add_step(
+                    MixerCalibrationCarrier,
+                    'mixer_calibration_carrier',
+                    mixer_calib_carrier_settings,
+                    index=i + 1,
+                )
+                i += 1
+            i += 1
 
 
 class SingleQubitCalib(AutomaticCalibrationRoutine):
