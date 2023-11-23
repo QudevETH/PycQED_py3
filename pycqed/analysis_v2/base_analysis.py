@@ -378,10 +378,10 @@ class BaseDataAnalysis(object):
         """
         file_path = self._get_analysis_result_file_path()
         with h5py.File(file_path, 'a') as data_file:
-            analysis_group = get_hdf_group_by_name(data_file,
-                                                   "Analysis")
+            analysis_group = hdf5_io.get_hdf_group_by_name(
+                data_file, "Analysis")
             if isinstance(analysis_group, h5py.Group):
-                write_dict_to_hdf5(
+                hdf5_io.write_dict_to_hdf5(
                     {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
                     entry_point=analysis_group
                 )
@@ -1102,8 +1102,8 @@ class BaseDataAnalysis(object):
 
             with h5py.File(fn, 'a') as data_file:
                 try:
-                    analysis_group = get_hdf_group_by_name(data_file,
-                                                           "Analysis")
+                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                        data_file, "Analysis")
 
                     # Iterate over all the fit result dicts as not to
                     # overwrite old/other analysis
@@ -1175,10 +1175,10 @@ class BaseDataAnalysis(object):
 
             with h5py.File(fn, 'a') as data_file:
                 try:
-                    analysis_group = get_hdf_group_by_name(data_file,
-                                                           "Analysis")
-                    proc_data_group = get_hdf_group_by_name(analysis_group,
-                                                            "Processed data")
+                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                        data_file, "Analysis")
+                    proc_data_group = hdf5_io.get_hdf_group_by_name(
+                        analysis_group, "Processed data")
 
                     if key in proc_data_group.keys():
                         del proc_data_group[key]
