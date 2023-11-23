@@ -776,7 +776,7 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict, set_mod_freq=True):
             qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
 
 
-def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
+def configure_qubit_feedback_params(qubits, for_ef=None, set_thresholds=False):
     for qb in qubits:
         ge_ch = qb.ge_I_channel()
         acq_ch = qb.acq_I_channel()
@@ -786,20 +786,53 @@ def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
             AWG.dios_0_mode(2)
             vawg = (int(pulsar.get(f'{ge_ch}_id')[2:])-1)//2
             AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
-            AWG.set(f'awgs_{vawg}_dio_mask_value', 0b11 if for_ef else 1) #
-            # assumes channel I and Q are consecutive on same AWG.
+            if (two_dio_bits := for_ef) is None:
+                two_dio_bits = (len(qb.get_acq_int_channels()) == 2)
+            # The case with two dio bits assumes channel I and Q are
+            # consecutive both on the acquisition device and the AWG.
+            AWG.set(f'awgs_{vawg}_dio_mask_value',
+                    0b11 if two_dio_bits else 0b1)
         acq_dev = qb.instr_acq.get_instr()
         acq_dev.dios_0_mode(2)
         if set_thresholds:
-            if for_ef:
-                log.warning('This function sets only thresholds for ge. Please '
-                            'call ActiveReset._set_thresholds for proper ge-ef '
-                            'reset.')
-            threshs = qb.acq_classifier_params()
-            if threshs is not None:
-                threshs = threshs.get('thresholds', None)
-            if threshs is not None:
-                acq_dev.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
+            upload_classif_thresholds(qb)
+
+
+def upload_classif_thresholds(qb, clf_params=None, add=None):
+    """Sets classification thresholds for active reset
+
+    Converts the thresholds from the classifier params of the qubit into
+    actual thresholds as seen by the acquisition device (the former have the
+    dimension of voltages, the latter integrated voltages over time),
+    and uploads them to the acquisition device.
+
+    Args:
+        qb (QuDev_transmon): qubit object
+        clf_params (dict): dictionary containing the thresholds that must
+            be set on the corresponding UHF channel(s).
+            If None, then defaults to qb.acq_classifier_params().
+        add (dict): Optional offsets to add to the uploaded thresholds,
+            in voltage units.
+
+    Note: this could also be a qubit method.
+    """
+    if clf_params is None:
+        clf_params = qb.acq_classifier_params()
+    if add is None:
+        add = {0: 0, 1: 0}
+    instr = qb.instr_acq.get_instr()
+    ths = {
+        k: v + add[k]
+        for k, v in clf_params['thresholds'].items()
+    }
+    # Rescale thresholds to match integrated values in the acq. intrument
+    ths = {k: instr.acq_sampling_rate * qb.acq_length() * v
+           for k, v in ths.items()}
+    # Upload thresholds
+    for key, th in ths.items():
+        ch = {0: 'I', 1: 'Q'}[key]
+        channel_id = qb.parameters[f'acq_{ch}_channel']()
+        instr.parameters[f'qas_0_thresholds_{channel_id}_level'](ths[key])
 
 
 def find_symmetry_index(data):

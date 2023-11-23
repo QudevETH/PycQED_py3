@@ -62,6 +62,11 @@ class BaseDataAnalysis(object):
 
     """
 
+    JOB_ATTRIBUTE_NAME_IN_HDF: str = 'job'
+    """Attribute name for a job string which is saved in the hdf5 file under
+    'Analysis' group.
+    """
+
     fit_res = None
     '''
     Dictionary containing fitting objects
@@ -236,6 +241,10 @@ class BaseDataAnalysis(object):
         try:
             self.extract_data()  # extract data specified in params dict
             self.process_data()  # binning, filtering etc
+            # Write job to Analysis group
+            if self.job:
+                self.save_job_string_in_result_file()
+
             if self.do_fitting:
                 self.prepare_fitting()  # set up fit_dicts
                 try:
@@ -357,9 +366,25 @@ class BaseDataAnalysis(object):
             kwargs['t_stop'] = self.timestamps[-1]
         kwargs_list = [f'{k}={v if not isinstance(v, str) else repr(v)}'
                        for k, v in kwargs.items()]
-
-        job_lines = f"{class_name}({', '.join(args)}{sep}{', '.join(kwargs_list)})"
+        job_lines = f"analysis_object = {class_name}" \
+                    f"({', '.join(args)}{sep}{', '.join(kwargs_list)})"
         self.job = f"{import_lines}{job_lines}"
+
+    def save_job_string_in_result_file(self):
+        """Saves `self.job` in analysis result file under "Analysis" group.
+
+        Raises:
+            RuntimeError: in case `write_dict_to_hdf5` fails.
+        """
+        file_path = self._get_analysis_result_file_path()
+        with h5py.File(file_path, 'a') as data_file:
+            analysis_group = get_hdf_group_by_name(data_file,
+                                                   "Analysis")
+            if isinstance(analysis_group, h5py.Group):
+                write_dict_to_hdf5(
+                    {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
+                    entry_point=analysis_group
+                )
 
     def check_plotting_delegation(self):
         """
@@ -1065,14 +1090,7 @@ class BaseDataAnalysis(object):
 
         # Check weather there is any data to save
         if hasattr(self, 'fit_res') and self.fit_res is not None:
-            fn = self.options_dict.get('analysis_result_file', False)
-            if fn == False:
-                if isinstance(self.raw_data_dict, tuple):
-                    timestamp = self.raw_data_dict[0]['timestamp']
-                else:
-                    timestamp = self.raw_data_dict['timestamp']
-                fn = a_tools.measurement_filename(a_tools.get_folder(
-                    timestamp))
+            fn = self._get_analysis_result_file_path()
 
             try:
                 os.mkdir(os.path.dirname(fn))
@@ -1084,11 +1102,8 @@ class BaseDataAnalysis(object):
 
             with h5py.File(fn, 'a') as data_file:
                 try:
-                    try:
-                        analysis_group = data_file.create_group('Analysis')
-                    except ValueError:
-                        # If the analysis group already exists.
-                        analysis_group = data_file['Analysis']
+                    analysis_group = get_hdf_group_by_name(data_file,
+                                                           "Analysis")
 
                     # Iterate over all the fit result dicts as not to
                     # overwrite old/other analysis
@@ -1108,6 +1123,22 @@ class BaseDataAnalysis(object):
                 except Exception as e:
                     data_file.close()
                     raise e
+
+    def _get_analysis_result_file_path(self) -> str:
+        """Gets full path to analysis result file.
+
+        Returns:
+            str: full path to analysis result file.
+        """
+        fn = self.options_dict.get('analysis_result_file', False)
+        if fn == False:
+            if self.raw_data_dict and isinstance(self.raw_data_dict, tuple):
+                timestamp = self.raw_data_dict[0]['timestamp']
+            else:
+                timestamp = self.raw_data_dict['timestamp']
+            fn = a_tools.measurement_filename(a_tools.get_folder(
+                timestamp))
+        return fn
 
     def save_processed_data(self, key=None, overwrite=True):
         """
@@ -1132,14 +1163,8 @@ class BaseDataAnalysis(object):
         # Check weather there is any data to save
         if hasattr(self, 'proc_data_dict') and self.proc_data_dict is not None \
                 and key in self.proc_data_dict:
-            fn = self.options_dict.get('analysis_result_file', False)
-            if fn == False:
-                if isinstance(self.raw_data_dict, tuple):
-                    timestamp = self.raw_data_dict[0]['timestamp']
-                else:
-                    timestamp = self.raw_data_dict['timestamp']
-                fn = a_tools.measurement_filename(a_tools.get_folder(
-                    timestamp))
+            fn = self._get_analysis_result_file_path()
+
             try:
                 os.mkdir(os.path.dirname(fn))
             except FileExistsError:
@@ -1150,18 +1175,10 @@ class BaseDataAnalysis(object):
 
             with h5py.File(fn, 'a') as data_file:
                 try:
-                    try:
-                        analysis_group = data_file.create_group('Analysis')
-                    except ValueError:
-                        # If the analysis group already exists.
-                        analysis_group = data_file['Analysis']
-
-                    try:
-                        proc_data_group = \
-                            analysis_group.create_group('Processed data')
-                    except ValueError:
-                        # If the processed data group already exists.
-                        proc_data_group = analysis_group['Processed data']
+                    analysis_group = get_hdf_group_by_name(data_file,
+                                                           "Analysis")
+                    proc_data_group = get_hdf_group_by_name(analysis_group,
+                                                            "Processed data")
 
                     if key in proc_data_group.keys():
                         del proc_data_group[key]
