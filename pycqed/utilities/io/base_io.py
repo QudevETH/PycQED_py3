@@ -305,6 +305,12 @@ class DateTimeGenerator:
                     else:
                         # if timestamp not unique, add one second
                         # This is quite a hack
+                        # FIXME: Could add a time.sleep(1) instead of
+                        #  artificially increasing the timestamp by 1.
+                        #  Like this, timestamps in the future are avoided.
+                        #  This does not solve the problem if a data directory
+                        #  for a custom timestamp is requested but this
+                        #  timestamp already exists.
                         ts = time.localtime((time.mktime(ts)+1))
                         tsd = time.strftime('%H%M%S', ts)
                     if counter >= 3600:
