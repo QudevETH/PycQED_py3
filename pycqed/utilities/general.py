@@ -232,9 +232,12 @@ def load_settings(instrument,
             for submodule in ins_loaded.submodules.keys():
                 try:
                     _load_settings(
-                        getattr(instrument, submodule), ins_loaded[submodule],
-                        params_to_set=params_to_set,
-                        load_settings_submodules=load_settings_submodules)
+                        getattr(instrument, submodule),
+                        ins_loaded.submodules[submodule],
+                        params_to_set=None,
+                        load_settings_submodules=load_settings_submodules,
+                        verbose=verbose,
+                        update=update)
                 except Exception as e:
                     log.error(f"Could not load settings onto "
                               f"submodule {submodule}"
