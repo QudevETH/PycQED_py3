@@ -5327,15 +5327,15 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
 
 
         # add modulation pulse
-        flux_pulse_amplitude = kw.get('flux_pulse_amplitude', 0)
-        flux_pulse_length = kw.get('flux_pulse_length', 4e-8)
-        flux_pulse_frequency = kw.get('flux_pulse_frequency', 0)
-        pulse_modifs = {0: {'amplitude': flux_pulse_amplitude,
-                            'pulse_length': flux_pulse_length,
-                            'frequency': flux_pulse_frequency}}
+        # flux_pulse_amplitude = kw.get('flux_pulse_amplitude', 0)
+        # flux_pulse_length = kw.get('flux_pulse_length', 4e-8)
+        # flux_pulse_frequency = kw.get('flux_pulse_frequency', 0)
+        # pulse_modifs = {'all': {'amplitude': flux_pulse_amplitude,
+        #                     'pulse_length': flux_pulse_length,
+        #                     'frequency': flux_pulse_frequency}}
         modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
-                                               [f'FP {qb}'] * num_LRUs,
-                                               pulse_modifs=pulse_modifs
+                                               [f'PFM_ef {qb}'] * num_LRUs,
+                                               # pulse_modifs=pulse_modifs
                                                )
         # create ParametricValues from param_name in sweep_points
         for sweep_dict in sweep_points:
