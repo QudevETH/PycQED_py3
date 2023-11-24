@@ -230,12 +230,12 @@ class Loader:
                 which should be loaded from the file. For files which are not
                 HDF5, the entire file will be loaded into the station regardless
                 of param_path.
+                FIXME: also implement partial loading for non-hdf files and
+                 check if it is significantly faster
+                Logic of reloading in overload of this function in the
+                respective child class.
         Returns (Station): station build from the snapshot.
         """
-        if param_path is not None:
-            # For files which are not HDF5, the entire file will be loaded into
-            # the station regardless of param_path.
-            pass
         station = mqcodes.Station(timestamp=self.timestamp)
         snap = self.get_snapshot()
         for inst_name, inst_dict in snap['instruments'].items():
