@@ -1,6 +1,6 @@
 from pycqed.utilities.io.base_io import Dumper, file_extensions, Loader
 from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
-
+import enum
 
 class MsgDumper(Dumper):
     """
@@ -27,8 +27,25 @@ class MsgDumper(Dumper):
         import msgpack_numpy as msg_np
         msg_np.patch()
 
+        def _pack_default(obj):
+            """
+            This function is used to transform non-serializable objects into
+            serializable objects.
+            Function of if-statements which is passed to the Packer object (see
+            msgpack_numpy.Packer). Returns an object which can be serialized by
+            msgpack.
+            Args:
+                obj: Object which should be serialized and might not be
+                serializable.
+            Returns:
+                Serializable object.
+        """
+            if isinstance(obj, enum.Enum):
+                return obj.value
+            return obj
+
         with open(self.filepath, mode=mode) as file:
-            packed = msgpack.packb(self.data)
+            packed = msgpack.packb(self.data, default=_pack_default)
             if self.compression:
                 packed = Dumper.compress_file(packed)
             file.write(packed)
