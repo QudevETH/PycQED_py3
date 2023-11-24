@@ -5351,6 +5351,22 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
         elif kw.get('prepare_h', False):
             fh_pulse = self.block_from_ops(f'fh_pulse',
                                            [f'X180_fh {qb}'])
+            if kw.get('deplete_f', False):
+                flux_pulse_amplitude_0 = kw.get('flux_pulse_amplitude_0', 0)
+                flux_pulse_length_0 = kw.get('flux_pulse_length_0', 4e-8)
+                flux_pulse_frequency_0 = kw.get('flux_pulse_frequency_0', 0)
+                pulse_modifs = {'all': {'amplitude': flux_pulse_amplitude_0,
+                                    'pulse_length': flux_pulse_length_0,
+                                    'frequency': flux_pulse_frequency_0}}
+                modulation_block_0 = self.block_from_ops(f'modulation_pulse_0_{qb}',
+                                               [f'PFM_ef {qb}'],
+                                               pulse_modifs=pulse_modifs
+                                               )
+                return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
+                                              prepend_blocks + [fh_pulse] +
+                                              [modulation_block_0] + [
+                                                  modulation_block])
+
             return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
                                           prepend_blocks + [fh_pulse] +
                                           [modulation_block])
