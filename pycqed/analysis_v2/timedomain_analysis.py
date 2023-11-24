@@ -11643,9 +11643,6 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
         import os
         ts = self.timestamps[0]
 
-        if cmap_lim is None:
-            cmap_lim = [None, None]
-            # cmap_lim = [0, 100]
         for task in self.metadata['task_list']:
             qbn = task['qbc']
             pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
@@ -11696,16 +11693,26 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     figsize=(6, 8), sharex='col',
                     gridspec_kw={'width_ratios': [10, 1]},
                 )
-                plt.subplots_adjust(wspace=0.1,)
+                plt.subplots_adjust(wspace=0,)
                 axs = [ax for axs_1D in axs for ax in axs_1D]
-                axs.pop(-1).set_axis_off()
+                axs.pop(1).set_axis_off()
+            # For debugging (comparing with cbar), will be hidden in the end
+            axs = np.append(axs, axs[1].twinx())
 
-            axs = np.append(axs, axs[2].twinx())
+            if cmap_lim is None:
+                _cmap_lim = [pop.min(), pop.max()]
+                height = _cmap_lim[1]-_cmap_lim[0]
+                margin = 0.05
+                _cmap_lim = [_cmap_lim[0]-margin*height,
+                             _cmap_lim[1]+margin*height]
+            else:
+                _cmap_lim = cmap_lim
+
             X, Y = np.meshgrid(*coords)
             pcm = axs[0].pcolormesh(
-                X, Y, pop, vmin=cmap_lim[0], vmax=cmap_lim[1])
+                X, Y, pop, vmin=_cmap_lim[0], vmax=_cmap_lim[1])
 
-            norm = mpl.colors.Normalize(vmin=np.min(pop), vmax=np.max(pop))
+            norm = mpl.colors.Normalize(vmin=_cmap_lim[0], vmax=_cmap_lim[1])
             y_max = -np.infty * np.ones(len(coords[0]))
             x = coords[0]
             for i in range(len(coords[1])):
@@ -11726,17 +11733,19 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
 
             # axs[0].set_yticklabels(axs[0].get_yticks()/1e9)  # could use to avoid rescaling coords
             axs[0].set_ylim(coords[1][0], coords[1][-1])
-            axs[3].set_ylim(cmap_lim[0], cmap_lim[1])
-            axs[2].set_ylim(axs[3].get_ylim() / task['num_cz_gates'] ** 2)
+            axs[3].set_ylim(_cmap_lim[0], _cmap_lim[1])
+            axs[1].set_ylim(axs[3].get_ylim() / task['num_cz_gates'] ** 2)
             axs[0].set_ylabel(nice_labels[1])
-            axs[2].set_xlabel(nice_labels[0])
-            axs[3].set_ylabel(
-                'Total leakage (%)\n($\\approx$Leakage * $n_{gates}^2$)')
-            axs[2].set_ylabel('Leakage per gate (%)')
-            cbar = fig.colorbar(pcm, cax=axs[1], label='Total leakage (%)',
+            axs[1].set_xlabel(nice_labels[0])
+            axs[1].set_ylabel('Leakage per gate (%)')
+            cbar = fig.colorbar(pcm, cax=axs[2], label='Total leakage (%)',
                                 pad=-0.2,
                                 anchor=(1,0.5),
                                 )
+            # Hide twin axis
+            axs[3].set_ylabel('')
+            axs[3].yaxis.set_major_locator(mpl.ticker.NullLocator())
+            axs[3].yaxis.set_minor_locator(mpl.ticker.NullLocator())
 
             sp_dims = sp.length() + [self.metadata['compression_factor']]
             plt.suptitle(
