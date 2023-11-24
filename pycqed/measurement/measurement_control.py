@@ -19,6 +19,10 @@ from pycqed.utilities.io import hdf5 as h5d
 from pycqed.utilities.general import dict_to_ordered_tuples
 from pycqed.utilities.get_default_datadir import get_default_datadir
 
+# used for saving instrument settings
+from pycqed.instrument_drivers import instrument as pycqedins
+
+
 # used for axis labels
 from pycqed.measurement import sweep_points as sp_mod
 from pycqed.measurement.calibration import calibration_points as cp_mod
@@ -1986,9 +1990,23 @@ class MeasurementControl(Instrument):
                 raise NotImplementedError(
                     f"Format '{self.settings_file_format()}' not known.")
 
+            snapshot = self.station.snapshot()
+
+            # QCodes uses two containers for the snapshots of station.components
+            # objects if called via station.snapshot: 'instruments' if the
+            # object is an qcodes instrument else 'components'
+            # E.g. remote instruments are not recognized as qcodes instruments and
+            # must therefore be moved to staion['instruments'] by hand.
+            # These kind of 'special' instruments all inherit from
+            # pycqedins.FurtherInstrumentsDictMixIn.
+            for k in list(snapshot['components'].keys()):
+                if isinstance(self.station.components[k],
+                              pycqedins.FurtherInstrumentsDictMixIn):
+                    snapshot['instruments'][k] = snapshot['components'].pop(k)
+
             dumper = Dumper(name=self.get_measurement_name(),
                             datadir=self.datadir(),
-                            data=self.station.snapshot(),
+                            data=snapshot,
                             compression=self.settings_file_compression(),
                             timestamp=self.last_timestamp())
             dumper.dump(mode=mode)
