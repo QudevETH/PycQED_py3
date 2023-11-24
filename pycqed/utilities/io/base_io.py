@@ -232,8 +232,8 @@ class Loader:
                 of param_path.
                 FIXME: also implement partial loading for non-hdf files and
                  check if it is significantly faster
-                Logic of reloading in overload of this function in the
-                respective child class.
+                 See HDF5Loader.get_station() for example of partial station
+                 loading.
         Returns (Station): station build from the snapshot.
         """
         station = mqcodes.Station(timestamp=self.timestamp)

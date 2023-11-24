@@ -39,7 +39,7 @@ class MsgDumper(Dumper):
                 serializable.
             Returns:
                 Serializable object.
-        """
+            """
             if isinstance(obj, enum.Enum):
                 return obj.value
             return obj
