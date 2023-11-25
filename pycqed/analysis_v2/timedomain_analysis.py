@@ -11684,8 +11684,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     labels[i] = 'num_cz_gates'
                     coords[i] = range(task['num_cz_gates'] + 1)
                     nice_labels[i] = 'Number of CZ gates'
-            acq_averages = self.get_hdf_param_value(
-                f"Instrument settings/{qbn}", "acq_averages")
+            acq_averages = self.get_instrument_setting(f'{qbn}.acq_averages')
 
             if 'fig' in kw:
                 fig, axs = kw['fig'], kw['axs']
