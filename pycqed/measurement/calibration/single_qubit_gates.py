@@ -2359,24 +2359,31 @@ class Ramsey(SingleQubitGateCalibExperiment):
 
         :param kw: keyword arguments
         """
-
-        for task in self.preprocessed_task_list:
-            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
-            if self.echo:
-                T2_echo = self.analysis.proc_data_dict[
-                    'analysis_params_dict'][qubit.name]['T2_echo']
-                qubit.set(f'T2{task["transition_name"]}', T2_echo)
-            else:
-                qb_freq = self.analysis.proc_data_dict[
-                    'analysis_params_dict'][qubit.name][
-                    'exp_decay']['new_qb_freq']
-                T2_star = self.analysis.proc_data_dict[
-                    'analysis_params_dict'][qubit.name][
-                    'exp_decay']['T2_star']
-                qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
-                qubit.set(f'T2_star{task["transition_name"]}', T2_star)
-                if task["transition_name_input"] == 'ef':
-                    qubit.set('anharmonicity', qb_freq - qubit.get('ge_freq'))
+        if self._num_sweep_dims > 1:
+            log.warning('Updating not supported with 2D '
+                        'sweep_points. Skipping update.')
+        else:
+            for task in self.preprocessed_task_list:
+                qubit = [qb for qb in self.meas_objs
+                         if qb.name == task['qb']][0]
+                if self.echo:
+                    T2_echo = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name]['T2_echo']
+                    qubit.set(f'T2{task["transition_name"]}', T2_echo)
+                else:
+                    qb_freq = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name][
+                        'exp_decay']['new_qb_freq']
+                    T2_star = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name][
+                        'exp_decay']['T2_star']
+                    qubit.set(f'{task["transition_name_input"]}_freq',
+                              qb_freq)
+                    qubit.set(f'T2_star{task["transition_name"]}',
+                              T2_star)
+                    if task["transition_name_input"] == 'ef':
+                        qubit.set('anharmonicity',
+                                  qb_freq - qubit.get('ge_freq'))
 
     @classmethod
     def gui_kwargs(cls, device):
@@ -2853,12 +2860,16 @@ class T1(SingleQubitGateCalibExperiment):
         extracted by the analysis.
         :param kw: keyword arguments
         """
-
-        for task in self.preprocessed_task_list:
-            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
-            T1 = self.analysis.proc_data_dict['analysis_params_dict'][
-                qubit.name]['T1']
-            qubit.set(f'T1{task["transition_name"]}', T1)
+        if self._num_sweep_dims > 1:
+            log.warning('Updating not supported with 2D '
+                        'sweep_points. Skipping update.')
+        else:
+            for task in self.preprocessed_task_list:
+                qubit = [qb for qb in self.meas_objs
+                         if qb.name == task['qb']][0]
+                T1 = self.analysis.proc_data_dict[
+                    'analysis_params_dict'][qubit.name]['T1']
+                qubit.set(f'T1{task["transition_name"]}', T1)
 
     @classmethod
     def gui_kwargs(cls, device):
