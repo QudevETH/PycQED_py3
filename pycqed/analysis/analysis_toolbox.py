@@ -79,8 +79,8 @@ def verify_daystamp(daystamp: str) -> str:
         datetime.datetime.strptime(daystamp, "%Y%m%d")
     except ValueError:
         raise ValueError("Cannot interpret daystamp '%s'. Daystamp must be in "
-                        "\"YYYYmmdd\" (\"%%Y%%m%%d\") format." %
-                        daystamp)
+                         "\"YYYYmmdd\" (\"%%Y%%m%%d\") format." %
+                         daystamp)
     return daystamp
 
 
