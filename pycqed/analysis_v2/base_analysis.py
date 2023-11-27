@@ -15,7 +15,7 @@ import matplotlib as mpl
 from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.analysis_v2.analysis_daemon import AnalysisDaemon
+from pycqed.analysis_v2 import analysis_daemon
 from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
     write_warning_message_to_text_file)
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
@@ -474,7 +474,7 @@ class BaseDataAnalysis(object):
         job = job.replace("'save_figs': True", "'save_figs': False")
         job = job.replace("'close_figs': True", "'close_figs': False")
 
-        return AnalysisDaemon.execute_job(job)
+        return analysis_daemon.AnalysisDaemon.execute_job(job)
 
     def get_hdf_param_value(self, path_to_group, attribute, hdf_file_index=0):
         """
