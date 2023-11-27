@@ -2,7 +2,7 @@
 
 Used to iterate through experiments/timestamps and figures inside them.
 """
-from typing import Any, Optional, Self
+from typing import Any, Optional
 
 from pycqed.analysis import analysis_toolbox
 from pycqed.analysis_v2 import base_analysis
@@ -69,7 +69,7 @@ class BidirectionalIterator(object):
         self.index = len(self.collection) - 1
         return self.collection[-1]
 
-    def __iter__(self) -> Self:
+    def __iter__(self):
         """Ensures compliance with python iterator interface.
 
         Returns:
@@ -187,7 +187,7 @@ class TimestampBidirectionalIterator(object):
                 raise StopIteration
         return result
 
-    def __iter__(self) -> Self:
+    def __iter__(self):
         """Ensures compliance with python iterator interface.
 
         Returns:
@@ -313,7 +313,7 @@ class ExperimentIterator(object):
         except Exception:
             return None
 
-    def __iter__(self) -> Self:
+    def __iter__(self):
         """Ensures compliance with python iterator interface.
 
         Returns:
