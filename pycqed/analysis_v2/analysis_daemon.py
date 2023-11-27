@@ -1,5 +1,5 @@
 
-
+import importlib
 import time
 import traceback
 import logging
@@ -11,6 +11,11 @@ from typing import Optional
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v2 import base_analysis as ba
 
+# importlib.reload() is needed to avoid a circular import because both
+# base_analysis and analysis_daemon depend on each other and without reload
+# you get and error that ba.BaseDataAnalysis (in return type hint of
+# AnalysisDaemon.execute_job()) does not exist.
+importlib.reload(ba)
 
 class AnalysisDaemon:
     """
