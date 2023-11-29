@@ -6211,16 +6211,16 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
             if (fitparams0['c'].value > (0.5 + threshold)) or \
                     (fitparams0['c'].value < (0.5 - threshold)):
                 log.warning('The trace from the X90-X180 pulses is '
-                                'NOT within $\pm${} of the expected value '
-                                'of 0.5.'.format(threshold))
+                            'NOT within ±{} of the expected value '
+                            'of 0.5.'.format(threshold))
             # Warning if optimal_qscale is not within +/-threshold of 0.5
             y_optimal_qscale = optimal_qscale * fitparams2['slope'].value + \
                                  fitparams2['intercept'].value
             if (y_optimal_qscale > (0.5 + threshold)) or \
                     (y_optimal_qscale < (0.5 - threshold)):
                 log.warning('The optimal qscale found gives a population '
-                                'that is NOT within $\pm${} of the expected '
-                                'value of 0.5.'.format(threshold))
+                            'that is NOT within ±{} of the expected '
+                            'value of 0.5.'.format(threshold))
 
             # Calculate standard deviation
             intercept_diff_std_squared = \
