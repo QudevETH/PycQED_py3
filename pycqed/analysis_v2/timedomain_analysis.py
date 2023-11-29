@@ -11670,8 +11670,8 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
                     )
 
     def get_leakage_best_val(self, qbH_name, qbL_name, minimize='auto',
-                             save_fig=True, show_fig=False, fig=None, ax=None,
-                             xtransform=None, xlabel=None, colors=None):
+                             xtransform=None, xlabel=None, xunit=None,
+                             colors=None):
         """Gets sweep parameter value corresponding to minimum/maximum leakage
 
         Fits a second-order polynomial and extracts extremum qbH f population.
@@ -11712,37 +11712,47 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
         if xtransform:
             x = xtransform(x)
         xlabel = xlabel or self.sp.get_sweep_params_property('label')
+        xunit = xunit or self.sp.get_sweep_params_property('unit')
         fact = 1
         while abs(max(x)) < 1e-3:
             x *= 1e3
             fact *= 1e3
         model_func = lambda x, a, b, c: a * ((x - b) ** 2) + c
         model = lmfit.Model(model_func)
-        res = model.fit(data, x=x, a=a, c=c, b=np.mean(x))
-        best_val = res.best_values['b'] / fact
-        if fig is None:
-            fig, ax = plt.subplots(1)
-            ax = fig.get_axes()[0]
-        ax.plot(x / fact, data, 'o', label='Meas.', color=colors[0])
+        self.fit_res = model.fit(data, x=x, a=a, c=c, b=np.mean(x))
+        best_val = self.fit_res.best_values['b'] / fact
         x_resampled = np.linspace(x[0], x[-1], 100)
-        ax.plot(x_resampled / fact,
-                model_func(x_resampled, **res.best_values), label='Fit',
-                color=colors[1])
-        ax.vlines(best_val, np.min(data), np.max(data), linestyle='--',
-                  color=colors[1])
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel('$|2\\rangle$ state pop.')
-        if save_fig:
-            import datetime
-            import os
-            fig_title = 'Leakage_sweep_{}_{}'.format(qbH_name,
-                                                     qbL_name)
-            fig_title = '{}--{:%Y%m%d_%H%M%S}'.format(
-                fig_title, datetime.datetime.now())
-            save_folder = a_tools.get_folder(self.timestamps[0])
-            filename = os.path.abspath(
-                os.path.join(save_folder, fig_title + '.png'))
-            fig.savefig(filename, bbox_inches='tight')
-        if show_fig:
-            fig.show()
+        fig_title = f'Leakage_sweep_{qbH_name}_{qbL_name}'
+
+        self.plot_dicts[fig_title + '_fit'] = {
+            'fig_id': fig_title,
+            'title': fig_title,
+            'plotfn': self.plot_line,
+            'xvals': x_resampled / fact,
+            'yvals': model_func(x_resampled, **self.fit_res.best_values),
+            'xlabel': xlabel,
+            'xunit': '',
+            'ylabel': '$|2\\rangle$ state pop.',
+            'yunit': '',
+            'label': 'Fit',
+            'color': colors[1],
+            'marker': '',
+        }
+        self.plot_dicts[fig_title + '_data'] = {
+            'fig_id': fig_title,
+            'plotfn': self.plot_line,
+            'xvals': x / fact,
+            'yvals': data,
+            'label': 'Meas.',
+            'color': colors[0],
+            'linestyle': '',
+        }
+        self.plot_dicts[fig_title + '_best'] = {
+            'fig_id': fig_title,
+            'plotfn': self.plot_vlines,
+            'x': best_val,
+            'ymin': np.min(data),
+            'ymax': np.max(data),
+            'colors': 'gray',
+        }
         return best_val
