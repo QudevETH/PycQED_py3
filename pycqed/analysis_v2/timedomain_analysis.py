@@ -11644,36 +11644,27 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             xtransform: additional x-axis transformation function
             **kw (dict): additional formatting arguments, TODO
 
-        Note: all data are handled in terms of total leakage for n gates. A
-        rescaling is applied, only to the values plotted on the botton axis.
-        The colorbar has the same limits as the ylim of the bottom panel (
-        before rescaling), such that the colorbar can serve as a second y axis.
-        Note: all populations are specified in %
+        Note: all data are handled in terms of total leakage for n gates. The y
+        label of the bottom plot shows the leakage for 1 gate.
+        The colorbar has the same limits as the ylim of the bottom panel
+        (before rescaling), such that the colorbar can serve as a second y axis.
         """
 
         pop_scale, pop_unit = 1e-3, '$\\%_o$'
 
-        y_err_f = lambda pop, n: (np.sqrt(pop*pop_scale * (1-pop*pop_scale) / n)
-                                  / pop_scale)
+        y_err_f = lambda pop, n: np.sqrt(pop * (1-pop) / n)
 
         # Function to compute single gate populations (could be a kwarg)
-        # FIXME the colorbar and yaxis will only be aligned if this
-        #  function is linear. Otherwise, we'd rather need something like
-        #  ax.set_yticklabels(f(ax.get_yticks()))
-        #  (probably doesn't exist yet in pycqed)
-        n_to_1_gate_func = lambda p, n: p/n**2
-
-        def rescale_vals(pop, n, rescale,
-                         n_to_1_gate_func=n_to_1_gate_func):
-            return n_to_1_gate_func(pop, n) if rescale else pop
+        f = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(p)))/n)**2
 
         ts = self.timestamps[0]
 
         for task in self.metadata['task_list']:
             qbn = task['qbc']
             pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
-                [:, :-3] / pop_scale
+                [:, :-3]
             sp = SweepPoints(task['sweep_points'])
+            n = task['num_cz_gates']
 
             # Re-organise data to keep the delay as vertical axis
             label_orthogonal = 'buffer_length_start'
@@ -11707,7 +11698,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             for i, l in enumerate(labels):
                 if 'pulse_off' in l:
                     labels[i] = 'num_cz_gates'
-                    coords[i] = range(task['num_cz_gates'] + 1)
+                    coords[i] = range(n + 1)
                     nice_labels[i] = 'Number of CZ gates'
             acq_averages = self.get_instrument_setting(f'{qbn}.acq_averages')
             sp_dims = sp.length() + [self.metadata['compression_factor']]
@@ -11715,7 +11706,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 f"{ts} Leakage ampl. {qbn}{task['qbt']}\n"
                 f"{sp_dims[0]} seg. * {sp_dims[2]} hard seq. * "
                 f"{int(np.ceil(sp_dims[1] / sp_dims[2]))} soft seq.\n"
-                f"{task['num_cz_gates']} {task['cz_pulse_name']} gates, "
+                f"{n} {task['cz_pulse_name']} gates, "
                 f"{acq_averages} avg."
             ))
             plot_params = self.get_default_plot_params(set_pars=False)
@@ -11733,7 +11724,6 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 _cmap_lim = cmap_lim
             norm = mpl.colors.Normalize(vmin=_cmap_lim[0], vmax=_cmap_lim[1])
 
-            n = task['num_cz_gates']
             x = coords[0]
             y_max = np.max(pop, axis=0)
             x_scatter = np.array([x]*len(pop)).flatten()
@@ -11755,15 +11745,14 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             }
 
             # Plot 2D data
-            rescale = False
             self.plot_dicts[figname + "_2D"] = {
                 'fig_id': figname,
                 'ax_id': 0,
                 'plotfn': self.plot_colorxy,
                 'xvals': coords[0],
                 'yvals': coords[1],
-                'zvals': rescale_vals(pop, n, rescale),
-                'zrange': rescale_vals(_cmap_lim, n, rescale),
+                'zvals': pop/pop_scale,
+                'zrange': _cmap_lim/pop_scale,
                 'xlabel': '',
                 'xtick_labels': [],
                 'xunit': '',
@@ -11777,53 +11766,51 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'cax_id': 3,
             }
 
-            rescale = True
             self.plot_dicts[figname + f"_1D_line"] = {
                 'fig_id': figname,
                 'ax_id': 2,
                 'plotfn': self.plot_line,
                 'xvals': np.array([x]*len(pop)),
-                'yvals': rescale_vals(pop, n, rescale),
+                'yvals': pop/pop_scale,
                 'alpha': 0.1,
                 'line_kws': {'zorder': 0},
-                'yrange': rescale_vals(_cmap_lim, n, rescale),
+                'yrange': _cmap_lim/pop_scale,
                 'color': 'k',
                 'xlabel': nice_labels[0],
-                'ylabel': f"Approx. gate leakage ({pop_unit})",
+                'ylabel': f"Gate leakage ({pop_unit})",
+                'set_major_formatter': {  # Nonlinear conversion: relabel yticks
+                    'yaxis': lambda p, _: f'{f(p*pop_scale, n)/pop_scale:.2f}'},
             }
 
-            rescale = True
             self.plot_dicts[figname + f"_1D_scatter"] = {
                 'fig_id': figname,
                 'ax_id': 2,
                 'plotfn': self.plot_line,
                 'xvals': x_scatter,
-                'yvals': rescale_vals(y_scatter, n, rescale),
+                'yvals': y_scatter/pop_scale,
                 'alpha': 0.3,
                 'color': cmap(norm(y_scatter)),
                 'scatter': True,
                 'line_kws': {'zorder': 1},
             }
 
-            rescale = True
             self.plot_dicts[figname + f"_1D_line_max"] = {
                 'fig_id': figname,
                 'ax_id': 2,
                 'plotfn': self.plot_line,
                 'xvals': x,
-                'yvals': rescale_vals(y_max, n, rescale),
-                'yerr': rescale_vals(y_err, n, rescale),
+                'yvals': y_max/pop_scale,
+                'yerr': y_err/pop_scale,
                 'alpha': 1,
                 'line_kws': {'zorder': 0},
                 'color': 'k',
             }
-            rescale = True
             self.plot_dicts[figname + f"_1D_scatter_max"] = {
                 'fig_id': figname,
                 'ax_id': 2,
                 'plotfn': self.plot_line,
                 'xvals': x,
-                'yvals': rescale_vals(y_max, n, rescale),
+                'yvals': y_max/pop_scale,
                 'alpha': 1,
                 'color': cmap(norm(y_max)),
                 'scatter': True,
@@ -11831,11 +11818,10 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             }
 
             id_opt = np.argmin(y_max)
-            rescale = True
             self.leakage_ymax = {
                 'x': coords[0],
                 'x_label': labels[0],
-                'y': rescale_vals(y_max, n, rescale),
-                'yerr': rescale_vals(y_err, n, rescale),
+                'y': y_max,
+                'yerr': y_err,
                 'x_opt': sp[labels[0]][id_opt],
             }
