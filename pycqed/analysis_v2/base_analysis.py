@@ -1247,8 +1247,17 @@ class BaseDataAnalysis(object):
         for key in key_list:
             pdict = self.plot_dicts[key]
             if pdict.get('set_axis_off'):
-                self.axs[pdict['fig_id']].flatten()[pdict['ax_id']].set_axis_off()
+                ax = self.axs[pdict['fig_id']].flatten()[pdict['ax_id']]
+                ax.set_axis_off()
 
+        # Allows to set axis formatters (e.g. for nonlinear axes scalings)
+        # Example use: fmt = {'yaxis': Formatter}
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            if fmt := pdict.get('set_major_formatter'):
+                ax = self.axs[pdict['fig_id']].flatten()[pdict['ax_id']]
+                for ax_name, formatter in fmt.items():
+                    getattr(ax, ax_name).set_major_formatter(formatter)
 
     def _plot(self, key_list, transparent_background=False):
         """
