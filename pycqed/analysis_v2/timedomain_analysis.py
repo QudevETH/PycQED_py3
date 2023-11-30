@@ -7537,45 +7537,6 @@ class DynamicPhaseAnalysis(MultiCZgate_Calib_Analysis):
             if row % 2 != 0 else 'with FP'
 
 
-class SingleRowChevronAnalysis(MultiQubit_TimeDomain_Analysis):
-    """Analysis for 1-dimensional Chevron QuantumExperiment
-
-    This is used for instance for the 1-D measurements performed as part of
-    CZ gate calibration
-    """
-
-    def extract_data(self):
-        # Necessary for data processing and plotting since sweep_points are 2D
-        self.default_options['TwoD'] = True
-        super().extract_data()
-
-    def prepare_projected_data_plots(self):
-        # FIXME this overrides the super method but does almost the same. One
-        #  should clean up the logic in the super to get rid of this, see below.
-        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
-            for k, v in dd.items():
-                # FIXME this plot is almost the same as in the super method,
-                #  but with plot_cal_points=True. The problem is that TwoD is
-                #  True, meaning that the super does not plot the cal points,
-                #  even though it correctly resolves that the data is really 1D.
-                self.prepare_projected_data_plot(
-                    fig_name=f'SingleRowChevron_{qbn}_{k}',
-                    data=v[0],
-                    data_axis_label=f'|{k[1:]}> state population',
-                    qb_name=qbn, TwoD=False, plot_cal_points=True,
-                )
-                # FIXME this is the same as the projected plot, just rescaled.
-                if k == 'pf':
-                    self.prepare_projected_data_plot(
-                        fig_name=f'Leakage_{qbn}',
-                        data=v[0],
-                        data_axis_label=f'|{k[1:]}> state population',
-                        qb_name=qbn, TwoD=False, plot_cal_points=True,
-                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
-                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
-                    )
-
-
 class CryoscopeAnalysis(DynamicPhaseAnalysis):
 
     def __init__(self, qb_names, *args, **kwargs):
@@ -11773,3 +11734,130 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
         """
         return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
+
+
+class SingleRowChevronAnalysis(ChevronAnalysis):
+    """Analysis for 1-dimensional Chevron QuantumExperiment
+
+    This is used for instance for the 1-D measurements performed as part of
+    CZ gate calibration
+    """
+
+    def extract_data(self):
+        # Necessary for data processing and plotting since sweep_points are 2D
+        self.default_options['TwoD'] = True
+        super().extract_data()
+
+    def prepare_projected_data_plots(self):
+        # FIXME this overrides the super method but does almost the same. One
+        #  should clean up the logic in the super to get rid of this, see below.
+        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
+            for k, v in dd.items():
+                # FIXME this plot is almost the same as in the super method,
+                #  but with plot_cal_points=True. The problem is that TwoD is
+                #  True, meaning that the super does not plot the cal points,
+                #  even though it correctly resolves that the data is really 1D.
+                self.prepare_projected_data_plot(
+                    fig_name=f'SingleRowChevron_{qbn}_{k}',
+                    data=v[0],
+                    data_axis_label=f'|{k[1:]}> state population',
+                    qb_name=qbn, TwoD=False, plot_cal_points=True,
+                )
+                # FIXME this is the same as the projected plot, just rescaled.
+                if k == 'pf':
+                    self.prepare_projected_data_plot(
+                        fig_name=f'Leakage_{qbn}',
+                        data=v[0],
+                        data_axis_label=f'|{k[1:]}> state population',
+                        qb_name=qbn, TwoD=False, plot_cal_points=True,
+                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
+                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
+                    )
+
+    def get_leakage_best_val(self, qbH_name, qbL_name, minimize='auto',
+                             xtransform=None, xlabel=None, xunit=None,
+                             colors=None):
+        """Gets sweep parameter value corresponding to minimum/maximum leakage
+
+        Fits a second-order polynomial and extracts extremum qbH f population.
+        Args:
+            qbH_name, qbL_name: names of high- and low-frequency qubits
+            minimize (bool or 'auto'): Whether to explicitly look for a
+            minimum or maximum, by setting initial fit parameters to help the
+                fit converge. If minimize=='auto', this is guessed by comparing
+                the middle point to a linear fit through the end points.
+            save_fig: Whether to save the figure.
+            show_fig: Whether to show the figure.
+            fig: Optionally pass a figure on which to plot the data.
+            ax: Optional axis of fig on which to plot the data.
+            xtransform: Optional transformation to apply to sweep parameters in
+                the plot (e.g. change of units).
+            xlabel: x axis label. If None: extracted from the sweep points.
+            colors: Optionally set colours of the plot.
+        Returns:
+            Sweep parameter corresponding to the extremum of the fitted model.
+        Note that this method could be generalised to fit populations from
+            other states than the f state of the high-frequency qubit.
+        """
+
+        if colors is None:
+            colors = ['C0', 'C1']
+        data = self.proc_data_dict['projected_data_dict'][qbH_name][
+                   'pf'][0, :-3]
+        x = self.sp.get_sweep_params_property('values',
+                                              dimension=0).copy()
+        if minimize == 'auto':
+            minimize = data[len(data) // 2] < (data[0] + data[-1])/2
+        if minimize:
+            a = 100
+            c = 0
+        else:
+            a = -100
+            c = 1
+        if xtransform:
+            x = xtransform(x)
+        xlabel = xlabel or self.sp.get_sweep_params_property('label')
+        xunit = xunit or self.sp.get_sweep_params_property('unit')
+        fact = 1
+        while abs(max(x)) < 1e-3:
+            x *= 1e3
+            fact *= 1e3
+        model_func = lambda x, a, b, c: a * ((x - b) ** 2) + c
+        model = lmfit.Model(model_func)
+        self.fit_res = model.fit(data, x=x, a=a, c=c, b=np.mean(x))
+        best_val = self.fit_res.best_values['b'] / fact
+        x_resampled = np.linspace(x[0], x[-1], 100)
+        fig_title = f'Leakage_sweep_{qbH_name}_{qbL_name}'
+
+        self.plot_dicts[fig_title + '_fit'] = {
+            'fig_id': fig_title,
+            'title': fig_title,
+            'plotfn': self.plot_line,
+            'xvals': x_resampled / fact,
+            'yvals': model_func(x_resampled, **self.fit_res.best_values),
+            'xlabel': xlabel,
+            'xunit': '',
+            'ylabel': '$|2\\rangle$ state pop.',
+            'yunit': '',
+            'label': 'Fit',
+            'color': colors[1],
+            'marker': '',
+        }
+        self.plot_dicts[fig_title + '_data'] = {
+            'fig_id': fig_title,
+            'plotfn': self.plot_line,
+            'xvals': x / fact,
+            'yvals': data,
+            'label': 'Meas.',
+            'color': colors[0],
+            'linestyle': '',
+        }
+        self.plot_dicts[fig_title + '_best'] = {
+            'fig_id': fig_title,
+            'plotfn': self.plot_vlines,
+            'x': best_val,
+            'ymin': np.min(data),
+            'ymax': np.max(data),
+            'colors': 'gray',
+        }
+        return best_val
