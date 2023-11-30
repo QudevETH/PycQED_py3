@@ -11633,7 +11633,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class LeakageAmplificationAnalysis(ChevronAnalysis):
 
-    def plot(self, cmap_lim=None, **kw):
+    def plot(self, cmap_lim=None, xtransform=None, **kw):
         """
         TODO
 
@@ -11660,6 +11660,8 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 sp[0], sp[1] = sp[1], sp[0]
             labels = [list(sp[i])[0] for i in range(len(sp))]
             coords = [sp[l] for l in labels]
+            if xtransform:
+                coords[0] = xtransform(coords[0])
 
             # Process labels
             nice_labels = [
@@ -11748,7 +11750,6 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             figname = f'{ts}_leakage_amplification_{qbn}'
             filename = os.path.abspath(os.path.join(
                 save_folder, figname + '.png'))
-            fig.savefig(filename)
 
             id_opt = np.argmin(y_max)
             self.leakage_ymax = {
@@ -11761,3 +11762,5 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             self.figs[figname] = fig
         plt.show()
         plt.close('all')
+        return fig, axs
+
