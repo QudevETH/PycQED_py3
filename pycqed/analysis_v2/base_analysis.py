@@ -1242,6 +1242,14 @@ class BaseDataAnalysis(object):
                 if isinstance(i := pdict.get(ak + '_id'), int):
                     pdict[ak] = self.axs[pdict['fig_id']].flatten()[i]
 
+        # Allows to hide a subplot (to create complex fig layouts by leaving
+        # out some axes blank)
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            if pdict.get('set_axis_off'):
+                self.axs[pdict['fig_id']].flatten()[pdict['ax_id']].set_axis_off()
+
+
     def _plot(self, key_list, transparent_background=False):
         """
         Creates the figures specified by key_list.
@@ -1253,7 +1261,9 @@ class BaseDataAnalysis(object):
             pdict = self.plot_dicts[key]
             plot_touching = pdict.get('touching', False)
 
-            if type(pdict['plotfn']) is str:
+            if pdict.get('plotfn') is None:
+                continue
+            elif type(pdict['plotfn']) is str:
                 plotfn = getattr(self, pdict['plotfn'])
             else:
                 plotfn = pdict['plotfn']
