@@ -5380,6 +5380,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        self.default_options['base_plot_name'] = 'T1'
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -5391,8 +5392,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        for qbn in self.qb_names:
-            data = self.proc_data_dict['data_to_fit'][qbn]
+        def add_fit_dict(qbn, data, key):
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                 'msmt_sweep_points']
             if self.num_cal_points != 0:
@@ -5408,63 +5408,101 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                 guess_pars['offset'].value = 0
                 guess_pars['offset'].vary = False
             self.set_user_guess_pars(guess_pars)
-            key = 'exp_decay_' + qbn
             self.fit_dicts[key] = {
                 'fit_fn': exp_decay_mod.func,
                 'fit_xvals': {'t': sweep_points},
                 'fit_yvals': {'data': data},
                 'guess_pars': guess_pars}
 
+        for qbn in self.qb_names:
+            all_data = self.proc_data_dict['data_to_fit'][qbn]
+            if self.get_param_value('TwoD'):
+                for i, data in enumerate(all_data):
+                    key = f'exp_decay_{qbn}_{i}'
+                    add_fit_dict(qbn, data, key,)
+            else:
+                add_fit_dict(qbn, all_data, 'exp_decay_' + qbn)
+
+
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            fit_res = self.fit_dicts['exp_decay_' + qbn]['fit_res']
+        for k, fit_dict in self.fit_dicts.items():
+            # k is of the form exp_decay_qbn_i if TwoD else exp_decay_qbn
+            # replace k with qbn_i or qbn
+            k = k.replace('exp_decay_', '')
+            fit_res = fit_dict['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
                     log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
-            self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
-            self.proc_data_dict['analysis_params_dict'][qbn]['T1'] = \
+            # stores as qbn if OneD or qbn_i if TwoD
+            self.proc_data_dict['analysis_params_dict'][k] = OrderedDict()
+            self.proc_data_dict['analysis_params_dict'][k]['T1'] = \
                 fit_res.best_values['tau']
-            self.proc_data_dict['analysis_params_dict'][qbn]['T1_stderr'] = \
+            self.proc_data_dict['analysis_params_dict'][k]['T1_stderr'] = \
                 fit_res.params['tau'].stderr
         self.save_processed_data(key='analysis_params_dict')
 
+
     def prepare_plots(self):
         super().prepare_plots()
+        bpn = self.get_param_value('base_plot_name')
 
         if self.do_fitting:
-            for qbn in self.qb_names:
-                # rename base plot
-                base_plot_name = f'T1_{qbn}_{self.data_to_fit[qbn]}'
+            for k, fit_dict in self.fit_dicts.items():
+                # k is of the form exp_decay_qbn_i if TwoD else exp_decay_qbn
+                # replace k with qbn_i or qbn
+                k = k.replace('exp_decay_', '')
+                # split into qbn and i. (k + '_') is needed because if k = qbn
+                # doing k.split('_') will only have one output and assignment to
+                # two variables will fail.
+                qbn, i = (k + '_').split('_')[:2]
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                    'sweep_points']
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(i) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
+                    title_suffix = (f'{i}: {label} = ' + ' '.join(
+                        SI_val_to_msg_str(vals[int(i)], unit,
+                                          return_type=lambda x: f'{x:0.4f}')))
+                else:
+                    # OneD
+                    title_suffix = ''
+                fit_res = fit_dict['fit_res']
+                base_plot_name = f'{bpn}_{k}_{self.data_to_fit[qbn]}'
+                dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
-                    data=self.proc_data_dict['data_to_fit'][qbn],
-                    plot_name_suffix=qbn+'fit',
-                    qb_name=qbn)
-
-                self.plot_dicts['fit_' + qbn] = {
+                    data=dtf[int(i)] if i != '' else dtf,
+                    sweep_points=sweep_points,
+                    plot_name_suffix=qbn + 'fit',
+                    qb_name=qbn, TwoD=False,
+                    title_suffix=title_suffix
+                )
+                self.plot_dicts['fit_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_fit,
-                    'fit_res': self.fit_dicts['exp_decay_' + qbn]['fit_res'],
+                    'fit_res': fit_res,
                     'setlabel': 'exp decay fit',
                     'do_legend': True,
                     'color': 'r',
                     'legend_ncol': 2,
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
-
                 trans_name = self.get_transition_name(qbn)
-                old_T1_val = self.raw_data_dict[f'{trans_name}_T1_'+qbn]
+                old_T1_val = self.raw_data_dict[f'{trans_name}_T1_' + qbn]
                 if old_T1_val != old_T1_val:
                     old_T1_val = 0
                 T1_dict = self.proc_data_dict['analysis_params_dict']
                 textstr = '$T_1$ = {:.2f} $\mu$s'.format(
-                            T1_dict[qbn]['T1']*1e6) \
+                    T1_dict[k]['T1'] * 1e6) \
                           + ' $\pm$ {:.2f} $\mu$s'.format(
-                            T1_dict[qbn]['T1_stderr']*1e6) \
-                          + '\nold $T_1$ = {:.2f} $\mu$s'.format(old_T1_val*1e6)
-                self.plot_dicts['text_msg_' + qbn] = {
+                    T1_dict[k]['T1_stderr'] * 1e6) \
+                          + '\nold $T_1$ = {:.2f} $\mu$s'.format(
+                    old_T1_val * 1e6)
+                self.plot_dicts['text_msg_' + k] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
                     'xpos': 0,
@@ -6415,34 +6453,45 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
 
+        # If OneD, qbn_idx will be of the form qb2
+        # If TwoD, qbn_idx wil lbe of the form qb2_1
+        for qbn_idx in (
+                self.echo_analysis.proc_data_dict[
+                    'analysis_params_dict'].keys()
+        ):
+            self.proc_data_dict['analysis_params_dict'][qbn_idx] = OrderedDict()
             params_dict = self.echo_analysis.proc_data_dict[
-                'analysis_params_dict'][qbn]
+                'analysis_params_dict'][qbn_idx]
             if 'T1' in params_dict:
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo'] = params_dict['T1']
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo_stderr'] = params_dict['T1_stderr']
             else:
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo'] = params_dict['exp_decay']['T2_star']
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
-
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
         if self.do_fitting:
-            for qbn in self.qb_names:
+            # If OneD, qbn_idx will be of the form qb2
+            # If TwoD, qbn_idx wil lbe of the form qb2_1
+            for qbn_idx in (
+                    self.echo_analysis.proc_data_dict[
+                        'analysis_params_dict'].keys()
+            ):
+                qbn = (qbn_idx + "_").split("_")[0]
                 # rename base plot
-                figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
+                figure_name = (f'Echo_{qbn_idx}_'
+                               f'{self.echo_analysis.data_to_fit[qbn]}')
                 echo_plot_key_t1 = [key for key in self.echo_analysis.plot_dicts
-                                    if 'T1_'+qbn in key]
+                                    if 'T1_'+qbn_idx in key]
                 echo_plot_key_rm = [key for key in self.echo_analysis.plot_dicts
-                                    if 'Ramsey_'+qbn in key]
+                                    if 'Ramsey_'+qbn_idx in key]
                 if len(echo_plot_key_t1) != 0:
                     echo_plot_name = echo_plot_key_t1[0]
                 elif len(echo_plot_key_rm) != 0:
@@ -6456,7 +6505,7 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                     'legend_bbox_to_anchor'] = (1, -0.15)
 
                 for plot_label in self.echo_analysis.plot_dicts:
-                    if qbn in plot_label:
+                    if qbn_idx in plot_label:
                         if 'raw' not in plot_label and \
                                 'projected' not in plot_label:
                             self.echo_analysis.plot_dicts[
@@ -6472,13 +6521,13 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 art_det = self.artificial_detuning_dict[qbn]*1e-6
                 textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
                 textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
-                    T2_dict[qbn]['T2_echo']*1e6) \
+                    T2_dict[qbn_idx]['T2_echo']*1e6) \
                           + ' $\pm$ {:.2f} $\mu$s'.format(
-                    T2_dict[qbn]['T2_echo_stderr']*1e6) \
+                    T2_dict[qbn_idx]['T2_echo_stderr']*1e6) \
                           + '\nold $T_2$ echo = {:.2f} $\mu$s'.format(
                     old_T2e_val*1e6)
 
-                self.echo_analysis.plot_dicts['text_msg_' + qbn][
+                self.echo_analysis.plot_dicts['text_msg_' + qbn_idx][
                     'text_string'] = textstr
                 # Set text colour to black.
                 # When the change in qubit frequency is larger than artificial
@@ -6490,7 +6539,8 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 # since we do not use it to estimate the qubit frequency.
                 # Not resetting the colour here will cause an error in the case
                 # of multi-coloured text strings.
-                self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
+                self.echo_analysis.plot_dicts['text_msg_' + qbn_idx]['color'] \
+                    = 'k'
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
