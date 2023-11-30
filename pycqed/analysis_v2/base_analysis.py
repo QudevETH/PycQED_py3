@@ -1552,6 +1552,8 @@ class BaseDataAnalysis(object):
                 plot_linekws['yerr'] = plot_linekws.get('yerr', yerr)
             if xerr is not None:
                 plot_linekws['xerr'] = plot_linekws.get('xerr', xerr)
+        if pdict.get('scatter'):
+            pdict['func'] = 'scatter'
 
         pdict['line_kws'] = plot_linekws
         plot_xvals = pdict['xvals']
@@ -1566,7 +1568,7 @@ class BaseDataAnalysis(object):
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
-        if pdict.get('color', False):
+        if pdict.get('color') is not None:
             plot_linekws['color'] = pdict.get('color')
 
         plot_linekws['alpha'] = pdict.get('alpha', 1)
@@ -1596,11 +1598,22 @@ class BaseDataAnalysis(object):
         if plot_multiple:
             p_out = []
             len_color_cycle = pdict.get('len_color_cycle', len(plot_yvals))
-            # Default gives max contrast
-            cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
-            colors = get_color_list(len_color_cycle, cmap)
-            if cmap == 'tab10':
-                len_color_cycle = min(10, len_color_cycle)
+            color = plot_linekws.pop('color')
+            if color is None:
+                # Default gives max contrast
+                cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
+                if cmap == 'tab10':
+                    len_color_cycle = min(10, len_color_cycle)
+                color = get_color_list(len_color_cycle, cmap)
+            else:
+                # Distinguish if color is a single color (we need to first
+                # make a list out of it) or already a list of colors (we'll
+                # take color[i] below).
+                # FIXME: might be useful to have more complete checks to
+                #  distinguish e.g. an array of 3-4 numbers corresponding to
+                #  a single color
+                if isinstance(color, str):
+                    color = [color]*len_color_cycle
 
             # plot_*vals is the list of *vals arrays
             pfunc = getattr(axs, pdict.get('func', 'plot'))
@@ -1608,8 +1621,7 @@ class BaseDataAnalysis(object):
                 p_out.append(pfunc(xvals, yvals,
                                    linestyle=plot_linestyle,
                                    marker=plot_marker,
-                                   color=plot_linekws.pop(
-                                       'color', colors[i % len_color_cycle]),
+                                   color=color[i % len_color_cycle],
                                    label='%s%s' % (
                                        dataset_desc, dataset_label[i]),
                                    **plot_linekws))
