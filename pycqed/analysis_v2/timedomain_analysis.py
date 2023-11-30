@@ -11633,7 +11633,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class LeakageAmplificationAnalysis(ChevronAnalysis):
 
-    def plot_leakage_amp(self, cmap_lim=None, xtransform=None, **kw):
+    def plot_leakage_amp(self, cmap_lim=None, xtransform=None,
+                         draw_lower_lines=True, **kw):
         """
         Plots leakage amplification results (2D map, and 1D with maximum line)
 
@@ -11642,6 +11643,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             chosen such that the rescaled data fit in the lower plot. Default
             (None): chooses a small margin around the data.
             xtransform: additional x-axis transformation function
+            draw_lower_lines: draw lines for each row of data below the maximum
             **kw (dict): additional formatting arguments, TODO
 
         Note: all data are handled in terms of total leakage for n gates. The y
@@ -11754,7 +11756,6 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'zvals': pop/pop_scale,
                 'zrange': _cmap_lim/pop_scale,
                 'xlabel': '',
-                'xtick_labels': [],
                 'xunit': '',
                 'xlabels_rotation': 0,
                 'ylabel': nice_labels[1],
@@ -11766,22 +11767,6 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'cax_id': 3,
             }
 
-            self.plot_dicts[figname + f"_1D_line"] = {
-                'fig_id': figname,
-                'ax_id': 2,
-                'plotfn': self.plot_line,
-                'xvals': np.array([x]*len(pop)),
-                'yvals': pop/pop_scale,
-                'alpha': 0.1,
-                'line_kws': {'zorder': 0},
-                'yrange': _cmap_lim/pop_scale,
-                'color': 'k',
-                'xlabel': nice_labels[0],
-                'ylabel': f"Gate leakage ({pop_unit})",
-                'set_major_formatter': {  # Nonlinear conversion: relabel yticks
-                    'yaxis': lambda p, _: f'{f(p*pop_scale, n)/pop_scale:.2f}'},
-            }
-
             self.plot_dicts[figname + f"_1D_scatter"] = {
                 'fig_id': figname,
                 'ax_id': 2,
@@ -11789,10 +11774,27 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'xvals': x_scatter,
                 'yvals': y_scatter/pop_scale,
                 'alpha': 0.3,
+                'yrange': _cmap_lim/pop_scale,
                 'color': cmap(norm(y_scatter)),
                 'scatter': True,
                 'line_kws': {'zorder': 1},
+                'xlabel': nice_labels[0],
+                'ylabel': f"Gate leakage ({pop_unit})",
+                'set_major_formatter': {  # Nonlinear conversion: relabel yticks
+                    'yaxis': lambda p, _: f'{f(p*pop_scale, n)/pop_scale:.2f}'},
             }
+
+            if draw_lower_lines:
+                self.plot_dicts[figname + f"_1D_line"] = {
+                    'fig_id': figname,
+                    'ax_id': 2,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([x]*len(pop)),
+                    'yvals': pop/pop_scale,
+                    'alpha': 0.1,
+                    'line_kws': {'zorder': 0},
+                    'color': 'k',
+                }
 
             self.plot_dicts[figname + f"_1D_line_max"] = {
                 'fig_id': figname,
