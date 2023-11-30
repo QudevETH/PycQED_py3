@@ -11708,9 +11708,10 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             else:
                 _cmap_lim = cmap_lim
 
-            X, Y = np.meshgrid(*coords)
-            pcm = axs[0].pcolormesh(
-                X, Y, pop, vmin=_cmap_lim[0], vmax=_cmap_lim[1])
+            pcm = axs[0].imshow(pop, interpolation='nearest', aspect='auto',
+                                cmap=kw.get('cmap'),
+                       extent=[coords[0].min(), coords[0].max(),
+                               coords[1].min(), coords[1].max()],)
 
             norm = mpl.colors.Normalize(vmin=_cmap_lim[0], vmax=_cmap_lim[1])
             y_max = -np.infty * np.ones(len(coords[0]))
@@ -11771,5 +11772,5 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             self.figs[figname] = fig
         plt.show()
         plt.close('all')
-        return fig, axs
+        return fig, axs, pcm
 
