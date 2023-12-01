@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
 import logging
@@ -143,6 +144,17 @@ class Loader:
 
             if file_id is not None:
                 dirname = dirname + file_id
+            # Square brackets are used for character classes in 'glob()'.
+            # If the directory contains a square bracket, it must be put
+            # into a character class itself such that 'glob()' is handling the
+            # square brackets as square brackets of the string instead of a
+            # character class,
+            # e.g. "ramsey_['qb1']" -> "ramsey_[[]'qb1'[]]"
+            # https://stackoverflow.com/questions/2595119/glob-and-bracket-characters
+
+            # Substitution [ -> [[] and ] -> []] done via regular expression:
+            dirname = re.sub('([\[\]])', '[\\1]', dirname)
+
             filepath = sorted(path.glob(dirname + ".*"))
 
             if len(filepath) > 1:
