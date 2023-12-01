@@ -5378,6 +5378,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         # FIXME: refactor to use settings manager instead of raw_data_dict
+        self.default_options['base_plot_name'] = 'T1'
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -5389,8 +5390,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        for qbn in self.qb_names:
-            data = self.proc_data_dict['data_to_fit'][qbn]
+        def add_fit_dict(qbn, data, key):
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                 'msmt_sweep_points']
             if self.num_cal_points != 0:
@@ -5406,64 +5406,102 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                 guess_pars['offset'].value = 0
                 guess_pars['offset'].vary = False
             self.set_user_guess_pars(guess_pars)
-            key = 'exp_decay_' + qbn
             self.fit_dicts[key] = {
                 'fit_fn': exp_decay_mod.func,
                 'fit_xvals': {'t': sweep_points},
                 'fit_yvals': {'data': data},
                 'guess_pars': guess_pars}
 
+        for qbn in self.qb_names:
+            all_data = self.proc_data_dict['data_to_fit'][qbn]
+            if self.get_param_value('TwoD'):
+                for i, data in enumerate(all_data):
+                    key = f'exp_decay_{qbn}_{i}'
+                    add_fit_dict(qbn, data, key,)
+            else:
+                add_fit_dict(qbn, all_data, 'exp_decay_' + qbn)
+
+
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            fit_res = self.fit_dicts['exp_decay_' + qbn]['fit_res']
+        for k, fit_dict in self.fit_dicts.items():
+            # k is of the form exp_decay_qbn_i if TwoD else exp_decay_qbn
+            # replace k with qbn_i or qbn
+            k = k.replace('exp_decay_', '')
+            fit_res = fit_dict['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
                     log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
-            self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
-            self.proc_data_dict['analysis_params_dict'][qbn]['T1'] = \
+            # stores as qbn if OneD or qbn_i if TwoD
+            self.proc_data_dict['analysis_params_dict'][k] = OrderedDict()
+            self.proc_data_dict['analysis_params_dict'][k]['T1'] = \
                 fit_res.best_values['tau']
-            self.proc_data_dict['analysis_params_dict'][qbn]['T1_stderr'] = \
+            self.proc_data_dict['analysis_params_dict'][k]['T1_stderr'] = \
                 fit_res.params['tau'].stderr
         self.save_processed_data(key='analysis_params_dict')
 
+
     def prepare_plots(self):
         super().prepare_plots()
+        bpn = self.get_param_value('base_plot_name')
 
         if self.do_fitting:
-            for qbn in self.qb_names:
-                # rename base plot
-                base_plot_name = f'T1_{qbn}_{self.data_to_fit[qbn]}'
+            for k, fit_dict in self.fit_dicts.items():
+                # k is of the form exp_decay_qbn_i if TwoD else exp_decay_qbn
+                # replace k with qbn_i or qbn
+                k = k.replace('exp_decay_', '')
+                # split into qbn and i. (k + '_') is needed because if k = qbn
+                # doing k.split('_') will only have one output and assignment to
+                # two variables will fail.
+                qbn, i = (k + '_').split('_')[:2]
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                    'sweep_points']
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(i) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
+                    title_suffix = (f'{i}: {label} = ' + ' '.join(
+                        SI_val_to_msg_str(vals[int(i)], unit,
+                                          return_type=lambda x: f'{x:0.4f}')))
+                else:
+                    # OneD
+                    title_suffix = ''
+                fit_res = fit_dict['fit_res']
+                base_plot_name = f'{bpn}_{k}_{self.data_to_fit[qbn]}'
+                dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
-                    data=self.proc_data_dict['data_to_fit'][qbn],
-                    plot_name_suffix=qbn+'fit',
-                    qb_name=qbn)
-
-                self.plot_dicts['fit_' + qbn] = {
+                    data=dtf[int(i)] if i != '' else dtf,
+                    sweep_points=sweep_points,
+                    plot_name_suffix=qbn + 'fit',
+                    qb_name=qbn, TwoD=False,
+                    title_suffix=title_suffix
+                )
+                self.plot_dicts['fit_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_fit,
-                    'fit_res': self.fit_dicts['exp_decay_' + qbn]['fit_res'],
+                    'fit_res': fit_res,
                     'setlabel': 'exp decay fit',
                     'do_legend': True,
                     'color': 'r',
                     'legend_ncol': 2,
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
-
                 trans_name = self.get_transition_name(qbn)
-                old_T1_val = self.raw_data_dict[f'{trans_name}_T1_'+qbn]
+                old_T1_val = self.raw_data_dict[f'{trans_name}_T1_' + qbn]
                 # FIXME: the following condition is always False, isn't it?
                 if old_T1_val != old_T1_val:
                     old_T1_val = 0  # FIXME: explain why
                 T1_dict = self.proc_data_dict['analysis_params_dict']
                 textstr = '$T_1$ = {:.2f} $\mu$s'.format(
-                            T1_dict[qbn]['T1']*1e6) \
+                    T1_dict[k]['T1'] * 1e6) \
                           + ' $\pm$ {:.2f} $\mu$s'.format(
-                            T1_dict[qbn]['T1_stderr']*1e6) \
-                          + '\nold $T_1$ = {:.2f} $\mu$s'.format(old_T1_val*1e6)
-                self.plot_dicts['text_msg_' + qbn] = {
+                    T1_dict[k]['T1_stderr'] * 1e6) \
+                          + '\nold $T_1$ = {:.2f} $\mu$s'.format(
+                    old_T1_val * 1e6)
+                self.plot_dicts['text_msg_' + k] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
                     'xpos': 0,
@@ -6213,16 +6251,16 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
             if (fitparams0['c'].value > (0.5 + threshold)) or \
                     (fitparams0['c'].value < (0.5 - threshold)):
                 log.warning('The trace from the X90-X180 pulses is '
-                                'NOT within $\pm${} of the expected value '
-                                'of 0.5.'.format(threshold))
+                            'NOT within ±{} of the expected value '
+                            'of 0.5.'.format(threshold))
             # Warning if optimal_qscale is not within +/-threshold of 0.5
             y_optimal_qscale = optimal_qscale * fitparams2['slope'].value + \
                                  fitparams2['intercept'].value
             if (y_optimal_qscale > (0.5 + threshold)) or \
                     (y_optimal_qscale < (0.5 - threshold)):
                 log.warning('The optimal qscale found gives a population '
-                                'that is NOT within $\pm${} of the expected '
-                                'value of 0.5.'.format(threshold))
+                            'that is NOT within ±{} of the expected '
+                            'value of 0.5.'.format(threshold))
 
             # Calculate standard deviation
             intercept_diff_std_squared = \
@@ -6426,34 +6464,45 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
 
+        # If OneD, qbn_idx will be of the form qb2
+        # If TwoD, qbn_idx wil lbe of the form qb2_1
+        for qbn_idx in (
+                self.echo_analysis.proc_data_dict[
+                    'analysis_params_dict'].keys()
+        ):
+            self.proc_data_dict['analysis_params_dict'][qbn_idx] = OrderedDict()
             params_dict = self.echo_analysis.proc_data_dict[
-                'analysis_params_dict'][qbn]
+                'analysis_params_dict'][qbn_idx]
             if 'T1' in params_dict:
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo'] = params_dict['T1']
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo_stderr'] = params_dict['T1_stderr']
             else:
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo'] = params_dict['exp_decay']['T2_star']
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
-
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
         if self.do_fitting:
-            for qbn in self.qb_names:
+            # If OneD, qbn_idx will be of the form qb2
+            # If TwoD, qbn_idx wil lbe of the form qb2_1
+            for qbn_idx in (
+                    self.echo_analysis.proc_data_dict[
+                        'analysis_params_dict'].keys()
+            ):
+                qbn = (qbn_idx + "_").split("_")[0]
                 # rename base plot
-                figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
+                figure_name = (f'Echo_{qbn_idx}_'
+                               f'{self.echo_analysis.data_to_fit[qbn]}')
                 echo_plot_key_t1 = [key for key in self.echo_analysis.plot_dicts
-                                    if 'T1_'+qbn in key]
+                                    if 'T1_'+qbn_idx in key]
                 echo_plot_key_rm = [key for key in self.echo_analysis.plot_dicts
-                                    if 'Ramsey_'+qbn in key]
+                                    if 'Ramsey_'+qbn_idx in key]
                 if len(echo_plot_key_t1) != 0:
                     echo_plot_name = echo_plot_key_t1[0]
                 elif len(echo_plot_key_rm) != 0:
@@ -6467,7 +6516,7 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                     'legend_bbox_to_anchor'] = (1, -0.15)
 
                 for plot_label in self.echo_analysis.plot_dicts:
-                    if qbn in plot_label:
+                    if qbn_idx in plot_label:
                         if 'raw' not in plot_label and \
                                 'projected' not in plot_label:
                             self.echo_analysis.plot_dicts[
@@ -6480,13 +6529,13 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 art_det = self.artificial_detuning_dict[qbn]*1e-6
                 textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
                 textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
-                    T2_dict[qbn]['T2_echo']*1e6) \
+                    T2_dict[qbn_idx]['T2_echo']*1e6) \
                           + ' $\pm$ {:.2f} $\mu$s'.format(
-                    T2_dict[qbn]['T2_echo_stderr']*1e6) \
+                    T2_dict[qbn_idx]['T2_echo_stderr']*1e6) \
                           + '\nold $T_2$ echo = {:.2f} $\mu$s'.format(
                     old_T2e_val*1e6)
 
-                self.echo_analysis.plot_dicts['text_msg_' + qbn][
+                self.echo_analysis.plot_dicts['text_msg_' + qbn_idx][
                     'text_string'] = textstr
                 # Set text colour to black.
                 # When the change in qubit frequency is larger than artificial
@@ -6498,7 +6547,8 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 # since we do not use it to estimate the qubit frequency.
                 # Not resetting the colour here will cause an error in the case
                 # of multi-coloured text strings.
-                self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
+                self.echo_analysis.plot_dicts['text_msg_' + qbn_idx]['color'] \
+                    = 'k'
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
@@ -7496,45 +7546,6 @@ class DynamicPhaseAnalysis(MultiCZgate_Calib_Analysis):
         self.phase_key = 'dynamic_phase'
         self.legend_label_func = lambda qbn, row: 'no FP' \
             if row % 2 != 0 else 'with FP'
-
-
-class SingleRowChevronAnalysis(MultiQubit_TimeDomain_Analysis):
-    """Analysis for 1-dimensional Chevron QuantumExperiment
-
-    This is used for instance for the 1-D measurements performed as part of
-    CZ gate calibration
-    """
-
-    def extract_data(self):
-        # Necessary for data processing and plotting since sweep_points are 2D
-        self.default_options['TwoD'] = True
-        super().extract_data()
-
-    def prepare_projected_data_plots(self):
-        # FIXME this overrides the super method but does almost the same. One
-        #  should clean up the logic in the super to get rid of this, see below.
-        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
-            for k, v in dd.items():
-                # FIXME this plot is almost the same as in the super method,
-                #  but with plot_cal_points=True. The problem is that TwoD is
-                #  True, meaning that the super does not plot the cal points,
-                #  even though it correctly resolves that the data is really 1D.
-                self.prepare_projected_data_plot(
-                    fig_name=f'SingleRowChevron_{qbn}_{k}',
-                    data=v[0],
-                    data_axis_label=f'|{k[1:]}> state population',
-                    qb_name=qbn, TwoD=False, plot_cal_points=True,
-                )
-                # FIXME this is the same as the projected plot, just rescaled.
-                if k == 'pf':
-                    self.prepare_projected_data_plot(
-                        fig_name=f'Leakage_{qbn}',
-                        data=v[0],
-                        data_axis_label=f'|{k[1:]}> state population',
-                        qb_name=qbn, TwoD=False, plot_cal_points=True,
-                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
-                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
-                    )
 
 
 class CryoscopeAnalysis(DynamicPhaseAnalysis):
@@ -11735,3 +11746,130 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
         """
         return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
+
+
+class SingleRowChevronAnalysis(ChevronAnalysis):
+    """Analysis for 1-dimensional Chevron QuantumExperiment
+
+    This is used for instance for the 1-D measurements performed as part of
+    CZ gate calibration
+    """
+
+    def extract_data(self):
+        # Necessary for data processing and plotting since sweep_points are 2D
+        self.default_options['TwoD'] = True
+        super().extract_data()
+
+    def prepare_projected_data_plots(self):
+        # FIXME this overrides the super method but does almost the same. One
+        #  should clean up the logic in the super to get rid of this, see below.
+        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
+            for k, v in dd.items():
+                # FIXME this plot is almost the same as in the super method,
+                #  but with plot_cal_points=True. The problem is that TwoD is
+                #  True, meaning that the super does not plot the cal points,
+                #  even though it correctly resolves that the data is really 1D.
+                self.prepare_projected_data_plot(
+                    fig_name=f'SingleRowChevron_{qbn}_{k}',
+                    data=v[0],
+                    data_axis_label=f'|{k[1:]}> state population',
+                    qb_name=qbn, TwoD=False, plot_cal_points=True,
+                )
+                # FIXME this is the same as the projected plot, just rescaled.
+                if k == 'pf':
+                    self.prepare_projected_data_plot(
+                        fig_name=f'Leakage_{qbn}',
+                        data=v[0],
+                        data_axis_label=f'|{k[1:]}> state population',
+                        qb_name=qbn, TwoD=False, plot_cal_points=True,
+                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
+                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
+                    )
+
+    def get_leakage_best_val(self, qbH_name, qbL_name, minimize='auto',
+                             xtransform=None, xlabel=None, xunit=None,
+                             colors=None):
+        """Gets sweep parameter value corresponding to minimum/maximum leakage
+
+        Fits a second-order polynomial and extracts extremum qbH f population.
+        Args:
+            qbH_name, qbL_name: names of high- and low-frequency qubits
+            minimize (bool or 'auto'): Whether to explicitly look for a
+            minimum or maximum, by setting initial fit parameters to help the
+                fit converge. If minimize=='auto', this is guessed by comparing
+                the middle point to a linear fit through the end points.
+            save_fig: Whether to save the figure.
+            show_fig: Whether to show the figure.
+            fig: Optionally pass a figure on which to plot the data.
+            ax: Optional axis of fig on which to plot the data.
+            xtransform: Optional transformation to apply to sweep parameters in
+                the plot (e.g. change of units).
+            xlabel: x axis label. If None: extracted from the sweep points.
+            colors: Optionally set colours of the plot.
+        Returns:
+            Sweep parameter corresponding to the extremum of the fitted model.
+        Note that this method could be generalised to fit populations from
+            other states than the f state of the high-frequency qubit.
+        """
+
+        if colors is None:
+            colors = ['C0', 'C1']
+        data = self.proc_data_dict['projected_data_dict'][qbH_name][
+                   'pf'][0, :-3]
+        x = self.sp.get_sweep_params_property('values',
+                                              dimension=0).copy()
+        if minimize == 'auto':
+            minimize = data[len(data) // 2] < (data[0] + data[-1])/2
+        if minimize:
+            a = 100
+            c = 0
+        else:
+            a = -100
+            c = 1
+        if xtransform:
+            x = xtransform(x)
+        xlabel = xlabel or self.sp.get_sweep_params_property('label')
+        xunit = xunit or self.sp.get_sweep_params_property('unit')
+        fact = 1
+        while abs(max(x)) < 1e-3:
+            x *= 1e3
+            fact *= 1e3
+        model_func = lambda x, a, b, c: a * ((x - b) ** 2) + c
+        model = lmfit.Model(model_func)
+        self.fit_res = model.fit(data, x=x, a=a, c=c, b=np.mean(x))
+        best_val = self.fit_res.best_values['b'] / fact
+        x_resampled = np.linspace(x[0], x[-1], 100)
+        fig_title = f'Leakage_sweep_{qbH_name}_{qbL_name}'
+
+        self.plot_dicts[fig_title + '_fit'] = {
+            'fig_id': fig_title,
+            'title': fig_title,
+            'plotfn': self.plot_line,
+            'xvals': x_resampled / fact,
+            'yvals': model_func(x_resampled, **self.fit_res.best_values),
+            'xlabel': xlabel,
+            'xunit': '',
+            'ylabel': '$|2\\rangle$ state pop.',
+            'yunit': '',
+            'label': 'Fit',
+            'color': colors[1],
+            'marker': '',
+        }
+        self.plot_dicts[fig_title + '_data'] = {
+            'fig_id': fig_title,
+            'plotfn': self.plot_line,
+            'xvals': x / fact,
+            'yvals': data,
+            'label': 'Meas.',
+            'color': colors[0],
+            'linestyle': '',
+        }
+        self.plot_dicts[fig_title + '_best'] = {
+            'fig_id': fig_title,
+            'plotfn': self.plot_vlines,
+            'x': best_val,
+            'ymin': np.min(data),
+            'ymax': np.max(data),
+            'colors': 'gray',
+        }
+        return best_val

@@ -220,7 +220,7 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
         if raise_exc is True:
             raise Exception('No data matches the criteria.')
         else:
-            log.warning('No data matches the criteria.')
+            log.info('No data matches the criteria.')
             return [] if n_matches or return_all else False
     else:
         measdirs.sort()
