@@ -892,7 +892,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
         self.add_step(self.Decision, 'decision', decision_settings)
 
         # Mixer calibration
-        include_mixer_calib = self.kw.get("include_mixer_calib", False)
+        include_mixer_calib = self.get_param_value("include_mixer_calib")
         if include_mixer_calib:
             self.add_mixer_calib_steps(**self.kw)
 
