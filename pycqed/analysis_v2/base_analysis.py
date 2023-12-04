@@ -145,6 +145,10 @@ class BaseDataAnalysis(object):
             # set error-handling behavior
             self.raise_exceptions = raise_exceptions
 
+            # Child classes may call create_job to fill this with a job
+            # string representation of the analysis.
+            self.job = None
+
             # initialize an empty dict to store results of analysis
             self.proc_data_dict = OrderedDict()
             if options_dict is None:
