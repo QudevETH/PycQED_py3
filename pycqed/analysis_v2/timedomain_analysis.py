@@ -344,7 +344,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if self.numeric_params is None:
             self.numeric_params = []
 
-        if not hasattr(self, "job"):
+        if self.job is None:
             self.create_job(qb_names=qb_names, t_start=t_start, t_stop=t_stop,
                             label=label, data_file_path=data_file_path,
                             do_fitting=do_fitting, options_dict=options_dict,
@@ -9671,7 +9671,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                          do_fitting=do_fitting, **kwargs)
         self.timers = {}
 
-        if not hasattr(self, "job"):
+        if self.job is None:
             self.create_job(t_start=t_start, t_stop=t_stop,
                             label=label, data_file_path=data_file_path,
                             do_fitting=do_fitting, options_dict=options_dict,
