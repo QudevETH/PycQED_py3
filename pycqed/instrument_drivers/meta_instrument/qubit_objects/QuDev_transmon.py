@@ -1024,7 +1024,8 @@ class QuDev_transmon(MeasurementObject):
 
         param = f'{self.ge_I_channel()}_centerfreq'
         if param in self.instr_pulsar.get_instr().parameters:
-            self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
+            if np.abs(self.instr_pulsar.get_instr().get(param) - self.get_ge_lo_freq()) > 1:
+                self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
 
         # other preparations
         self.update_detector_functions()
