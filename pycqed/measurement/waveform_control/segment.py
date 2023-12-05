@@ -55,20 +55,6 @@ class Segment:
     in _internal_mod_update_params method. If this parameter has value n, then 
     the waveform frequency will be rounded to the n-th digit of Hz."""
 
-    default_pycqed_to_stim_transpiling_dict = {
-        'X180': ['X'],
-        'X90': ['SQRT_X'],
-        'mX90': ["SQRT_X_DAG"],
-        'Y90': ['SQRT_Y'],
-        'Y180': ["Y"],
-        'mY90': ["SQRT_Y_DAG"],
-        'CZ': ['CZ'],
-        'Z180': ["Z"],
-        'PFM_ef': [],
-        'RO': ['M'],
-    }
-
-
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
                  fast_mode=False, **kw):
         """
@@ -2357,8 +2343,8 @@ class Segment:
          {"qb1": (x, y), "qb2": (x2, y2), ...}
 
         - transpiling_dict (dict): Dictionary for transpiling operations.
-            If None, use the default dictionary in
-            Segment.default_pycqed_to_stim_transpiling_dict
+            If None, use the default dictionary defined below
+            (default_pycqed_to_stim_transpiling_dict)
         - resolve_segment (bool): Whether to resolve the segment.
         - tol (float): Tolerance for "same timing operation". only used to detect
          where to put TICKS in stim circuit, has no influence on the
@@ -2367,6 +2353,21 @@ class Segment:
         Returns:
         - str: Stim-formatted string.
         """
+        # FIXME: as soon as this dict is needed at multiple places, move it
+        #  to a common place from where it can be imported.
+        default_pycqed_to_stim_transpiling_dict = {
+            'X180': ['X'],
+            'X90': ['SQRT_X'],
+            'mX90': ['SQRT_X_DAG'],
+            'Y90': ['SQRT_Y'],
+            'Y180': ['Y'],
+            'mY90': ['SQRT_Y_DAG'],
+            'CZ': ['CZ'],
+            'Z180': ['Z'],
+            'PFM_ef': [],
+            'RO': ['M'],
+        }
+
         def strip_qb_prefix(input_string):
             """
             Strip 'qb' prefix from the input string.
@@ -2386,7 +2387,7 @@ class Segment:
         if resolve_segment:
             self.resolve_segment()
         if transpiling_dict is None:
-            transpiling_dict = self.default_pycqed_to_stim_transpiling_dict
+            transpiling_dict = default_pycqed_to_stim_transpiling_dict
         # sort pulses by start time
         pulses = sorted(self.resolved_pulses, key=lambda p: p.pulse_obj._t0)
         ops = [(p.op_code, p.pulse_obj._t0) for p in pulses if
