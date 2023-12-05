@@ -148,6 +148,10 @@ class BaseDataAnalysis(object):
             # set container for config files
             self.config_files = setman.SettingsManager()
 
+            # Child classes may call create_job to fill this with a job
+            # string representation of the analysis.
+            self.job = None
+
             # initialize an empty dict to store results of analysis
             self.proc_data_dict = OrderedDict()
             if options_dict is None:
