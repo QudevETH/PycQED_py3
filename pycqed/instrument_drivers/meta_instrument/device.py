@@ -537,7 +537,8 @@ class Device(Instrument):
         Raises:
             AssertionError: If qbi is the same as qbj.
         """
-        assert qbi != qbj
+       # check that qubits are connected
+        self.check_connection(qbi, qbj)
 
         # ensure to get qubit objects
         qbi, qbj = self.get_qubits([qbi, qbj])
