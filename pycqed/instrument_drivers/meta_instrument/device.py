@@ -550,8 +550,9 @@ class Device(Instrument):
             qbh, qbl = qbj, qbi
 
         # Calculate amplitudes based on interaction frequency and flux parking states
-        amph = -np.abs(qbh.calculate_flux_voltage(
-            int_freq - (qbh.ef_freq() - qbh.ge_freq()), flux=qbh.flux_parking()))
+        amph = -np.abs(qbh.calculate_flux_voltage(int_freq,
+                                                  flux=qbh.flux_parking(),
+                                                  transition='ef'))
         ampl = np.abs(qbl.calculate_flux_voltage(int_freq, flux=qbl.flux_parking()))
 
         # Update pulse parameters if requested
