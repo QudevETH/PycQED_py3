@@ -1032,7 +1032,7 @@ class RelativeDelayGraph:
             roots.remove(ref)
 
         for ref in abs_delays:
-            abs_delays[ref] -= min_delay
+            abs_delays[ref] -= min(0, min_delay)
 
         return abs_delays
 
