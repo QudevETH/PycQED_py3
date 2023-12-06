@@ -504,12 +504,6 @@ class Device(Instrument):
                                      'amplitude')()
             f = qbh.calculate_frequency(amplitude=amp, flux=qbh.flux_parking(),
                                         transition='ef')
-            # alternatively, we could use the following way of calculating the interaction
-            # frequency, which assumes that the anharmonicity is independent of frequency.
-            # it has the advantage to typically rely on data (ge-ef freq) and not the
-            # Hamiltonian model.
-            # f = qbh.calculate_frequency(amplitude=amp, flux=qbh.flux_parking())
-            # f += qbh.anharmonicity()
 
         elif reference_qb == 'low':
             amp = self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
