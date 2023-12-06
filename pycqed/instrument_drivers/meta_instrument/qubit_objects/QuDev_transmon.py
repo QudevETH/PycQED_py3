@@ -1797,7 +1797,7 @@ class QuDev_transmon(MeasurementObject):
                 (chI_par, chI_par()),  # for automatic reset after the sweep
                 (chQ_par, chQ_par()),  # for automatic reset after the sweep
                 (self.instr_pulsar.get_instr().prepend_zeros,
-                 kwargs.get('prepend_zeros', 0))
+                 kwargs.get('prepend_zeros', 0)),
                 *self._drive_mixer_calibration_tmp_vals()
         ):
             if upload:
