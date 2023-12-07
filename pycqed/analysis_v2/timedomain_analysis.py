@@ -429,7 +429,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # update self.data_to_fit based on the rotation_type
         self.update_data_to_fit()
 
-        # creates self.data_filter and self.data_with_reset
+        # creates self.data_filter and self.data_with_filter
         self.get_data_filter()
 
         # These calls need to stay here because otherwise QScaleAnalysis will
@@ -730,23 +730,25 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         Creates the following attribute:
             - self.data_filter: function that will be used in
                 create_meas_results_per_qb to filter/process the data
-            - self.data_with_reset: bool that is checked in
+            - self.data_with_filter: bool that is checked in
                 prepare_raw_data_plots
         """
         # flag to be used in prepare_raw_data_plots
-        self.data_with_reset = False
+        self.data_with_filter = False
         self.data_filter = self.get_param_value('data_filter')
         if self.data_filter is None:
             if 'active' in self.prep_params.get('preparation_type', 'wait'):
                 reset_reps = self.prep_params.get('reset_reps', 3)
                 self.data_filter = lambda x: x[reset_reps::reset_reps+1]
-                self.data_with_reset = True
+                self.data_with_filter = True
             elif "preselection" in self.prep_params.get('preparation_type',
                                                         'wait'):
                 self.data_filter = lambda x: x[1::2]  # filter preselection RO
-                self.data_with_reset = True
+                self.data_with_filter = True
             else:
                 self.data_filter = lambda x: x
+        else:
+            self.data_with_filter = True
 
     def create_sweep_points_dict(self):
         """
@@ -2234,7 +2236,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qb_name in self.qb_names:
             slice_idxs_list = slice_idxs_1d_raw_plot.get(qb_name, [])
             # Plot all raw data (including potential active reset readouts)
-            if self.data_with_reset:
+            if self.data_with_filter:
                 # With, then without the active reset readouts
                 keys = ['meas_results_per_qb_raw', 'meas_results_per_qb']
                 fig_suffixes = ['', 'filtered']
