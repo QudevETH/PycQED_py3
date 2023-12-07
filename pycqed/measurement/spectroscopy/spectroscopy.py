@@ -33,6 +33,13 @@ class MultiTaskingSpectroscopyExperiment(twoqbcal.CalibBuilder):
         sweep_functions_dict (dict, optional): Dictionary of sweep functions
             with the key of a value being the name of the sweep parameter for
             which the sweep function will be used. Defaults to `dict()`.
+            Remark: if the Device object passed in the keyword argument dev
+            has an attribute fluxlines_dict, the flux voltage parameters
+            provided for the qubits in this dict will be added to the
+            sweep_functions_dict of the task of the respective qubits as
+            sweep functions for the sweep parameter 'volt' (to be potentially
+            used by child classes, and to be ignored if no such sweep
+            parameter exists).
         df_name (str, optional): Specify a specific detector function to be
             used. See :meth:`mqm.get_multiplexed_readout_detector_functions`
             for available options.
