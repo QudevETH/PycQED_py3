@@ -1981,8 +1981,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         if preselection_qbs is None or len(preselection_qbs) == 0:
             # default is each qubit preselected individually
-            # note that the list includes the qubit name twice as the minimal
-            # number of arguments in logical_and.reduce() is 2.
             preselection_qbs = {qbn: [qbn] for qbn in presel_shots_per_qb}
 
         for qbn, presel_qbs in preselection_qbs.items():
