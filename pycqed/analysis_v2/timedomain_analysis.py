@@ -2077,9 +2077,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             n_seqs = self.sp.length(1)  # corresponds to number of soft sweep points
         else:
             n_seqs = 1
-        # n_reaouds  refers to the number of readouts per sequence after filtering out e.g.
-        # preselection readouts
-        n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots * n_seqs)
+        # n_readouts refers to the number of readouts per sequence after
+        # filtering out e.g. preselection readouts
+        n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots *
+                                                                 n_seqs)
 
         # get qubits for which data should be extracted
         preselection_qbs = self.get_param_value("preselection_qbs")
@@ -2113,21 +2114,30 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if preselection:
 
             # get preselection readouts for selected qubits
-            shots_per_qb_before_filtering = self._get_single_shots_per_qb(raw=True, qb_names=qb_names_to_extract)
+            shots_per_qb_before_filtering = self._get_single_shots_per_qb(
+                raw=True, qb_names=qb_names_to_extract)
 
             n_ro_before_filtering = \
                 list(shots_per_qb_before_filtering.values())[0].shape[0] // \
                 (n_shots * n_seqs)
-            # the following lines assume a single preselection readout and an arbitrary
-            # number of other readouts per segment.
-            n_readouts_per_segment = n_readouts // (n_ro_before_filtering - n_readouts)
+            # The following lines assume a single preselection readout and
+            # an arbitrary number n_readouts_per_segment of other readouts.
+            # n_readouts = n_readouts_per_segment * n_segs
+            # n_ro_before_filtering = (1+n_readouts_per_segment) * n_segs
+            n_readouts_per_segment = n_readouts // (n_ro_before_filtering -
+                                                    n_readouts)
+            n_segs = n_readouts // n_readouts_per_segment
+            # FIXME follows the data format of _get_single_shots_per_qb,
+            #  hence the tiling by n_seqs. Array shapes should probably be
+            #  cleaned up, after fixing transposed arrays in proc_data_dict
+            #  as well, see FIXME in BaseDataAnalysis.__init__
             preselection_ro_mask = \
                 np.tile([True] * n_seqs +
                         [False] * n_readouts_per_segment * n_seqs,
-                        n_shots * n_readouts)
+                        n_shots * n_segs)
             presel_shots_per_qb = \
-                {qbn: presel_shots[preselection_ro_mask] for qbn, presel_shots in
-                 shots_per_qb_before_filtering.items()}
+                {qbn: ps[preselection_ro_mask]
+                 for qbn, ps in shots_per_qb_before_filtering.items()}
             # create boolean array of shots to keep.
             # each time ro is the ground state --> true otherwise false
             g_state_int = [k for k, v in states_map.items() if v == "g"][0]
@@ -2153,10 +2163,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         shots, classifier_params[qbn])
                 except ValueError as e:
                     log.error(f'If the following error relates to number'
-                              ' of features, probably wrong classifer parameters'
-                              ' were passed (e.g. a classifier trained with'
-                              ' a different number of channels than in the'
-                              f' current measurement): {e}')
+                              ' of features, probably wrong classifer'
+                              ' parameters were passed (e.g. a classifier'
+                              ' trained with a different number of channels'
+                              ' than in the current measurement): {e}')
                     raise e
 
             if thresholding:
