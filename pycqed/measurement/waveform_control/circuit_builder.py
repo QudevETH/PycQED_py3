@@ -23,11 +23,14 @@ class CircuitBuilder:
              object if available, or otherwise the first operation from the
              operation_dict whose name contains 'CZ', or we fall back to
              'CZ' if no such operation is found.)
-         decompose_rotation_gates: (dict of bool) whether arbitrary
-            rotation gates should be decomposed into pi rotations
-            and virtual Z gates, e.g., {'X': True, 'Y': False}.
-            False means direct implementation. For gate types not specified
-            here, the default is False.
+         decompose_rotation_gates: (dict of bool or dict of lists of lists)
+            whether arbitrary rotation gates should be decomposed into pi
+            rotations and virtual Z gates. Can either be a boolean to
+            decompose all gates of a given type, e.g. {'CZ_nztc': True},
+            or a list of all qubit pairs for which the gate should be
+            decomposed, e.g {'CZ_nztc': [['qb2', 'qb1'], ['qb3', 'qb4]]}. In
+            the latter case the single-qubit gates of the decomposition are
+            applied to the first qubit of the pair.
          prep_params: (dict) custom preparation params (default: from
             instrument settings)
          fast_mode: (bool, default: False) activate faster processing by
@@ -178,13 +181,16 @@ class CircuitBuilder:
         else:
             return deepcopy(self.STD_PREP_PARAMS)
 
-    def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None, **kw):
+    def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None,
+                              cz_pulse_name=None, **kw):
         """
         Finds the name of the CZ gate between qb1-qb2 that exists in
         self.operation_dict.
         :param qb1: name of qubit object of one of the gate qubits
         :param qb2: name of qubit object of the other gate qubit
         :param op_code: provide an op_code instead of qb1 and qb2
+        :param cz_pulse_name: specify a CZ pulse name different from
+            self.cz_pulse_name (if not specified in the op_code)
 
         :param kw: keyword arguments:
             cz_pulse_name: a custom cz_pulse_name instead of the stored one
@@ -194,7 +200,8 @@ class CircuitBuilder:
         assert (qb1 is None and qb2 is None and op_code is not None) or \
                (qb1 is not None and qb2 is not None and op_code is None), \
             "Provide either qb1&qb2 or op_code!"
-        cz_pulse_name = kw.get('cz_pulse_name', self.cz_pulse_name)
+        if cz_pulse_name is None:
+            cz_pulse_name = self.cz_pulse_name
         if op_code is not None:
             op_split = op_code.split(' ')
             qb1, qb2 = op_split[1:]
@@ -210,20 +217,29 @@ class CircuitBuilder:
         else:
             raise KeyError(f'CZ gate "{cz_pulse_name} {qb1} {qb2}" not found.')
 
-    def get_pulse(self, op, parse_rotation_gates=False):
+    def get_pulse(self, *args, **kwargs):
+        """Wrapper for get_pulses, for backwards compatibility only"""
+        pulses = self.get_pulses(*args, **kwargs)
+        if len(pulses) > 1:
+            raise ValueError("get_pulse returned several pulses, please use "
+                             "the newest version - get_pulses - instead!")
+        return pulses[0]
+
+    def get_pulses(self, op):
         """
-        Gets a pulse from the operation dictionary, and possibly parses
-        logical indexing as well as arbitrary angle from Z gate operation.
+        Gets pulse dictionaries, corresponding to the operation op, from the
+        operation dictionary, and possibly parses logical indexing as well as
+        arbitrary angles.
         Examples:
-             >>> get_pulse('CZ 0 2', parse_rotation_gates=True)
+             >>> get_pulses('CZ 0 2')
              will perform a CZ gate (according to cz_pulse_name)
              between the qubits with logical indices 0 and 2
-             >>> get_pulse('Z100 qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z100 qb1')
              will perform a 100 degree Z rotation
-             >>> get_pulse('Z:theta qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z:theta qb1')
              will perform a parametric Z rotation with parameter name theta
-             >>> get_pulse('Z:2*[theta] qb1', parse_rotation_gates=True)
-             will perform a parametric Z rotation with twice the
+             >>> get_pulses('X:2*[theta] qb1')
+             will perform a parametric X rotation with twice the
              value of the parameter named theta. The brackets are used to
              indicated the parameter name. This feature has also been tested
              with some more complicated mathematical expression.
@@ -231,118 +247,235 @@ class CircuitBuilder:
              spaces in between operands. For instance,
              'Z:2*[theta]/180+[theta]**2 qb1' and not
              'Z: 2 * [theta] / 180 + [theta]**2 qb1
+             >>> get_pulses('CZ_nztc40 qb3 qb2')
+             will perform a 40 degrees CZ gate (if allowed by the CZ operation),
+             using the CZ_nztc hardware implementation
         Adding 's' (for simultaneous) in front of an op_code (e.g.,
         'sZ:theta qb1') will reference the pulse to the start of the
         previous pulse.
         Adding 'm' (for minus) in front of an op_code (e.g.,
         'mZ:theta qb1') negates the sign. If 's' is also given,
         it has to be in the order 'sm'.
+        In addition, if self.decompose_rotation_gates is not None,
+        arbitrary-angle CZ gates are decomposed into two standard CZ gates
+        and single-qubit gates. Examples:
+            decompose_rotation_gates={'CZ_nztc': True} decomposes all CZ_nztc
+            decompose_rotation_gates={'CZ_nztc': [['qb3', 'qb2'],]} decomposes
+                all CZ_nztc between qb2 and qb3, and applies the single-qubit
+                gates to qb3 (first qubit in the pair)
+        Note that get_pulses parses one operation 'op', but may return more than
+        one pulse, for example for gate decomposition.
 
         Args:
             op: operation (str in the above format, or iterable
             corresponding to the splitted string)
-            parse_rotation_gates: whether or not to look for gates with
-            arbitrary angles.
 
-        Returns: deepcopy of the pulse dictionary
+        Returns: list of pulses, where each pulse is a copy (see self.copy_op)
+        of the corresponding pulse dictionary
 
         """
-        op_info = op.split(" ") if isinstance(op, str) else op
-        if not self.fast_mode:
+        # op_split is further parsed and used below
+        # op is the op_code which will be stored in the returned pulse
+        if isinstance(op, str):
+            op_split = op.split(" ")
+        else:
+            op_split = op
+            op = " ".join(op)
+        # Extract op_name and qbn (qubit names)
+        # op_name: first part of the op_code, e.g. "Z:2*[theta]"
+        op_name = op_split[0]
+        if self.fast_mode:
+            qbn = op_split[1:]
+        else:
             # the call to get_qubits resolves qubits indices if needed
-            _, op_info[1:] = self.get_qubits(op_info[1:], strict=False)
-        op_name = op_info[0][1:] if op_info[0][0] == 's' else op_info[0]
-        op = op_name + ' ' + ' '.join(op_info[1:])
+            _, qbn = self.get_qubits(op_split[1:], strict=False)
+        simultaneous = False
+        if op_name[0] == 's':
+            simultaneous = True
+            op_name = op_name[1:]
+        if op_name[-1] == 's':
+            simultaneous = True
+            op_name = op_name[:-1]
 
         if op in self.operation_dict:
-            p = self.copy_op(self.operation_dict[op])
-        elif op_info[0].rstrip('0123456789.') == 'CZ' or \
-                op_info[0].startswith('CZ:'):
-            operation = self.get_cz_operation_name(op_info[1], op_info[2])
-            p = self.copy_op(self.operation_dict[operation])
-        elif parse_rotation_gates and op not in self.operation_dict:
+            p = [self.copy_op(self.operation_dict[op])]
+
+        else:
             # assumes operation format of, e.g., f" Z{angle} qbname"
             # FIXME: This parsing is format dependent and is far from ideal but
             #  to generate parametrized pulses it is helpful to be able to
             #  parse Z gates etc.
-            factor = -1 if op_name[0] == 'm' else 1
-            if factor == -1:
-                op_name = op_name[1:]
-            if op_name[0] not in ['X', 'Y', 'Z']:
+            # FIXME e- allows to recognise numbers in scientific notation,
+            #  but could be made more specific
+            op_type = op_name.split(':')[0].rstrip('0123456789.e-')
+            angle = op_name[len(op_type):]
+            sign = -1 if op_type[0] == 'm' else 1
+            if sign == -1:
+                op_type = op_type[1:]
+            allowed_ops = ['X', 'Y', 'Z', 'CZ']
+            # startswith is needed to recognise all CZ gates, e.g. 'CZ_nztc'
+            if not any([op_type.startswith(g) for g in allowed_ops]):
                 raise KeyError(f'Gate "{op}" not found.')
-            angle, qbn = op_name[1:], op_info[1]
-            if angle[-1] == 's' and angle[:-1].isnumeric():
-                # For non-parametric gates, an alternative syntax for
-                # simultaneous pulses with appended s instead of prepended s
-                # is allowed. This code branch treats, e.g., simultaneous
-                # virtual Z pulses (like 'Z90s qb1') and simultaneous X/Y
-                # rotations with angles different from 90 and 180
-                # (like 'X45s qb1'; X90s and X180s are contained in the
-                # operations dict anyways, but no other angles).
-                op_info[0] = 's' + op_info[0]
-                angle = angle[:-1]
-            param = None
-            if angle[0] == ':':  # angle depends on a parameter
-                angle = angle[1:]
-                param_start = angle.find('[') + 1
-                # If '[' is contained, this indicates that the parameter
-                # is part of a mathematical expression. Otherwise, the angle
-                # is equal to the parameter.
-                if param_start > 0:
-                    param_end = angle.find(']', param_start)
-                    param = angle[param_start:param_end]
-                    angle = angle.replace('[' + param + ']', 'x')
-                    f = eval('lambda x : ' + angle)
-                else:
-                    param = angle
+            param = None  # e.g. 'theta' if angle = '2*[theta]'
+            if angle:
+                if angle[0] == ':':  # angle depends on a parameter
+                    angle = angle[1:]
+                    param_start = angle.find('[') + 1
+                    # If '[' is contained, this indicates that the parameter
+                    # is part of a mathematical expression. Otherwise, the angle
+                    # is equal to the parameter.
+                    if param_start > 0:
+                        param_end = angle.find(']', param_start)
+                        param = angle[param_start:param_end]
+                        angle = angle.replace('[' + param + ']', 'x')
+                    else:
+                        param = angle
 
-            if self.decompose_rotation_gates.get(op_name[0], False):
-                raise NotImplementedError('Decomposed rotations not '
-                                          'implemented yet.')
-            else:
-                p = self.get_pulse(f"{op_name[0]}180 {qbn}")
-                if op_name[0] == 'Z':
+            if op_type.startswith('CZ'):  # Two-qubit gate
+                if param is not None:
+                    # FIXME: this code block is duplicated 3 times, for each
+                    #  gate type (CZ, Z, X/Y). This should be cleaned up once
+                    #  we improve or generalise further what op codes can be
+                    #  parsed by this method.
+                    if param_start > 0:
+                        func = (lambda x, sign=sign, fnc=
+                        eval('lambda x : ' + angle): sign * fnc(x))
+                    else:
+                        func = (lambda x, sign=sign: sign * x)
+                    cphase = ParametricValue(
+                        param, func=func,
+                        op_split=[op_name, *qbn])
+                # op_name = "NameVal" (e.g. "Z100", see docstring)
+                elif angle:
+                    cphase = float(angle)  # gate angle
+                else:  # no cphase specified: standard CZ gate (180 deg)
+                    cphase = None
+                # Extract the operation which is available in the device
+                # If the op_code only contains the generic keyword 'CZ',
+                # this will use the default CZ pulse name of the experiment
+                device_op = self.get_cz_operation_name(
+                    *qbn,
+                    cz_pulse_name=None if op_type == 'CZ' else op_type)
+                # Get concrete operation implemented on the device, e.g. CZ_nztc
+                op_type = device_op.split(" ")[0]
+                # Here, we figure out if the gate should be decomposed into
+                # CZ and single-qubit gates
+                decomp_info = self.decompose_rotation_gates.get(op_type, False)
+                # qb_dec is the qubit on which to apply single-qubit
+                # gates in case of gate decomposition
+                qb_dec = None
+                if decomp_info==True:
+                    # If True: we decompose the gate
+                    # By default: use the qubit order defined in the op code
+                    # to apply the single-qubit gates
+                    qb_dec = qbn
+                elif isinstance(decomp_info, list):
+                    # If list: we decompose the gate if it is in the list...
+                    for gate_to_decomp in decomp_info:
+                        for qbn_reordered in [qbn, qbn[::-1]]:
+                            if qbn_reordered == gate_to_decomp:
+                                # ... and apply the single-qubit gates to the
+                                # qubits in the order passed in
+                                # decompose_rotation_gates
+                                qb_dec = gate_to_decomp
+                # Force resolving to a single CZ if no cphase is required
+                # (note that CZ180 will still be decomposed)
+                if cphase is None:
+                    qb_dec = None
+                # If qb_dec is not None, we decompose the gate
+                if qb_dec:
+                    if isinstance(cphase, ParametricValue):
+                        # Update the op_split info in the ParametricValue,
+                        # such that it matches the operation decomposition
+                        cphase.op_split[0] = 'Z'
+                    # CZ_x = diag(1,1,1,e^-i*x)  # pycqed sign convention
+                    #  = e^(i*x/4)*Z1(-x/2)*Z0(-x/2)*H1*CZ*H1*Z1(x/2)*H1*CZ*H1
+                    # and replacing each Hadamard H = i*Y*Z(pi) and
+                    # discarding the global phase gives the decomposition:
+                    decomposed_op = [
+                        f'Y90 {qb_dec[0]}',
+                        device_op,
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        f'Z0 {qb_dec[0]}',  # phase set below
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        device_op,
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        f'Z0 {qb_dec[0]}',  # phase set below
+                        f'Z0 {qb_dec[1]}',  # phase set below
+                    ]
+                    p = [
+                        self.copy_op(self.operation_dict[do])
+                        for do in decomposed_op
+                    ]
+                    p[4]['basis_rotation'] = {qb_dec[0]: cphase/2}
+                    p[10]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
+                    p[11]['basis_rotation'] = {qb_dec[1]: -cphase/2}
+                else:
+                    p = [self.copy_op(self.operation_dict[device_op])]
+                    if cphase is not None:
+                        p[0]['cphase'] = cphase
+
+            else:  # Single-qubit gate
+                if self.decompose_rotation_gates.get(op_type, False):
+                    raise NotImplementedError(
+                        'Single qb decomposed rotations not implemented yet.')
+                if angle == '':
+                    angle = 180
+                device_op = f"{op_type}180 {qbn[0]}"
+                if device_op in self.operation_dict:
+                    p = [self.copy_op(self.operation_dict[device_op])]
+                else:
+                    raise KeyError(f"Operation {op} not found.")
+                if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func = (lambda x, qb=op_info[1], f=factor,
+                            func = (lambda x, qb=qbn[0], sign=sign,
                                           fnc=eval('lambda x : ' + angle):
-                                    {qb: f * fnc(x)})
+                                    {qb: sign * fnc(x)})
                         else:  # angle = parameter
-                            func = (lambda x, qbn=op_info[1], f=factor:
-                                    {qbn: f * x})
-                        p['basis_rotation'] = ParametricValue(
-                            param, func=func, op_split=(op_name, op_info[1]))
+                            func = (lambda x, qbn=qbn[0], sign=sign:
+                                    {qbn: sign * x})
+                        p[0]['basis_rotation'] = {qbn[0]: ParametricValue(
+                            param, func=func, op_split=(op_name, qbn[0]))}
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
-                        p['basis_rotation'] = {qbn: factor * float(angle)}
+                        p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
                 else:
-                    qb, _ = self.get_qubits(qbn)
+                    qb, _ = self.get_qubits(qbn[0])
                     corr_func = qb[0].calculate_nonlinearity_correction
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
                             # combine the mathematical expression with a
                             # function that calculates the amplitude
                             func = (
-                                lambda x, a=p['amplitude'], f=factor,
+                                lambda x, a=p[0]['amplitude'], sign=sign,
                                        fnc=eval('lambda x : ' + angle):
                                 a * corr_func(
-                                    ((f * fnc(x) + 180) % (-360) + 180) / 180))
+                                    ((sign * fnc(x) + 180) %
+                                     (-360) + 180) / 180))
                         else:  # angle = parameter
-                            func = lambda x, a=p['amplitude'], f=factor: \
+                            func = lambda x, a=p[0]['amplitude'], sign=sign: \
                                 a * corr_func(
-                                    ((f * x + 180) % (-360) + 180) / 180)
-                        p['amplitude'] = ParametricValue(
-                            param, func=func, op_split=(op_name, op_info[1]))
+                                    ((sign * x + 180) % (-360) + 180) / 180)
+                        p[0]['amplitude'] = ParametricValue(
+                            param, func=func, op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
-                        angle = factor * float(angle)
+                        angle = sign * float(angle)
                         # configure drive pulse amplitude for this angle
-                        p['amplitude'] *= corr_func(
+                        p[0]['amplitude'] *= corr_func(
                             ((angle + 180) % (-360) + 180) / 180)
-        else:
-            raise KeyError(f"Operation {' '.join(op_info)} not found.")
-        p['op_code'] = op
-        if op_info[0][0] == 's':
-            p['ref_point'] = 'start'
+        if len(p) == 1:
+            # If only one pulse: set its op_code to the initially requested one
+            # in order to keep information provided there (e.g. 2qb gate type).
+            # If more than one pulse: the operation has been decomposed into
+            # several pulses, so these should keep their separate op_code.
+            p[0]['op_code'] = op
+
+        if simultaneous:
+            p[0]['ref_point'] = 'start'
 
         return p
 
@@ -499,7 +632,7 @@ class CircuitBuilder:
             reset_ro_pulses = []
             ops_and_codewords = {}
             for i, qbn in enumerate(qb_names):
-                reset_ro_pulses.append(self.get_pulse('RO ' + qbn))
+                reset_ro_pulses += self.get_pulses('RO ' + qbn)
                 reset_ro_pulses[-1]['ref_point'] = 'start' if i != 0 else 'end'
 
                 if preparation_type == 'active_reset_e':
@@ -524,7 +657,7 @@ class CircuitBuilder:
             for i, qbn in enumerate(qb_names):
                 for ops, codeword in ops_and_codewords[qbn]:
                     for j, op in enumerate(ops):
-                        reset_pulses.append(self.get_pulse(op + qbn))
+                        reset_pulses += self.get_pulses(op + qbn)
                         # Reset pulses cannot include phase information at the moment
                         # since we use the exact same waveform(s) (corresponding to
                         # a given codeword) for every reset pulse(s) we play (no
@@ -551,7 +684,7 @@ class CircuitBuilder:
 
             prep_pulse_list = []
             for rep in range(reset_reps):
-                ro_list = self.copy_op(reset_ro_pulses)
+                ro_list = [self.copy_op(p) for p in reset_ro_pulses]
                 ro_list[0]['name'] = 'refpulse_reset_element_{}'.format(rep)
 
                 for pulse in ro_list:
@@ -565,7 +698,7 @@ class CircuitBuilder:
                     ro_list[0]['pulse_delay'] = ro_separation
                     ro_list[0]['ref_point'] = 'start'
 
-                rp_list = self.copy_op(reset_pulses)
+                rp_list = [self.copy_op(p) for p in reset_pulses]
                 for j, pulse in enumerate(rp_list):
                     pulse['element_name'] = f'reset_pulse_element_{rep}'
                     pulse['ref_pulse'] = f'refpulse_reset_element_{rep}'
@@ -584,7 +717,7 @@ class CircuitBuilder:
         elif preparation_type == 'preselection':
             preparation_pulses = []
             for i, qbn in enumerate(qb_names):
-                preparation_pulses.append(self.get_pulse('RO ' + qbn))
+                preparation_pulses += self.get_pulses('RO ' + qbn)
                 preparation_pulses[-1]['ref_point'] = 'start'
                 preparation_pulses[-1]['element_name'] = 'preselection_element'
             preparation_pulses[0]['ref_pulse'] = ref_pulse
@@ -628,7 +761,8 @@ class CircuitBuilder:
         # if qb_names is the name of a single qb, expects single pulse output
         single_qb_given = not isinstance(qb_names, list)
         _, qb_names = self.get_qubits(qb_names)
-        pulses = [self.get_pulse(f'Z{theta} {qbn}', True) for qbn in qb_names]
+        pulses = [p for qbn in qb_names for p in self.get_pulses(
+            f'Z{theta} {qbn}')]
         return pulses[0] if single_qb_given else pulses
 
     def get_ops_duration(self, operations=None, pulses=None, fill_values=None,
@@ -704,15 +838,13 @@ class CircuitBuilder:
                     return op.format(**fill_values)
                 else:
                     return [s.format(**fill_values) for s in op]
-
-            pulses = [self.get_pulse(op_format(op, **fill_values), True)
-                      for op in operations]
-        else:
-            # the shortcut if op in self.operation_dict is for speed reasons
-            pulses = [self.copy_op(self.operation_dict[op])
-                      if op in self.operation_dict
-                      else self.get_pulse(op, True)
-                      for op in operations]
+            operations = [op_format(op, **fill_values) for op in operations]
+        # the shortcut if op in self.operation_dict is for speed reasons
+        p_lists = [[self.copy_op(self.operation_dict[op])]
+                   if op in self.operation_dict
+                   else self.get_pulses(op)
+                   for op in operations]
+        pulses = [p for p_list in p_lists for p in p_list]  # flattened
 
         return Block(block_name, pulses, pulse_modifs, copy_pulses=False)
 
@@ -821,11 +953,20 @@ class CircuitBuilder:
         if pulse_dicts is not None:
             for i, pp in enumerate(pulse_dicts):
                 # op_code determines which pulse to use
-                pulse = self.get_pulse(pp['op_code']) if 'op_code' in pp else {}
+                p_list = self.get_pulses(pp['op_code']) if 'op_code' in pp \
+                    else [{}]
                 # all other entries in the pulse dict are interpreted as
                 # pulse parameters that overwrite the default values
-                pulse.update(pp)
-                pulses += [pulse]
+                pp_add_entries = {k: v for k, v in pp.items() if k != 'op_code'}
+                if len(pp_add_entries):
+                    if len(p_list) > 1:
+                        raise NotImplementedError(
+                            "get_pulses returned more than one pulse for "
+                            f"pulse dict {i}, and it is not clear to which "
+                            f"one the parameters passed in the pulse dict "
+                            f"should be applied.")
+                    p_list[0].update(pp_add_entries)
+                pulses += p_list
         return Block(block_name, pulses)
 
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,

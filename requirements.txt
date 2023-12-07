@@ -5,7 +5,7 @@ matplotlib
 scipy
 sympy
 cython
-pyside2
+pyside6
 tensorflow
 pandas
 pyyaml
