@@ -11633,8 +11633,11 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class LeakageAmplificationAnalysis(ChevronAnalysis):
 
-    def plot_leakage_amp(self, cmap_lim=None, xtransform=None,
-                         draw_lower_lines=True, **kw):
+    def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05, xtransform=None,
+                         pop_scale_right=None, pop_unit_right=None,
+                         pop_scale_left=None, pop_unit_left=None,
+                         draw_lower_lines=True, gate_yticks=None,
+                         gate_yticks_prec=2, **kw):
         """
         Plots leakage amplification results (2D map, and 1D with maximum line)
 
@@ -11652,12 +11655,20 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
         (before rescaling), such that the colorbar can serve as a second y axis.
         """
 
-        pop_scale, pop_unit = 1e-3, '$\\%_o$'
+        _default_units = (1e-2, '%')
+        if pop_scale_right is None:
+            pop_scale_right, pop_unit_right = _default_units
+        if pop_scale_left is None:
+            pop_scale_left, pop_unit_left = _default_units
 
         y_err_f = lambda pop, n: np.sqrt(pop * (1-pop) / n)
 
-        # Function to compute single gate populations (could be a kwarg)
-        f = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(p)))/n)**2
+        # Converting between single-gate and n-gate populations
+        f_nto1 = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(p)))/n)**2
+        f_1ton = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(p)))*n)**2
+        # Checking if 1-gate value is in the first period of the sin
+        f_1ton_valid = lambda p, n: (np.abs( np.arcsin(np.sqrt(np.abs(p)))*n )
+                                     <=np.pi/2)
 
         ts = self.timestamps[0]
 
@@ -11719,11 +11730,10 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             if cmap_lim is None:
                 _cmap_lim = [pop.min(), pop.max()]
                 height = _cmap_lim[1]-_cmap_lim[0]
-                margin = 0.05
-                _cmap_lim = np.array([_cmap_lim[0]-margin*height,
-                                      _cmap_lim[1]+margin*height])
+                _cmap_lim = np.array([_cmap_lim[0]-cmap_margin*height,
+                                      _cmap_lim[1]+cmap_margin*height])
             else:
-                _cmap_lim = cmap_lim
+                _cmap_lim = np.array(cmap_lim)
             norm = mpl.colors.Normalize(vmin=_cmap_lim[0], vmax=_cmap_lim[1])
 
             x = coords[0]
@@ -11753,8 +11763,8 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'plotfn': self.plot_colorxy,
                 'xvals': coords[0],
                 'yvals': coords[1],
-                'zvals': pop/pop_scale,
-                'zrange': _cmap_lim/pop_scale,
+                'zvals': pop/pop_scale_right,
+                'zrange': _cmap_lim/pop_scale_right,
                 'xlabel': '',
                 'xunit': '',
                 'xlabels_rotation': 0,
@@ -11763,7 +11773,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'cmap': kw.get('cmap'),
                 'title': title,
                 'plotcbar': True,
-                'clabel': f"Total leakage ({pop_unit})",
+                'clabel': f"Total leakage ({pop_unit_right})",
                 'cax_id': 3,
             }
 
@@ -11772,17 +11782,37 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'ax_id': 2,
                 'plotfn': self.plot_line,
                 'xvals': x_scatter,
-                'yvals': y_scatter/pop_scale,
+                'yvals': y_scatter/pop_scale_right,
                 'alpha': 0.3,
-                'yrange': _cmap_lim/pop_scale,
+                'yrange': _cmap_lim/pop_scale_right,
                 'color': cmap(norm(y_scatter)),
                 'scatter': True,
                 'line_kws': {'zorder': 1},
                 'xlabel': nice_labels[0],
-                'ylabel': f"Gate leakage ({pop_unit})",
-                'set_major_formatter': {  # Nonlinear conversion: relabel yticks
-                    'yaxis': lambda p, _: f'{f(p*pop_scale, n)/pop_scale:.2f}'},
+                'ylabel': f"Gate leakage ({pop_unit_left})",
             }
+            if gate_yticks is not None:
+                # Set explicit values for the left yticks, and compute their
+                # locations (corresponding to the scale of the colorbar axis)
+                self.plot_dicts[figname + f"_1D_scatter"].update({
+                    'ytick_loc': f_1ton(gate_yticks, n)/pop_scale_right,
+                    'ytick_labels': [f'{p/pop_scale_left:.{gate_yticks_prec}g}'
+                                     for p in gate_yticks],
+                })
+                if not np.all(f_1ton_valid(gate_yticks, n)):
+                    log.warning("The required single-gate leakage y axis "
+                                "ticks are bigger than the range of the main "
+                                "period for n-gate leakage. This means that "
+                                "the ticks will oscillate on the y axis.")
+            else:
+                # Fall back to using the existing yticks (as on the colorbar
+                # right axis), and format their labels
+                def formatter(p_n, _):
+                    p_1 = f_nto1(p_n*pop_scale_right, n)/pop_scale_left
+                    return f'{p_1:.{gate_yticks_prec}g}'
+                self.plot_dicts[figname + f"_1D_scatter"].update({
+                    'set_major_formatter': {'yaxis': formatter},
+                })
 
             if draw_lower_lines:
                 self.plot_dicts[figname + f"_1D_line"] = {
@@ -11790,7 +11820,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     'ax_id': 2,
                     'plotfn': self.plot_line,
                     'xvals': np.array([x]*len(pop)),
-                    'yvals': pop/pop_scale,
+                    'yvals': pop/pop_scale_right,
                     'alpha': 0.1,
                     'line_kws': {'zorder': 0},
                     'color': 'k',
@@ -11801,8 +11831,8 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'ax_id': 2,
                 'plotfn': self.plot_line,
                 'xvals': x,
-                'yvals': y_max/pop_scale,
-                'yerr': y_err/pop_scale,
+                'yvals': y_max/pop_scale_right,
+                'yerr': y_err/pop_scale_right,
                 'alpha': 1,
                 'line_kws': {'zorder': 0},
                 'color': 'k',
@@ -11812,7 +11842,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'ax_id': 2,
                 'plotfn': self.plot_line,
                 'xvals': x,
-                'yvals': y_max/pop_scale,
+                'yvals': y_max/pop_scale_right,
                 'alpha': 1,
                 'color': cmap(norm(y_max)),
                 'scatter': True,
