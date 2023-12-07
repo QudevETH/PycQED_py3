@@ -1576,6 +1576,11 @@ class BaseDataAnalysis(object):
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
+        plot_grid = pdict.get('grid', None)
+        plot_xtick_labels = pdict.get('xtick_labels', None)
+        plot_xtick_loc = pdict.get('xtick_loc', None)
+        plot_ytick_labels = pdict.get('ytick_labels', None)
+        plot_ytick_loc = pdict.get('ytick_loc', None)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         if pdict.get('color') is not None:
             plot_linekws['color'] = pdict.get('color')
@@ -1681,6 +1686,16 @@ class BaseDataAnalysis(object):
             axs.set_yscale(plot_yscale)
         if plot_xscale is not None:
             axs.set_xscale(plot_xscale)
+        if plot_grid:
+            axs.grid(True)
+        if plot_xtick_labels is not None:
+            axs.xaxis.set_ticklabels(plot_xtick_labels)
+        if plot_ytick_labels is not None:
+            axs.yaxis.set_ticklabels(plot_ytick_labels)
+        if plot_xtick_loc is not None:
+            axs.xaxis.set_ticks(plot_xtick_loc)
+        if plot_ytick_loc is not None:
+            axs.yaxis.set_ticks(plot_ytick_loc)
 
         if self.tight_fig:
             axs.figure.tight_layout()
