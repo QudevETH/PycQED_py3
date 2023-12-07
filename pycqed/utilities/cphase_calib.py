@@ -35,7 +35,7 @@ def get_optimal_amp(qbc, qbt, soft_sweep_points, timestamp=None,
                            for qb in [qbc, qbt]}
         else:
             channel_map = {qb.name: [vn + ' ' +
-                                     qb.acq_instr() for vn in
+                                     qb.instr_acq() for vn in
                                      qb.int_avg_det.value_names]
                            for qb in [qbc, qbt]}
         tdma = tda.CPhaseLeakageAnalysis(
