@@ -2096,9 +2096,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # preselection_qbs = {"qb1": ["qb1", "qb2"]},
             # i.e. preselection is done for qb1 using ['qb1', 'qb2'] so we
             # should exctract data no only for qb1 but also qb2.
-            qb_names_to_extract = [
-                qbn for qbns in list(preselection_qbs.values()) for qbn in qbns]
-            qb_names_to_extract = set(qb_names_to_extract + self.qb_names)
+            qb_names_to_extract = [qbn for qbns in list(
+                preselection_qbs.values()) for qbn in qbns]
+            qb_names_to_extract = qb_names_to_extract + [
+                qbn for qbn in self.qb_names if qbn not in qb_names_to_extract]
 
         # get classification parameters
         if classifier_params is None:
