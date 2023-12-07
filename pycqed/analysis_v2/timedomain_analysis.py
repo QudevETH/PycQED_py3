@@ -2190,11 +2190,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 averaged_shots.append(
                     np.mean(shots_single_ro[presel_mask_single_ro], axis=0))
             if self.get_param_value("TwoD", False):
+                # Shape: (n_readouts*n_seqs, n), with n = n_prob or n_ch or 1
                 averaged_shots = np.reshape(averaged_shots, (n_readouts, n_seqs, -1))
+                # Shape: (n_readouts, n_seqs, n)
                 averaged_shots = np.swapaxes(averaged_shots, 0, 1) # return to original 2D shape
-            # reshape to (n_prob or n_ch or 1, n_readouts) if 1d
-            # or (n_prob or n_ch or 1, n_readouts, n_ssp) if 2d
+                # Shape: (n_seqs, n_readouts, n)
             averaged_shots = np.array(averaged_shots).T
+            # Shape: (n, n_readouts) if 1d, or (n, n_readouts, n_ssp) if 2d
 
             if preselection:
                 self.proc_data_dict['percent_data_after_presel'][qbn] = \
