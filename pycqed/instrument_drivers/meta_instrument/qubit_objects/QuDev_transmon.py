@@ -54,6 +54,14 @@ class QuDev_transmon(MeasurementObject):
         compensation_pulse_delay=100e-9,
         compensation_pulse_gaussian_filter_sigma=0,
     )
+
+    DEFAULT_GE_LO_CALIBRATION_PARAMS = dict(
+        mode='fixed',  # or 'freq_dependent'
+        freqs=[],
+        I_offsets=[],
+        Q_offsets=[],
+    )
+
     _acq_weights_type_aliases = {
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
@@ -432,15 +440,9 @@ class QuDev_transmon(MeasurementObject):
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
                             initial_value=DEFAULT_PREP_PARAMS, vals=vals.Dict())
 
-        DEFAULT_GE_LO_CALIBRATION_PARAMS = dict(
-            mode='fixed', # or 'freq_dependent'
-            freqs=[],
-            I_offsets=[],
-            Q_offsets=[],
-        )
         self.add_parameter('ge_lo_leakage_cal',
                            parameter_class=ManualParameter,
-                           initial_value=DEFAULT_GE_LO_CALIBRATION_PARAMS,
+                           initial_value=self.DEFAULT_GE_LO_CALIBRATION_PARAMS,
                            vals=vals.Dict())
 
         # switch parameters
