@@ -687,6 +687,15 @@ class SpectroscopyHardSweep(UploadingSweepFunction, Hard_Sweep):
 
 
 class AcquisitionLengthSweep(Soft_Sweep):
+    """A soft sweep function for sweeping the acquisition length.
+
+    Args:
+        get_detector_function: callback function that returns the detector
+            function
+        **kw: keyword arguments for the init of Soft_Sweep (except for the
+            argument parameter_name, which is fixed to 'acq_length', and the
+            unit, which is fixed to 's')
+    """
     def __init__(self, get_detector_function, **kw):
         super().__init__(parameter_name='acq_length', unit='s', **kw)
         self.get_detector_function = get_detector_function
