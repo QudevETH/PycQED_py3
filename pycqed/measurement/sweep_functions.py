@@ -684,3 +684,12 @@ class SpectroscopyHardSweep(UploadingSweepFunction, Hard_Sweep):
 
     def set_parameter(self, value):
         pass  # Set in the Segment, see docstring
+
+
+class AcquisitionLengthSweep(Soft_Sweep):
+    def __init__(self, get_detector_function, **kw):
+        super().__init__(parameter_name='acq_length', unit='s', **kw)
+        self.get_detector_function = get_detector_function
+
+    def set_parameter(self, value):
+        self.get_detector_function().set_acq_length(value)
