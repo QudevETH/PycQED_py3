@@ -721,7 +721,12 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         return [self.AWG]
 
     def set_acq_length(self, val):
-        """TODO
+        """Set the acquisition length (overwrite value given in init).
+
+        Has to be implemented in child classes where needed.
+
+        Args:
+            val (float): new acquisition length in seconds
         """
         raise NotImplementedError(
             f'set_acq_length not implemented in {self.__class__}.')
