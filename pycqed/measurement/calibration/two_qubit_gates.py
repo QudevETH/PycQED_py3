@@ -419,6 +419,12 @@ class MultiTaskingExperiment(QuantumExperiment):
                 if all([sf_for_sp.get(p + sp, []) for p in prefixes]):
                     sf_for_sp[sp] = []  # no sweep function needed
 
+        # check if the child class has a separate dict for sweeping pulse
+        # parameters
+        sp_pulses = self.get_sweep_points_for_sweep_n_dim()
+        if sp_pulses == self.sweep_points:
+            sp_pulses = None  # update of a separate dict not needed below
+
         # We can now add the needed sweep functions to self.sweep_functions.
         # loop over all sweep_points dimensions
         for i in range(len(self.sweep_points)):
@@ -486,9 +492,8 @@ class MultiTaskingExperiment(QuantumExperiment):
                             pos=0,
                             sweep_function=awg_swf.SegmentSoftSweep
                         )
-                    if hasattr(self, 'sweep_points_pulses'):
-                        self.sweep_points_pulses[i][param] = \
-                            self.sweep_points[i][param]
+                    if sp_pulses:
+                        sp_pulses[i][param] = self.sweep_points[i][param]
                 else:  # dimension 0
                     # assuming that this parameter is a pulse parameter, and we
                     # therefore need a SegmentHardSweep as the first sweep
@@ -506,10 +511,8 @@ class MultiTaskingExperiment(QuantumExperiment):
                             'Combined sweeping of pulse parameters and other '
                             'parameters for which a sweep function is provided '
                             'is not supported in dimension 0.')
-
-                    if hasattr(self, 'sweep_points_pulses'):
-                        self.sweep_points_pulses[i][param] = \
-                            self.sweep_points[i][param]
+                    if sp_pulses:
+                        sp_pulses[i][param] = self.sweep_points[i][param]
                     sw_ctrl = 'hard'
 
     def parallel_sweep(self, preprocessed_task_list=(), block_func=None,
