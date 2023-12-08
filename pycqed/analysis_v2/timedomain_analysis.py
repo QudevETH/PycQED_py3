@@ -7857,6 +7857,10 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
         self.qb_names = qb_names
         super().__init__(**kwargs)
+
+        if self.job is None:
+            self.create_job(qb_names=qb_names, **kwargs)
+
         if auto:
             self.run_analysis()
 
