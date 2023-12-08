@@ -588,7 +588,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             FIXME: as soon as the fluxline voltage is accesible through the
             qubit, a convenience wrapper should be implemented.
             (2. dim. sweep points)
-        ro_amplitude: List or np.array of amplitudes of the RO pulse.
+        ro_amp: List or np.array of amplitudes of the RO pulse.
             (2. dim. sweep points)
         ro_length: List or np.array of pulse lengths of the RO pulse.
             (2. dim. sweep points)
