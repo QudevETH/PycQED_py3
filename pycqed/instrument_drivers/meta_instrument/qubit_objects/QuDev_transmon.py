@@ -1604,8 +1604,8 @@ class QuDev_transmon(MeasurementObject):
                 Boolean flag, whether to plot the analysis results. Defaults
                 to `True`.
             kwargs:
-                prepend_zeros: temporary value for pulsar.prepend_zeros. Defaults
-                to 0.
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
         Return:
             Optimal DC offsets for the I and Q output channels.
         """
