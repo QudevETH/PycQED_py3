@@ -1740,8 +1740,8 @@ class QuDev_transmon(MeasurementObject):
                 Units: Volts
                 Defaults to (-0.1, 0.1, -0.1, 0.1).
             kwargs:
-                prepend_zeros: temporary value for pulsar.prepend_zeros. Defaults
-                to 0.
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
 
         Returns:
             V_I (float): DC bias on I channel that minimizes LO leakage.
@@ -1970,8 +1970,8 @@ class QuDev_transmon(MeasurementObject):
                 commensurable LO frequencies for the specified trigger_sep.
                 Defaults to false.
             kwargs:
-                prepend_zeros: temporary value for pulsar.prepend_zeros. Defaults
-                to 0.
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
 
         Returns:
             alpha (float): The amplitude ratio that maximizes the suppression of 
