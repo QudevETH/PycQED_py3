@@ -463,9 +463,11 @@ class BaseDataAnalysis(object):
                     BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF
                 )
             except Exception as exception:
-                raise LookupError(f"File '{data_file_path}' contains no "
-                                  f"{BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF}"
-                                  f"in 'Analysis' group")
+                raise LookupError(
+                    f"File '{data_file_path}' contains no "
+                    f"{BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF}"
+                    f"in 'Analysis' group"
+                )
 
         # Replace some analysis object parameters in job string to speed the
         # job up. We can change the parameters since the purpose of this
