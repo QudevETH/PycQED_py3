@@ -339,3 +339,23 @@ def read_dict_from_hdf5(data_dict: dict, h5_group):
             raise NotImplementedError('cannot read "list_type":"{}"'.format(
                 h5_group.attrs['list_type']))
     return data_dict
+
+
+def get_hdf_group_by_name(parent_group: h5py.Group, group_name: str) -> \
+        h5py.Group:
+    """Gets group named `group_name` and creates it if it doesn't exist.
+
+    Args:
+        parent_group: a group of file under which to look/create the group
+            `group_name`.
+        group_name: string value of the group one wants to get.
+
+    Returns:
+        h5py.Group: either existing or a new group named `group_name`.
+    """
+    try:
+        group = parent_group.create_group(group_name)
+    except ValueError:
+        # If the group already exists.
+        group = parent_group[group_name]
+    return group

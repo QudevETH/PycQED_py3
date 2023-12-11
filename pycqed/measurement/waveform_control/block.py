@@ -368,6 +368,58 @@ class ParametricValue:
         else:
             return v_processed
 
+    def _copy_self(self):
+        """
+        Returns a copy of self, ensuring that self.func exists
+
+        Note that this might be inefficient, since this makes use of a
+        deepcopy, and creates a lambda function which is itself wrapped in a
+        lambda function in the methods below, e.g. self.__add__.
+        """
+        new_parametric_value = deepcopy(self)
+        if new_parametric_value.func is None:
+            new_parametric_value.func = lambda x: x
+        return new_parametric_value
+
+    def __add__(self, other):
+        pv = self._copy_self()
+        pv.func = lambda x, f=pv.func: f(x) + other
+        return pv
+
+    __radd__ = __add__
+
+    def __sub__(self, other):
+        pv = self._copy_self()
+        pv.func = lambda x, f=pv.func: f(x) - other
+        return pv
+
+    def __rsub__(self, other):
+        pv = self._copy_self()
+        pv.func = lambda x, f=pv.func: other - f(x)
+        return pv
+
+    def __neg__(self):
+        pv = self._copy_self()
+        pv.func = lambda x, f=pv.func: -f(x)
+        return pv
+
+    def __mul__(self, other):
+        pv = self._copy_self()
+        pv.func = lambda x, f=pv.func: f(x) * other
+        return pv
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, other):
+        pv = self._copy_self()
+        pv.func = lambda x, f=pv.func: f(x) / other
+        return pv
+
+    def __rtruediv__(self, other):
+        pv = self._copy_self()
+        pv.func = lambda x, f=pv.func: other / f(x)
+        return pv
+
 
 def parse_pulse_search_pattern(pattern):
     """Parse strings/ints that represent a pulse search pattern

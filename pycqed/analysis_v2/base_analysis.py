@@ -27,13 +27,13 @@ import lmfit
 import h5py
 from pycqed.measurement.hdf5_data import write_dict_to_hdf5
 from pycqed.measurement.hdf5_data import read_dict_from_hdf5
+from pycqed.measurement.hdf5_data import get_hdf_group_by_name
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import copy
 import traceback
 import logging
 log = logging.getLogger(__name__)
-log.addHandler(logging.StreamHandler())
 
 class BaseDataAnalysis(object):
     """
@@ -59,6 +59,11 @@ class BaseDataAnalysis(object):
         if not self.extract_only:
             self.plot(key_list='auto')  # make the plots
 
+    """
+
+    JOB_ATTRIBUTE_NAME_IN_HDF: str = 'job'
+    """Attribute name for a job string which is saved in the hdf5 file under
+    'Analysis' group.
     """
 
     fit_res = None
@@ -139,6 +144,10 @@ class BaseDataAnalysis(object):
         try:
             # set error-handling behavior
             self.raise_exceptions = raise_exceptions
+
+            # Child classes may call create_job to fill this with a job
+            # string representation of the analysis.
+            self.job = None
 
             # initialize an empty dict to store results of analysis
             self.proc_data_dict = OrderedDict()
@@ -233,6 +242,10 @@ class BaseDataAnalysis(object):
         try:
             self.extract_data()  # extract data specified in params dict
             self.process_data()  # binning, filtering etc
+            # Write job to Analysis group
+            if self.job:
+                self.save_job_string_in_result_file()
+
             if self.do_fitting:
                 self.prepare_fitting()  # set up fit_dicts
                 try:
@@ -251,13 +264,20 @@ class BaseDataAnalysis(object):
                 self.save_fit_results()  # saving the fit results
                 self.analyze_fit_results()  # analyzing the fit results
 
-
             delegate_plotting = self.check_plotting_delegation()
             if not delegate_plotting:
-                self.prepare_plots()  # specify default plots
-                if not self.extract_only:
-                    # make the plots
-                    self.plot(key_list='auto')
+                # Update the rcParams to ensure repeatable plots independently
+                # of the rcParams set in the current python kernel.
+                # Only if options_dict['set_default_plot_formatting'] is True.
+                set_default_plot_formatting = self.options_dict.get(
+                    'set_default_plot_formatting', True)
+                params = self.get_default_plot_params(set_pars=False) if \
+                    set_default_plot_formatting else None
+                with mpl.rc_context(rc=params):
+                    self.prepare_plots()  # specify default plots
+                    if not self.extract_only:
+                        # make the plots
+                        self.plot(key_list='auto')
 
                 if self.options_dict.get('save_figs', False):
                     self.save_figures(close_figs=self.options_dict.get(
@@ -347,9 +367,25 @@ class BaseDataAnalysis(object):
             kwargs['t_stop'] = self.timestamps[-1]
         kwargs_list = [f'{k}={v if not isinstance(v, str) else repr(v)}'
                        for k, v in kwargs.items()]
-
-        job_lines = f"{class_name}({', '.join(args)}{sep}{', '.join(kwargs_list)})"
+        job_lines = f"analysis_object = {class_name}" \
+                    f"({', '.join(args)}{sep}{', '.join(kwargs_list)})"
         self.job = f"{import_lines}{job_lines}"
+
+    def save_job_string_in_result_file(self):
+        """Saves `self.job` in analysis result file under "Analysis" group.
+
+        Raises:
+            RuntimeError: in case `write_dict_to_hdf5` fails.
+        """
+        file_path = self._get_analysis_result_file_path()
+        with h5py.File(file_path, 'a') as data_file:
+            analysis_group = get_hdf_group_by_name(data_file,
+                                                   "Analysis")
+            if isinstance(analysis_group, h5py.Group):
+                write_dict_to_hdf5(
+                    {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
+                    entry_point=analysis_group
+                )
 
     def check_plotting_delegation(self):
         """
@@ -1019,14 +1055,7 @@ class BaseDataAnalysis(object):
 
         # Check weather there is any data to save
         if hasattr(self, 'fit_res') and self.fit_res is not None:
-            fn = self.options_dict.get('analysis_result_file', False)
-            if fn == False:
-                if isinstance(self.raw_data_dict, tuple):
-                    timestamp = self.raw_data_dict[0]['timestamp']
-                else:
-                    timestamp = self.raw_data_dict['timestamp']
-                fn = a_tools.measurement_filename(a_tools.get_folder(
-                    timestamp))
+            fn = self._get_analysis_result_file_path()
 
             try:
                 os.mkdir(os.path.dirname(fn))
@@ -1038,11 +1067,8 @@ class BaseDataAnalysis(object):
 
             with h5py.File(fn, 'a') as data_file:
                 try:
-                    try:
-                        analysis_group = data_file.create_group('Analysis')
-                    except ValueError:
-                        # If the analysis group already exists.
-                        analysis_group = data_file['Analysis']
+                    analysis_group = get_hdf_group_by_name(data_file,
+                                                           "Analysis")
 
                     # Iterate over all the fit result dicts as not to
                     # overwrite old/other analysis
@@ -1062,6 +1088,22 @@ class BaseDataAnalysis(object):
                 except Exception as e:
                     data_file.close()
                     raise e
+
+    def _get_analysis_result_file_path(self) -> str:
+        """Gets full path to analysis result file.
+
+        Returns:
+            str: full path to analysis result file.
+        """
+        fn = self.options_dict.get('analysis_result_file', False)
+        if fn == False:
+            if self.raw_data_dict and isinstance(self.raw_data_dict, tuple):
+                timestamp = self.raw_data_dict[0]['timestamp']
+            else:
+                timestamp = self.raw_data_dict['timestamp']
+            fn = a_tools.measurement_filename(a_tools.get_folder(
+                timestamp))
+        return fn
 
     def save_processed_data(self, key=None, overwrite=True):
         """
@@ -1086,14 +1128,8 @@ class BaseDataAnalysis(object):
         # Check weather there is any data to save
         if hasattr(self, 'proc_data_dict') and self.proc_data_dict is not None \
                 and key in self.proc_data_dict:
-            fn = self.options_dict.get('analysis_result_file', False)
-            if fn == False:
-                if isinstance(self.raw_data_dict, tuple):
-                    timestamp = self.raw_data_dict[0]['timestamp']
-                else:
-                    timestamp = self.raw_data_dict['timestamp']
-                fn = a_tools.measurement_filename(a_tools.get_folder(
-                    timestamp))
+            fn = self._get_analysis_result_file_path()
+
             try:
                 os.mkdir(os.path.dirname(fn))
             except FileExistsError:
@@ -1104,18 +1140,10 @@ class BaseDataAnalysis(object):
 
             with h5py.File(fn, 'a') as data_file:
                 try:
-                    try:
-                        analysis_group = data_file.create_group('Analysis')
-                    except ValueError:
-                        # If the analysis group already exists.
-                        analysis_group = data_file['Analysis']
-
-                    try:
-                        proc_data_group = \
-                            analysis_group.create_group('Processed data')
-                    except ValueError:
-                        # If the processed data group already exists.
-                        proc_data_group = analysis_group['Processed data']
+                    analysis_group = get_hdf_group_by_name(data_file,
+                                                           "Analysis")
+                    proc_data_group = get_hdf_group_by_name(analysis_group,
+                                                            "Processed data")
 
                     if key in proc_data_group.keys():
                         del proc_data_group[key]
@@ -1556,6 +1584,7 @@ class BaseDataAnalysis(object):
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
+        plot_grid = pdict.get('grid', None)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         if pdict.get('color', False):
             plot_linekws['color'] = pdict.get('color')
@@ -1651,6 +1680,8 @@ class BaseDataAnalysis(object):
             axs.set_yscale(plot_yscale)
         if plot_xscale is not None:
             axs.set_xscale(plot_xscale)
+        if plot_grid:
+            axs.grid(True)
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -2349,6 +2380,17 @@ class NDim_BaseDataAnalysis(BaseDataAnalysis):
         to partition the timestamps into groups to reconstruct the
         N-dimensional measurements.
         See MultiTWPA_SNR_Analysis for an example.
+
+        FIXME: Currently only works for NDimMultiTaskingExperiment, since it
+         relies on sweep_points stored in the task_list of each experiment to
+         reconstruct the individual N-dim sweep_points of each measurement
+         object. This should be fixed by instead relying on the
+         meas_obj_sweep_points_map and global sweep_points stored in the
+         experimental metadata. This requires either fixing
+         NDimMultiTaskingExperiment to correctly store the entire
+         N-dimensional sweep_points in the metadata, or extending this
+         analysis to automatically reconstruct the N-dim sweep_points from
+         the 2-D sweep_points of all individual experiments.
 
         """
 

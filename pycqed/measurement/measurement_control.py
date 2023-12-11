@@ -33,7 +33,10 @@ from pycqed.analysis.tools.data_manipulation import get_generation_means
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
-from qcodes.plots.colors import color_cycle
+try:
+    from qcodes_loop.plots.colors import color_cycle
+except ModuleNotFoundError:
+    from qcodes.plots.colors import color_cycle
 
 from pycqed.utilities.errors import NoProgressError
 
@@ -43,13 +46,17 @@ except:
     print('Could not import msvcrt (used for detecting keystrokes)')
 
 try:
-    from qcodes.plots.pyqtgraph import QtPlot
-except Exception:
-    print('pyqtgraph plotting not supported, '
-          'try "from qcodes.plots.pyqtgraph import QtPlot" '
-          'to see the full error')
-    print('When instantiating an MC object,'
-          ' be sure to set live_plot_enabled=False')
+    from qcodes_loop.plots.pyqtgraph import QtPlot
+except ModuleNotFoundError:
+    try:
+        from qcodes.plots.pyqtgraph import QtPlot
+    except Exception:
+        log.warning(
+            'pyqtgraph plotting not supported. When instantiating an '
+            'MC object, be sure to set live_plot_enabled=False. '
+            'The full traceback follows:'
+        )
+        log.warning(traceback.format_exc())
 
 EXPERIMENTAL_DATA_GROUP_NAME = 'Experimental Data'
 
