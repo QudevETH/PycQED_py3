@@ -8,21 +8,23 @@ from pycqed.analysis_v3 import processing_pipeline as pp_mod
 import sys
 pp_mod.search_modules.add(sys.modules[__name__])
 
+
 def mean_squared_error(data_dict, keys_in, keys_out, labels,
                        sorted_by_label=False, **params):
     """
     Computes the MSE for a set of data points and their correspoding labels.
 
-    :param data_dict: OrderedDict containing data to be processed and where
-                    processed data is to be stored
-    :param keys_in: list of key names or dictionary keys paths in
-                    data_dict for the data to be processed
-    :param keys_out: list of key names or dictionary keys paths in
-                    data_dict for the processed data to be saved into
-    :param labels: list of labels used to compute the error.
-    :param sorted_by_label (str, default=False): Whether the data is sorted by
-        label first (True) or by parameter (False).
-    :param params: keyword arguments
+    Args:
+        data_dict: OrderedDict containing data to be processed and where
+            processed data is to be stored
+        keys_in: list of key names or dictionary keys paths in
+            data_dict for the data to be processed
+        keys_out: list of key names or dictionary keys paths in
+            data_dict for the processed data to be saved into
+        labels: list of labels used to compute the error.
+        sorted_by_label (str, default=False): Whether the data is sorted by
+            label first (True) or by parameter (False).
+        params: keyword arguments
 
     Assumptions:
         - if any keyo in keys_out contains a '.' string, keyo is assumed to
