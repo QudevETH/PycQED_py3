@@ -225,8 +225,18 @@ class TriggerResizeEventMixin:
     """Mixin for `_trigger_resize_event()` function."""
     def _trigger_resize_event(self):
         """Manually resize the window to trigger resize event."""
-        # ugly hack to trigger a resize event (otherwise the figure in the
-        # canvas is not displayed properly)
+        # Manually change the size of the window to intermediary size and
+        # back to its original to trigger the resize event. The resize event
+        # forces readjustment of widget sizes this way fitting all of them in
+        # the current window. This was the only way that was found to cause
+        # this manually. It's needed because if some widget changes the size
+        # (or a widget itself is replaced with another one of different size)
+        # it might overflow into area that is beyond the displayed window of
+        # the program. This forces a widget to resize to fit the window.
+        # Note: just dispatching the event manually doesn't seem to have an
+        # effect. Probably, because event handler check whether the size
+        # actually changed.
+
         size = self.size()
         self.resize(self.width() + 1, self.height())
         self.resize(size)
