@@ -467,9 +467,12 @@ class BaseDataAnalysis(object):
                                   f"{BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF}"
                                   f"in 'Analysis' group")
 
-        # HACK: assuming the job is saved with "extract_only=False",
-        # "'save_figs': True" and "'close_figs': True" (which should be the
-        # case), changing them speeds up the process significantly
+        # Replace some analysis object parameters in job string to speed the
+        # job up. We can change the parameters since the purpose of this
+        # function is only to get the analysis object and not to actually
+        # perform the saved job to full extent. Assuming the job is saved with
+        # "extract_only=False", "'save_figs': True" and "'close_figs': True",
+        # changing them speeds up the process significantly.
         job = job.replace("extract_only=False", "extract_only=True")
         job = job.replace("'save_figs': True", "'save_figs': False")
         job = job.replace("'close_figs': True", "'close_figs': False")
