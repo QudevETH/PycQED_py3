@@ -366,43 +366,53 @@ class CircuitBuilder:
                 qb_dec = None
                 if decomp_info==True:
                     # If True: we decompose the gate
-                    # By default: use the first qubit involved in the gate
-                    qb_dec = qbn[0]
+                    # By default: use the qubit order defined in the op code
+                    # to apply the single-qubit gates
+                    qb_dec = qbn
                 elif isinstance(decomp_info, list):
                     # If list: we decompose the gate if it is in the list...
                     for gate_to_decomp in decomp_info:
                         for qbn_reordered in [qbn, qbn[::-1]]:
-                            if qbn_reordered==gate_to_decomp:
+                            if qbn_reordered == gate_to_decomp:
                                 # ... and apply the single-qubit gates to the
-                                # first qubit passed in decompose_rotation_gates
-                                qb_dec = gate_to_decomp[0]
+                                # qubits in the order passed in
+                                # decompose_rotation_gates
+                                qb_dec = gate_to_decomp
+                # Force resolving to a single CZ if no cphase is required
+                # (note that CZ180 will still be decomposed)
+                if cphase is None:
+                    qb_dec = None
                 # If qb_dec is not None, we decompose the gate
                 if qb_dec:
-                    # Index (in the following list) of the gate whose phase
-                    # will set the cphase
-                    cphase_gate_index = 5
+                    if isinstance(cphase, ParametricValue):
+                        # Update the op_split info in the ParametricValue,
+                        # such that it matches the operation decomposition
+                        cphase.op_split[0] = 'Z'
+                    # CZ_x = diag(1,1,1,e^-i*x)  # pycqed sign convention
+                    #  = e^(i*x/4)*Z1(-x/2)*Z0(-x/2)*H1*CZ*H1*Z1(x/2)*H1*CZ*H1
+                    # and replacing each Hadamard H = i*Y*Z(pi) and
+                    # discarding the global phase gives the decomposition:
                     decomposed_op = [
-                        f'Z180 {qb_dec}',
-                        f'Y90 {qb_dec}',
+                        f'Y90 {qb_dec[0]}',
                         device_op,
-                        f'Z180 {qb_dec}',
-                        f'Y90 {qb_dec}',
-                        f'Z0 {qb_dec}',  # phase set to the cphase below
-                        f'Z180 {qb_dec}',
-                        f'Y90 {qb_dec}',
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        f'Z0 {qb_dec[0]}',  # phase set below
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
                         device_op,
-                        f'Z180 {qb_dec}',
-                        f'Y90 {qb_dec}',
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        f'Z0 {qb_dec[0]}',  # phase set below
+                        f'Z0 {qb_dec[1]}',  # phase set below
                     ]
                     p = [
                         self.copy_op(self.operation_dict[do])
                         for do in decomposed_op
                     ]
-                    if isinstance(cphase, ParametricValue):
-                        # Update the op_split info in the ParametricValue,
-                        # such that it matches the operation decomposition
-                        cphase.op_split[0] = 'Z'
-                    p[cphase_gate_index]['basis_rotation'] = {qb_dec: cphase}
+                    p[4]['basis_rotation'] = {qb_dec[0]: cphase/2}
+                    p[10]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
+                    p[11]['basis_rotation'] = {qb_dec[1]: -cphase/2}
                 else:
                     p = [self.copy_op(self.operation_dict[device_op])]
                     if cphase is not None:

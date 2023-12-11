@@ -3401,7 +3401,7 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                         'setlabel': '$f_{RO}$ = ' \
                                     + f'{(frequency[argmax]/1e9):.4f} GHz',
                         'do_legend': True,
-                    "legend_pos": (0,-1.4)
+                    "legend_pos": "best",
                 }
 
     def get_state_color(self, state, cmap=plt.get_cmap('tab10')):
