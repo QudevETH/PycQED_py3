@@ -2385,7 +2385,7 @@ class QuDev_transmon(MeasurementObject):
                               freqs=None, amplitudes=None, phases=[0,120,240],
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
-                              exp_metadata=None):
+                              exp_metadata=None, operation_dict_fp=None):
         """
         Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
@@ -2480,7 +2480,12 @@ class QuDev_transmon(MeasurementObject):
             fsqs.T2_freq_sweep_seq(
                 amplitudes=amplitudes, qb_name=self.name,
                 n_pulses=n_pulses,
-                operation_dict=self.get_operation_dict(),
+                # FIXME this is a hack until this measurement is refactored
+                #  to a QuantumExperiment, allowing to pass operations not in
+                #  the qubit object, e.g. two-qubit gates
+                operation_dict=operation_dict_fp
+                    if operation_dict_fp is not None else
+                    self.get_operation_dict(),
                 flux_lengths=flux_lengths, phases = phases,
                 cz_pulse_name=cz_pulse_name, upload=False, cal_points=cp)
         MC.set_sweep_function(awg_swf.SegmentHardSweep(
