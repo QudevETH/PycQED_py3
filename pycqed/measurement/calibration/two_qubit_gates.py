@@ -1777,3 +1777,60 @@ class Chevron(CalibBuilder):
             }
         })
         return d
+
+
+class LeakageAmplification(Chevron):
+    def __init__(self, dev, gate_list, sweep_param_1D, sweep_param_2D,
+                 sweep_range_dict, unit_dict, labels_dict,
+                 cz_pulse_name, num_cz_gates=16, set_cphase=None,
+                 task_list=None,
+                 *args, **kw):
+
+        if set_cphase is None:
+            set_cphase = ''
+        if cz_pulse_name is None:  # TODO does this work?
+            cz_pulse_name = 'CZ'
+        else:
+            self.cz_pulse_name = cz_pulse_name
+        self.default_experiment_name = f'Leakage_amplification_{sweep_param_2D}'
+
+        if task_list is None:
+            task_list = []
+            for (qbh, qbl) in gate_list:
+                sp = []
+                for p in [sweep_param_1D, sweep_param_2D]:
+                    if p == 'num_cz_gates':
+                        sp.append({
+                            f'attr=pulse_off, op_code={cz_pulse_name}, occurrence={i}': {
+                                'values': np.concatenate((np.ones(
+                                    num_cz_gates - i), np.zeros(i + 1))),
+                                'unit': '',
+                                'label': 'Number of CZ gates'}
+                            for i in range(num_cz_gates)
+                        })
+                    else:
+                        sp.append({
+                            p: {
+                                'values': sweep_range_dict[p],
+                                'unit': unit_dict.get(p, ''),
+                                'label': labels_dict.get(p, '')
+                            }
+                        })
+                task_list.append(
+                    dict(qbc=qbh, qbt=qbl,
+                         sweep_points=SweepPoints(sp),
+                         num_cz_gates=num_cz_gates,
+                         cz_pulse_name=cz_pulse_name + str(set_cphase)
+                         )
+                )
+
+        super().__init__(*args, dev=dev, task_list=task_list, **kw)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        analysis_kwargs.setdefault('do_fitting', False)
+        self.analysis = tda.LeakageAmplificationAnalysis(
+            qb_names=self.meas_obj_names,
+            t_start=self.timestamp, **analysis_kwargs)
+        return self.analysis
