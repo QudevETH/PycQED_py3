@@ -122,28 +122,25 @@ class T1FrequencySweep(CalibBuilder):
         """
         if task_list is None:
             task_list = self.task_list
-        # TODO: check combination of sweep points in task and in sweep_points
         for task in task_list:
-            sweep_points = task.get('sweep_points', [{}, {}])
-            sweep_points = SweepPoints(sweep_points)
+            sweep_points = copy(task.get('sweep_points', [{}, {}]))
             if len(sweep_points) == 1:
                 sweep_points.add_sweep_dimension()
+            if len(self.sweep_points) == 1:
+                self.sweep_points.add_sweep_dimension()
+            for i in range(len(sweep_points)):
+                sweep_points[i].update(self.sweep_points[i])
+            sweep_points = SweepPoints(sweep_points)
             if 'qubit_freqs' in sweep_points[1]:
                 qubit_freqs = sweep_points['qubit_freqs']
-            elif len(self.sweep_points) >= 2 and \
-                    'qubit_freqs' in self.sweep_points[1]:
-                qubit_freqs = self.sweep_points['qubit_freqs']
             else:
                 qubit_freqs = None
-            if 'amplitude' in sweep_points[1]:
-                amplitudes = sweep_points['amplitude']
-            elif len(self.sweep_points) >= 2 and \
-                    'amplitude' in self.sweep_points[1]:
-                amplitudes = self.sweep_points['amplitude']
-            else:
-                amplitudes = None
+            amplitudes = None
+            for key in sweep_points[1].keys():
+                if 'amplitude' in key:  # Detect e.g. amplitude2 from 2qb gates
+                    amplitudes = sweep_points[key]
             qubits, _ = self.get_qubits(task['qb'])
-            if qubit_freqs is None and qubits is not None:
+            if amplitudes is not None and qubits is not None:
                 qb = qubits[0]
                 qubit_freqs = qb.calculate_frequency(
                     amplitude=amplitudes,
@@ -152,7 +149,7 @@ class T1FrequencySweep(CalibBuilder):
                 freq_sweep_points = SweepPoints('qubit_freqs', qubit_freqs,
                                                 'Hz', 'Qubit frequency')
                 sweep_points.update([{}] + freq_sweep_points)
-            if amplitudes is None:
+            elif qubit_freqs is not None:
                 if qubits is None:
                     raise KeyError('qubit_freqs specified in sweep_points, '
                                    'but no qubit objects available, so that '
@@ -170,6 +167,9 @@ class T1FrequencySweep(CalibBuilder):
                 amp_sweep_points = SweepPoints('amplitude', amplitudes,
                                                'V', 'Flux pulse amplitude')
                 sweep_points.update([{}] + amp_sweep_points)
+            else:
+                raise ValueError("Please specify either qubit_freqs or "
+                                 "amplitudes!")
             task['sweep_points'] = sweep_points
         return task_list
 
