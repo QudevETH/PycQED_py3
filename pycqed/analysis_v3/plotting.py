@@ -1066,9 +1066,6 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 plotfn(pdict=pdict,
                        axs=axs[pdict['fig_id']].flatten()[
                            pdict['ax_id']])
-                axs[pdict['fig_id']].flatten()[
-                    pdict['ax_id']].figure.subplots_adjust(
-                    hspace=0.4, wspace=0.25)
 
         # most normal plot functions also work, it is required
         # that these accept an "ax" argument to plot on and
@@ -1083,9 +1080,6 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 plotfn(pdict=pdict,
                        axs=axs[pdict['fig_id']].flatten()[
                            pdict['ax_id']])
-                axs[pdict['fig_id']].flatten()[
-                    pdict['ax_id']].figure.subplots_adjust(
-                    hspace=0.4, wspace=0.25)
         else:
             raise ValueError(
                 f'"{plotfn}" is not a valid plot function')

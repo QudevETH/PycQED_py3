@@ -1348,9 +1348,6 @@ class BaseDataAnalysis(object):
                     plotfn(pdict=pdict,
                            axs=self.axs[pdict['fig_id']].flatten()[
                                pdict['ax_id']])
-                    self.axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
-                        hspace=0.35)
 
             # most normal plot functions also work, it is required
             # that these accept an "ax" argument to plot on and **kwargs
@@ -1364,9 +1361,6 @@ class BaseDataAnalysis(object):
                     plotfn(pdict=pdict,
                            axs=self.axs[pdict['fig_id']].flatten()[
                                pdict['ax_id']])
-                    self.axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
-                        hspace=0.35)
             else:
                 raise ValueError(
                     '"{}" is not a valid plot function'.format(plotfn))
