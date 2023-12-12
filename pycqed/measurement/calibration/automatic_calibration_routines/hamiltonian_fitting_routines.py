@@ -331,7 +331,6 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                             step_label,
                             {
                                 "index_reparking":
-                                    # len(self.routine_template) - 1 + 2*n_update_frequency,
                                     len(self.routine_template) - 1,
                             "settings": {
                                     step_label: {
