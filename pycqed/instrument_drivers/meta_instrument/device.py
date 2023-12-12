@@ -1031,6 +1031,13 @@ class RelativeDelayGraph:
                 roots.add(child)
             roots.remove(ref)
 
+        # Shift min_delay to be non-positive. This is needed as delay of
+        # root is set to 0. If the root is also the channel with the
+        # smallest delay, the delays of all channels would be shifted
+        # by the negative of the smallest delay, and hence the delay
+        # of the root would be negative, which cannot be set as
+        # channel delay.
+        min_delay = min(0, min_delay)
         for ref in abs_delays:
             abs_delays[ref] -= min_delay
 
