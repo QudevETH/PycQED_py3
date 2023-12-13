@@ -19,7 +19,7 @@ To account for these small differences, we create aliases where the names
 of the methods / classes / modules differ. Generally, the PySide2 
 conventions are followed in the codebase.
 """
-if QtWidgets.__package__ in ['PyQt6']:
+if QtWidgets.__package__ in ['PyQt6', 'PySide6']:
     QAction = QtGui.QAction
 
 
@@ -41,8 +41,9 @@ if QtWidgets.__package__ in ['PyQt6']:
     QtWidgets.QApplication = QApplication
     QtWidgets.QDialog = QDialog
     QtWidgets.QMenu = QMenu
-    QtCore.Slot = QtCore.pyqtSlot
-    QtCore.Signal = QtCore.pyqtSignal
+    if QtWidgets.__package__ in ['PyQt6']:
+        QtCore.Slot = QtCore.pyqtSlot
+        QtCore.Signal = QtCore.pyqtSignal
 
     # To ensure compatibility of QApplication the easiest way is to create
     # its instance. Some code creates the instance disregarding the updated

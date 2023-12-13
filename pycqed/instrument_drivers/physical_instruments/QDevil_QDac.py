@@ -47,6 +47,14 @@ class QDacSmooth(qdac_mod.QDac):
     def __init__(self, name, port, channel_map):
         super().__init__(name, port, update_currents=False)
         self.channel_map = channel_map
+        for ch in self.channels:
+            # automatically convert modes provided as bare tuples
+            # (e.g., (0, 1)) to the custom Enum-object Mode
+            ch.mode.set_parser = qdac_mod.Mode
+            # and change the validator to allow setting the valid bare tuples
+            ch.mode.vals = vals.Enum(
+                *[a for b in [[v, v.value] for v in ch.mode.vals.valid_values]
+                  for a in b])
 
         self.add_parameter('smooth_timestep', unit='s',
                            label="Delay between sending the write commands"
