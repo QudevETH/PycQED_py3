@@ -198,12 +198,12 @@ class Sequence:
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.
                 if seg.sweep_params is not None and len(seg.sweep_params):
-                    sequences[awg][elnames[0]]['metadata']['loop'] = len(
+                    sequences[awg][group + '_' + elnames[0]]['metadata']['loop'] = len(
                         list(seg.sweep_params.values())[0])
-                    sequences[awg][elnames[0]]['metadata']['sweep_params'] = \
+                    sequences[awg][group + '_' + elnames[0]]['metadata']['sweep_params'] = \
                         {k[len(awg) + 1:]: v for k, v in
                          seg.sweep_params.items() if k.startswith(awg + '_')}
-                    sequences[awg][elnames[-1]]['metadata']['end_loop'] = True
+                    sequences[awg][group + '_' + elnames[-1]]['metadata']['end_loop'] = True
         self.is_resolved = True
         if get_channel_hashes:
             return channel_hashes, sequences
