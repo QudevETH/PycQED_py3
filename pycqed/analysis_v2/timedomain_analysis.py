@@ -11633,9 +11633,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class LeakageAmplificationAnalysis(ChevronAnalysis):
 
-    def plot(self, **kw):
+    def prepare_plots(self):
+        super().prepare_plots()
         self.plot_leakage_amp()
-        super().plot(**kw)
 
     def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05, xtransform=None,
                          pop_scale_right=None, pop_unit_right=None,
