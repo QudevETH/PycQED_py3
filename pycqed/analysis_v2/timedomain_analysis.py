@@ -3970,6 +3970,8 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     r'Derived qubit ge frequency'
                 # Final T2(freq or amp) plot
                 self.plot_dicts[label] = {
+                    'title': rdd['measurementstring'] +
+                            '\n' + rdd['timestamp'],
                     'plotfn': self.plot_line,
                     'linestyle': '-',
                     'xvals': xvals,
