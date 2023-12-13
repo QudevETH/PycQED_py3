@@ -11859,5 +11859,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'x_label': labels[0],
                 'y': y_max,
                 'yerr': y_err,
-                'x_opt': sp[labels[0]][id_opt],
             }
+            if labels[0] != 'num_cz_gates':
+                # opt only makes sense for an actual sweep point
+                self.leakage_ymax['x_opt'] = sp[labels[0]][id_opt]
