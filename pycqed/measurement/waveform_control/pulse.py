@@ -211,6 +211,8 @@ class Pulse:
     def algorithm_time(self, val=None):
         """
         Getter and setter for the start time of the pulse.
+        FIXME this could just be an attribute, to be refactored if this
+         becomes a speed limitation
         """
         if val is None:
             return self._t0
