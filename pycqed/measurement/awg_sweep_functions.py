@@ -79,6 +79,8 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         parameter sets of a parameterized quantum circuit (represented by a
         `Block`).
 
+        This can be used e.g. for adaptive measurements where the sequences
+            are not known in advance.
         Args:
             circuit_builder (CircuitBuilder): Instance of CircuitBuilder that
                 is used to compile the block into sequences.
