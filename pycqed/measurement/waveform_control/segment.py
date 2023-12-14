@@ -971,8 +971,7 @@ class Segment:
                         channel=c)
 
                     # Calculate the tvals dictionary for the element
-                    if tvals is None or not self.fast_mode:
-                        # TODO document this effect of fast mode
+                    if tvals is None:
                         tvals = self.tvals(compensation_chan & awg_channels,
                                            element, groups)
                     pulse_area[c][0] += pulse.pulse_area(
