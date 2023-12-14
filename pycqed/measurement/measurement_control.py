@@ -658,12 +658,8 @@ class MeasurementControl(Instrument):
                 self.timer.checkpoint(
                     "MeasurementControl.measure_soft_adaptive"
                     ".adaptive_function.swf.set_parameter.end")
-                # We need to temporarily set acq_data_len_scaling to one to
-                # ensure proper configuration for SSRO.
-                tmp_scaling = self.detector_function.acq_data_len_scaling
-                self.detector_function.acq_data_len_scaling = 1
-                self.detector_function.prepare(x)
-                self.detector_function.acq_data_len_scaling = tmp_scaling
+                self.detector_function.prepare(
+                    np.tile(x, self.acq_data_len_scaling))
                 break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
