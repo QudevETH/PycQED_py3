@@ -484,6 +484,28 @@ class MeasurementControl(Instrument):
         '''
         Uses the adaptive function and keywords for that function as
         specified in self.af_pars()
+
+        TODO this method is used in a very convoluted way:
+         - the user passes an adaptive_function, which is the optimiser and
+           itself expects a function returning data as its argument
+         - the user passes data_processing_function, which is an analysis
+         - measure_soft_adaptive calls the adaptive_function, passing
+           optimization_function to it
+         - optimization_function calls measurement_function (which calls
+           the detectors), and data_processing_function, and returns values
+         - adaptive_function gets the values, takes a decision, and returns
+           an optimal (set of) sweep point(s)
+         One possible cleaner way could be:
+         - measure_soft_adaptive calls the adaptive_function, passing
+           measurement_function to it
+         - data_processing_function is part of the adaptive_function and
+           just called by it
+         - adaptive_function finally takes the decisions, and returns
+           optimal sweep point(s)
+         In addition, one could replace the adaptive_function by a base
+         class, including a data_processing_function analysis and an
+         optimisation method (defaulting to doing a min/max optimisation as
+         currently in optimization_function).
         '''
         self.save_optimization_settings()
         self.adaptive_function = self.af_pars.pop('adaptive_function')
@@ -498,7 +520,7 @@ class MeasurementControl(Instrument):
             sweep_function.prepare()
         if self.detector_function.detector_control != 'hard':
             # A hard detector requires sweep points, these will only be
-            # generated later in optimization_function, which then takes care of
+            # generated later in measurement_function, which then takes care of
             # calling self.detector_function.prepare(sp).
             self.detector_function.prepare()
         self.timer.checkpoint(
@@ -775,9 +797,8 @@ class MeasurementControl(Instrument):
             vals (array): Array with the output of measurement_function.
             dset (array): data set self.dset
         '''
-        # This takes care of data that comes from a "single" segment of a
-        # detector for a larger shape such as the UFHQC single int avg detector
-        # that gives back data in the shape [[I_val_seg0, Q_val_seg0]]
+        # This default processing just arbitrarily takes a single column (I) if
+        # the dataset initially consisted of IQ data [[I_val_seg0, Q_val_seg0]]
         if len(np.shape(vals)) == 2:
             vals = np.array(vals)[:, 0]
         return vals
