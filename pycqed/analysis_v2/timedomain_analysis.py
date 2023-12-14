@@ -432,7 +432,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # update self.data_to_fit based on the rotation_type
         self.update_data_to_fit()
 
-        # creates self.data_filter and self.data_with_reset
+        # creates self.data_filter and self.data_with_filter
         self.get_data_filter()
 
         # These calls need to stay here because otherwise QScaleAnalysis will
@@ -734,22 +734,25 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         Creates the following attribute:
             - self.data_filter: function that will be used in
                 create_meas_results_per_qb to filter/process the data
-            - self.data_with_reset: bool that is checked in
+            - self.data_with_filter: bool that is checked in
                 prepare_raw_data_plots
         """
         # flag to be used in prepare_raw_data_plots
-        self.data_with_reset = False
+        self.data_with_filter = False
         self.data_filter = self.get_param_value('data_filter')
         if self.data_filter is None:
             if 'active' in self.prep_params.get('preparation_type', 'wait'):
                 reset_reps = self.prep_params.get('reset_reps', 3)
                 self.data_filter = lambda x: x[reset_reps::reset_reps+1]
-                self.data_with_reset = True
+                self.data_with_filter = True
             elif "preselection" in self.prep_params.get('preparation_type',
                                                         'wait'):
                 self.data_filter = lambda x: x[1::2]  # filter preselection RO
+                self.data_with_filter = True
             else:
                 self.data_filter = lambda x: x
+        else:
+            self.data_with_filter = True
 
     def create_sweep_points_dict(self):
         """
@@ -969,7 +972,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 predict_proba=self.predict_proba,
                 classifier_params=self.get_param_value("classifier_params"),
                 states_map=self.get_param_value("states_map"),
-                thresholding=self.get_param_value("thresholding"),)
+                thresholding=self.get_param_value("thresholding", False),)
 
         # create projected_data_dict
         if self.rotate:
@@ -1303,6 +1306,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             self.channel_map, self.cal_states_dict_for_rotation,
                             self.data_to_fit, data_mostly_g=data_mostly_g,
                             column_PCA=column_PCA))
+
             else:
                 if self.rotation_type[qbn].lower() == 'cal_states' and \
                         len(cal_states_dict) == 3:
@@ -1872,14 +1876,18 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 unit = unit[0]
         return label, unit
 
-    def _get_single_shots_per_qb(self, raw=False):
+    def _get_single_shots_per_qb(self, raw=False, qb_names=None):
         """
         Gets single shots from the proc_data_dict and arranges
         them as arrays per qubit
         Args:
             raw (bool): whether or not to return raw shots (before
             data filtering)
-
+            qb_names (list): Qubits for which to extract the data. If None
+            (default): uses self.qb_names. This can be useful if extracting
+            data for qubits which are not in self.qb_names.
+            E.g.: Doing an experiment on qb1 (self.qb_names = ['qb1']) but
+            preselecting on qb2, meaning that we need the data from both.
         Returns: shots_per_qb: dict where keys are qb_names and
             values are arrays of shape (n_shots, n_value_names) for
             1D measurements and (n_shots*n_soft_sp, n_value_names) for
@@ -1892,7 +1900,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         key = 'meas_results_per_qb'
         if raw:
             key += "_raw"
-        for qbn in self.qb_names:
+        if qb_names is None:
+            qb_names = self.qb_names
+        for qbn in qb_names:
             # if "1D measurement" , shape is (n_shots, n_vn) i.e. one
             # column for each value_name (often equal to n_ro_ch)
             shots_per_qb[qbn] = \
@@ -1934,7 +1944,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 only be kept if both qb1 and qb2 are in the state specified by
                 preselection_state_int (usually, the ground state), while qb2 is preselected
                 independently of qb1.
-                 Defaults to None: in this case each qubit is preselected independently from others
+                If None (by default) or empty: in this case each qubit is
+                preselected independently from others.
             predict_proba (bool): whether or not to consider input as raw voltages shots.
                 Should be false if input shots are already probabilities, e.g. when using
                 classified readout.
@@ -1972,10 +1983,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # compute final mask taking into account all qubits in presel_qubits for each qubit
         presel_mask = {}
 
-        if preselection_qbs is None:
+        if preselection_qbs is None or len(preselection_qbs) == 0:
             # default is each qubit preselected individually
-            # note that the list includes the qubit name twice as the minimal
-            # number of arguments in logical_and.reduce() is 2.
             preselection_qbs = {qbn: [qbn] for qbn in presel_shots_per_qb}
 
         for qbn, presel_qbs in preselection_qbs.items():
@@ -1986,10 +1995,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         return presel_mask
 
-    def process_single_shots(self, predict_proba=True,
+    def process_single_shots(self, predict_proba=False,
                              classifier_params=None,
                              states_map=None,
-                             thresholding=True):
+                             thresholding=False):
         """
         Processes single shots from proc_data_dict("meas_results_per_qb")
         This includes assigning probabilities to each shot (optional),
@@ -2073,30 +2082,65 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             n_seqs = self.sp.length(1)  # corresponds to number of soft sweep points
         else:
             n_seqs = 1
-        # n_reaouds  refers to the number of readouts per sequence after filtering out e.g.
-        # preselection readouts
-        n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots * n_seqs)
+        # n_readouts refers to the number of readouts per sequence after
+        # filtering out e.g. preselection readouts
+        n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots *
+                                                                 n_seqs)
+
+        # get qubits for which data should be extracted
+        preselection_qbs = self.get_param_value("preselection_qbs")
+        if preselection_qbs is None:
+            # by default, extract data for all qubits in self.qb_names
+            qb_names_to_extract = self.qb_names
+        else:
+            # Data should be extracted both for qubits in self.qb_names
+            # (qubits on which the experiment is performed), and for qubits
+            # used in preselection. These two sets may or not be distinct.
+            # Preselection will not work if data is not extracted for the
+            # preselection qubits as well.
+            # E.g. self.qb_names = ['qb1'] (only qubit to analyse) and
+            # preselection_qbs = {"qb1": ["qb1", "qb2"]},
+            # i.e. preselection is done for qb1 using ['qb1', 'qb2'] so we
+            # should exctract data no only for qb1 but also qb2.
+            qb_names_to_extract = [qbn for qbns in list(
+                preselection_qbs.values()) for qbn in qbns]
+            qb_names_to_extract = qb_names_to_extract + [
+                qbn for qbn in self.qb_names if qbn not in qb_names_to_extract]
 
         # get classification parameters
         if classifier_params is None:
             classifier_params = self.get_data_from_timestamp_list({
                 f'{qbn}': f"Instrument settings.{qbn}.acq_classifier_params"
-                for qbn in self.qb_names})
+                for qbn in qb_names_to_extract})
 
         # prepare preselection mask
         if preselection:
-            # get preselection readouts
-            shots_per_qb_before_filtering = self._get_single_shots_per_qb(raw=True)
+
+            # get preselection readouts for selected qubits
+            shots_per_qb_before_filtering = self._get_single_shots_per_qb(
+                raw=True, qb_names=qb_names_to_extract)
+
             n_ro_before_filtering = \
                 list(shots_per_qb_before_filtering.values())[0].shape[0] // \
                 (n_shots * n_seqs)
+            # The following lines assume a single preselection readout and
+            # an arbitrary number n_readouts_per_segment of other readouts.
+            # n_readouts = n_readouts_per_segment * n_segs
+            # n_ro_before_filtering = (1+n_readouts_per_segment) * n_segs
+            n_readouts_per_segment = n_readouts // (n_ro_before_filtering -
+                                                    n_readouts)
+            n_segs = n_readouts // n_readouts_per_segment
+            # FIXME follows the data format of _get_single_shots_per_qb,
+            #  hence the tiling by n_seqs. Array shapes should probably be
+            #  cleaned up, after fixing transposed arrays in proc_data_dict
+            #  as well, see FIXME in BaseDataAnalysis.__init__
             preselection_ro_mask = \
                 np.tile([True] * n_seqs +
-                        [False] * (n_ro_before_filtering - n_readouts) * n_seqs,
-                        n_shots * n_readouts)
+                        [False] * n_readouts_per_segment * n_seqs,
+                        n_shots * n_segs)
             presel_shots_per_qb = \
-                {qbn: presel_shots[preselection_ro_mask] for qbn, presel_shots in
-                 shots_per_qb_before_filtering.items()}
+                {qbn: ps[preselection_ro_mask]
+                 for qbn, ps in shots_per_qb_before_filtering.items()}
             # create boolean array of shots to keep.
             # each time ro is the ground state --> true otherwise false
             g_state_int = [k for k, v in states_map.items() if v == "g"][0]
@@ -2122,10 +2166,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         shots, classifier_params[qbn])
                 except ValueError as e:
                     log.error(f'If the following error relates to number'
-                              ' of features, probably wrong classifer parameters'
-                              ' were passed (e.g. a classifier trained with'
-                              ' a different number of channels than in the'
-                              f' current measurement): {e}')
+                              ' of features, probably wrong classifer'
+                              ' parameters were passed (e.g. a classifier'
+                              ' trained with a different number of channels'
+                              ' than in the current measurement): {e}')
                     raise e
 
             if thresholding:
@@ -2149,11 +2193,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 averaged_shots.append(
                     np.mean(shots_single_ro[presel_mask_single_ro], axis=0))
             if self.get_param_value("TwoD", False):
+                # Shape: (n_readouts*n_seqs, n), with n = n_prob or n_ch or 1
                 averaged_shots = np.reshape(averaged_shots, (n_readouts, n_seqs, -1))
+                # Shape: (n_readouts, n_seqs, n)
                 averaged_shots = np.swapaxes(averaged_shots, 0, 1) # return to original 2D shape
-            # reshape to (n_prob or n_ch or 1, n_readouts) if 1d
-            # or (n_prob or n_ch or 1, n_readouts, n_ssp) if 2d
+                # Shape: (n_seqs, n_readouts, n)
             averaged_shots = np.array(averaged_shots).T
+            # Shape: (n, n_readouts) if 1d, or (n, n_readouts, n_ssp) if 2d
 
             if preselection:
                 self.proc_data_dict['percent_data_after_presel'][qbn] = \
@@ -2204,38 +2250,33 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qb_name in self.qb_names:
             slice_idxs_list = slice_idxs_1d_raw_plot.get(qb_name, [])
             # Plot all raw data (including potential active reset readouts)
-            key = 'meas_results_per_qb_raw'
-            raw_data_dict = self.proc_data_dict[key][qb_name]
-            sweep_points = self.raw_data_dict['hard_sweep_points']
-            if plot_raw_data:
-                # standard raw data plot
-                self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                             xvals=sweep_points)
-            if TwoD and len(slice_idxs_list) > 0:
-                # plot slices of the 2D raw data
-                self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
-                                                  slice_idxs_list)
-
-            if 'preparation_params' in self.metadata:
-                if 'active' in self.metadata['preparation_params'].get(
-                        'preparation_type', 'wait') or \
-                        not self.data_with_reset:
-                    # Plot raw data without the active reset readouts
-                    key = 'meas_results_per_qb'
-                    raw_data_dict = self.proc_data_dict[key][qb_name]
-                    fig_suffix = 'filtered' if self.data_with_reset else ''
+            if self.data_with_filter:
+                # With, then without the active reset readouts
+                keys = ['meas_results_per_qb_raw', 'meas_results_per_qb']
+                fig_suffixes = ['', 'filtered']
+            else:
+                # Raw data (no active reset readouts)
+                keys = ['meas_results_per_qb']
+                fig_suffixes = ['']
+            # For each key, create a figure with corresponding fig_suffix
+            for key, fig_suffix in zip(keys, fig_suffixes):
+                raw_data_dict = self.proc_data_dict[key][qb_name]
+                if key == 'meas_results_per_qb_raw':
+                    sweep_points = self.raw_data_dict['hard_sweep_points']
+                elif key == 'meas_results_per_qb':
                     sweep_points = self.proc_data_dict[
                         'sweep_points_dict'][qb_name]['sweep_points']
-                    if plot_raw_data:
-                        # standard raw data plot
-                        self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                                     xvals=sweep_points,
-                                                     fig_suffix=fig_suffix)
-                    if TwoD and len(slice_idxs_list) > 0:
-                        # plot slices of the 2D raw data
-                        self._prepare_raw_1d_slices_plots(qb_name,
-                                                          raw_data_dict,
-                                                          slice_idxs_list)
+                else:
+                    raise ValueError
+                if plot_raw_data:
+                    # standard raw data plot
+                    self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                                 xvals=sweep_points,
+                                                 fig_suffix=fig_suffix)
+                if TwoD and len(slice_idxs_list) > 0:
+                    # plot slices of the 2D raw data
+                    self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
+                                                      slice_idxs_list)
 
     def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
                                      slice_idxs_list):

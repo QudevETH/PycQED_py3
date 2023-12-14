@@ -152,7 +152,15 @@ class BaseDataAnalysis(object):
             # string representation of the analysis.
             self.job = None
 
-            # initialize an empty dict to store results of analysis
+            # Initialize an empty dict to store results of analysis
+            # FIXME most 2-D data arrays are stored with shape
+            #  [hard sweep dimension, soft sweep dimension].
+            #  But there are two exceptions:
+            #  - self.proc_data_dict['projected_data_dict']
+            #  - self.proc_data_dict['data_to_fit']
+            #  which are transposed (seemingly consistently across analysis_v2).
+            #  This works because of some additional transposes in the
+            #  plotting code as well. This should be cleaned up.
             self.proc_data_dict = OrderedDict()
             if options_dict is None:
                 self.options_dict = OrderedDict()
