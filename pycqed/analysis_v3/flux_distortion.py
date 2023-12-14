@@ -142,9 +142,9 @@ def fd_create_pulse(data_dict, keys_in, keys_out, **params):
             'flux_channel': f'Instrument settings.{mobjn}.'
                             f'flux_pulse_channel',
         }
-        hlp_mod.get_params_from_hdf_file(pulse_params_dict, params_dict,
-                                         folder=a_tools.get_folder(timestamp),
-                                         **params)
+        hlp_mod.get_params_from_files(pulse_params_dict, params_dict,
+                                      folder=a_tools.get_folder(timestamp),
+                                      **params)
 
     pulse_dict = hlp_mod.get_param('pulse_dict', data_dict, default_value={},
                                    **params)
@@ -182,9 +182,9 @@ def fd_load_qb_params(data_dict, params_dict, timestamp=None, **params):
                    for k, v in params_dict.items()}
     if params.get('add_param_method', None) is None:
         params['add_param_method'] = 'replace'
-    hlp_mod.get_params_from_hdf_file(data_dict, params_dict,
-                                     folder=a_tools.get_folder(timestamp),
-                                     **params)
+    hlp_mod.get_params_from_files(data_dict, params_dict,
+                                  folder=a_tools.get_folder(timestamp),
+                                  **params)
 
 def fd_load_distortion_dict(data_dict, timestamp=None,
                             key_distortion='distortion_dict', **params):
@@ -194,11 +194,11 @@ def fd_load_distortion_dict(data_dict, timestamp=None,
         timestamp = hlp_mod.get_param('timestamps', data_dict, **params)[0]
     folder = a_tools.get_folder(timestamp)
     params_dict = {}
-    hlp_mod.get_params_from_hdf_file(
+    hlp_mod.get_params_from_files(
         params_dict,
         {'ch': f'Instrument settings.{mobjn}.flux_pulse_channel'},
         folder=a_tools.get_folder(timestamp), **params)
-    hlp_mod.get_params_from_hdf_file(
+    hlp_mod.get_params_from_files(
         params_dict,
         {'distortion': f"Instrument settings.Pulsar."
                        f"{params_dict['ch']}_distortion",
@@ -1014,7 +1014,7 @@ def fd_read_cryoscope_data(data_dict, keys_out, keys_out_stderr=None,
     if folders is None:
         folders = [a_tools.get_folder(timestamps[-1])]
     tmpdict = copy(data_dict)
-    hlp_mod.get_params_from_hdf_file(tmpdict, folder=folders[-1], params_dict={
+    hlp_mod.get_params_from_files(tmpdict, folder=folders[-1], params_dict={
         'bls':
             f'Instrument settings.{mobjn}.flux_pulse_buffer_length_start',
         'tvals': f'Analysis.Processed data.tvals.{mobjn}',
