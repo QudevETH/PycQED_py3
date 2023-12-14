@@ -304,7 +304,6 @@ class Segment:
                 'behavior. Usually, all acquisition elements should contain '
                 'pulses for the same set of measurement objects.')
 
-    @Timer()
     def join_or_split_elements(self):
         self.resolved_pulses = []
         if self.destroyed:
@@ -413,7 +412,6 @@ class Segment:
             if p_def:
                 p_def.pulse_obj.channel_mask = ch_mask_def
 
-    @Timer()
     def resolve_timing(self, resolve_block_align=True):
         """
         For each pulse in the resolved_pulses list, this method:
@@ -596,7 +594,6 @@ class Segment:
         self.resolved_pulses = [
             p for (_, _, p) in sorted(visited_pulses.values())]
 
-    @Timer()
     def add_flux_crosstalk_cancellation_channels(self):
         pulsar_calibration_key = self.pulsar.flux_crosstalk_cancellation()
         flux_channels = self.pulsar.flux_channels()
@@ -623,7 +620,6 @@ class Segment:
                         p.pulse_obj.crosstalk_cancellation_shift_mtx\
                             .get(calibration_key, None)
 
-    @Timer()
     def resolve_internal_modulation(self):
         """Processes internal-modulation-relevant information for this
         segment. For every channel (AWG module) that this segment distributes
@@ -920,7 +916,6 @@ class Segment:
         for elname in self.elements.keys():
             self.element_metadata[elname] = {"mod_config": {}}
 
-    @Timer()
     def add_charge_compensation(self):
         """
         Adds charge compensation pulse to channels with pulsar parameter
@@ -1118,7 +1113,6 @@ class Segment:
                     elif element not in self.elements_on_awg[group]:
                         self.elements_on_awg[group].append(element)
 
-    @Timer()
     def find_trigger_group_hierarchy(self):
         masters = {group for group in self.pulsar.trigger_groups
             if len(self.pulsar.get_trigger_channels(group)) == 0}
@@ -1157,7 +1151,6 @@ class Segment:
         group_hierarchy.reverse()
         return group_hierarchy
 
-    @Timer()
     def gen_trigger_el(self, allow_overlap=False):
         """
         For each resolved pulse with a nonempty list of trigger_channels:
@@ -1405,7 +1398,6 @@ class Segment:
             self.resolve_segment(store_segment_length_timer=False)
         return np.min(start_end_times[:, 0]), np.max(start_end_times[:, 1])
 
-    @Timer()
     def _test_overlap(self, allow_overlap=False, tol=1e-12,
                       track_and_ignore=False):
         """
@@ -1555,7 +1547,6 @@ class Segment:
             self.element_start_length(combined_el_name, group)
 
 
-    @Timer()
     def _test_trigger_awg(self):
         """
         Checks if there is more than one element on the AWGs that are not
@@ -1571,7 +1562,6 @@ class Segment:
                     'There is more than one element on trigger '
                     'group {}'.format(group))
 
-    @Timer()
     def resolve_mirror(self):
         """
         Resolves amplitude mirroring for pulses that have a mirror_pattern
@@ -1625,7 +1615,6 @@ class Segment:
             # (and apply mirror correction if applicable)
             p_obj.mirror_amplitudes()
 
-    @Timer()
     def resolve_Z_gates(self):
         """
         The phase of a basis rotation is acquired by an basis pulse, if the
@@ -1685,7 +1674,6 @@ class Segment:
                 t_end = max(pulse.algorithm_time() + pulse.length, t_end)
                 self._element_start_end_raw[el_group] = (t_start_raw, t_end)
 
-    @Timer()
     def element_start_length(self, element, trigger_group, t_start=np.inf):
         """
         Finds and saves the start and length of an element on an AWG
