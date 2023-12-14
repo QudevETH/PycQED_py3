@@ -409,7 +409,7 @@ class Segment:
                                 f'ignoring {p.pulse_obj.name} on channels '
                                 f'{", ".join(list(channels))}')
 
-            if p_def:
+            if p_def is not None:
                 p_def.pulse_obj.channel_mask = ch_mask_def
 
     def resolve_timing(self, resolve_block_align=True):
@@ -2477,6 +2477,10 @@ class UnresolvedPulse:
             raise Exception(
                 'Codeword pulse {} does not support basis_rotation!'.format(
                     self.pulse_obj.name))
+        # Segment: length may be a property depending on pulse settings
+        # (allows flexibility in the pulse library). This caching makes sure
+        # to call it only once during segment resolution (when it should not
+        # change anymore), for speed reasons.
         self.cached_length = self.pulse_obj.length
 
     def __repr__(self):
