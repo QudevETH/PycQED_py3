@@ -815,9 +815,6 @@ class MeasurementControl(Instrument):
                 if (vals < self.f_termination):
                     raise StopIteration()
         else:
-            # FIXME: the next line is for sure not supposed to be here. It just
-            # runs the same experiment again.
-            vals = self.measurement_function(x)
             # when maximizing, interrupt when larger than condition before
             # inverting
             if (self.f_termination is not None):
