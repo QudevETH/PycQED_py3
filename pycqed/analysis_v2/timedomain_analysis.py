@@ -11681,6 +11681,8 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
                 [:, :-3]
             sp = SweepPoints(task['sweep_points'])
+            sp_dims = sp.length() + [self.metadata['compression_factor']]
+            acq_averages = self.get_instrument_setting(f'{qbn}.acq_averages')
             n = task['num_cz_gates']
 
             # Re-organise data to keep the delay as vertical axis
@@ -11717,8 +11719,6 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     labels[i] = 'num_cz_gates'
                     coords[i] = range(n + 1)
                     nice_labels[i] = 'Number of CZ gates'
-            acq_averages = self.get_instrument_setting(f'{qbn}.acq_averages')
-            sp_dims = sp.length() + [self.metadata['compression_factor']]
             title = kw.get('title', (
                 f"{ts} Leakage ampl. {qbn}{task['qbt']}\n"
                 f"{sp_dims[0]} seg. * {sp_dims[2]} hard seq. * "
