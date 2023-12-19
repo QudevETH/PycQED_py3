@@ -332,11 +332,11 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                             {
                                 "index_reparking":
                                     len(self.routine_template) - 1,
-                            "settings": {
+                                "settings": {
                                     step_label: {
                                         "flux": flux
-                                    }
-                                },
+                                        }
+                                    },
                             },
                         )
 
