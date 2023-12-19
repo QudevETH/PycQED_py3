@@ -1829,9 +1829,6 @@ class LeakageAmplification(Chevron):
     def run_analysis(self, analysis_kwargs=None, **kw):
         if analysis_kwargs is None:
             analysis_kwargs = {}
-        analysis_kwargs.setdefault('do_fitting', False)
-        analysis_kwargs.setdefault('plot_raw_data', False)
-        analysis_kwargs.setdefault('plot_proj_data', False)
         self.analysis = tda.LeakageAmplificationAnalysis(
             qb_names=self.meas_obj_names,
             t_start=self.timestamp, **analysis_kwargs)

@@ -11633,6 +11633,14 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class LeakageAmplificationAnalysis(ChevronAnalysis):
 
+    def __init__(self, do_fitting=False, options_dict=None, *args, **kwargs):
+        if options_dict is None:
+            options_dict = {}
+        options_dict.setdefault('plot_raw_data', False)
+        options_dict.setdefault('plot_proj_data', False)
+        super().__init__(do_fitting=do_fitting, options_dict=options_dict,
+                         *args, **kwargs)
+
     def prepare_plots(self):
         super().prepare_plots()
         self.plot_leakage_amp()
