@@ -335,8 +335,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                                 "settings": {
                                     step_label: {
                                         "flux": flux
-                                        }
-                                    },
+                                    }
+                                },
                             },
                         )
 
