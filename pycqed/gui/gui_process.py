@@ -69,3 +69,38 @@ def _start_qapp_in_new_process(sequences, qubit_channel_maps,
         sys.modules.get('matplotlib').get_backend()
     sys.modules.get('matplotlib').use('Agg')
     app.exec_()
+
+
+def dict_viewer_process(dic, timestamp, qt_lib):
+    """
+    Helper function to spawn the dict viewer in a new process.
+    Function needs to be in a different file than the mp.process object.
+    For more information see:
+    https://stackoverflow.com/questions/41385708/multiprocessing-example-giving-attributeerror
+    Args:
+        dic (dict): Dictionary which is displayed in the gui
+        timestamp (str, list of str): List of Timestamp if dic is dicitonary of
+            comparison of different stations.
+            Timestamp if dic is snapshot of one station.
+        qt_lib (str): Name of the qt binding to be used in the new process
+
+    """
+    qt = __import__(qt_lib, fromlist=['QtWidgets'])
+    if not qt.QtWidgets.QApplication.instance():
+        app = qt.QtWidgets.QApplication(sys.argv)
+    else:
+        app = qt.QtWidgets.QApplication.instance()
+    from pycqed.gui.dict_viewer import DictViewerWindow
+    screen = app.primaryScreen()
+    if isinstance(timestamp, list):
+        title = 'Comparison of %s snapshots' % len(timestamp)
+        timestamps = timestamp
+    else:
+        title = 'Snapshot timestamp: %s' % timestamp
+        timestamps = None
+    viewer = DictViewerWindow(
+        dic=dic,
+        title=title,
+        screen=screen,
+        timestamps=timestamps)
+    app.exec()
