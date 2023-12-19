@@ -124,7 +124,7 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         self.upload_sequence()
 
     def configure_upload(self, upload=True, upload_first=False,
-                        start_pulsar=True):
+                         start_pulsar=True):
         """Overwrites parent method
         :meth:`~pycqed.measurement.sweep_function.Sweep_function.configure_upload`
         and sets the correspoding attributes.

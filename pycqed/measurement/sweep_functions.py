@@ -138,7 +138,7 @@ class UploadingSweepFunction(Sweep_function):
                 self.upload_finished_callback()
 
     def configure_upload(self, upload=True, upload_first=True,
-                        start_pulsar=True):
+                         start_pulsar=True):
         """Overwrites parent method
         :meth:`~pycqed.measurement.sweep_function.Sweep_function.configure_upload`
         and sets the correspoding attributes.
@@ -410,7 +410,7 @@ class multi_sweep_function(Soft_Sweep):
             sweep_function.prepare(**kw)
 
     def configure_upload(self, upload=True, upload_first=True,
-                        start_pulsar=True):
+                         start_pulsar=True):
         for sweep_function in self.sweep_functions:
             if sweep_function.configure_upload(upload, upload_first,
                                                start_pulsar):
