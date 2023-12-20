@@ -616,6 +616,8 @@ class Device(Instrument):
         Configure pulse generation instrument settings.
 
         For now, only sets AWG channel delays.
+        Note: self.relative_delay_graph() should only contain channels for which
+        hardware delays are supported by their AWG.
 
         Args:
             qb_used: see get_channel_delays
@@ -625,10 +627,10 @@ class Device(Instrument):
 
         # configure channel delays
         channel_delays = self.get_channel_delays(qb_used=qb_used)
+
         for ch, v in channel_delays.items():
-            awg = pulsar.get_channel_awg(ch)
-            chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
-            awg.set(f'sigouts_{chid}_delay', v)
+            # Set the qcodes parameter to the respective value
+            pulsar.set(f"{ch}_hw_channel_delay", v)
 
     def configure_flux_crosstalk_cancellation(self, qubits='auto', rounds=-1):
         """
