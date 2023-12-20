@@ -20,6 +20,7 @@ import pycqed.measurement.waveform_control.pulsar as ps
 import pycqed.measurement.waveform_control.block as block_mod
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as flux_dist
 from collections import OrderedDict as odict
+import re
 
 
 class Segment:
@@ -2224,7 +2225,18 @@ class Segment:
             string_repr += f"{i}: " + repr(p) + "\n"
         return string_repr
 
-    def export_tikz(self, qb_names, tscale=1e-6):
+    def export_tikz(self, qb_names, tscale=1e-6, include_readout=True):
+        def extract_qb(op_code, raise_error=True):
+            pattern = r'qb(\d+)$'
+            match = re.search(pattern, op_code)
+
+            if match:
+                return match.group(0)
+            elif raise_error:
+                raise ValueError(
+                    "Invalid op_code format: should end with 'qb' followed by an integer.")
+            else:
+                return None
         last_z = [(-np.inf, 0)] * len(qb_names)
 
         output = ''
@@ -2241,17 +2253,29 @@ class Segment:
         num_virtual = 0
         self.resolve_segment()
         for p in self.resolved_pulses:
-            if p.op_code != '' and p.op_code[:2] != 'RO':
+            if p.op_code != '':
                 l = p.pulse_obj.length
                 t = p.pulse_obj._t0 + l / 2
                 tmin = min(tmin, p.pulse_obj._t0)
                 tmax = max(tmax, p.pulse_obj._t0 + p.pulse_obj.length)
-                qb = qb_names.index(p.op_code[-3:])
-                op_code = p.op_code[:-4]
+                qb = qb_names.index(extract_qb(p.op_code))
+                op_code = p.op_code[:-len(extract_qb(p.op_code))]
                 qbt = 0
-                if op_code[-3:-1] == 'qb':
-                    qbt = qb_names.index(op_code[-3:])
-                    op_code = op_code[:-4]
+                if (qbt_name := extract_qb(op_code.strip(), raise_error=False)) is not None:
+                    qbt = qb_names.index(qbt_name)
+                    op_code = op_code.strip()[:-len(qbt_name)]
+
+                if p.op_code.startswith('RO'):
+                    if include_readout:
+                        qb = qb_names.index(extract_qb(p.op_code))
+                        output += f'\\draw[fill=white] ({t / tscale:.4f},-{qb} + 0.1) rectangle ++({l / tscale:.4f}, -0.2) node[midway] {{RO}};\n'
+                    continue
+
+                if p.op_code.startswith('PFM'):
+                    qb = qb_names.index(extract_qb(p.op_code))
+                    output += f'\\draw({t / tscale:.4f},-{qb}) node[ gate, minimum height={l / tscale * 10:.4f}mm] {{ \\tiny {op_code.replace("_", "")}}};\n'
+                    continue
+
                 if op_code[-1:] == 's':
                     op_code = op_code[:-1]
                 if op_code[:2] == 'CZ' or op_code[:4] == 'upCZ':
@@ -2306,6 +2330,107 @@ class Segment:
         output += '\\end{tikzpicture}}\end{document}'
         output += f'\n% {num_single_qb} single-qubit gates, {num_two_qb} two-qubit gates, {num_virtual} virtual gates'
         return output
+
+    def export_stim(self, qubit_coords=None,
+                    transpiling_dict=None, resolve_segment=True, tol=1e-9):
+        """
+        Export the segment to stim format.
+
+        Parameters:
+        - qubit_coords (dict): dict of coordinites for each qubit,
+         Useful to later display the stim circuit on a grid. Format like:
+         {"qb1": (x, y), "qb2": (x2, y2), ...}
+
+        - transpiling_dict (dict): Dictionary for transpiling operations.
+            If None, use the default dictionary defined below
+            (default_pycqed_to_stim_transpiling_dict)
+        - resolve_segment (bool): Whether to resolve the segment.
+        - tol (float): Tolerance for "same timing operation". only used to detect
+         where to put TICKS in stim circuit, has no influence on the
+         outcome of the circuit since there is no notion of "time" in stim
+
+        Returns:
+        - str: Stim-formatted string.
+        """
+        # FIXME: as soon as this dict is needed at multiple places, move it
+        #  to a common place from where it can be imported.
+        default_pycqed_to_stim_transpiling_dict = {
+            'X180': ['X'],
+            'X90': ['SQRT_X'],
+            'mX90': ['SQRT_X_DAG'],
+            'Y90': ['SQRT_Y'],
+            'Y180': ['Y'],
+            'mY90': ['SQRT_Y_DAG'],
+            'CZ': ['CZ'],
+            'Z180': ['Z'],
+            'PFM_ef': [],
+            'RO': ['M'],
+        }
+
+        def strip_qb_prefix(input_string):
+            """
+            Strip 'qb' prefix from the input string.
+            """
+            return re.sub(r'qb(\d+)', r'\1', input_string)
+
+        def transpile_operation(op, transpiling_dict):
+            output = ""
+
+            if op.split(' ')[0] not in transpiling_dict:
+                log.warning(f'Operation {op.split(" ")[0]} not in known '
+                            f'operations: {transpiling_dict.keys()}')
+            for stim_op in transpiling_dict.get(op.split(' ')[0], []):
+                output += " ".join([stim_op] + strip_qb_prefix(op).split(' ')[1:]) + '\n'
+            return output
+
+        if resolve_segment:
+            self.resolve_segment()
+        if transpiling_dict is None:
+            transpiling_dict = default_pycqed_to_stim_transpiling_dict
+        # sort pulses by start time
+        pulses = sorted(self.resolved_pulses, key=lambda p: p.pulse_obj._t0)
+        ops = [(p.op_code, p.pulse_obj._t0) for p in pulses if
+               hasattr(p, 'op_code') and p.op_code != '']
+
+        tprev = np.min([op[1] for op in ops]) # earliest time
+        circuit_str = f"# {self.name}\n"
+
+        if qubit_coords is not None:
+            for key, coords in qubit_coords.items():
+                circuit_str += f"QUBIT_COORDS({', '.join(map(str, coords))}) {key[2:]}\n"
+
+        for op, t in ops:
+            if np.abs(t - tprev) > tol:
+                circuit_str += 'TICK\n'
+                tprev = t
+            circuit_str += transpile_operation(op, transpiling_dict)
+
+        return circuit_str
+
+    def get_stim_circuit(self, qubit_coords=None,
+                         transpiling_dict=None,
+                         resolve_segment=True):
+        """
+        Get a stim Circuit from the current segment.
+
+        See documentation of export_stim for more details.
+
+        Returns:
+        - Union[stim.Circuit, str]: Stim Circuit or string output of export_stim.
+        """
+        stim_circuit_str = self.export_stim(qubit_coords, transpiling_dict,
+                                            resolve_segment=resolve_segment)
+
+        try:
+            import stim
+        except ImportError:
+            log.error("Stim module could not be found. Cannot return the circuit. "
+                      "Please install the 'stim' module. Will return the string"
+                      "of the stim circuit.")
+            return stim_circuit_str
+
+        return stim.Circuit(stim_circuit_str)
+
 
     def rename(self, new_name):
         """
