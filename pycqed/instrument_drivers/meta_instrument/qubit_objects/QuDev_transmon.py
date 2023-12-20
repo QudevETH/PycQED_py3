@@ -2385,7 +2385,7 @@ class QuDev_transmon(MeasurementObject):
                               freqs=None, amplitudes=None, phases=[0,120,240],
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
-                              exp_metadata=None, operation_dict_fp=None):
+                              exp_metadata=None, operation_dict=None):
         """
         Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
@@ -2432,6 +2432,8 @@ class QuDev_transmon(MeasurementObject):
         Returns:
 
         """
+        if operation_dict is None:
+            operation_dict = self.get_operation_dict()
         vfc = self.fit_ge_freq_from_dc_offset()
         if freqs is not None:
             amplitudes = fit_mods.Qubit_freq_to_dac_res(freqs, **vfc)
@@ -2483,9 +2485,7 @@ class QuDev_transmon(MeasurementObject):
                 # FIXME this is a hack until this measurement is refactored
                 #  to a QuantumExperiment, allowing to pass operations not in
                 #  the qubit object, e.g. two-qubit gates
-                operation_dict=operation_dict_fp
-                    if operation_dict_fp is not None else
-                    self.get_operation_dict(),
+                operation_dict=operation_dict,
                 flux_lengths=flux_lengths, phases = phases,
                 cz_pulse_name=cz_pulse_name, upload=False, cal_points=cp)
         MC.set_sweep_function(awg_swf.SegmentHardSweep(
@@ -2499,7 +2499,7 @@ class QuDev_transmon(MeasurementObject):
         # easily access them
         if flux_lengths is None and n_pulses is not None:
             flux_lengths = np.array(n_pulses) * \
-                           self.get_operation_dict()[cz_pulse_name]['pulse_length']
+                           operation_dict[cz_pulse_name]['pulse_length']
         exp_metadata.update({'amplitudes': amplitudes,
                              'frequencies': freqs,
                              'phases': phases,
