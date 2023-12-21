@@ -52,7 +52,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                                   awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
-                 callback_condition=lambda : True, **kw):
+                 callback_condition=lambda : True, mc_mode=None, **kw):
         """
         Initializes a QuantumExperiment.
 
@@ -146,6 +146,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 the callback.
             callback_condition (func): function returning a bool to decide whether or
                 not the callback function should be executed. Defaults to always True.
+            mc_mode (str): manually set the mode argument in the call to MC.run
             **kw:
                 further keyword arguments are passed to the CircuitBuilder __init__
         """
@@ -177,6 +178,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.callback = callback
         self.callback_condition = callback_condition
         self.plot_sequence = plot_sequence
+        self.mc_mode = mc_mode
 
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
@@ -265,9 +267,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         Args:
             save_timers (bool): whether timers should be saved to the hdf
             file at the end of the measurement (default: True).
-            kw (optional): keyword arguments, e.g.:
-                - 'mc_mode': manually set the mode argument in the call of
-                             `MC.run`.
         Returns:
 
         """
@@ -291,6 +290,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
             # configure measurement control (mc_points, detector functions)
             mode = self._configure_mc()
+            if self.mc_mode is None:
+                self.mc_mode = mode
 
             self.guess_label(**kw)
 
@@ -299,7 +300,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # run measurement
             try:
                 self.MC.run(name=self.label, exp_metadata=self.exp_metadata,
-                            mode=getattr(self, 'mc_mode', mode))
+                            mode=self.mc_mode)
             except (Exception, KeyboardInterrupt) as e:
                 exception = e  # exception will be raised below
         self.extract_timestamp()
