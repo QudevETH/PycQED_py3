@@ -485,7 +485,7 @@ class MeasurementControl(Instrument):
         Uses the adaptive function and keywords for that function as
         specified in self.af_pars()
 
-        TODO this method is used in a very convoluted way:
+        FIXME this method is used in a very convoluted way:
          - the user passes an adaptive_function, which is the optimiser and
            itself expects a function returning data as its argument
          - the user passes data_processing_function, which is an analysis
