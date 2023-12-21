@@ -73,6 +73,9 @@ class SegmentHardSweep(swf.UploadingSweepFunction, swf.Hard_Sweep):
 
 
 class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
+
+    supports_batch_mode = True
+
     def __init__(self, circuit_builder, params, block=None,
                  block_func=None, **kw):
         """Sweep function used to efficiently iterate between different

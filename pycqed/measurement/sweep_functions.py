@@ -10,6 +10,8 @@ class Sweep_function(object):
     sweep_functions class for MeasurementControl(Instrument)
     '''
 
+    supports_batch_mode = False
+
     def __init__(self, **kw):
         self.set_kw(**kw)
 

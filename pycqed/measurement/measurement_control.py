@@ -667,8 +667,10 @@ class MeasurementControl(Instrument):
         # last iteration, sweep dimension 0) in a filtered sweep.
         filter_out = False
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
+            # The len()==1 condition is a consistency check because this break
+            # is meaningful if there is 1 sweep function only
             if len(self.sweep_functions) == 1 and \
-                    isinstance(sweep_function, awg_swf.BlockSoftHardSweep):
+                    sweep_function.supports_batch_mode:
                 # Here, x corresponds to a tuple of circuit parameters or a
                 # list of tuples of circuit parameters, see
                 # `BlockSoftHardSweep` for details.
@@ -749,7 +751,7 @@ class MeasurementControl(Instrument):
             vals = self.detector_function.acquire_data_point()
 
         if len(self.sweep_functions) == 1 and \
-                    isinstance(sweep_function, awg_swf.BlockSoftHardSweep):
+                    sweep_function.supports_batch_mode:
             vals = vals.T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
