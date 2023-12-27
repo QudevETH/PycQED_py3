@@ -1018,16 +1018,6 @@ class MultiPollDetector(PollDetector):
             return [self.AWG.master_awg] + self.AWG.awgs
         return [self.AWG]
 
-    @property
-    def acq_data_len_scaling(self):
-        return self._acq_data_len_scaling
-
-    @acq_data_len_scaling.setter
-    def acq_data_len_scaling(self, value):
-        self._acq_data_len_scaling = value
-        for det in self.detectors:
-            det.acq_data_len_scaling = value
-
     def get_values(self):
         """
         Get raw acquisition data from poll_data and process it by calling
