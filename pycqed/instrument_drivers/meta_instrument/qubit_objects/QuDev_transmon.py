@@ -1,7 +1,4 @@
 import logging
-
-from pycqed.instrument_drivers import instrument
-
 log = logging.getLogger(__name__)
 import numpy as np
 import scipy as sp
@@ -12,6 +9,7 @@ from collections import OrderedDict
 from qcodes.instrument.parameter import (
     ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
+from pycqed.instrument_drivers import instrument
 
 from pycqed.analysis_v2.readout_analysis import Singleshot_Readout_Analysis_Qutrit
 from pycqed.measurement import detector_functions as det
