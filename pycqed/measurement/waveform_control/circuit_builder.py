@@ -242,9 +242,9 @@ class CircuitBuilder:
         # modification within this function without affecting original object
         if qubits is None:
             # no qubits objects passed, so no reset possible
-            log.warning(f"Failed to retrieve reset"
-                      f" steps from qb.reset.steps() because no qubits objects "
-                        f"were found (self.qubits is None)."
+            log.warning(f"Failed to retrieve reset "
+                        f"steps from qb.reset.steps() because no qubits "
+                        f"objects were found (self.qubits is None). "
                         f"No reset steps will be added.")
             reset_steps = {qbn: [] for qbn in qb_names}
             analysis_instructions = {qbn: [dict(preparation_type="wait")]
@@ -257,8 +257,8 @@ class CircuitBuilder:
                                for s in qb.reset.steps() if s != "padding"]
                      for qb in qubits}
             except AttributeError as e:
-                log.error(f"Failed to retrieve reset"
-                          f" steps from qb.reset.steps(): {e}."
+                log.error(f"Failed to retrieve reset "
+                          f"steps from qb.reset.steps(): {e}. "
                           f"No reset steps will be added.")
                 reset_steps = {qbn: [] for qbn in qb_names}
                 analysis_instructions = {qbn: [dict(preparation_type="wait")]
