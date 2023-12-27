@@ -1,4 +1,6 @@
 from copy import deepcopy
+# FIXME: check at which points to copy_op of CircuitBuilder should be used
+#  instead of deepcopy to enable fast mode.
 
 from pycqed.instrument_drivers.instrument import InstrumentModule
 import pycqed.measurement.waveform_control.block as block_mod
