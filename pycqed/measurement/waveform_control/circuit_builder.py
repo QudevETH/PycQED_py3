@@ -724,7 +724,7 @@ class CircuitBuilder:
         prep = []
         # parse steps if not yet done.
         if not isinstance(steps, dict):
-            steps, _ = self._get_reset_steps(qb_names, steps)
+            steps = self._get_reset_steps(qb_names, steps)
         max_steps = np.max([len(steps) for steps in steps.values()])
 
         # pad qubits which have less steps
