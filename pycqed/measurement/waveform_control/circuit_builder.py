@@ -40,9 +40,9 @@ class CircuitBuilder:
                 - addressing qubits via logical indices (spin indices)
                 - resolution of ParametricValues in self.sweep_n_dim if
                   body_block_func is used
-            - copy pulse dicts with copy instead of with deepcopy. This means
-              that the user has to ensure that mutable pulse parameters (dicts,
-              lists, etc.) do not get modified by their code.
+            - copying pulse dicts with copy instead of with deepcopy. This
+                means that the user has to ensure that mutable pulse parameters
+                (dicts,lists, etc.) do not get modified by their code.
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],

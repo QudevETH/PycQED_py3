@@ -53,7 +53,7 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
                                                 update=False)
             set_fluxline_dict = {
                 fluxlines_dict[qb.name].name[5:]:  # strip "volt_"
-                eval(DCSource_params[fluxlines_dict[qb.name].name])
+                DCSource_params[fluxlines_dict[qb.name].name]
                 for qb in qubits
                 if fluxlines_dict[qb.name].instrument == DCSource
             }

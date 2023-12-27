@@ -9,7 +9,8 @@ from pycqed.measurement.calibration.automatic_calibration_routines.\
 from pycqed.measurement.calibration.automatic_calibration_routines.base import \
     update_nested_dictionary
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
-    base_automatic_calibration_routine import _device_db_client_module_missing
+    base_automatic_calibration_routine import (_device_db_client_module_missing,
+                                               keyword_subset_for_function)
 
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
@@ -711,6 +712,12 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 by (only relevant for displaying results)
             delta_f_unit (str): Unit of the frequency difference (only relevant
                 for displaying results)
+            include_mixer_calib (bool): If True, include mixer
+                calibration for both carrier and skewness.
+            mixer_calib_carrier_settings (bool): Settings for the mixer
+                calibration for the carrier.
+            mixer_calib_skewness_settings (bool): Settings for the mixer
+                calibration for the skewness.
 
         For key words of super().__init__(), see
         :obj:`AutomaticCalibrationRoutine` for more details.
@@ -884,6 +891,11 @@ class FindFrequency(AutomaticCalibrationRoutine):
         decision_settings = {}
         self.add_step(self.Decision, 'decision', decision_settings)
 
+        # Mixer calibration
+        include_mixer_calib = self.get_param_value("include_mixer_calib")
+        if include_mixer_calib:
+            self.add_mixer_calib_steps(**self.kw)
+
     def add_next_pipulse_step(self):
         """Adds a next pipulse step"""
         qubit = self.qubit
@@ -949,6 +961,63 @@ class FindFrequency(AutomaticCalibrationRoutine):
                     'settings': settings
                 }
         )
+
+    def add_mixer_calib_steps(self, **kw):
+        """
+        Add steps to calibrate the mixer after the rest of the routine is
+        defined. Mixer calibrations are put after every AdaptiveQubitSpectroscopy step.
+
+        Configuration parameters (coming from the configuration parameter
+        dictionary):
+            include_mixer_calib (bool): If True, include mixer
+                calibration for the carrier and for the skewness.
+            mixer_calib_carrier_settings (dict): Settings for the mixer
+                calibration for the carrier.
+            mixer_calib_skewness_settings (dict): Settings for the mixer
+                calibration for the skewness.
+        """
+
+        # Carrier settings
+        mixer_calib_carrier_settings = kw.get("mixer_calib_carrier_settings",
+                                              {})
+        mixer_calib_carrier_settings.update({
+            "qubit": self.qubit,
+            "update": True
+        })
+
+        # Skewness settings
+        mixer_calib_skewness_settings = kw.get("mixer_calib_skewness_settings",
+                                               {})
+        mixer_calib_skewness_settings.update({
+            "qubit": self.qubit,
+            "update": True
+        })
+
+        i = 0
+
+        while i < len(self.routine_template):
+            step_class = self.get_step_class_at_index(i)
+
+            if step_class == AdaptiveQubitSpectroscopy:
+                # Include mixer calibration
+                # Skewness calibration
+                self.add_step(
+                    MixerCalibrationSkewness,
+                    'mixer_calibration_skewness',
+                    mixer_calib_skewness_settings,
+                    index=i + 1,
+                )
+                i += 1
+
+                # Carrier calibration
+                self.add_step(
+                    MixerCalibrationCarrier,
+                    'mixer_calibration_carrier',
+                    mixer_calib_carrier_settings,
+                    index=i + 1,
+                )
+                i += 1
+            i += 1
 
 
 class SingleQubitCalib(AutomaticCalibrationRoutine):
@@ -1170,3 +1239,63 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
         [RamseyStep, 'echo_large_AD', {}],
         [RamseyStep, 'echo_small_AD', {}],
     ])
+
+
+class MixerCalibrationSkewness(IntermediateStep):
+    """Mixer calibration step that calibrates the skewness of the mixer."""
+
+    def __init__(self, routine, **kw):
+        """
+        Initialize the MixerCalibrationSkewness step.
+
+        Args:
+            routine (Step): Routine object.
+
+        Keyword args:
+            calibrate_drive_mixer_skewness_function: method for calibrating to
+                be used. Default is to use calibrate_drive_mixer_skewness_model.
+        """
+        super().__init__(routine=routine, **kw)
+
+    def run(self):
+        kw = self.kw
+
+        # FIXME: used only default right now, kw is not passed
+        calibrate_drive_mixer_skewness_function = kw.get(
+            "calibrate_drive_mixer_skewness_function",
+            "calibrate_drive_mixer_skewness_model",
+        )
+
+        function = getattr(self.qubit, calibrate_drive_mixer_skewness_function)
+        new_kw = keyword_subset_for_function(kw, function)
+        function(**new_kw)
+
+
+class MixerCalibrationCarrier(IntermediateStep):
+    """Mixer calibration step that calibrates the carrier of the mixer."""
+
+    def __init__(self, routine, **kw):
+        """
+        Initialize the MixerCalibrationCarrier step.
+
+        Args:
+            routine (Step): Routine object.
+
+        Keyword args:
+            calibrate_drive_mixer_carrier_function: method for calibrating to
+                be used. Default is to use calibrate_drive_mixer_carrier_model.
+        """
+        super().__init__(routine=routine, **kw)
+
+    def run(self):
+        kw = self.kw
+
+        # FIXME: Used only default right now, kw is not passed
+        calibrate_drive_mixer_carrier_function = kw.get(
+            "calibrate_drive_mixer_carrier_function",
+            "calibrate_drive_mixer_carrier_model",
+        )
+
+        function = getattr(self.qubit, calibrate_drive_mixer_carrier_function)
+        new_kw = keyword_subset_for_function(kw, function)
+        function(**new_kw)
