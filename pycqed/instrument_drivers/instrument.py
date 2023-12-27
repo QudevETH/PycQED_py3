@@ -73,13 +73,9 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
 
 
 class InstrumentModule(QcodesInstrumentModule):
-    """
-    Class for all QCodes instruments.
-    """
-
     def get_idn(self):
         """
-        Required as a standard interface for QCoDeS instruments.
+        Required as a standard interface for QCoDeS instrument modules.
         """
         return {'driver': str(self.__class__), 'name': self.name}
 
