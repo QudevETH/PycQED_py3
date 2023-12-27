@@ -1,10 +1,11 @@
 import numpy as np
 from collections import OrderedDict
+from copy import copy
 import traceback
 from pycqed.utilities.general import assert_not_none, \
     configure_qubit_mux_readout
 from pycqed.utilities.math import dbm_to_vp
-from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
+from pycqed.measurement.calibration import two_qubit_gates as twoqbcal
 from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.sweep_functions as swf
@@ -15,7 +16,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class MultiTaskingSpectroscopyExperiment(CalibBuilder):
+class MultiTaskingSpectroscopyExperiment(twoqbcal.CalibBuilder):
     """Adds functionality to sweep LO and modulation frequencies in
     a spectroscopy experiment. Automatically determines whether the LO, the
     mod. freq. or both are swept. Compatible with hard sweeps.
@@ -33,6 +34,13 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         sweep_functions_dict (dict, optional): Dictionary of sweep functions
             with the key of a value being the name of the sweep parameter for
             which the sweep function will be used. Defaults to `dict()`.
+            Remark: if the Device object passed in the keyword argument dev
+            has an attribute fluxlines_dict, the flux voltage parameters
+            provided for the qubits in this dict will be added to the
+            sweep_functions_dict of the task of the respective qubits as
+            sweep functions for the sweep parameter 'volt' (to be potentially
+            used by child classes, and to be ignored if no such sweep
+            parameter exists).
         df_name (str, optional): Specify a specific detector function to be
             used. See :meth:`mqm.get_multiplexed_readout_detector_functions`
             for available options.
@@ -115,6 +123,16 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
     def get_sweep_points_for_sweep_n_dim(self):
         return self.sweep_points_pulses
+
+    def preprocess_task(self, task, global_sweep_points,
+                        sweep_points=None, **kw):
+        if self.dev and (fld := getattr(self.dev, 'fluxlines_dict', None)):
+            if (param := fld.get(self.get_qubit(task).name)):
+                task = copy(task)
+                task.setdefault('sweep_functions_dict', {})
+                task['sweep_functions_dict'].setdefault('volt', param)
+        return super().preprocess_task(task, global_sweep_points,
+                                       sweep_points, **kw)
 
     def resolve_freq_sweep_points(self, optimize_mod_freqs=False, **kw):
         """
@@ -375,6 +393,22 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         return (lo if isinstance(lo, str)
                 else '_'.join([f'{s}' for s in lo])) + '_freq'
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'][twoqbcal.MultiTaskingExperiment.__name__].update({
+            'n_cal_points_per_state': (int, 0),
+        })
+        d['sweeping_parameters'].update({
+            MultiTaskingSpectroscopyExperiment.__name__: {
+                0: {
+                    'freq': 'Hz',
+                },
+                1: {},
+            }
+        })
+        return d
+
 
 class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """Base class to be able to perform 1d and 2d feedline spectroscopies on one
@@ -409,7 +443,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             FIXME: as soon as the fluxline voltage is accesible through the
             qubit, a convenience wrapper should be implemented.
             (2. dim. sweep points)
-        ro_amplitude: List or np.array of amplitudes of the RO pulse.
+        ro_amp: List or np.array of amplitudes of the RO pulse.
             (2. dim. sweep points)
         ro_length: List or np.array of pulse lengths of the RO pulse.
             (2. dim. sweep points)
@@ -442,6 +476,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # all RO pulses that are different are programmed to the AWG.
         repeat_ro = kw.pop('repeat_ro', False)
         try:
+            if task_list is None and (qubits := kw.get('qubits')):
+                task_list = [dict(qb=qb) for qb in qubits]
             super().__init__(task_list, sweep_points=sweep_points,
                              trigger_separation=trigger_separation,
                              drive=drive,
@@ -597,6 +633,16 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             ResonatorSpectroscopy.__name__: OrderedDict({
                 'trigger_separation': (float, 5e-6)
             })
+        })
+        d['sweeping_parameters'].update({
+            ResonatorSpectroscopy.__name__: {
+                0: {},
+                1: {
+                    'volt': 'V',
+                    'amplitude': 'V',
+                    'pulse_length': 's',
+                },
+            }
         })
         return d
 
@@ -882,6 +928,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             drive += '_modulated' if self.modulated else ''
             self.default_experiment_name += '_pulsed' if self.pulsed \
                                                     else '_continuous'
+            if task_list is None and (qubits := kw.get('qubits')):
+                task_list = [dict(qb=qb) for qb in qubits]
             super().__init__(task_list, sweep_points=sweep_points,
                             drive=drive,
                             trigger_separation=trigger_separation,
@@ -1108,6 +1156,19 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 self.temporary_values.append((amp,
                                               dbm_to_vp(qb.spec_power())))
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            QubitSpectroscopy.__name__: {
+                0: {},
+                1: {
+                    'volt': 'V',
+                    'spec_power': 'dBm',
+                },
+            }
+        })
+        return d
 
 
 class QubitSpectroscopy1D(QubitSpectroscopy):

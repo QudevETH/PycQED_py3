@@ -2,7 +2,7 @@ import os
 import pycqed as pq
 import unittest
 import h5py
-from pycqed.measurement import hdf5_data as h5d
+from pycqed.utilities.io import hdf5 as h5d
 import numpy as np
 import pycqed.utilities.general as gen
 from pycqed.measurement import measurement_control

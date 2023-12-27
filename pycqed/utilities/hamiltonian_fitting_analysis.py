@@ -8,6 +8,9 @@ import pycqed.simulations.transmon as transmon
 import scipy
 from pycqed.utilities.state_and_transition_translation import *
 import h5py
+from pycqed.instrument_drivers.mock_qcodes_interface \
+    import ParameterNotFoundError
+from pycqed.utilities import settings_manager as setman
 
 log = logging.getLogger(__name__)
 
@@ -1008,13 +1011,12 @@ class HamiltonianFittingAnalysis:
             fluxlines_dict: dictionary containing the fluxline ids (necessary
                 to determine voltage)
         """
-        path = a_tools.data_from_time(timestamp)
-        filepath = a_tools.measurement_filename(path)
-        data = h5py.File(filepath, "r")
+        path = a_tools.get_folder(timestamp)
+        data = a_tools.open_hdf_file(folder=path)
 
-        if "_ge_" in filepath:
+        if "_ge_" in path:
             transition = "ge"
-        elif "_ef_" in filepath:
+        elif "_ef_" in path:
             transition = "ef"
         else:
             raise ValueError(
@@ -1026,7 +1028,7 @@ class HamiltonianFittingAnalysis:
             qubit_name = qubit
         else:
             qubit_name = qubit.name
-        if not qubit_name in filepath:
+        if not qubit_name in path:
             return
 
         try:
@@ -1037,16 +1039,15 @@ class HamiltonianFittingAnalysis:
                 "analysis_params_dict"
             ][qubit_name]["exp_decay"].attrs["new_qb_freq_stderr"]
             dc_source_key = fluxlines_dict[qubit_name].instrument.name
-            voltage = float(
-                data["Instrument settings"][dc_source_key].attrs[
-                    fluxlines_dict[qubit_name].name
-                ]
-            )
+            param = f'{dc_source_key}.{fluxlines_dict[qubit_name].name}'
+            station = setman.get_station_from_file(timestamp=timestamp,
+                                                   param_path=[param])
+            voltage = float(station.get(param))
             HamiltonianFittingAnalysis._fill_experimental_values(
                 experimental_values, voltage, transition, freq
             )
-        except KeyError:
-            log.warning(f"Could not get ramsey data from file {filepath}")
+        except KeyError or ParameterNotFoundError:
+            log.warning(f"Could not get ramsey data from file {path}")
 
     @staticmethod
     def _fill_experimental_values_with_ReparkingRamsey(
@@ -1095,11 +1096,10 @@ class HamiltonianFittingAnalysis:
 
             # Remove results from pre-reparking if exists
             dc_source_key = fluxlines_dict[qubit_name].instrument.name
-            old_voltage = float(
-                data["Instrument settings"][dc_source_key].attrs[
-                    fluxlines_dict[qubit_name].name
-                ]
-            )
+            param = f'{dc_source_key}.{fluxlines_dict[qubit_name].name}'
+            station = setman.get_station_from_file(timestamp=timestamp,
+                                            param_path=[param])
+            old_voltage = float(station.get(param))
 
             HamiltonianFittingAnalysis._fill_experimental_values(
                 experimental_values, voltage, transition, freq, old_voltage

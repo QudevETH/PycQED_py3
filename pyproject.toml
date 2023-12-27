@@ -20,10 +20,14 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
+    "blosc2",
     'func-timeout',
+    "h5py",
     'lmfit',
     "matplotlib",
     'more-itertools',
+    "msgpack",
+    "msgpack_numpy",
     'neupy',
     "nlopt",
     "numpy",
