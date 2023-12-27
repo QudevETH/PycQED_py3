@@ -694,23 +694,6 @@ class Pulsar(Instrument):
         """
         return set([g for awg in self.awgs for g in self.get(f'{awg}_trigger_groups')])
 
-    def get_max_prepend_zeros_duration(self):
-        max_duration_prepend_zeros = 0
-        for awgn in self.active_awgs():
-            if self.get(f'{awgn}_prepend_zeros', 0):
-                duration_prepend_zeros = \
-                    self.get(f'{awgn}_prepend_zeros', 0) / \
-                    self.clock(awg=awgn)
-                if duration_prepend_zeros > max_duration_prepend_zeros:
-                    max_duration_prepend_zeros = duration_prepend_zeros
-        if self.prepend_zeros():
-            # Check global prepend zeros in pulsar
-            # FIXME: how to correctly get the clock frequency of the AWGs in this
-            #  global case? For now, hard code 2.4 Gsample
-            if self.prepend_zeros() / 2.4e9 > max_duration_prepend_zeros:
-                max_duration_prepend_zeros = self.prepend_zeros() / 2.4e9
-        return max_duration_prepend_zeros
-
     def reset_sequence_cache(self):
         """Resets the sequence cache.
 

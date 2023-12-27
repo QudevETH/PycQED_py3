@@ -471,21 +471,6 @@ class Sequence:
         return self.repeat(pulse_name, operation_dict,
                            (self.n_acq_elements(), 1))
 
-    def get_max_segment_duration(self):
-        if len(self.segments):
-            max_segment_duration = 0
-            for s in self.segments.values():
-                if np.diff(s.get_segment_start_end())[0] > max_segment_duration:
-                    max_segment_duration = np.diff(s.get_segment_start_end())[0]
-            if max_segment_duration == 0:
-                log.warning(f'Maximal segment duration for sequence '
-                            f'{self.name} is 0ns. This can lead to undesired'
-                            f' behavior if the repetition period is configured'
-                            f' automatically.')
-            # check prepend zeros in addition to segment duration in all awgs and global pulsar
-            # parameter
-            max_duration_prepend_zeros = self.pulsar.get_max_prepend_zeros_duration()
-            return max_duration_prepend_zeros + max_segment_duration
 
     @staticmethod
     def merge(sequences, segment_limit=None, merge_repeat_patterns=True):
