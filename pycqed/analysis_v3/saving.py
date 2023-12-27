@@ -12,7 +12,7 @@ import qutip as qtp
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from collections import OrderedDict
-from pycqed.measurement import hdf5_data as h5d
+from pycqed.utilities.io import hdf5 as h5d
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 

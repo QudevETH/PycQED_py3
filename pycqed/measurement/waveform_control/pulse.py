@@ -77,6 +77,7 @@ class Pulse:
         self.element_name = element_name
         self.codeword = kw.pop('codeword', 'no_codeword')
         self.pulse_off = kw.pop('pulse_off', False)
+        self.is_net_zero = False
         self.truncation_length = kw.pop('truncation_length', None)
         self.truncation_decay_length = kw.pop('truncation_decay_length', None)
         self.truncation_decay_const = kw.pop('truncation_decay_const', None)
@@ -210,6 +211,8 @@ class Pulse:
     def algorithm_time(self, val=None):
         """
         Getter and setter for the start time of the pulse.
+        FIXME this could just be an attribute, to be refactored if this
+         becomes a speed limitation
         """
         if val is None:
             return self._t0
