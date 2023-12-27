@@ -2189,10 +2189,8 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
 
             if self.analyze_ef:
                 try:
-                    old_freq = self.get_hdf_param_value(
-                        f"Instrument settings/{qb_name}", 'ge_freq')
-                    old_freq_ef = self.get_hdf_param_value(
-                        f"Instrument settings/{qb_name}", 'ef_freq')
+                    old_freq = self.get_instrument_setting(qb_name+'.ge_freq')
+                    old_freq_ef = self.get_instrument_setting(qb_name+'.ef_freq')
                     label = 'f0={:.5f} GHz ' \
                             '\nold f0={:.5f} GHz' \
                             '\nkappa0={:.4f} MHz' \
@@ -2222,8 +2220,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                 label = 'f0={:.5f} GHz '.format(
                     self.fit_res[qb_name].params['f0'].value * scale)
                 try:
-                    old_freq = self.get_hdf_param_value(
-                        f"Instrument settings/{qb_name}", 'ge_freq')
+                    old_freq = self.get_instrument_setting(qb_name+'.ge_freq')
                     label += '\nold f0={:.5f} GHz'.format(old_freq * scale)
                 except (TypeError, KeyError, ValueError):
                     log.warning('qb_name is None. Old parameter values will '
@@ -2866,8 +2863,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
         """
         # Find the dips for each measured qubit
         for qb_name in self.qb_names:
-            flux_parking = self.get_hdf_param_value(
-                f"Instrument settings/{qb_name}", "flux_parking")
+            flux_parking = self.get_instrument_setting(qb_name+'.flux_parking')
 
             left_dips_indices = []
             right_dips_indices = []

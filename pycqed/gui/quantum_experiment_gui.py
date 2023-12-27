@@ -5,6 +5,7 @@ from pycqed.gui.qt_widgets.qt_field_widgets import *
 from pycqed.gui import gui_utilities as g_utils
 from pycqed.measurement.calibration import two_qubit_gates
 from pycqed.measurement.calibration import single_qubit_gates
+from pycqed.measurement.spectroscopy import spectroscopy
 import numpy as np
 from collections import OrderedDict as odict
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
@@ -26,6 +27,8 @@ class ExperimentTypes(Enum):
     QuantumExperiments registered in this Enum are added to the list of
     experiments available in the QuantumExperimentGUI
     """
+    RES_SPEC = spectroscopy.ResonatorSpectroscopy
+    QB_SPEC = spectroscopy.QubitSpectroscopy
     RABI = single_qubit_gates.Rabi
     RAMSEY = single_qubit_gates.Ramsey
     QSCALE = single_qubit_gates.QScale
