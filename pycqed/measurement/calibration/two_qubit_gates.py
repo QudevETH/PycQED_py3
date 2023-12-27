@@ -1631,7 +1631,7 @@ class Chevron(CalibBuilder):
             self.sequences, self.mc_points = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block,
                 block_align = ['center', 'end', 'center'], **kw)
-            print('kws chev', kw)
+
             self.autorun(**kw)  # run measurement & analysis if requested in kw
         except Exception as x:
             self.exception = x
