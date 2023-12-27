@@ -1130,10 +1130,6 @@ class QuDev_transmon(MeasurementObject):
                 sq.get_pulse_dict_from_pars(
                     operation_dict[f'X180{tn} ' + self.name]),
                 f'{tn} ' + self.name))
-        if np.ndim(self.ro_freq()) != 0:
-            delta_freqs = np.diff(self.ro_freq(), prepend=self.ro_freq()[0])
-            mods = [self.ro_mod_freq() + d for d in delta_freqs]
-            operation_dict['RO ' + self.name]['mod_frequency'] = mods
 
         for code, op in operation_dict.items():
             op['op_code'] = code
