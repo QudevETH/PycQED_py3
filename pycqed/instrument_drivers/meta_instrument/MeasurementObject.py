@@ -38,6 +38,11 @@ class MeasurementObject(Instrument):
         self.add_parameter('instr_ro_lo',
             parameter_class=InstrumentRefParameter,
             vals=vals.MultiType(vals.Enum(None), vals.Strings()))
+        self.add_parameter(
+            'instr_acq_lo', parameter_class=InstrumentRefParameter,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()),
+            docstring='Downconversion local oscillator for acquisistion. Set '
+                      'only if different from upconversion LO instr_ro_lo.')
         self.add_parameter('instr_trigger',
             parameter_class=InstrumentRefParameter)
         self.add_parameter('instr_switch',
@@ -62,12 +67,39 @@ class MeasurementObject(Instrument):
         self.add_parameter('acq_shots', initial_value=4094,
                            docstring='Number of single shot measurements to do'
                                      'in single shot experiments.',
-                           vals=vals.Ints(0, 1048576),
+                           vals=vals.Ints(0, 1048576**2),
                            parameter_class=ManualParameter)
         self.add_parameter('acq_length', initial_value=2.2e-6,
                            vals=vals.Numbers(min_value=1e-8,
                                              max_value=100e-6),
                            parameter_class=ManualParameter)
+        self.add_parameter(
+            'acq_fixed_lo_freq', unit='Hz',
+            set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                'acq', acq_fixed_lo_freq=f),
+            docstring='Fix the acq LO to a single frequency or to a set of '
+                      'allowed frequencies. For allowed options, see the '
+                      'argument fixed_lo in the docstring of '
+                      'get_closest_lo_freq.')
+        self.add_parameter(
+            'acq_freq', unit='Hz',
+            set_cmd=lambda f, s=self: s.configure_mod_freqs(
+                'acq', acq_freq=f) if f is not None else f,
+            # The separate treatment of None allows to directly set this
+            # parameter to None without further processing. This will then
+            # trigger the special behavior for acq described in the docstring
+            # of configure_mod_freqs the next time that method gets called.
+            docstring='Acquitision frequency. If None, ro_freq is used.')
+        self.add_parameter(
+            'acq_mod_freq', initial_value=None, unit='Hz',
+            label='acquisition intermediate frequency',
+            set_parser=lambda f, s=self: s.configure_mod_freqs(
+                'acq', acq_mod_freq=f) if f is not None else f,
+            # Separate treatment as for acq_freq (see above)
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
+            parameter_class=ManualParameter,
+            docstring='Acquitision intermediate frequency. '
+                      'If None, ro_mod_freq is used.')
         awt_docstring = 'Determines what type of integration weights to ' +\
                         'use:\n\tSSB: Single sideband demodulation\n\tDSB: ' +\
                         'Double sideband demodulation\n\tcustom: waveforms ' +\
@@ -339,6 +371,10 @@ class MeasurementObject(Instrument):
         # Provide the ro_lo_freq to the acquisition device to allow
         # configuring an internal LO if needed.
         self.instr_acq.get_instr().set_lo_freq(self.acq_unit(), ro_lo_freq)
+        # configure the downconversion LO for acquisition if needed
+        if self.instr_acq_lo() is not None:
+            _, acq_lo_freq = self.get_acq_mod_and_lo_freq()
+            self.instr_acq_lo.get_instr().frequency(acq_lo_freq)
 
         # other preparations
         self.set_readout_weights()
@@ -351,6 +387,31 @@ class MeasurementObject(Instrument):
             weights_Q=[self.acq_weights_Q(), self.acq_weights_Q2()],
         )
 
+    def get_acq_mod_and_lo_freq(self):
+        """Returns the required IF and LO frequency for acquisition
+
+        The Acq LO freq is calculated from the acq_mod_freq (intermediate
+        frequency) and the acq_freq stored in the qubit object. If any of them
+        is None, it is replaced by ro_mod_freq or ro_freq, respectively. In
+        the special case that no instr_acq_lo is configured and acq_mod_freq
+        is None, the value of acq_mod_freq will be chosen such that it is
+        compatible with the LO frequency of the instr_ro_lo (assuming that
+        this LO is also used for the acquisition).
+        """
+        if (acq_freq := self.acq_freq()) is None:
+            acq_freq = self.ro_freq()
+        if (acq_mod_freq := self.acq_mod_freq()) is None:
+            if self.instr_acq_lo() is None:
+                acq_mod_freq = acq_freq - self.get_ro_lo_freq()
+            else:
+                acq_mod_freq = self.ro_mod_freq()
+        elif self.instr_acq_lo() is None and np.abs(
+                (acq_freq - acq_mod_freq) - self.get_ro_lo_freq()) > 1e-3:
+            log.warning(
+                f'{self.name}: Acq LO freq and RO LO freq do not match, '
+                f'but no Acq LO instrument is configured.')
+        return acq_mod_freq, acq_freq - acq_mod_freq
+
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this measurement object in the
         acquisition device.
@@ -361,7 +422,8 @@ class MeasurementObject(Instrument):
         AcquisitionDevice._acquisition_generate_weights):
         - instr_acq, acq_unit, acq_I_channel, acq_Q_channel
         - acq_weights_type (if not overridden with the arg weights_type)
-        - ro_mod_freq (if not overridden with the arg f_mod)
+        - acq_mod_freq if not None, or otherwise ro_mod_freq (if not
+          overridden with the arg f_mod)
         - acq_IQ_angle
         - acq_weights_I, acq_weights_I2, acq_weights_Q, acq_weights_Q2
 
@@ -377,11 +439,12 @@ class MeasurementObject(Instrument):
         if weights_type is None:
             weights_type = self.get_acq_weights_type()
         if f_mod is None:
-            f_mod = self.ro_mod_freq()
+            f_mod, _ = self.get_acq_mod_and_lo_freq()
         self.instr_acq.get_instr().acquisition_set_weights(
             channels=self.get_acq_int_channels(n_channels=2),
             weights_type=weights_type, mod_freq=f_mod,
             acq_IQ_angle=self.acq_IQ_angle(),
+            acq_length=self.acq_length(),
             **self._get_custom_readout_weights()
         )
 
@@ -545,6 +608,12 @@ class MeasurementObject(Instrument):
         relevant paramter changes, or without kw as a sanity check, in which
         case it shows a warning when updating an IF.
 
+        Special behavior if {op} is 'acq':
+        - if acq_freq is None, ro_freq is used
+        - if acq_fixed_lo_freq is not None while acq_mod_freq is None,
+          acq_mod_freq gets set to the value calculated based on
+          acq_fixed_lo_freq and ro_mod_freq.
+
         Args:
             operation (str, None): configure the IF only for the operation
                 indicated by the string or for all operations for which a
@@ -560,6 +629,9 @@ class MeasurementObject(Instrument):
         def get_param(param):
             if param in kw:
                 return kw[param]
+            elif param in ['acq_freq',
+                           'acq_mod_freq'] and self.get(param) is None:
+                return self.get(param.replace('acq_', 'ro_'))
             else:
                 return self.get(param)
 

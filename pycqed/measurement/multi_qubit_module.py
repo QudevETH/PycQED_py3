@@ -290,6 +290,15 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 integration_length=max_int_len[uhf], nr_averages=nr_averages,
                 **kw)
             for uhf in uhfs])
+    elif df_name == 'int_hist_det':
+        print("nr_shots", nr_shots)
+        return det.MultiPollDetector([
+            det.IntegratingHistogramPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
+                integration_length=max_int_len[uhf], nr_shots=nr_shots,
+                **kw)
+            for uhf in uhfs])
     elif df_name == 'int_avg_det_spec':
         # Can be used to force a hard sweep by explicitly setting to False
         kw['single_int_avg'] = kw.get('single_int_avg', True)
@@ -530,9 +539,9 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         qb.prepare(drive='timedomain')
     label = f"SSRO_calibration_{states}{get_multi_qubit_msmt_suffix(qubits)}" if \
         label is None else label
-    channel_map = {qb.name: [vn + ' ' + qb.instr_acq()
-                             for vn in qb.int_log_det.value_names]
-                   for qb in qubits}
+    df = get_multiplexed_readout_detector_functions(
+            df_name, qubits, nr_shots=n_shots)
+    channel_map = df.get_meas_obj_value_names_map()
     if exp_metadata is None:
         exp_metadata = {}
     exp_metadata.update({"cal_points": repr(cp),
@@ -543,8 +552,6 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
                          "data_to_fit": {},
                          "rotate": False,
                          })
-    df = get_multiplexed_readout_detector_functions(
-            df_name, qubits, nr_shots=n_shots)
     MC = dev.instr_mc.get_instr()
     MC.set_sweep_function(awg_swf.SegmentHardSweep(sequence=seq,
                                                    upload=upload))
@@ -655,8 +662,12 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
         if exp_metadata is None:
             exp_metadata = dict()
         if acq_length is None:
-            acq_length = qubits[0].instr_acq.get_instr().acq_weights_n_samples/\
-                qubits[0].instr_acq.get_instr().acq_sampling_rate
+            acq_dev = qubits[0].instr_acq.get_instr()
+            if (n := acq_dev.acq_weights_n_samples) is None:
+                raise ValueError(
+                    'acq_length has to be provided because the acquisition '
+                    'device does not have a default acq_weights_n_samples.')
+            acq_length = n / acq_dev.acq_sampling_rate
         temp_val = [(qb.acq_length, acq_length) for qb in qubits]
         with temporary_value(*temp_val):
             [qb.prepare(drive='timedomain') for qb in qubits]
@@ -774,6 +785,14 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                                 f"automatically.")
                 qb.acq_weights_basis(a.proc_data_dict['analysis_params_dict'
                     ]['optimal_weights_basis_labels'][qb.name])
+                # We intentionally use the key 'centroids' instead of using
+                # the same key 'means_' as used by the GMM classifier. This is
+                # in order to allow storing both information independently and
+                # to avoid unintentionally overwriting one kind of information
+                # with the other.
+                qb.acq_classifier_params().update({'centroids': np.array(
+                    a.proc_data_dict['analysis_params_dict']['means'][qb.name]
+                )})
         return a
 
 

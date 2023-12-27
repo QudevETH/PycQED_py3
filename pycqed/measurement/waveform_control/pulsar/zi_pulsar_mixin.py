@@ -666,6 +666,13 @@ class ZIGeneratorModule:
             if self._use_placeholder_waves or self._use_command_table\
             else set()
 
+    def _reset_mcc_post_compilation_upload_list(self):
+        """If multi-core compiler is enabled, reset the post-programming
+        upload list."""
+        if self.pulsar.use_mcc():
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.module_name] = list()
+
     def program_awg_channel(
             self,
             awg_sequence,
@@ -691,6 +698,7 @@ class ZIGeneratorModule:
         self._reset_sequence_strings()
         self._update_channel_config(awg_sequence=awg_sequence)
         self._reset_defined_waves()
+        self._reset_mcc_post_compilation_upload_list()
 
         # Generates sequencer code according to channel settings and
         # waveforms specified in awg_sequence.
@@ -1459,8 +1467,6 @@ class ZIGeneratorModule:
         if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
             self.multi_core_compiler.sequencer_code_mcc[self.module_name] = (
                 self._awg_interface.awg_mcc_generators[self._awg_nr], awg_str)
-            self.multi_core_compiler.post_sequencer_code_upload[
-                self.module_name] = list()
             self._save_awg_str(awg_str=awg_str)
         else:
             if self.pulsar.use_mcc():

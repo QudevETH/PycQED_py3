@@ -1,5 +1,8 @@
 from pycqed.gui import qt_compat as qt
 import sys
+import multiprocessing as mp
+import logging
+log = logging.getLogger(__name__)
 
 
 class DictView(qt.QtWidgets.QWidget):
@@ -10,7 +13,8 @@ class DictView(qt.QtWidgets.QWidget):
     - expand, collapse and hide keys/branches
     """
 
-    def __init__(self, snap: dict, title: str = '', screen=None):
+    def __init__(self, snap: dict, title: str = '', screen=None,
+                 timestamps=None):
         """
         Initialization of the QWidget
         Args:
@@ -23,7 +27,10 @@ class DictView(qt.QtWidgets.QWidget):
         super(DictView, self).__init__()
         self.title = title
         self.screen = screen
-        self.column_header = ['Key', 'Value']
+        if timestamps is None:
+            self.column_header = ['Key', 'Value']
+        else:
+            self.column_header = ['Key'] + timestamps
 
         # Default values for the search bar
         self.current_search_options = ['Key']  # respective name of the column
@@ -44,17 +51,16 @@ class DictView(qt.QtWidgets.QWidget):
         # width of the entire window defined in DictViewerWindow
         screen_size = screen.size()
         self.tree_widget.header().resizeSection(
-            0, .5 * .4 * screen_size.width())
+            0, int(.5 * .4 * screen_size.width()))
         self.tree_widget.setExpandsOnDoubleClick(True)
 
-        root_item = qt.QtWidgets.QTreeWidgetItem(["Root"])
+        self.root_item = self.tree_widget.invisibleRootItem()
         # build up the tree recursively from a dictionary
-        self.dict_to_titem(snap, root_item)
-        self.tree_widget.addTopLevelItem(root_item)
+        self.dict_to_titem(snap, self.root_item)
+        self.tree_widget.addTopLevelItem(self.root_item)
 
-        root_item.setExpanded(True)  # expand root item
         # expand all parameter branches by default
-        self.expand_parameters(root_item)
+        self.expand_parameters(self.root_item)
 
         # sorting needs to be set after initialization of tree elements
         # lets user choose which column is used to sort
@@ -83,6 +89,8 @@ class DictView(qt.QtWidgets.QWidget):
 
         # QLabel with text of tree directory
         self.tree_dir = qt.QtWidgets.QLabel('Root')
+        # long text should not prevent the window from being resized
+        self.tree_dir.setMinimumSize(1, 1)
 
         # QLabel with text of number of attributes in QTreeWidgetItem
         self.attr_nr = qt.QtWidgets.QLabel('Number of attributes:')
@@ -96,6 +104,8 @@ class DictView(qt.QtWidgets.QWidget):
 
         # 2nd step: drawing box around QTreeWidget and QLabels
         gbox = qt.QtWidgets.QGroupBox(self.title)
+        # long title should not prevent the window from being resized
+        gbox.setMinimumSize(1, 1)
         gbox.setLayout(layout)
 
         # 3rd step: Adding search bar, search options and number of entries
@@ -114,11 +124,11 @@ class DictView(qt.QtWidgets.QWidget):
         Function which creates all the actions for the context menu and
         menu bars
         """
-        self.copyKeyAction = qt.QAction("Copy key")
-        self.copyValueAction = qt.QAction("Copy value")
-        self.openContentAction = qt.QAction("Open in new window")
+        self.copyKeyAction = qt.QAction("Copy Key")
+        self.copyValueAction = qt.QAction("Copy Value")
+        self.openContentAction = qt.QAction("Open in New Window")
         self.hideAction = qt.QAction("Hide Key")
-        self.hideAllAction = qt.QAction("Hide all empty")
+        self.hideAllAction = qt.QAction("Hide all Empty")
         self.showAllAction = qt.QAction("Show all")
         self.collapseAction = qt.QAction("Collapse all")
         self.expandBranchAction = qt.QAction("Expand Branch")
@@ -126,6 +136,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.closeAction = qt.QAction("Close Window")
         self.resetWindowAction = qt.QAction("Reset Window")
         self.expandParametersAction = qt.QAction("Expand Parameters")
+        self.copyStationPathAction = qt.QAction("Copy Station Path")
 
     def _connect_actions(self):
         """
@@ -133,21 +144,20 @@ class DictView(qt.QtWidgets.QWidget):
         events (functions). lambda function is needed for functions with
         arguments.
         """
-        root_item = self.tree_widget.topLevelItem(0)
         self.copyKeyAction.triggered.connect(lambda: self.copy_content(0))
         self.copyValueAction.triggered.connect(lambda: self.copy_content(1))
         self.hideAction.triggered.connect(self.hide_item)
         self.hideAllAction.triggered.connect(
-            lambda: self.hide_all_empty(root_item))
+            lambda: self.hide_all_empty(self.root_item))
         self.showAllAction.triggered.connect(
-            lambda: self.show_all(root_item))
+            lambda: self.show_all(self.root_item))
         self.tree_widget.itemClicked.connect(self.set_dirtext)
         self.tree_widget.itemActivated.connect(self.set_dirtext)
         self.tree_widget.itemClicked.connect(self.set_nr_attributes)
         self.tree_widget.itemActivated.connect(self.set_nr_attributes)
 
         self.collapseAction.triggered.connect(
-            lambda: self.expand_branch(root_item, expand=False))
+            lambda: self.expand_branch(self.root_item, expand=False))
         self.expandBranchAction.triggered.connect(
             lambda: self.expand_branch(self.tree_widget.currentItem(),
                                        expand=True, display_vals=False))
@@ -157,7 +167,8 @@ class DictView(qt.QtWidgets.QWidget):
         self.closeAction.triggered.connect(self.close)
         self.resetWindowAction.triggered.connect(self.reset_window)
         self.expandParametersAction.triggered.connect(
-            lambda: self.expand_parameters(root_item))
+            lambda: self.expand_parameters(self.root_item))
+        self.copyStationPathAction.triggered.connect(self.copy_station_path)
 
     def _set_menu_bar(self):
         """
@@ -173,6 +184,7 @@ class DictView(qt.QtWidgets.QWidget):
 
         editMenu.addAction(self.copyKeyAction)
         editMenu.addAction(self.copyValueAction)
+        editMenu.addAction(self.copyStationPathAction)
         editMenu.addSeparator()  # for better organization of the menu bar
         editMenu.addAction(self.openContentAction)
 
@@ -196,6 +208,7 @@ class DictView(qt.QtWidgets.QWidget):
 
         menu.addAction(self.copyKeyAction)
         menu.addAction(self.copyValueAction)
+        menu.addAction(self.copyStationPathAction)
         menu.addSeparator()
         menu.addAction(self.openContentAction)
         menu.addSeparator()
@@ -210,11 +223,9 @@ class DictView(qt.QtWidgets.QWidget):
         - no QTreeWidgetItem is hidden
         - only root item and parameters are expanded
         """
-        root_item = self.tree_widget.topLevelItem(0)
-        self.show_all(root_item)
-        self.expand_branch(root_item, expand=False)
-        root_item.setExpanded(True)
-        self.expand_parameters(root_item)
+        self.show_all(self.root_item)
+        self.expand_branch(self.root_item, expand=False)
+        self.expand_parameters(self.root_item)
 
     def expand_parameters(self, tree_item: qt.QtWidgets.QTreeWidgetItem):
         """
@@ -258,7 +269,7 @@ class DictView(qt.QtWidgets.QWidget):
         self.tree_dir.setText(self.get_dirtext(self.tree_widget.currentItem()))
 
     def get_dirtext(self, tree_item: qt.QtWidgets.QTreeWidgetItem,
-                   separator=' > '):
+                    separator=' > '):
         """
         Returns string of the directory of a given QWidgetItem in a QWidgetTree
         Args:
@@ -345,6 +356,29 @@ class DictView(qt.QtWidgets.QWidget):
             cb.setText(self.tree_widget.currentItem().data(1, 0),
                        mode=cb.Mode.Clipboard)
 
+    def get_station_path(self, titem: qt.QtWidgets.QTreeWidgetItem):
+        key_list = []
+        while titem.parent() is not None:
+            key_list.append(str(titem.data(0, 0)))
+            titem = titem.parent()
+        key_list.reverse()
+
+        if len(key_list) > 2:
+            return key_list[0]+'.'+key_list[2]
+        elif len(key_list) > 1:
+            return key_list[0]
+        else:
+            return ''
+
+    def copy_station_path(self):
+        cb = qt.QtWidgets.QApplication.clipboard()
+        cb.clear(mode=cb.Mode.Clipboard)
+        station_path = 'sm.stations[''].' + \
+                       self.get_station_path(self.tree_widget.currentItem()) + \
+                       '()'
+
+        cb.setText(station_path, mode=cb.Mode.Clipboard)
+
     def make_search_ui(self):
         """
         Creates the UI layout for the search bar and its options.
@@ -370,8 +404,9 @@ class DictView(qt.QtWidgets.QWidget):
         layout.addWidget(find_button)
 
         layout2 = qt.QtWidgets.QHBoxLayout()
-        for key, check_box in self.find_check_box_dict.items():
-            layout2.addWidget(check_box)
+        if len(self.column_header) < 4:
+            for key, check_box in self.find_check_box_dict.items():
+                layout2.addWidget(check_box)
         # adding 30 pixels horizontally between the buttons to distinguish
         # visually between find_check_box_dict boxes and find_only_params_box
         layout2.addSpacing(30)
@@ -450,7 +485,7 @@ class DictView(qt.QtWidgets.QWidget):
             self.found_titem_list = []
             for column in self.get_current_search_options(as_int=True):
                 self.found_titem_list = \
-                    self.found_titem_list +\
+                    self.found_titem_list + \
                     self.tree_widget.findItems(
                         find_str,
                         qt.QtCore.Qt.MatchFlag.MatchContains |
@@ -472,7 +507,7 @@ class DictView(qt.QtWidgets.QWidget):
             # If search is not empty, only QTreeWidgetItem which are found
             # are displayed
             if not self.found_titem_list == []:
-                self.show_all(self.tree_widget.topLevelItem(0), hide=True)
+                self.show_all(self.root_item, hide=True)
                 for titem in self.found_titem_list:
                     titem.setHidden(False)
                     self.show_titem(titem, expand=True)
@@ -558,8 +593,73 @@ class DictView(qt.QtWidgets.QWidget):
                 self.dict_to_titem(val, row_item, param=False)
         else:
             row_item = qt.QtWidgets.QTreeWidgetItem([key, str(val)])
-
+        if '\n' in row_item.data(1, 0):
+            row_item.setSizeHint(1, qt.QtCore.QSize(100, 50))
         tree_widget.addChild(row_item)
+
+
+class ComparisonDictView(DictView):
+    """
+    QWidget class to display a given dictionary from a comparison of different
+     stations in multiple columns. Some functions of DictView need to be
+     overwritten.
+    """
+    def tree_add_row(self, key: str, val: dict,
+                        tree_widget: qt.QtWidgets.QTreeWidgetItem, param=False):
+        from pycqed.utilities.settings_manager import Timestamp as Timestamp
+        values = [''] * len(self.column_header[1:])
+        if all((tsp in self.column_header[1:] and
+               (isinstance(tsp, Timestamp)))
+               for tsp in val.keys()):
+            for param in val.keys():
+                if isinstance(val[param], dict):
+                    values[self.column_header[1:].index(param)] =\
+                        str(val[param].get('value', val[param]))
+                else:
+                    values[self.column_header[1:].index(param)] = \
+                        str(val[param])
+            row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
+            for i in range(len(self.column_header) - 1):
+                if not self.column_header[i+1] in val.keys():
+                    row_item.setBackground(i+1, qt.QtGui.QBrush(
+                        qt.QtGui.QColor('darkGrey')))
+        else:
+            row_item = qt.QtWidgets.QTreeWidgetItem([key] + values)
+            self.dict_to_titem(val, row_item)
+
+        if any('\n' in row_item.data(i, 0)
+               for i in range(len(self.column_header))):
+            for i in range(len(self.column_header)):
+                row_item.setSizeHint(i, qt.QtCore.QSize(100, 50))
+        tree_widget.addChild(row_item)
+
+    def copy_content(self, column: int):
+        cb = qt.QtWidgets.QApplication.clipboard()
+        cb.clear(mode=cb.Mode.Clipboard)
+        if column == 0:
+            cb.setText(self.tree_widget.currentItem().data(0, 0),
+                       mode=cb.Mode.Clipboard)
+        if column == 1:
+            data = {
+                self.column_header[i+1]:
+                    self.tree_widget.currentItem().data(i+1, 0)
+                for i in range(len(self.column_header[1:]))}
+            cb.setText(str(data),
+                       mode=cb.Mode.Clipboard)
+
+    def get_station_path(self, titem: qt.QtWidgets.QTreeWidgetItem):
+        key_list = []
+        while titem.parent() is not None:
+            key_list.append(str(titem.data(0, 0)))
+            titem = titem.parent()
+        key_list.reverse()
+
+        if len(key_list) > 2:
+            return key_list[0]+'.'+key_list[2]
+        elif len(key_list) > 0:
+            return key_list[0]
+        else:
+            return ''
 
 
 class TreeItemViewer(qt.QtWidgets.QWidget):
@@ -569,7 +669,7 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
     - sorting alphabetically
     """
 
-    def __init__(self, treeitem, screen):
+    def __init__(self, treeitem, screen, column_header):
         """
         Initialization of the TreeItemViewer
         Args:
@@ -580,14 +680,14 @@ class TreeItemViewer(qt.QtWidgets.QWidget):
 
         # Initialization of the tree widget
         self.tree_widget = qt.QtWidgets.QTreeWidget()
-        self.tree_widget.setHeaderLabels(["Key", "Value"])
+        self.tree_widget.setHeaderLabels(column_header)
         self.tree_widget.header().setSectionResizeMode(
             qt.QtWidgets.QHeaderView.ResizeMode.Interactive)
         screen_geom = screen.size()
         # initializes the width of the column: 0.3*screen_size.width() is the
         # width of the entire window defined in AdditionalWindow
         self.tree_widget.header().resizeSection(
-            0, .5 * .3 * screen_geom.width())
+            0, int(.5 * .3 * screen_geom.width()))
         self.tree_widget.setExpandsOnDoubleClick(True)
         self.tree_widget.setSortingEnabled(True)
 
@@ -667,13 +767,16 @@ class AdditionalWindow(qt.QtWidgets.QMainWindow):
         """
         super(AdditionalWindow, self).__init__()
         self.setCentralWidget(
-            TreeItemViewer(dict_view.tree_widget.currentItem(), screen))
+            TreeItemViewer(dict_view.tree_widget.currentItem(),
+                           screen, dict_view.column_header))
         self.setWindowTitle(
             dict_view.get_dirtext(dict_view.tree_widget.currentItem()))
         screen_geom = screen.size()
         # layout options (x-coordinate, y-coordinate, width, height) in px
-        self.setGeometry(0.2 * screen_geom.width(), 0.2 * screen_geom.height(),
-                         0.3 * screen_geom.width(), 0.3 * screen_geom.height())
+        self.setGeometry(int(0.2 * screen_geom.width()),
+                         int(0.2 * screen_geom.height()),
+                         int(0.3 * screen_geom.width()),
+                         int(0.3 * screen_geom.height()))
 
     def keyPressEvent(self, e):
         """
@@ -690,7 +793,8 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
     Main window to display the dictionary with all the features
     """
 
-    def __init__(self, dic: dict, title: str = '', screen=None):
+    def __init__(self, dic: dict, title: str = '', screen=None,
+                 timestamps=None):
         """
         Initialization of the main window
         Args:
@@ -700,21 +804,30 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
         super(DictViewerWindow, self).__init__()
         self.dialogs = list()  # list of additional windows
         self.screen = screen
-        dict_view = DictView(dic, title, screen)
+        if timestamps is None:
+            widget = DictView(dic, title, screen, timestamps=timestamps)
+            self.setWindowTitle("Snapshot Viewer")
+        else:
+            widget = ComparisonDictView(dic, title, screen, timestamps)
+            self.setWindowTitle("Comparison Viewer")
+
+
 
         # open new window with double click
         # dict_view.tree_widget.itemDoubleClicked.connect(
         #   lambda: self.openNewWindow(dict_view))
         # open new window via content menu
-        dict_view.openContentAction.triggered.connect(
-            lambda: self.open_new_window(dict_view))
+        widget.openContentAction.triggered.connect(
+            lambda: self.open_new_window(widget))
 
-        self.setCentralWidget(dict_view)
-        self.setWindowTitle("Snapshot Viewer")
+        self.setCentralWidget(widget)
+
         screen_geom = screen.size()
         # layout options (x-coordinate, y-coordinate, width, height) in px
-        self.setGeometry(0.1 * screen_geom.width(), 0.1 * screen_geom.height(),
-                         0.4 * screen_geom.width(), 0.7 * screen_geom.height())
+        self.setGeometry(int(0.1 * screen_geom.width()),
+                         int(0.1 * screen_geom.height()),
+                         int(0.4 * screen_geom.width()),
+                         int(0.7 * screen_geom.height()))
 
         self.show()
 
@@ -742,61 +855,54 @@ class DictViewerWindow(qt.QtWidgets.QMainWindow):
 
 
 class SnapshotViewer:
-    def __init__(self, snapshot: dict, timestamp: str):
+    def __init__(self, snapshot: dict, timestamp):
         self.snapshot = snapshot
         self.timestamp = timestamp
 
-    def spawn_snapshot_viewer(self):
-        qt_app = qt.QtWidgets.QApplication(sys.argv)
-        screen = qt_app.primaryScreen()
-        snap_viewer = DictViewerWindow(
-            dic=self.snapshot,
-            title='Snapshot timestamp: %s' % self.timestamp,
-            screen=screen)
-        qt_app.exec_()
+    def _prepare_new_process(self):
+        """
+        Helper function to start a new process. Sets the start method.
+        """
+        try:
+            mp.set_start_method('spawn')
+        except RuntimeError:
+            if mp.get_start_method() != 'spawn':
+                log.warning('Child process should be spawned')
 
-
-if __name__ == "__main__":
-    import argparse
-    import pycqed.utilities.settings_manager as sm
-    import pycqed.analysis.analysis_toolbox as a_tools
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data-dir", help="Directory of the settings.")
-    parser.add_argument("--fetch-data-dir",
-                        help="Directory of the fetch drive.")
-    parser.add_argument("--timestamp", help="Timestamp of the settings.",
-                        required=True,
-                        type=str)
-    parser.add_argument("--file-format",
-                        help="File format of the settings: "
-                             "hdf5, pickle or msgpack.",
-                        required=True,
-                        type=str)
-    parser.add_argument("--compression",
-                        help="Set to True if file is compressed with blosc2",
-                        type=bool,
-                        default=False)
-    parser.add_argument("--extension",
-                        help="Extension of the file if not standardized: "
-                             "hdf5: .hdf5, pickle: .pickle, msgpack: .msgpack "
-                             "and an extra c at the end for compressed files.")
-    args = parser.parse_args()
-
-    if args.data_dir is not None:
-        a_tools.datadir = args.data_dir
-
-    if args.fetch_data_dir is not None:
-        a_tools.fetch_data_dir = args.fetch_data_dir
-
-    if (args.data_dir is None) and (args.fetch_data_dir is None):
-        raise NotImplementedError("Data directory or fetch directory needs "
-                                  "to be initialized")
-
-    settings_manager = sm.SettingsManager()
-    settings_manager.load_from_file(timestamp=args.timestamp,
-                                    file_format=args.file_format,
-                                    compression=args.compression,
-                                    extension=args.extension)
-
-    settings_manager.spawn_snapshot_viewer(timestamp=args.timestamp)
+    def spawn_viewer(self, new_process=False):
+        """
+        Spawns the dict viewer. Either spawns the snapshot viewer if
+        self.timestamps (timestamps is set to None) or the comparison viewer if
+        self.timestamps is a list if timestamps (timestamps set to this list)
+        Args:
+            new_process (bool): True if new process should be started, which
+                does not block the IPython kernel. False by default because
+                it takes some time to start the new process.
+        """
+        if new_process:
+            self._prepare_new_process()
+            from pycqed.gui.gui_process import dict_viewer_process
+            qt_lib = qt.QtWidgets.__package__
+            args = (self.snapshot, self.timestamp, qt_lib,)
+            process = mp.Process(target=dict_viewer_process,
+                                 args=args)
+            process.daemon = False
+            process.start()
+        else:
+            if isinstance(self.timestamp, list):
+                title = 'Comparison of %s snapshots' % len(self.timestamp)
+                timestamps = self.timestamp
+            else:
+                title = 'Snapshot timestamp: %s' % self.timestamp
+                timestamps = None
+            if not qt.QtWidgets.QApplication.instance():
+                qt_app = qt.QtWidgets.QApplication(sys.argv)
+            else:
+                qt_app = qt.QtWidgets.QApplication.instance()
+            screen = qt_app.primaryScreen()
+            viewer = DictViewerWindow(
+                dic=self.snapshot,
+                title=title,
+                screen=screen,
+                timestamps=timestamps)
+            qt_app.exec_()

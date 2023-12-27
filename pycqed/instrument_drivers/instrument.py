@@ -1,7 +1,12 @@
 from qcodes.instrument.base import Instrument as QcodesInstrument
 from qcodes.instrument.channel import InstrumentModule as QcodesInstrumentModule
+import weakref
 
-class Instrument(QcodesInstrument):
+class FurtherInstrumentsDictMixIn:
+    _further_instruments = weakref.WeakValueDictionary()
+
+
+class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
     """
     Class for all QCodes instruments.
     """
@@ -39,6 +44,34 @@ class Instrument(QcodesInstrument):
             return args[0]  # interpret second argument as default value
         return super().get(param_name)
 
+    @classmethod
+    def find_instrument(cls, name, instrument_class=None):
+        # This overrides the super method to allow normal qcodes instruments
+        # and other kinds of instruments inheriting from
+        # FurtherInstrumentsDictMixIn (e.g., remote instruments) to find each
+        # other. There is no docstring here since the docstring of the super
+        # method remains valid.
+        try:
+            # First try to find it among the qcodes instruments.
+            return super().find_instrument(
+                name, instrument_class=instrument_class)
+        except KeyError:
+            # Try to find it in the dict of further instruments.
+            if name not in cls._further_instruments:
+                raise KeyError(f"Instrument with name {name} does not exist")
+            # By default, allow qcodes instruments and objects from classes
+            # that include the FurtherInstrumentsDictMixIn.
+            internal_instrument_class = instrument_class or (
+                QcodesInstrument, FurtherInstrumentsDictMixIn)
+            ins = cls._further_instruments[name]
+            if not isinstance(ins, internal_instrument_class):
+                raise TypeError(
+                    f"Instrument {name} is {type(ins)} but "
+                    f"{internal_instrument_class} was requested"
+                )
+            return ins
+
+
 class InstrumentModule(QcodesInstrumentModule):
     """
     Class for all QCodes instruments.
@@ -49,6 +82,7 @@ class InstrumentModule(QcodesInstrumentModule):
         Required as a standard interface for QCoDeS instruments.
         """
         return {'driver': str(self.__class__), 'name': self.name}
+
 
 class DummyVisaHandle:
     """Dummy handle for virtual visa instruments to avoid crash in snapshot

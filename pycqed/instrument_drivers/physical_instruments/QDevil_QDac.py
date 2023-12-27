@@ -4,11 +4,14 @@ import time
 from pyvisa import VisaIOError
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
-from qcodes.instrument_drivers.QDevil.QDevil_QDAC import QDac, Mode
+try:
+    from qcodes_contrib_drivers.drivers.QDevil import QDAC1 as qdac_mod
+except ImportError:
+    from qcodes.instrument_drivers.QDevil import QDevil_QDAC as qdac_mod
 import logging
 log = logging.getLogger(__name__)
 
-class QDacSmooth(QDac):
+class QDacSmooth(qdac_mod.QDac):
     """
     Driver for the QDevil QDAC with the ability to set voltages gradually/
     smoothly.
@@ -44,6 +47,14 @@ class QDacSmooth(QDac):
     def __init__(self, name, port, channel_map):
         super().__init__(name, port, update_currents=False)
         self.channel_map = channel_map
+        for ch in self.channels:
+            # automatically convert modes provided as bare tuples
+            # (e.g., (0, 1)) to the custom Enum-object Mode
+            ch.mode.set_parser = qdac_mod.Mode
+            # and change the validator to allow setting the valid bare tuples
+            ch.mode.vals = vals.Enum(
+                *[a for b in [[v, v.value] for v in ch.mode.vals.valid_values]
+                  for a in b])
 
         self.add_parameter('smooth_timestep', unit='s',
                            label="Delay between sending the write commands"
@@ -194,13 +205,13 @@ class QDacSmooth(QDac):
                 return value
 
         if mode == "vhigh_ihigh":
-            qdac_mode = Mode.vhigh_ihigh
+            qdac_mode = qdac_mod.Mode.vhigh_ihigh
         elif mode == "vhigh_ilow":
-            qdac_mode = Mode.vhigh_ilow
+            qdac_mode = qdac_mod.Mode.vhigh_ilow
         elif mode == "vlow_ilow":
-            qdac_mode = Mode.vlow_ilow
+            qdac_mode = qdac_mod.Mode.vlow_ilow
         else:
-            qdac_mode = Mode.vhigh_ihigh
+            qdac_mode = qdac_mod.Mode.vhigh_ihigh
             log.warning(f"{mode} is not a valid mode. Using the default"
                             "vhigh_ihigh mode.")
 

@@ -11,37 +11,46 @@ from copy import deepcopy
 from collections import OrderedDict
 from more_itertools import unique_everseen
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.measurement.hdf5_data import read_dict_from_hdf5
+from pycqed.utilities.io.hdf5 import read_dict_from_hdf5, decode_attribute_value
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 from pycqed.measurement import sweep_points as sp_mod
+import pycqed.utilities.settings_manager as setman
+from pycqed.instrument_drivers.mock_qcodes_interface import \
+    ParameterNotFoundError
 
 
 def convert_attribute(attr_val):
+    log.warning("Deprecated function, will be removed in a future MR;"
+                " Please use utilities.io.hdf5.decode_attribute_value instead.")
+    return decode_attribute_value(attr_val)
+
+
+def decode_parameter_value(param_value):
     """
-    Converts byte type to string because of h5py datasaving
-    :param attr_val: the raw value of the attribute as retrieved from the HDF
-        file
-    :return: the converted attribute value
+    Converts byte type to the true type of a parameter loaded from a file.
+
+    Args:
+        param_value: the raw value of the parameter as retrieved from the HDF
+            file
+
+    Returns:
+        the converted parameter value
     """
-    if isinstance(attr_val, bytes):
-        attr_val = attr_val.decode('utf-8')
-    # If it is an array of value decodes individual entries
-    if isinstance(attr_val, np.ndarray) or isinstance(attr_val, list):
-        attr_val = [av.decode('utf-8') if isinstance(av, bytes)
-                    else av for av in attr_val]
-    try:
-        return eval(attr_val)
-    except Exception:
-        return attr_val
+    log.warning("Deprecated function, will be removed in a future MR;"
+                " Please use utilities.io.hdf5.decode_attribute_value instead.")
+    return decode_attribute_value(param_value)
 
 
 def get_hdf_param_value(group, param_name):
-    '''
+    """
+    Function will be removed in future MR.
     Returns an attribute "key" of the group "Experimental Data"
     in the hdf5 datafile.
-    '''
+    """
+    log.warning("Deprecated function, will be removed in a future MR; "
+                "Please use get_param_from_group() instead.")
     s = group.attrs[param_name]
-    return convert_attribute(s)
+    return decode_attribute_value(s)
 
 
 def get_value_names_from_timestamp(timestamp, **params):
@@ -50,17 +59,17 @@ def get_value_names_from_timestamp(timestamp, **params):
 
     Args:
         timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
-        **params: keyword arguments passed to open_hdf_file, see docstring there
-            for acceptable input parameters
+        **params: keyword arguments passed to a_tools.open_hdf_file,
+            see docstring there for acceptable input parameters
 
     Returns:
         list of value_names
     """
 
-    data_file = open_hdf_file(timestamp, **params)
+    data_file = a_tools.open_hdf_file(timestamp, **params)
     try:
-        channel_names = get_hdf_param_value(data_file['Experimental Data'],
-                                            'value_names')
+        channel_names = decode_attribute_value(
+            data_file['Experimental Data'].attrs['value_names'])
         data_file.close()
         return channel_names
     except Exception as e:
@@ -68,101 +77,114 @@ def get_value_names_from_timestamp(timestamp, **params):
         raise e
 
 
-def get_param_from_metadata_group(timestamp=None, param_name=None,
-                                  data_file=None, close_file=True, **params):
+def get_param_from_group(group_name, param_name=None, timestamp=None,
+                         folder=None, file=None, find_all_matches=True,
+                         **params):
     """
-    Get a parameter with param_name from the Experimental Metadata group in
-    an HDF5 file, or return the whole group if
-    param_name is None.
+    Extract the value of a parameter from any group in the data files.
 
-    Args:
-        timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
-        param_name (str): name of a key in Experimental Metadata group. If None,
-            the function returns the whole Experimental Metadata group as a dict
-        data_file (open HDF file): measurement file from which to load data
-        close_file (bool): whether to close the ana_file at the end
-        **params: keyword arguments passed to open_hdf_file, see docstring there
-            for acceptable input parameters
+    This functions returns the value of the parameters whose paths in the
+    file end with param_name, i.e. 'Analysis.group1.group2.param_name'.
 
-    Returns:
-        the value of the param_name or the whole experimental metadata
-        dictionary
-    """
-
-    if data_file is None:
-        data_file = open_hdf_file(timestamp, **params)
-    try:
-        if param_name is None:
-            group = data_file['Experimental Data']
-            return read_dict_from_hdf5({}, group['Experimental Metadata'])
-
-        group = data_file['Experimental Data']['Experimental Metadata']
-        if param_name in group:
-            group = group[param_name]
-            param_value = OrderedDict()
-            if isinstance(group, h5py._hl.dataset.Dataset):
-                param_value = list(np.array(group).flatten())
-                param_value = [x.decode('utf-8') if isinstance(x, bytes)
-                               else x for x in param_value]
-            else:
-                param_value = read_dict_from_hdf5(param_value, group)
-        elif param_name in group.attrs:
-            param_value = get_hdf_param_value(group, param_name)
-        else:
-            raise KeyError(f'{param_name} was not found in metadata.')
-        if close_file:
-            data_file.close()
-    except Exception as e:
-        data_file.close()
-        raise e
-    return param_value
-
-
-def get_param_from_analysis_group(param_name, timestamp=None,
-                                  folder=None, **params):
-    """
-    Extract the value of a parameter from the Analysis group of an HDF file.
-
-    This functions returns the value for the parameters whose paths in the
-    HDF file end with param_name, i.e. 'Analysis.group1.group2.param_name'.
     If only one match is found, the function returns the value corresponding
     to that path.
-    If more than one match is found, this function returns a dict will all
-    matches.
+
+    If more than one match is found, this function returns a dict with all
+    matches if find_all_matches==True, or raises a ValueError otherwise.
 
     Args:
+        group_name (str): name of the group to search in, ex:
+            Analysis, Experimental Data, qb1
         param_name (str): name of the parameter to extract
         timestamp (str): timestamp (YYYYMMDD_hhmmss) of the measurement. Will
             be used to find the location of the HDF file
         folder (str): path to the HDF file
+        file (open file): open file where to search
+        find_all_matches (bool): whether to return the values of all the
+            parameters in the group that contain the substring param_name in
+            their path. If this flag is False and more than one parameter
+            contains the string param_name, a ValueError will be raised.
         **params: keyword arguments: not used but are here to allow pass-through
 
     Returns:
         if only one match was found: the value corresponding to param_name
-        if more than one match found: dict with HDF paths as keys and values
-            corresponding to those paths as values
+        if more than one match found: dict with parameters paths as keys and
+            values corresponding to those paths as values
     """
-    if folder is None:
-        folder = a_tools.get_folder(timestamp)
+    if file is None:
+        if folder is None:
+            if timestamp is None:
+                raise ValueError('Please provide either timestamp or folder.')
+            folder = a_tools.get_folder(timestamp)
 
-    ana_group = get_params_from_hdf_file(
-        {}, {'ana_group': 'Analysis'}, folder=folder)
-    if 'ana_group' not in ana_group:
-        raise KeyError(f'There is no Analysis group in the HDF file.')
+        try:
+            group = get_params_from_files(
+                {}, {'group': group_name}, folder=folder)
+        except ParameterNotFoundError:
+            raise KeyError(f'Group "{group_name}" was not found.')
+        group = group['group']
+    else:
+        if group_name not in file:
+            raise KeyError(f'Group "{group_name}" was not found.')
+        group = file[group_name]
 
-    all_matches = find_all_in_dict(param_name, ana_group['ana_group'])
-    param_value = {}
-    for key_paths in all_matches:
-        split_kp = key_paths.split('.')
-        if param_name == split_kp[-1]:
-            param_value[key_paths] = all_matches[key_paths]
+    if param_name is None:
+        return group
+    else:
+        all_matches = find_all_in_dict(param_name, group)
+        param_value = {}
+        for key_paths in all_matches:
+            split_kp = key_paths.split('.')
+            if param_name == split_kp[-1]:
+                param_value[key_paths] = decode_attribute_value(
+                    all_matches[key_paths])
 
-    if len(param_value) == 0:
-        raise KeyError(f'Parameter {param_name} was not '
-                       f'found in the Analysis group.')
-    elif len(param_value) == 1:
-        param_value = list(param_value.values())[0]
-    return param_value
+        if len(param_value) > 1 and not find_all_matches:
+            raise ValueError(f'{len(param_value)} parameters were found that '
+                             f'contain "{param_name}":\n{list(param_value)}.')
+        if len(param_value) == 0:
+            raise KeyError(f'Parameter {param_name} was not '
+                           f'found in group "{group_name}."')
+        elif len(param_value) == 1:
+            param_value = list(param_value.values())[0]
+        return param_value
+
+
+def get_param_from_metadata_group(timestamp=None, param_name=None,
+                                  folder=None, **params):
+    """
+    Returns the value of param_name from the group "Experimental Metadata."
+
+    See docstring of get_param_from_group for more details.
+    """
+    return get_param_from_group('Experimental Metadata', param_name, timestamp,
+                                folder, **params)
+
+
+def get_param_from_analysis_group(timestamp=None, param_name=None,
+                                  folder=None, **params):
+    """
+    Returns the value of param_name from the group "Analysis."
+
+    See docstring of get_param_from_group for more details.
+    """
+    return get_param_from_group('Analysis', param_name, timestamp,
+                                folder, **params)
+
+
+def get_instr_param_from_file(instr_name, param_name=None, timestamp=None,
+                              folder=None, **params):
+    """
+    Returns the value of an instrument parameter of an hdf file.
+
+    Args
+        instr_name (str): name of a instrument, ex: qb1, Pulsar, TWPA
+
+    See docstring of get_param_from_group for more details.
+    """
+    SETTINGS_PREFIX = 'Instrument settings.'
+    return get_param_from_group(SETTINGS_PREFIX+instr_name, param_name,
+                                timestamp, folder, **params)
 
 
 def get_param_from_fit_res(param, fit_res, split_char='.'):
@@ -204,6 +226,14 @@ def get_param_from_fit_res(param, fit_res, split_char='.'):
 
 def get_data_from_hdf_file(timestamp=None, data_file=None, close_file=True,
                            **params):
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use hlp_mod.get_dataset_from_hdf_file() instead.")
+    return get_dataset_from_hdf_file(timestamp=timestamp, data_file=data_file,
+                                     close_file=close_file, **params)
+
+
+def get_dataset_from_hdf_file(timestamp=None, data_file=None, close_file=True,
+                              **params):
     """
     Return the measurement data stored in the Experimental Data group of an
     HDF file.
@@ -212,15 +242,15 @@ def get_data_from_hdf_file(timestamp=None, data_file=None, close_file=True,
         timestamp (str): with a measurement timestamp (YYYYMMDD_hhmmss)
         data_file (open HDF file): measurement file from which to load data
         close_file (bool): whether to close the ana_file at the end
-        **params: keyword arguments passed to open_hdf_file, see docstring there
-            for acceptable input parameters
+        **params: keyword arguments passed to a_tools.open_hdf_file,
+            see docstring there for acceptable input parameters
 
     Returns:
         numpy array with the dataset
     """
 
     if data_file is None:
-        data_file = open_hdf_file(timestamp, **params)
+        data_file = a_tools.open_hdf_file(timestamp, **params)
     try:
         group = data_file['Experimental Data']
         if 'Data' in group:
@@ -254,13 +284,81 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
     Returns:
         open HDF file
     """
-    if filepath is None:
-        if folder is None:
-            assert timestamp is not None
-            folder = a_tools.get_folder(timestamp)
-        filepath = a_tools.measurement_filename(folder, file_id=file_id,
-                                                **params)
-    return h5py.File(filepath, mode)
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use a_tools.open_hdf_file() instead.")
+    return a_tools.open_hdf_file(timestamp=timestamp, folder=folder,
+                                 filepath=filepath, mode=mode, file_id=file_id,
+                                 **params)
+
+
+def get_qb_channel_map_from_file(qb_names, file_path, value_names, **kw):
+    """
+    Construct the qubit channel map based from a config file.
+
+    Args:
+        qb_names (list): list of qubit names
+        file_path (str): path to the HDF file
+        value_names (list): list of detector function value names
+        h5mode (str): HDF opening mode
+
+    Returns
+        qubit channel map as a dict with qubit names as keys and the list of
+        value names corresponding to each qubit as values
+    """
+    channel_map = {}
+
+    if 'raw' in value_names[0]:
+        ro_type = 'raw w'
+    elif 'digitized' in value_names[0]:
+        ro_type = 'digitized w'
+    elif 'lin_trans' in value_names[0]:
+        ro_type = 'lin_trans w'
+    else:
+        ro_type = 'w'
+
+    for qbn in qb_names:
+        SETTINGS_PREFIX = 'Instrument settings.'
+        params_dict = {'acq_I_channel': f'{SETTINGS_PREFIX}{qbn}.acq_I_channel',
+                       'acq_Q_channel': f'{SETTINGS_PREFIX}{qbn}.acq_Q_channel',
+                       'acq_weights_type': f'{SETTINGS_PREFIX}{qbn}.acq_weights_type',
+                       }
+        try:
+            uhf = get_params_from_files(
+                {}, {'instr_acq': f'{SETTINGS_PREFIX}{qbn}.instr_acq'},
+                folder=file_path, **kw)['instr_acq']
+        except KeyError:
+            # Compatibility with older setting files where key
+            # instr_acq was named instr_uhf
+            uhf = get_params_from_files(
+                {}, {'instr_uhf': f'{SETTINGS_PREFIX}{qbn}.instr_uhf'},
+                folder=file_path, **kw)['instr_uhf']
+        try:
+            acq_unit = get_params_from_files(
+                {}, {'acq_unit': f'{SETTINGS_PREFIX}{qbn}.acq_unit'},
+                folder=file_path, **kw)
+            acq_unit = acq_unit['acq_unit']
+        except KeyError:
+            # compatibility with older setting files
+            acq_unit = None
+        params = get_params_from_files({}, params_dict, folder=file_path, **kw)
+        qbchs = [str(params['acq_I_channel'])]
+        ro_acq_weight_type = params['acq_weights_type']
+
+        if ro_acq_weight_type in ['SSB', 'DSB', 'DSB2', 'custom_2D',
+                                  'optimal_qutrit']:
+            qbchs += [str(params['acq_Q_channel'])]
+        if acq_unit is None:  # compatibility with older setting files
+            vn_string = uhf + '_' + ro_type
+        else:
+            vn_string = uhf + '_' + str(acq_unit) + '_' + ro_type
+        channel_map[qbn] = [vn for vn in value_names for nr in qbchs
+                            if vn_string+nr in vn]
+
+    all_values_empty = np.all([len(v) == 0 for v in channel_map.values()])
+    if len(channel_map) == 0 or all_values_empty:
+        raise ValueError('Did not find any channels. '
+                         'qb_channel_map is empty.')
+    return channel_map
 
 
 def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
@@ -278,61 +376,55 @@ def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
     :return: thresholds of the form
         {meas_obj_name: classification threshold value).
     """
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use get_qb_thresholds_from_file() instead.")
+    return get_qb_thresholds_from_file(meas_obj_names, timestamp=timestamp,
+                                    acq_dev_name=acq_dev_name, th_path=th_path,
+                                    th_scaling=th_scaling, **params)
+
+
+def get_qb_thresholds_from_file(meas_obj_names, timestamp=None,
+                                acq_dev_name=None, th_path=None,
+                                th_scaling=1, **params):
+    """
+    Extracts the state classification threshold value for the qubits in
+    meas_obj_names.
+    :param meas_obj_names: list of measured object names
+    :param timestamp: timestamp string of an HDF file from which to extract
+    :param acq_dev_name: name of acquisition device
+    :param th_path: path inside HDF file to the threshold attribute of acq dev
+    :param th_scaling: float by which to scale the threshold values
+    :param params: passed to get_instr_param_from_file. See docstring there.
+    :return: thresholds of the form
+        {meas_obj_name: classification threshold value).
+    """
     use_default_th_path = th_path is None
     thresholds = {}
     for mobjn in meas_obj_names:
         if acq_dev_name is None:
             # take the one defined in mobjn
             try:
-                acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'instr_acq',
-                                                             timestamp,
-                                                             **params)
+                acq_dev_name = get_instr_param_from_file(mobjn, 'instr_acq',
+                                                         timestamp, **params)
             except KeyError:
-                acq_dev_name = get_instr_param_from_hdf_file(mobjn, 'instr_uhf',
-                                                             timestamp,
-                                                             **params)
+                acq_dev_name = get_instr_param_from_file(mobjn, 'instr_uhf',
+                                                         timestamp, **params)
         if use_default_th_path:
             # try to figure out the correct path for the acquisition instrument
             if 'uhf' in acq_dev_name.lower():
                 # acquisition device is a UHFQA
-                ro_ch = get_instr_param_from_hdf_file(mobjn, 'acq_I_channel',
-                                                      timestamp, **params)
+                ro_ch = get_instr_param_from_file(mobjn, 'acq_I_channel',
+                                                  timestamp, **params)
                 th_path = f'qas_0_thresholds_{ro_ch}_level'
             else:
                 raise NotImplementedError('Currently only UHFQA is supported.')
 
-        thresholds[mobjn] = get_instr_param_from_hdf_file(acq_dev_name, th_path,
-                                                          timestamp, **params)
+        thresholds[mobjn] = get_instr_param_from_file(acq_dev_name, th_path,
+                                                      timestamp, **params)
         if thresholds[mobjn] is not None:
             thresholds[mobjn] *= th_scaling
 
     return thresholds
-
-
-def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
-                                  folder=None, **params):
-    """
-    Extracts the value for the parameter specified by param_name for the
-    instrument specified by instr_name from an HDF file.
-    :param instr_name: str specifying the instrument name in the HDF file
-    :param param_name: str specifyin the name of the parameter to extract
-    :param timestamp: str of the form YYYYMMDD_hhmmss.
-    :param folder: path to HDF file
-    :param params: keyword arguments
-    :return: value corresponding to param_name
-    """
-    if folder is None:
-        folder = a_tools.get_folder(timestamp)
-
-    d = {}
-    get_params_from_hdf_file(
-        d, {'instr_param_val': f'Instrument settings.{instr_name}.{param_name}'},
-        folder=folder)
-
-    if 'instr_param_val' not in d:
-        raise KeyError(f'Parameter {param_name} not found for instrument '
-                       f'{instr_name}.')
-    return d['instr_param_val']
 
 
 def get_clf_params_from_hdf_file(timestamp, meas_obj_names,
@@ -374,7 +466,7 @@ def get_clf_params_from_hdf_file(timestamp, meas_obj_names,
                 classifier_params[mobjn] = get_param_from_analysis_group(
                     'classifier_params', timestamp).get(mobjn, None)
             else:
-                classifier_params[mobjn] = get_instr_param_from_hdf_file(
+                classifier_params[mobjn] = get_instr_param_from_file(
                     mobjn, 'acq_classifier_params', timestamp)
 
         if for_ge and classifier_params[mobjn] is not None and \
@@ -420,14 +512,33 @@ def get_state_prob_mtxs_from_hdf_file(timestamp, meas_obj_names,
                 # for whichever qubit was in the Analysis group (might not
                 # be part of meas_obj_names).
                 state_prob_mtxs[mobjn] = get_param_from_analysis_group(
-                    'state_prob_mtx_masked', timestamp).get(mobjn, None)
+                    timestamp, 'state_prob_mtx_masked').get(mobjn, None)
             else:
                 try:
-                    state_prob_mtxs[mobjn] = get_instr_param_from_hdf_file(
+                    state_prob_mtxs[mobjn] = get_instr_param_from_file(
                         mobjn, 'acq_state_prob_mtx', timestamp)
                 except KeyError:
                     state_prob_mtxs[mobjn] = None
     return state_prob_mtxs
+
+
+def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
+                                  folder=None, **params):
+    """
+    Extracts the value for the parameter specified by param_name for the
+    instrument specified by instr_name from an HDF file.
+    :param instr_name: str specifying the instrument name in the HDF file
+    :param param_name: str specifyin the name of the parameter to extract
+    :param timestamp: str of the form YYYYMMDD_hhmmss.
+    :param folder: path to HDF file
+    :param params: keyword arguments
+    :return: value corresponding to param_name
+    """
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use hlp_mod.get_instr_param_from_file() instead.")
+    return get_instr_param_from_file(instr_name, param_name=param_name,
+                                     timestamp=timestamp, folder=folder,
+                                     **params)
 
 
 def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
@@ -451,6 +562,75 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
         h5mode (str, default: 'r+'): reading mode of the HDF file
         close_file (bool, default: True): whether to close the HDF file(s)
     """
+    log.warning("Deprecated function, will be removed in a future MR;"
+                "use hlp_mod.get_params_from_files() instead.")
+    return get_params_from_files(data_dict, params_dict=params_dict,
+                                 numeric_params=numeric_params,
+                                 add_param_method=add_param_method,
+                                 folder=folder,
+                                 **params)
+
+
+def get_params_from_files(data_dict, params_dict=None, numeric_params=None,
+                          add_param_method=None, folder=None, **params):
+    """
+    Extracts the parameters provided in params_dict.values() from the data and
+    config files corresponding to a measurement, and saves them in data_dict
+    under the keys of params_dict.
+
+    The values of params_dict correspond to the paths leading to the desired
+    parameters inside the files:
+    params_dict = {storing key for param: path to param}, where the path to
+    param is the key hierarchy inside a nested dict, separated by "."
+    Example:
+        params_dict = {
+            'qb1_amp180': 'qb1.amp180',
+            'awg': 'Pulsar.AWG1_ch1_awg',
+            'uhf_idn': 'UHF.IDN',
+            'qscale': 'Analysis.Processed data.analysis_params_dict.qb3.qscale',
+            'data_to_fit': 'Experimental Data.Experimental Metadata.data_to_fit'
+            }
+
+    Args
+        data_dict (dict): where the parameter values are saved under the keys
+            of params_dict.
+        params_dict (dict): with keys being the keys under which the parameter
+            values will be stored in data_dict, and the values being
+            parameter names or path + parameter name inside a file.
+        numeric_params: list of parameter names from among the keys of
+            params_dict. This specifies that those parameters are numbers and
+            will be converted to floats.
+        add_param_method: passed to add_param; see docstring there
+        folder: path to files
+        params: keyword arguments:
+            passed to get_param, add_param, open_hdf_file, open_config_file
+            close_file (bool; default: True): whether to close the files
+    """
+
+    def _get_data_dict_location(data_dict, save_par):
+        """
+        Helper function to get the location inside the data dictionary where to
+        append the parameter.
+        Args:
+            data_dict(dict): dictionary where to save the parameter
+            save_par (str): Name of the key where the parameter should be saved.
+                Separations by '.' correspond to an additional layer in the
+                nested dictionary.
+
+        Returns: The location of the dictionary where the parameter should be
+            saved in and save_par as a list split by '.'.
+        """
+        epd = data_dict
+        all_keys = save_par.split('.')
+        for i in range(len(all_keys) - 1):
+            if all_keys[i] not in epd:
+                epd[all_keys[i]] = OrderedDict()
+            epd = epd[all_keys[i]]
+
+        if isinstance(epd, list):
+            epd = epd[-1]
+        return epd, all_keys
+
     if params_dict is None:
         params_dict = get_param('params_dict', data_dict, raise_error=True,
                                 **params)
@@ -459,76 +639,55 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
                                    default_value=[], **params)
 
     # if folder is not specified, will take the last folder in the list from
-    # data_dict['folders']
     if folder is None:
         folder = get_param('folders', data_dict, raise_error=True, **params)
         if len(folder) > 0:
             folder = folder[-1]
 
+    SETTINGS_PREFIX = 'Instrument settings.'
+    settings_keys = [k for k, v in params_dict.items() if
+                     v.startswith(SETTINGS_PREFIX)]
+    settings_dict = {k: v[len(SETTINGS_PREFIX):] for k, v in
+                     params_dict.items()
+                     if k in settings_keys}
+    params_dict = {k: v for k, v in params_dict.items()
+                   if k not in settings_keys}
+
     h5mode = get_param('h5mode', data_dict, default_value='r', **params)
-    data_file = open_hdf_file(folder=folder, mode=h5mode, **params)
+    data_file = a_tools.open_hdf_file(folder=folder, mode=h5mode, **params)
+
+    if settings_keys:
+        # Some hdf files only contain analysis information without instrument
+        # settings. In that case trying to open the file leads to a KeyError
+        # because group ['Instrument settings'] does not exist.
+        config_station = setman.get_station_from_file(
+            folder=folder, param_path=settings_dict.values(), **params)
+    else:
+        config_station = None
 
     try:
         for save_par, file_par in params_dict.items():
-            epd = data_dict
-            all_keys = save_par.split('.')
-            for i in range(len(all_keys)-1):
-                if all_keys[i] not in epd:
-                    epd[all_keys[i]] = OrderedDict()
-                epd = epd[all_keys[i]]
-
-            if isinstance(epd, list):
-                epd = epd[-1]
+            epd, all_keys = _get_data_dict_location(data_dict, save_par)
 
             if file_par == 'measurementstring':
                 add_param(all_keys[-1],
                           [os.path.split(folder)[1][7:]],
                           epd, add_param_method='append')
                 continue
-
-            group_name = '/'.join(file_par.split('.')[:-1])
-            par_name = file_par.split('.')[-1]
-            if group_name == '':
-                group = data_file
-                attrs = []
-            else:
-                group = data_file[group_name]
-                attrs = list(group.attrs)
-
-            if group_name in data_file or group_name == '':
-                if par_name in attrs:
-                    add_param(all_keys[-1],
-                              get_hdf_param_value(group,
-                                                  par_name),
-                              epd, add_param_method=add_param_method)
-                elif par_name in list(group.keys()) or file_par == '':
-                    par = group[par_name] if par_name != '' else group
-                    if isinstance(par,
-                                  h5py._hl.dataset.Dataset):
-                        add_param(all_keys[-1],
-                                  np.array(par),
-                                  epd, add_param_method=add_param_method)
-                    else:
-                        add_param(all_keys[-1],
-                                  read_dict_from_hdf5(
-                                      {}, par),
-                                  epd, add_param_method=add_param_method)
-
-            if all_keys[-1] not in epd:
-                # search through the attributes of all groups
-                for group_name in data_file.keys():
-                    if par_name in list(data_file[group_name].attrs):
-                        add_param(all_keys[-1],
-                                  get_hdf_param_value(data_file[group_name],
-                                                      par_name),
-                                  epd, add_param_method=add_param_method)
-
-            if all_keys[-1] not in epd:
-                log.warning(f'Parameter {file_par} was not found.')
-        data_file.close()
+            tmp_param = extract_from_data_files([data_file], file_par)
+            add_param(all_keys[-1], tmp_param,
+                      epd, add_param_method=add_param_method)
+        a_tools.close_files([data_file])
     except Exception as e:
-        data_file.close()
+        a_tools.close_files([data_file])
         raise e
+
+    # adding instrument settings parameter
+    for save_par, file_par in settings_dict.items():
+        tmp_param = config_station.get(file_par)
+        epd, all_keys = _get_data_dict_location(data_dict, save_par)
+        add_param(all_keys[-1], tmp_param,
+                  epd, add_param_method=add_param_method)
 
     for par_name in data_dict:
         if par_name in numeric_params:
@@ -539,14 +698,121 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
             else:
                 data_dict[par_name] = float(data_dict[par_name])
 
-    if get_param('close_file', data_dict, default_value=True, **params):
-        data_file.close()
-    else:
-        if 'data_files' in data_dict:
-            data_dict['data_files'] += [data_file]
-        else:
-            data_dict['data_files'] = [data_file]
     return data_dict
+
+
+def extract_from_hdf_file(file, path_to_param):
+    """
+    Extracts the value of a parameter from an open HDF file. If a group name is
+    given as path_to_param, it returns the hdf structure as a dictionary.
+
+    Args:
+        file (h5py._hl.files.File, h5py._hl.group.Group): an open HDF file or
+            a group within an open HDF file
+        path_to_param (str): key hierarchy inside a nested dict, separated by "."
+            pointing to the parameter to be extracted
+            Ex: 'Analysis.Processed data.analysis_params_dict.qb3.qscale'
+                In this example, the qscale parameter will be returned.
+
+    Returns:
+        the value of the parameter
+        If the parameter is not found, a ParameterNotFoundError is raised
+    """
+    group_name = '/'.join(path_to_param.split('.')[:-1])
+    par_name = path_to_param.split('.')[-1]
+
+    if group_name == '':
+        # if path_to_param is already as the lowest layer
+        group = file
+        attrs = []
+    else:
+        try:
+            # tries to go to the subgroup which contains the desired
+            # parameter/group
+            group = file[group_name]
+        except KeyError:
+            raise ParameterNotFoundError(path_to_param)
+        attrs = list(group.attrs)
+
+    if par_name in attrs:
+        return decode_attribute_value(group.attrs[par_name])
+    elif par_name in list(group.keys()) or path_to_param == '':
+        # if parameter is a group itself
+        par = group[par_name] if par_name != '' else group
+        if isinstance(par, h5py._hl.dataset.Dataset):
+            # if the parameter is a dataset, e.g. measurement data, it returns
+            # the data as a numpy array
+            return np.array(par)
+        else:
+            try:
+                # It tries to return the entire subgroup as a dictionary.
+                param_value = {}
+                read_from_hdf(param_value, par, raise_exceptions=True)
+                param_value = get_param(f'{group_name}.{par_name}', param_value)
+                return param_value
+            except Exception:
+                # This is a legacy fallback. For instance, read_from_hdf
+                # tries to instantiate a SweepPoints class but this might
+                # fail for some legacy sweep points
+                return read_dict_from_hdf5({}, par)
+
+    # search through the keys and attributes of all groups
+    # Like that one can directly request for attributes or groups from the
+    # second-highest layer, e.g. path_to_param='value_names' yields the same
+    # results as path_to_param='Experimental Data.value_names' for an attribute
+    # or 'Processed Data' instead of 'Analysis.Processed Data'.
+    for group_name in file.keys():
+        if par_name in list(file[group_name].keys()):
+            try:
+                param_value = {}
+                read_from_hdf(param_value, file[group_name][par_name],
+                              raise_exceptions=True)
+                return get_param(f'{group_name}.{par_name}',
+                                        param_value)
+            except Exception:
+                # This is a legacy fallback. For instance, read_from_hdf
+                # tries to instantiate a SweepPoints class but this might
+                # fail for some legacy sweep points
+                return read_dict_from_hdf5(
+                    {}, file[group_name][par_name])
+        if par_name in list(file[group_name].attrs):
+            return decode_attribute_value(
+                file[group_name].attrs[par_name])
+
+    # param_value could not be found
+    raise ParameterNotFoundError(path_to_param)
+
+
+def extract_from_data_files(files, path_to_param):
+    """
+    Extracts the value of a parameter from the open files.
+
+    Args:
+        files (list): of open files in which to search for the parameter
+        path_to_param (str): key hierarchy inside a nested dict, separated by "."
+            pointing to the parameter to be extracted
+            Ex: 'Analysis.Processed data.analysis_params_dict.qb3.qscale'
+                In this example, the qscale parameter will be returned.
+
+    Returns:
+        the value of the parameter
+        If the parameter is not found, ParameterNotFoundError is raised.
+    """
+    for i, file in enumerate(files):
+        # searches in all files
+        try:
+            if isinstance(file, (h5py._hl.files.File, h5py._hl.group.Group)):
+                # HDF file
+                param_value = extract_from_hdf_file(file, path_to_param)
+                # if no ParameterNotFoundError is raise, parameter is found and
+                # search is completed.
+                return param_value
+            else:
+                raise NotImplementedError('Currently only HDF files '
+                                      'are supported.')
+        except ParameterNotFoundError:
+            if i == len(files)-1:
+                raise
 
 
 def get_data_to_process(data_dict, keys_in):
@@ -565,10 +831,6 @@ def get_data_to_process(data_dict, keys_in):
         all_keys = keyi.split('.')
         if len(all_keys) == 1:
             try:
-                # if isinstance(data_dict[all_keys[0]], dict):
-                #     data_to_proc_dict = {f'{keyi}.{k}': deepcopy(v) for k, v
-                #                          in data_dict[all_keys[0]].items()}
-                # else:
                 data_to_proc_dict[keyi] = data_dict[all_keys[0]]
             except KeyError:
                 key_found = False
@@ -605,7 +867,7 @@ def find_all_in_dict(str_to_match, data_dict, split_char='.', key_prev_lev=''):
         key_prev_lev += split_char
     search_res = {}
     for k, v in data_dict.items():
-        if str_to_match in k:
+        if isinstance(k, str) and str_to_match in k:
             search_res[f'{key_prev_lev}{k}'] = data_dict[k]
 
         if isinstance(v, dict):
@@ -772,7 +1034,7 @@ def add_param(name, value, data_dict, split_char='.',
             if isinstance(dd, list):
                 all_keys[i] = int(all_keys[i])
             if not isinstance(dd, list) and all_keys[i] not in dd:
-                dd[all_keys[i]] = OrderedDict()
+                dd[all_keys[i]] = {}
             dd = dd[all_keys[i]]
 
     if isinstance(dd, list) or isinstance(dd, np.ndarray):
@@ -883,32 +1145,12 @@ def get_measurement_properties(data_dict, props_to_extract='all',
             props_to_return += [mobjn]
         else:
             raise KeyError(f'Extracting {prop} is not implemented in this '
-                           f'function. Please use get_params_from_hdf_file.')
+                           f'function. Please use get_params_from_files.')
 
     if len(props_to_return) == 1:
         props_to_return = props_to_return[0]
 
     return props_to_return
-
-
-def get_qb_channel_map_from_file(data_dict, data_keys, **params):
-    file_type = params.get('file_type', 'hdf')
-    qb_names = get_param('qb_names', data_dict, **params)
-    if qb_names is None:
-        raise ValueError('Either channel_map or qb_names must be specified.')
-
-    folder = get_param('folders', data_dict, **params)[-1]
-    if folder is None:
-        raise ValueError('Path to file must be saved in '
-                         'data_dict[folders] in order to extract '
-                         'channel_map.')
-
-    if file_type == 'hdf':
-        qb_channel_map = a_tools.get_qb_channel_map_from_hdf(
-            qb_names, value_names=data_keys, file_path=folder)
-    else:
-        raise ValueError('Only "hdf" files supported at the moment.')
-    return qb_channel_map
 
 
 ## Helper functions ##
@@ -1323,8 +1565,8 @@ def read_analysis_file(timestamp=None, data_dict=None, ana_file=None,
         ana_file (open HDF file): AnalysisResults file from which to load
         close_file (bool): whether to close the ana_file at the end
         file_id (str): suffix of the file name
-        **params: keyword arguments passed to open_hdf_file, see docstring there
-            for acceptable input parameters
+        **params: keyword arguments passed to a_tools.open_hdf_file,
+            see docstring there for acceptable input parameters
 
     Returns:
         the data_dict
@@ -1334,8 +1576,8 @@ def read_analysis_file(timestamp=None, data_dict=None, ana_file=None,
         data_dict = {}
     try:
         if ana_file is None:
-            ana_file = open_hdf_file(timestamp, file_id=file_id,
-                                     **params)
+            ana_file = a_tools.open_hdf_file(timestamp, file_id=file_id,
+                                             **params)
         read_from_hdf(data_dict, ana_file)
         if close_file:
             ana_file.close()
@@ -1351,7 +1593,7 @@ def read_analysis_file(timestamp=None, data_dict=None, ana_file=None,
     return data_dict
 
 
-def read_from_hdf(data_dict, hdf_group):
+def read_from_hdf(data_dict, hdf_group, split_char='.', raise_exceptions=False):
     """
     Adds to data_dict everything found in the HDF group or file hdf_group.
     :param data_dict: dict where the entries will be stored
@@ -1361,11 +1603,11 @@ def read_from_hdf(data_dict, hdf_group):
     try:
         if not len(hdf_group) and not len(hdf_group.attrs):
             path = hdf_group.name.split('/')[1:]
-            add_param('.'.join(path), {}, data_dict)
+            add_param(split_char.join(path), {}, data_dict, split_char=split_char)
 
         for key, value in hdf_group.items():
             if isinstance(value, h5py.Group):
-                read_from_hdf(data_dict, value)
+                read_from_hdf(data_dict, value, split_char, raise_exceptions)
             else:
                 path = value.name.split('/')[1:]
                 if 'list_type' not in value.attrs:
@@ -1379,13 +1621,14 @@ def read_from_hdf(data_dict, hdf_group):
                 if path[-2] == path[-1]:
                     path = path[:-1]
                 was_array = isinstance(val_to_store, np.ndarray)
-                val_to_store = convert_attribute(val_to_store)
+                val_to_store = decode_attribute_value(val_to_store)
                 if was_array:
                     val_to_store = np.array(val_to_store)
                 try:
-                    add_param('.'.join(path), val_to_store, data_dict)
+                    add_param(split_char.join(path), val_to_store, data_dict,
+                              split_char=split_char)
                 except Exception:
-                    log.warning(f'Could not load path {".".join(path)}.')
+                    log.warning(f'Could not load path {split_char.join(path)}.')
 
         path = hdf_group.name.split('/')[1:]
         for key, value in hdf_group.attrs.items():
@@ -1402,33 +1645,39 @@ def read_from_hdf(data_dict, hdf_group):
             if temp_path[-1] != key:
                 temp_path += [key]
             if 'list_type' not in hdf_group.attrs:
-                value = convert_attribute(value)
+                value = decode_attribute_value(value)
                 if key == 'cal_points' and not isinstance(value, str):
                     value = repr(value)
             try:
-                add_param('.'.join(temp_path), value, data_dict)
+                add_param(split_char.join(temp_path), value, data_dict,
+                          split_char=split_char)
             except Exception:
-                log.warning(f'Could not load path {".".join(path)}.')
+                log.warning(f'Could not load path {split_char.join(path)}.')
 
         if 'list_type' in hdf_group.attrs:
             if (hdf_group.attrs['list_type'] == 'generic_list' or
                     hdf_group.attrs['list_type'] == 'generic_tuple'):
-                list_dict = pop_param('.'.join(path), data_dict)
+                list_dict = pop_param(split_char.join(path), data_dict)
                 data_list = []
                 for i in range(list_dict['list_length']):
                     data_list.append(list_dict[f'list_idx_{i}'])
                 if hdf_group.attrs['list_type'] == 'generic_tuple':
                     data_list = tuple(data_list)
                 if path[-1] == 'sweep_points':
+                    # instantiate a SweepPoints class
                     data_list = sp_mod.SweepPoints(data_list)
                 try:
-                    add_param('.'.join(path), data_list, data_dict,
-                              add_param_method='replace')
+                    add_param(split_char.join(path), data_list, data_dict,
+                              add_param_method='replace', split_char=split_char)
                 except Exception:
-                    log.warning(f'Could not load path {".".join(path)}.')
+                    log.warning(f'Could not load path {split_char.join(path)}.')
             else:
                 raise NotImplementedError('cannot read "list_type":"{}"'.format(
                     hdf_group.attrs['list_type']))
-    except Exception:
+    except Exception as e:
         log.error(f"Unable to load: {hdf_group.name}.")
-        log.error(traceback.format_exc())
+        if raise_exceptions:
+            raise e
+        else:
+            log.error(traceback.format_exc())
+
