@@ -698,7 +698,12 @@ class MeasurementControl(Instrument):
         '''
         if np.size(x) == 1:
             x = [x]
-        if self.mode != 'adaptive' and np.size(x) != len(self.sweep_functions):
+        # The len()==1 condition is a consistency check because batch_mode
+        # is currently only implemented for the case of a single sweep
+        # function (e.g., break in the if statement inside the for loop)
+        batch_mode = (len(self.sweep_functions) == 1 and
+                      sweep_functions[0].supports_batch_mode)
+        if np.size(x) != len(self.sweep_functions) and not batch_mode:
             raise ValueError(
                 'size of x "%s" not equal to # sweep functions' % x)
         # The following will be set to True (in the second-last iteration,
@@ -706,10 +711,7 @@ class MeasurementControl(Instrument):
         # last iteration, sweep dimension 0) in a filtered sweep.
         filter_out = False
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
-            # The len()==1 condition is a consistency check because this break
-            # is meaningful if there is 1 sweep function only
-            if len(self.sweep_functions) == 1 and \
-                    sweep_function.supports_batch_mode:
+            if batch_mode:
                 # Here, x corresponds to a tuple of circuit parameters or a
                 # list of tuples of circuit parameters, see
                 # `BlockSoftHardSweep` for details.
@@ -794,8 +796,8 @@ class MeasurementControl(Instrument):
         else:
             vals = self.detector_function.acquire_data_point()
 
-        if len(self.sweep_functions) == 1 and \
-                    sweep_function.supports_batch_mode:
+        if batch_mode:
+            # FIXME: add an explaining comment why the transpose is needed
             vals = vals.T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
@@ -803,17 +805,26 @@ class MeasurementControl(Instrument):
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        # Because x is allowed to be a list of tuples (batch sampling), we
-        # need to reshape and reformat x and vals accordingly before we can
-        # save them to the dset.
-        x = np.atleast_2d(x) # to unify format of x
-        vals = vals.reshape((-1, len(self.detector_function.value_names)))
-        # the following np.concatenate ensures that the measured values are
-        # concatenated with the correct parameters in x.
-        new_data = np.concatenate(
-            (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
-            axis=-1
-        )
+        if batch_mode:
+            # Because x is allowed to be a list of tuples (batch sampling), we
+            # need to reshape and reformat x and vals accordingly before we can
+            # save them to the dset.
+            x = np.atleast_2d(x) # to unify format of x
+            vals = vals.reshape((-1, len(self.detector_function.value_names)))
+            # the following np.concatenate ensures that the measured values are
+            # concatenated with the correct parameters in x.
+            new_data = np.concatenate(
+                (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
+                axis=-1
+            )
+        else:
+            # FIXME: the batch_mode code above is supposed to also treat the
+            #  case without batch mode correctly. However, until someone
+            #  verifies this rigorously (both for measure_soft_adaptive and for
+            #  measure_soft_static with 1D, 2D, 3D sweeps) and adds explaining
+            #  comments, we rather play safe and explicitly keep the
+            #  previous implementation as else branch.
+            new_data = np.append(x, vals)
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
