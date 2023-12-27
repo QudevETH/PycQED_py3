@@ -2651,8 +2651,8 @@ class QuDev_transmon(MeasurementObject):
         return {self.name: self.get_channels(drive=drive, ro=ro, flux=flux)}
 
     def add_reset_schemes(self, preselection=True,
-                         parametric_flux_reset=True,
-                         feedback_reset=True):
+                          parametric_flux_reset=True,
+                          feedback_reset=True):
         from pycqed.measurement.waveform_control import reset_schemes as reset
         msg = "{} submodule already in {}.reset.submodules. " \
               "Submodule won't be created again. "
@@ -2669,7 +2669,7 @@ class QuDev_transmon(MeasurementObject):
                 log.error(msg.format(submodule_name, self.name))
             else:
                 self.reset.add_submodule(submodule_name,
-                                        reset.ParametricFluxReset(self.reset))
+                                         reset.ParametricFluxReset(self.reset))
         if feedback_reset:
             submodule_name = reset.FeedbackReset.DEFAULT_INSTANCE_NAME
             if submodule_name in self.reset.submodules:
@@ -2678,12 +2678,14 @@ class QuDev_transmon(MeasurementObject):
                 self.reset.add_submodule(submodule_name,
                                          reset.FeedbackReset(self.reset))
 
-    def add_parametric_flux_modulation(self, op_name="PFM",
-                                  parameter_prefix='parametric_flux_modulation',
-                                  transition_name='ge',
-                                  pulse_type='BufferedCZPulse'):
+    def add_parametric_flux_modulation(
+            self, op_name="PFM",
+            parameter_prefix='parametric_flux_modulation',
+            transition_name='ge',
+            pulse_type='BufferedCZPulse'):
         """
-                Method to add a parametric flux based reset operation.
+        Method to add a parametric flux based reset operation.
+
         Args:
             op_name:
             parameter_prefix:
@@ -2700,19 +2702,18 @@ class QuDev_transmon(MeasurementObject):
         import pycqed.measurement.waveform_control.pulse as bpl
         pulse_func = bpl.get_pulse_class(pulse_type)
 
-        # for all connected qubits add the operation with name gate_name
-
         parameter_prefix = f'{parameter_prefix}{tn}'
         self.add_operation(op_name)
 
         # get default pulse params for the pulse type
         params = pulse_func.pulse_params()
         for param, init_val in params.items():
-            self.add_pulse_parameter(op_name, parameter_prefix + '_' + param, param,
-                                   initial_value=init_val, vals=None)
+            self.add_pulse_parameter(
+                op_name, parameter_prefix + '_' + param, param,
+                initial_value=init_val, vals=None)
 
         # needed for unresolved pulses but not attribute of pulse object
         if 'basis_rotation' not in params.keys():
-            self.add_pulse_parameter(op_name, parameter_prefix + '_basis_rotation',
-                                   'basis_rotation', initial_value={},
-                                   vals=None)
+            self.add_pulse_parameter(
+                op_name, parameter_prefix + '_basis_rotation',
+                'basis_rotation', initial_value={}, vals=None)
