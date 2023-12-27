@@ -93,8 +93,11 @@ class MeasurementControl(Instrument):
                                  'measure them consecutively',
                            docstring='If set to True, soft averaging is '
                                      'performed cyclically over the soft '
-                                     'sweep points. This is currently only '
-                                     'implemented for "hard" measurements. '
+                                     'sweep points. Consecutive soft '
+                                     'averaging currently only works if the '
+                                     'sweep in dim 0 is a hard sweep. '
+                                     'Otherwise it falls  back to measuring '
+                                     'cyclically in dim 1.'
                                      'Default: True',
                            parameter_class=ManualParameter,
                            vals=vals.Bool(),
@@ -113,9 +116,9 @@ class MeasurementControl(Instrument):
                            initial_value=1)
         self.add_parameter('program_only_on_change',
                            label='Whether to reprogram AWGs',
-                           docstring='Programs AWGs only if the hard sweep '
-                                     'have changed from the last iteration to '
-                                     'speed up the measurements, '
+                           docstring='Programs AWGs only if the soft sweep '
+                                     'parameters changed from the last '
+                                     'iteration. This speeds up measurements '
                                      'e.g. when soft averaging with '
                                      'cyclic_soft_avg = False.',
                            parameter_class=ManualParameter,
