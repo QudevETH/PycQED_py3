@@ -161,10 +161,12 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
             'preparation_params': self.get_prep_params(),
-            'rotate': len(self.cal_states) != 0 and not self.classified,
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
+        # handle 'rotate' separately, as user might want to specify it
+        self.exp_metadata.setdefault(
+            'rotate', len(self.cal_states) != 0 and not self.classified)
         if len(self.data_to_fit):
             self.exp_metadata.update({'data_to_fit': self.data_to_fit})
 
