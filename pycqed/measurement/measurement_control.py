@@ -232,6 +232,9 @@ class MeasurementControl(Instrument):
 
         # We initiallize the adaptive_function parameters
         self.af_pars = {}
+        self.data_processing_function = self._default_data_processing_function
+        """Data processing function for adaptive measurements, see docstring
+        of _default_data_processing_function."""
 
     ##############################################
     # Functions used to control the measurements #
@@ -827,16 +830,22 @@ class MeasurementControl(Instrument):
 
     @staticmethod
     def _default_data_processing_function(vals, dset):
-        ''' Default data processing function that is run in
-        optimization_function (mode = adaptive). Can be overwritten by setting
-        af_pars['data_processing_function'].
+        """Default data processing function for adaptive measurements.
+
+        This is used in optimization_function (mode = adaptive) if no
+        custom function is provided via af_pars['data_processing_function'].
+
+        The default processing takes the first column if the data has two
+        columns. A potential use case of this is for data consisting of
+        magnitude and phase. In case of a single data column, the default
+        processing is an identity operation.
 
         Args:
             vals (array): Array with the output of measurement_function.
-            dset (array): data set self.dset
-        '''
-        # This default processing just arbitrarily takes a single column (I) if
-        # the dataset initially consisted of IQ data [[I_val_seg0, Q_val_seg0]]
+            dset (array): The data set self.dset will be passed here. Not
+                used in the default processing, but included as an argument
+                to allow custom data processing functions to access the dset.
+        """
         if len(np.shape(vals)) == 2:
             vals = np.array(vals)[:, 0]
         return vals
