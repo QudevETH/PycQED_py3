@@ -9013,6 +9013,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
     def _std_error(p, nshots=10000):
         return np.sqrt(np.abs(p)*(1-np.abs(p))/nshots)
 
+
 class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
     """
     Analyzes the performance of (two- or three-level) active reset
@@ -9071,7 +9072,6 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
             if len(projdd_per_prep_state):
                 self.proc_data_dict[pdd + '_per_prep_state' + suffix] = \
                     projdd_per_prep_state
-
 
     def prepare_plots(self):
         # prepare raw population plots
@@ -9156,11 +9156,8 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'legend_pos': legend_pos,
                                     'legend_fontsize': 5}
 
-
-
     def _has_reset_pulses(self, seq_nr):
         return not self.sp.get_values('pulse_off')[seq_nr]
-
 
     def plot(self, **kw):
         super().plot(**kw)
@@ -9246,6 +9243,7 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def _std_error(p, nshots=10000):
         return np.sqrt(np.abs(p)*(1-np.abs(p))/nshots)
+
 
 class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
 
