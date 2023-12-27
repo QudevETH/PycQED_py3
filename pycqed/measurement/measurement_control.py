@@ -721,6 +721,11 @@ class MeasurementControl(Instrument):
                 self.timer.checkpoint(
                     "MeasurementControl.measure_soft_adaptive"
                     ".adaptive_function.swf.set_parameter.end")
+                # Detector functions assume to receive the sweep points
+                # tiled, according to the number in acq_data_len_scaling.
+                # Example SSRO: acq_data_len_scaling equals the number of
+                # shots and prepare will get a sweep point for each shot of
+                # each segment, see IntegratingAveragingPollDetector.prepare.
                 self.detector_function.prepare(
                     np.tile(x, self.acq_data_len_scaling))
                 break
