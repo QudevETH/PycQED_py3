@@ -161,10 +161,12 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
             'preparation_params': self.get_prep_params(),
-            'rotate': len(self.cal_states) != 0 and not self.classified,
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
+        # handle 'rotate' separately, as user might want to specify it
+        self.exp_metadata.setdefault(
+            'rotate', len(self.cal_states) != 0 and not self.classified)
         if len(self.data_to_fit):
             self.exp_metadata.update({'data_to_fit': self.data_to_fit})
 
@@ -192,27 +194,33 @@ class MultiTaskingExperiment(QuantumExperiment):
         super().run_measurement(**kw)
 
     def create_cal_points(self, n_cal_points_per_state=1, cal_states='auto',
-                          for_ef=False, **kw):
+                          for_ef=False, all_states_combinations=False, **kw):
         """
         Creates a CalibrationPoints object based on the given parameters and
-            saves it to self.cal_points.
+        saves it to self.cal_points.
+
+        Custom cal_points for individual measurement objects can be specified.
 
         :param n_cal_points_per_state: number of segments for each
             calibration state
         :param cal_states: str or tuple of str; the calibration states
-            to measure
+            to measure. For custom cal_points per meas_obj use format
+            [[qb1_cs1, qb2_cs1, ..., qbn_cs1], ..., [qb1_csm, ..., qbn_csm]]
         :param for_ef: (deprecated) bool indicating whether to measure the
             |f> calibration state for each qubit
         :param kw: keyword arguments (to allow pass-through kw even if it
             contains entries that are not needed)
+        :param all_states_combinations: see docstring of CalibrationPoints.multi_qubit
         """
         if for_ef:
             log.warning('for_ef is deprecated, use cal_states instead.')
         self.cal_states = CalibrationPoints.guess_cal_states(
             cal_states, for_ef=for_ef)
+
         self.cal_points = CalibrationPoints.multi_qubit(
             self.meas_obj_names, self.cal_states,
-            n_per_state=n_cal_points_per_state)
+            n_cal_points_per_state, all_states_combinations)
+
         self.exp_metadata.update({'cal_points': repr(self.cal_points)})
 
     def preprocess_task_list(self, **kw):
@@ -809,7 +817,7 @@ class CPhase(CalibBuilder):
         FIXME: add further args
         TODO
         :param cz_pulse_name: see CircuitBuilder
-        :param n_cal_points_per_state: see CalibBuilder.get_cal_points()
+        :param n_cal_points_per_state: see MultiTaskingExperiment.create_cal_points()
         :param kw:
             cal_states_rotations: (dict) Overwrite the default choice of
                 cal_states_rotations written to the meta data. The keys are
