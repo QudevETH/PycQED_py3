@@ -200,6 +200,10 @@ class CalibrationPoints:
 
     @staticmethod
     def multi_qubit(qb_names, states, n_per_state=2, all_combinations=False):
+        """
+        Creates calibration points for multiple qubits. See docstring of
+        MultiTaskingExperiment.create_cal_points() for details.
+        """
         n_qubits = len(qb_names)
         if n_qubits == 0:
             return CalibrationPoints(qb_names, [])
