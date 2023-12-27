@@ -89,8 +89,7 @@ class MeasurementControl(Instrument):
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
         self.add_parameter('cyclic_soft_avg',
-                           label='Whether to cycle soft sweep points or '
-                                 'measure them consecutively',
+                           label='Cyclic soft averaging',
                            docstring='If set to True, soft averaging is '
                                      'performed cyclically over the soft '
                                      'sweep points. Consecutive soft '
@@ -115,7 +114,7 @@ class MeasurementControl(Instrument):
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
         self.add_parameter('program_only_on_change',
-                           label='Whether to reprogram AWGs',
+                           label='Program AWGs only on change',
                            docstring='Programs AWGs only if the soft sweep '
                                      'parameters changed from the last '
                                      'iteration. This speeds up measurements '
