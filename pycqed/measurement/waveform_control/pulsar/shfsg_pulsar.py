@@ -3,6 +3,7 @@ from typing import List, Tuple
 
 import numpy as np
 import json
+from functools import partial
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
@@ -51,7 +52,8 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
     CHANNEL_CENTERFREQ_BOUNDS = {
         "analog": (1e9, 8.0e9),
     }
-    IMPLEMENTED_ACCESSORS = ["amp", "centerfreq"]
+
+    IMPLEMENTED_ACCESSORS = ["amp", "centerfreq", "delay"]
 
     _shfsg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -111,6 +113,17 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         """
 
         PulsarAWGInterface.create_channel_parameters(self, id, ch_name, ch_type)
+
+        # Hardware channel delay
+        self.pulsar.add_parameter(
+            f"{ch_name}_hw_channel_delay",
+            unit='s',
+            initial_value=0,
+            set_cmd=partial(self.awg_setter, id, "delay"),
+            get_cmd=partial(self.awg_getter, id, "delay"),
+            docstring=f"Additional delay of output waveforms on "
+                f"channel {ch_name}, implemented on the hardware."
+        )
 
         if id[-1] == 'i':
             param_name = f"{ch_name}_direct_mod_freq"
@@ -211,7 +224,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if param == "amp":
             self.awg.sgchannels[ch].output.range(vp_to_dbm(value))
-        if param == "centerfreq":
+        elif param == "centerfreq":
             # set centerfreq
             self.awg.synthesizers[
                 self.awg.sgchannels[ch].synthesizer()].centerfreq(value,
@@ -224,6 +237,8 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                             f'MHz not supported. Setting center frequency to '
                             f'{new_center_freq/1e6:.6f} MHz. This does NOT '
                             f'automatically set the IF!')
+        elif param == "delay":
+            self.awg.sgchannels[ch].output.delay(value)
 
     def awg_getter(self, id:str, param:str):
         # Sanity checks
@@ -237,9 +252,11 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             else:
                 dbm = self.awg.sgchannels[ch].output.range()
             return dbm_to_vp(dbm)
-        if param == "centerfreq":
+        elif param == "centerfreq":
             return self.awg.synthesizers[
                 self.awg.sgchannels[ch].synthesizer()].centerfreq()
+        elif param == "delay":
+            return self.awg.sgchannels[ch].output.delay()
 
     def program_awg(self, awg_sequence, waveforms, repeat_pattern=None,
                         channels_to_upload="all", channels_to_program="all"):

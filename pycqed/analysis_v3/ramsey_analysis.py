@@ -83,7 +83,7 @@ def analyze_ramsey_fit_results(data_dict, keys_in, **params):
     s = 'Instrument settings.' + mobjn
     for trans_name in ['ge', 'ef']:
         params_dict[f'{mobjn}.{trans_name}_freq'] = s + f'.{trans_name}_freq'
-    hlp_mod.get_params_from_hdf_file(data_dict, params_dict=params_dict,
+    hlp_mod.get_params_from_files(data_dict, params_dict=params_dict,
                                      numeric_params=list(params_dict), **params)
     fit_names = hlp_mod.get_param('fit_names', params, raise_error=True)
     artificial_detuning_dict = hlp_mod.get_param('artificial_detuning_dict',
