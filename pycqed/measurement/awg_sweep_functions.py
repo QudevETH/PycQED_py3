@@ -1,15 +1,6 @@
 import logging
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement.randomized_benchmarking import randomized_benchmarking as rb
-from pycqed.measurement.pulse_sequences import single_qubit_tek_seq_elts as sqs
-from pycqed.measurement.pulse_sequences import single_qubit_2nd_exc_seqs as sqs2
-from pycqed.measurement.pulse_sequences import fluxing_sequences as fsqs
-from pycqed.measurement.pulse_sequences import calibration_elements as csqs
-from pycqed.measurement.pulse_sequences import multi_qubit_tek_seq_elts as mq_sqs
-from pycqed.measurement.waveform_control import pulsar as ps
 from pycqed.measurement import sweep_points as sp_mod
-
-import time
 
 log = logging.getLogger(__name__)
 
