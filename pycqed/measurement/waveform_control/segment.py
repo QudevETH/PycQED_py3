@@ -1094,8 +1094,8 @@ class Segment:
         for (el, group) in longest_pulse:
             length_comp = longest_pulse[(el, group)]
             el_start = self.get_element_start(el, group)
-            buffer = self.pulsar.min_element_buffer() or 0.
-            new_end = t_end + length_comp + buffer
+            el_buffer = self.pulsar.min_element_buffer() or 0.
+            new_end = t_end + length_comp + el_buffer
             awg = self.pulsar.get_awg_from_trigger_group(group)
             new_samples = self.time2sample(new_end - el_start, awg=awg)
             # make sure that element length is multiple of
@@ -1718,7 +1718,7 @@ class Segment:
         # find element start, end and length
         t_end = -np.inf
 
-        buffer = self.pulsar.min_element_buffer() or 0.
+        el_buffer = self.pulsar.min_element_buffer() or 0.
         el_group = (element, trigger_group)
         if el_group not in self._element_start_end_raw:
             t_start_raw = np.inf
@@ -1728,8 +1728,9 @@ class Segment:
                         break
                 else:
                     continue
-                t_start_raw = min(pulse.algorithm_time() - buffer, t_start_raw)
-                t_end = max(pulse.algorithm_time() + pulse.length + buffer,
+                t_start_raw = min(pulse.algorithm_time() - el_buffer,
+                                  t_start_raw)
+                t_end = max(pulse.algorithm_time() + pulse.length + el_buffer,
                             t_end)
                 self._element_start_end_raw[el_group] = (t_start_raw, t_end)
         else:
@@ -1878,10 +1879,10 @@ class Segment:
 
                     # insert the waveforms at the correct position in wfs
                     # offset by the pulsar software channel delay
-                    buffer = self.pulsar.min_element_buffer() or 0.
+                    el_buffer = self.pulsar.min_element_buffer() or 0.
                     for channel in pulse_channels:
                         extra_delay = self.pulsar.get(channel + '_delay') or 0.
-                        if abs(extra_delay) > buffer + 1e-12:
+                        if abs(extra_delay) > el_buffer + 1e-12:
                             raise Exception('Delay on channel {} exceeds the '
                                     'available pulse buffer!'.format(channel))
                         extra_delay_samples = self.time2sample(
