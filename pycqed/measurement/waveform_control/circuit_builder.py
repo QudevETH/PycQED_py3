@@ -42,15 +42,9 @@ class CircuitBuilder:
                 - addressing qubits via logical indices (spin indices)
                 - resolution of ParametricValues in self.sweep_n_dim if
                   body_block_func is used
-            - copying pulse dicts with copy instead of with deepcopy. This means
-              that the user has to ensure that mutable pulse parameters (dicts,
-              lists, etc.) do not get modified by their code.
-            - "destroying" segments after resolving them, meaning that they
-                cannot be resolved again. Not assuming that segments can be
-                reused allows to use less deepcopy operations.
-            - not copying time values between calls to Pulse.waveforms,
-                see Segment. This might be an issue in case someone has the
-                weird idea to modify tvals in Pulse.waveforms.
+            - copying pulse dicts with copy instead of with deepcopy. This
+                means that the user has to ensure that mutable pulse parameters
+                (dicts,lists, etc.) do not get modified by their code.
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],

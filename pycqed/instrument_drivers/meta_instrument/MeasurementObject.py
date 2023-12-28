@@ -335,6 +335,32 @@ class MeasurementObject(Instrument):
             ro_mod_freq = self.ro_mod_freq()
         return ro_freq[0] - ro_mod_freq[0]
 
+    def get_pulse_parameter(self, operation_name=None, argument_name=None):
+        """
+        Returns the Parameter object of the corresponding operation and
+        argument name.
+
+        Args:
+            operation_name: name of operation, e.g. 'RO', 'X180_ef', 'Spec'
+            argument_name: name of argument
+
+        Returns:
+            Parameter object of the corresponding operation and argument,
+            returns None if parameter not found.
+
+        Examples:
+             get_pulse_parameter(operation_op='RO', argument='pulse_length')
+             returns the qb.ro_length parameter object.
+        """
+        try:
+            return self.parameters[self._operations[
+                operation_name][argument_name]]
+        except KeyError:
+            log.warning(f' Could not find parameter for operation '
+                        f'{operation_name} and argument {argument_name}, '
+                        f'returning None')
+            return None
+
     def prepare(self, drive=None, switch='modulated'):
         """Prepare instruments for a measurement involving this measurement
         object.
