@@ -56,6 +56,7 @@ class CircuitBuilder:
         self.dev = dev
         self.qubits, self.qb_names = self.extract_qubits(
             dev, qubits, operation_dict, filter_qb_names)
+        self._prep_sweep_params = {qb: {} for qb in self.qb_names}
         self.update_operation_dict(operation_dict)
         self.cz_pulse_name = kw.get('cz_pulse_name')
         if self.cz_pulse_name is None:
@@ -610,7 +611,7 @@ class CircuitBuilder:
             return Block(block_name, [])
         if reset_params is None:
             reset_params = self.get_reset_params(qb_names)
-        if len(init_state) == 1:
+        if len(init_state) == 1 and isinstance(init_state, str):
             init_state = [init_state] * len(qb_names)
         else:
             assert len(init_state) == len(qb_names), \
@@ -746,7 +747,10 @@ class CircuitBuilder:
                         log.error(f'Reset Step "{steps[qb.name][i]}" not known for {qb.name}.'
                                   f' Available steps are: {qb.reset.instrument_modules.keys()}')
                         raise e
-                    step_blocks.append(reset_scheme.reset_block(f'step_{i}_{qb.name}'))
+                    step_blocks.append(reset_scheme.reset_block(
+                        f'step_{i}_{qb.name}',
+                        sweep_params=self._prep_sweep_params.get(
+                            qb.name, None)))
             prep.append(self.simultaneous_blocks(f"Reset_step_{i}", step_blocks,
                                       set_end_after_all_pulses=True,
                                       block_align=step_alignment))

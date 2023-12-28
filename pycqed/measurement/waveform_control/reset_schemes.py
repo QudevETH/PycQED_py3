@@ -13,7 +13,7 @@ class ResetScheme(InstrumentModule):
     DEFAULT_VALUE = "from parent"
 
     def __init__(self, parent, name, operations=(),
-                 ref_instrument=None, **kwargs):
+                 ref_instrument=None, sweep_params=None, **kwargs):
         super().__init__(parent, name, **kwargs)
 
         self.add_parameter('repetitions', label='repetitions',
@@ -105,14 +105,15 @@ class ResetScheme(InstrumentModule):
     def _get_operations(self):
         return self._operations
 
-    def reset_block(self, name=None, **block_kwargs):
+    def reset_block(self, name=None, sweep_params=None, **block_kwargs):
         if name is None:
             name = self.short_name
         init = block_mod.Block(block_name=name, pulse_list=[])
         self._rep = 0 # set repetition counter to 0
         for i in range(self.repetitions()):
             # build block with buffers for repetition i
-            init_i = self._reset_block(name + f'_{i}', **block_kwargs).build(
+            init_i = self._reset_block(name + f'_{i}', sweep_params,
+                                       **block_kwargs).build(
                 block_delay=self.repetition_buffer_start(),
                 block_end=dict(pulse_delay=self.repetition_buffer_end()))
             init.extend(init_i)
@@ -127,7 +128,7 @@ class ResetScheme(InstrumentModule):
         init.block_end.update(be)
         return init
 
-    def _reset_block(self, name, **kwargs):
+    def _reset_block(self, name, sweep_params, **kwargs):
         return block_mod.Block(name, [], **kwargs)
 
     # FIXME: this is a duplicate of the one in qubit_object; find where
@@ -193,7 +194,7 @@ class Preselection(ResetScheme):
                            parameter_class=ManualParameter)
 
 
-    def _reset_block(self, name, **kwargs):
+    def _reset_block(self, name, sweep_params, **kwargs):
         op_dict = self.instr_ref.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
@@ -201,6 +202,11 @@ class Preselection(ResetScheme):
 
         # update pulse parameters with initialization-specific parameters
         preselection_ro.update(self.get_init_specific_params()['RO'])
+
+        for k, v in sweep_params.items():
+            if k in preselection_ro:
+                preselection_ro[k] = block_mod.ParametricValue(v)
+
         presel_pulses = [preselection_ro]
 
         # modify length and amplitude to match the one of ro pulse in
@@ -210,6 +216,8 @@ class Preselection(ResetScheme):
         #  contains a flux pulse, of which type, etc. Also the logic about the
         #  flux pulse buffers and length is dupplicated from the pulse_library:
         #  NOT GREAT.
+        # FIXME: the following is not compatible with ParametricValue in parameters
+        #  of the preselection_ro
         if preselection_ro['pulse_type'] == "GaussFilteredCosIQPulseWithFlux" and \
             self.compensate_ro_flux():
             compensation_fp = deepcopy(op_dict[f'FP {self.instr_ref.name}'])
@@ -279,7 +287,7 @@ class FeedbackReset(ResetScheme):
         operation_dict[self.get_opcode("I")]['amplitude'] = 0
         return operation_dict
 
-    def _reset_block(self, name, **kwargs):
+    def _reset_block(self, name, sweep_params, **kwargs):
         op_dict = self.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
@@ -354,7 +362,7 @@ class ParametricFluxReset(ResetScheme):
         super().__init__(parent, name=self.DEFAULT_INSTANCE_NAME,
                          operations=operations, **kwargs)
 
-    def _reset_block(self, name, **kwargs):
+    def _reset_block(self, name, sweep_params, **kwargs):
         op_dict = self.get_operation_dict()
 
         reset_pulses = [deepcopy(op_dict[self.get_opcode(op)])
