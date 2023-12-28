@@ -9,7 +9,8 @@ from pycqed.measurement.calibration.automatic_calibration_routines.\
 from pycqed.measurement.calibration.automatic_calibration_routines.base import \
     update_nested_dictionary
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
-    base_automatic_calibration_routine import _device_db_client_module_missing
+    base_automatic_calibration_routine import (_device_db_client_module_missing,
+                                               keyword_subset_for_function)
 
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
@@ -608,66 +609,6 @@ class QScaleStep(qbcal.QScale, Step):
             configure_qubit_mux_drive(self.qubits, drive_lo_freqs)
 
 
-class InPhaseAmpCalibStep(qbcal.InPhaseAmpCalib, Step):
-    """A wrapper class for the InPhaseAmpCalibStep experiment."""
-
-    def __init__(self, routine, *args, **kwargs):
-        """
-        Args:
-            routine (Step): The parent routine.
-
-        Keyword args:
-            qubits (list): List of qubits to be used in the routine.
-
-        Configuration parameters (coming from the configuration parameter
-        dictionary):
-            n_pulses (int): Max number of pi pulses to be applied.
-        """
-        self.kw = kwargs
-        Step.__init__(self, routine=routine, *args, **kwargs)
-        ip_calib_settings = self.parse_settings(self.get_requested_settings())
-        qbcal.InPhaseAmpCalib.__init__(self, dev=self.dev, **ip_calib_settings)
-
-    def parse_settings(self, requested_kwargs):
-        """
-        Searches the keywords for the InPhaseAmpCalib experiment given in
-        requested_kwargs in the configuration parameter dictionary.
-
-        Args:
-            requested_kwargs (dict): Dictionary containing the names of the
-            keywords needed for the InPhaseAmpCalib class.
-
-        Returns:
-            dict: Dictionary containing all keywords with values to be passed to
-            the InPhaseAmpCalib class
-        """
-        kwargs = {}
-
-        kwargs_super = super().parse_settings(requested_kwargs)
-        kwargs_super.update(kwargs)
-
-        return kwargs_super
-
-    def get_requested_settings(self):
-        """
-        Add additional keywords to be passed to the InPhaseAmpCalib class.
-
-        Returns:
-            dict: Dictionary containing names and default values of the keyword
-                arguments to be passed to the InPhaseAmpCalib class.
-        """
-        settings = super().get_requested_settings()
-        settings['kwargs']['n_pulses'] = (int, 100)
-        return settings
-
-    def run(self):
-        """Runs the InPhaseAmpCalib experiment and the analysis for it."""
-        self.run_measurement()
-        self.run_analysis()
-        if self.get_param_value('update'):
-            self.run_update()
-
-
 class PiPulseCalibration(AutomaticCalibrationRoutine):
     """
     Pi-pulse calibration consisting of a Rabi experiment followed by a Ramsey
@@ -771,6 +712,12 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 by (only relevant for displaying results)
             delta_f_unit (str): Unit of the frequency difference (only relevant
                 for displaying results)
+            include_mixer_calib (bool): If True, include mixer
+                calibration for both carrier and skewness.
+            mixer_calib_carrier_settings (bool): Settings for the mixer
+                calibration for the carrier.
+            mixer_calib_skewness_settings (bool): Settings for the mixer
+                calibration for the skewness.
 
         For key words of super().__init__(), see
         :obj:`AutomaticCalibrationRoutine` for more details.
@@ -944,6 +891,11 @@ class FindFrequency(AutomaticCalibrationRoutine):
         decision_settings = {}
         self.add_step(self.Decision, 'decision', decision_settings)
 
+        # Mixer calibration
+        include_mixer_calib = self.get_param_value("include_mixer_calib")
+        if include_mixer_calib:
+            self.add_mixer_calib_steps(**self.kw)
+
     def add_next_pipulse_step(self):
         """Adds a next pipulse step"""
         qubit = self.qubit
@@ -1010,6 +962,63 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 }
         )
 
+    def add_mixer_calib_steps(self, **kw):
+        """
+        Add steps to calibrate the mixer after the rest of the routine is
+        defined. Mixer calibrations are put after every AdaptiveQubitSpectroscopy step.
+
+        Configuration parameters (coming from the configuration parameter
+        dictionary):
+            include_mixer_calib (bool): If True, include mixer
+                calibration for the carrier and for the skewness.
+            mixer_calib_carrier_settings (dict): Settings for the mixer
+                calibration for the carrier.
+            mixer_calib_skewness_settings (dict): Settings for the mixer
+                calibration for the skewness.
+        """
+
+        # Carrier settings
+        mixer_calib_carrier_settings = kw.get("mixer_calib_carrier_settings",
+                                              {})
+        mixer_calib_carrier_settings.update({
+            "qubit": self.qubit,
+            "update": True
+        })
+
+        # Skewness settings
+        mixer_calib_skewness_settings = kw.get("mixer_calib_skewness_settings",
+                                               {})
+        mixer_calib_skewness_settings.update({
+            "qubit": self.qubit,
+            "update": True
+        })
+
+        i = 0
+
+        while i < len(self.routine_template):
+            step_class = self.get_step_class_at_index(i)
+
+            if step_class == AdaptiveQubitSpectroscopy:
+                # Include mixer calibration
+                # Skewness calibration
+                self.add_step(
+                    MixerCalibrationSkewness,
+                    'mixer_calibration_skewness',
+                    mixer_calib_skewness_settings,
+                    index=i + 1,
+                )
+                i += 1
+
+                # Carrier calibration
+                self.add_step(
+                    MixerCalibrationCarrier,
+                    'mixer_calibration_carrier',
+                    mixer_calib_carrier_settings,
+                    index=i + 1,
+                )
+                i += 1
+            i += 1
+
 
 class SingleQubitCalib(AutomaticCalibrationRoutine):
     """
@@ -1028,7 +1037,6 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
     T1Step (t1)
     RamseyStep (echo_large_AD), only for ge transition
     RamseyStep (echo_small_AD), only for ge transition
-    InPhaseAmpCalibStep (in_phase_calib)
     """
 
     def __init__(self, dev, **kw):
@@ -1201,8 +1209,7 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                 for qb in self.qubits:
                     qb.ge_sigma(self.get_param_value('default_ge_sigma'))
                     qb.ef_sigma(self.get_param_value('default_ef_sigma'))
-
-            self.dev.set_default_acq_channels()
+                self.dev.set_default_acq_channels()
 
             self.dev.preparation_params().update(
                 {'preparation_type': self.get_param_value('preparation_type')})
@@ -1231,5 +1238,64 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
         [T1Step, 't1', {}],
         [RamseyStep, 'echo_large_AD', {}],
         [RamseyStep, 'echo_small_AD', {}],
-        [InPhaseAmpCalibStep, 'in_phase_calib', {}],
     ])
+
+
+class MixerCalibrationSkewness(IntermediateStep):
+    """Mixer calibration step that calibrates the skewness of the mixer."""
+
+    def __init__(self, routine, **kw):
+        """
+        Initialize the MixerCalibrationSkewness step.
+
+        Args:
+            routine (Step): Routine object.
+
+        Keyword args:
+            calibrate_drive_mixer_skewness_function: method for calibrating to
+                be used. Default is to use calibrate_drive_mixer_skewness_model.
+        """
+        super().__init__(routine=routine, **kw)
+
+    def run(self):
+        kw = self.kw
+
+        # FIXME: used only default right now, kw is not passed
+        calibrate_drive_mixer_skewness_function = kw.get(
+            "calibrate_drive_mixer_skewness_function",
+            "calibrate_drive_mixer_skewness_model",
+        )
+
+        function = getattr(self.qubit, calibrate_drive_mixer_skewness_function)
+        new_kw = keyword_subset_for_function(kw, function)
+        function(**new_kw)
+
+
+class MixerCalibrationCarrier(IntermediateStep):
+    """Mixer calibration step that calibrates the carrier of the mixer."""
+
+    def __init__(self, routine, **kw):
+        """
+        Initialize the MixerCalibrationCarrier step.
+
+        Args:
+            routine (Step): Routine object.
+
+        Keyword args:
+            calibrate_drive_mixer_carrier_function: method for calibrating to
+                be used. Default is to use calibrate_drive_mixer_carrier_model.
+        """
+        super().__init__(routine=routine, **kw)
+
+    def run(self):
+        kw = self.kw
+
+        # FIXME: Used only default right now, kw is not passed
+        calibrate_drive_mixer_carrier_function = kw.get(
+            "calibrate_drive_mixer_carrier_function",
+            "calibrate_drive_mixer_carrier_model",
+        )
+
+        function = getattr(self.qubit, calibrate_drive_mixer_carrier_function)
+        new_kw = keyword_subset_for_function(kw, function)
+        function(**new_kw)

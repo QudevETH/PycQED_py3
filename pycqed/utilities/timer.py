@@ -1,4 +1,4 @@
-from copy import deepcopy
+from copy import copy, deepcopy
 
 import numpy as np
 import datetime as dt
@@ -6,7 +6,7 @@ import logging
 import time
 from collections import OrderedDict
 from matplotlib.transforms import blended_transform_factory
-from pycqed.measurement.hdf5_data import write_dict_to_hdf5
+from pycqed.utilities.io.hdf5 import write_dict_to_hdf5
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import functools
@@ -85,6 +85,13 @@ class Timer(OrderedDict):
             setattr(result, k, deepcopy(v, memo))
         for k, v in self.items():
             result[(deepcopy(k, memo))] = deepcopy(v, memo)
+        return result
+
+    def __copy__(self):
+        # See comment in __deepcopy__
+        cls = self.__class__
+        result = cls.__new__(cls,  auto_start=False)
+        result.__dict__.update(self.__dict__)
         return result
 
     def __call__(self, func):
@@ -355,20 +362,23 @@ class Timer(OrderedDict):
                                  f"implemented")
         ckpt_pairs = []
         for ckpt in ckpts:
-            if ckpt.endswith(self.name_separator + self.NAME_CKPT_START):
-                ckpt = ckpt[:-len(
-                self.name_separator + self.NAME_CKPT_START)]
-                ckpt_pairs.append(self.find_start_end(ckpt))
-            elif ckpt.endswith(self.name_separator + self.NAME_CKPT_END):
-                ckpt = ckpt[:-len(
-                    self.name_separator + self.NAME_CKPT_END)]
-                ckpt_pairs.append(self.find_start_end(ckpt))
-            else:
-                # checkpoint not part of "start" or "end" binome,
-                # will return twice same checkpoint in pair
-                ckpt_pairs.append(self.find_start_end(ckpt,
-                                                      start_suffix="",
-                                                      end_suffix=""))
+            try:
+                if ckpt.endswith(self.name_separator + self.NAME_CKPT_START):
+                    ckpt = ckpt[:-len(
+                    self.name_separator + self.NAME_CKPT_START)]
+                    ckpt_pairs.append(self.find_start_end(ckpt))
+                elif ckpt.endswith(self.name_separator + self.NAME_CKPT_END):
+                    ckpt = ckpt[:-len(
+                        self.name_separator + self.NAME_CKPT_END)]
+                    ckpt_pairs.append(self.find_start_end(ckpt))
+                else:
+                    # checkpoint not part of "start" or "end" binome,
+                    # will return twice same checkpoint in pair
+                    ckpt_pairs.append(self.find_start_end(ckpt,
+                                                          start_suffix="",
+                                                          end_suffix=""))
+            except Exception as e:
+                log.warning(e)
 
         all_start_and_durations = {}
         for i, (s, e) in enumerate(ckpt_pairs):
@@ -484,7 +494,7 @@ class Timer(OrderedDict):
                     ax.annotate(
                         self._human_delta(total_durations[label],
                                           milliseconds=milliseconds) + " ",
-                        (1.01, i), xycoords=tform)
+                        (1.01, i), xycoords=tform, verticalalignment='center')
                 y_ticklabels.append(label)
 
             elif type == "timeline":
@@ -577,7 +587,7 @@ class Timer(OrderedDict):
         Takes a timedelta object and formats it for humans.
         :param tdelta: The timedelta object.
         :param milliseconds (bool, str): "auto" will display ms in case
-        the time delta is < 1s.
+        the time delta is < 10s.
         :param return_empty (bool): If True, returns a label even if
         the time delta is 0. Defaults to False.
         :return: The human formatted timedelta
@@ -589,6 +599,9 @@ class Timer(OrderedDict):
         d = dict(days=tdelta.days)
         d['hrs'], rem = divmod(tdelta.seconds, 3600)
         d['min'], d['sec'] = divmod(rem, 60)
+
+        if milliseconds == 'auto':
+            milliseconds = tdelta < dt.timedelta(seconds=10)
         if milliseconds:
             d['msec'] = int(np.round(tdelta.microseconds * 1e-3))
         else:
@@ -597,15 +610,15 @@ class Timer(OrderedDict):
 
         if d['days'] != 0:
             fmt = '{days} day(s) {hrs:02}:{min:02}'
-        elif (d['hrs'] == 0 and
-              d['min'] == 0 and
-              d['sec'] == 0 and milliseconds == "auto"):
-            fmt = '{msec:03} ms'
-        else:
+        elif not d['msec']:
             fmt = '{hrs:02}:{min:02}:{sec:02}'
+        elif d['hrs'] + d['min'] > 0:
+            fmt = '{hrs:02}:{min:02}:{sec:02}.{msec:03}'
+        elif d['sec'] > 0:
+            fmt = '{sec:01}.{msec:03} s'
+        else:
+            fmt = '{msec:03} ms'
 
-        if milliseconds and milliseconds != "auto":
-            fmt += '.{msec:03}'
         return fmt.format(**d)
 
 
@@ -623,7 +636,9 @@ def multi_plot(timers, **plot_kwargs):
     # create dummy timer that contains checkpoints of other timers
     tm = Timer(auto_start=False)
     for t in timers:
-        tt = deepcopy(t) # do not modify original timer
+        # Do not modify original timer. Copying is enough since below we only
+        # rename checkpoints and don't modify them
+        tt = copy(t)
         tt.rename_checkpoints(tt.name + "_", which="all")
         tm.update(tt)
 
@@ -643,7 +658,20 @@ class Checkpoint(list):
 
         for v in values:
             if isinstance(v, str):
-                v = dt.datetime.strptime(v, self.fmt)
+                if self.fmt=="%Y-%m-%d %H:%M:%S.%f":
+                    # Manual parsing for speed reasons
+                    v = dt.datetime(
+                        year=int(v[:4]),
+                        month=int(v[5:7]),
+                        day=int(v[8:10]),
+                        hour=int(v[11:13]),
+                        minute=int(v[14:16]),
+                        second=int(v[17:19]),
+                        microsecond=int(v[20:26]),
+                    )
+                else:
+                    # This is generic, but slow
+                    v = dt.datetime.strptime(v, self.fmt)
             self.append(v)
         if log_init:
             self.log_time()

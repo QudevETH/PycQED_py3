@@ -11,7 +11,7 @@ from pycqed.instrument_drivers.physical_instruments.dummy_instruments \
 from pycqed.measurement.optimization import nelder_mead, SPSA
 from pycqed.analysis import measurement_analysis as ma
 from pycqed.utilities.get_default_datadir import get_default_datadir
-from pycqed.measurement.hdf5_data import read_dict_from_hdf5
+from pycqed.utilities.io.hdf5 import read_dict_from_hdf5
 from qcodes.instrument.parameter import ManualParameter
 from qcodes import station
 

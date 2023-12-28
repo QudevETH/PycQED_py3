@@ -3,7 +3,7 @@
         "update": true,
         "use_prior_model": true,
         "get_parameters_from_qubit_object": true,
-        "include_mixer_calib_carrier": false,
+        "include_mixer_calib": false,
         "autorun": false,
         "delegate_plotting": false,
         "Ej_max": 30e9,

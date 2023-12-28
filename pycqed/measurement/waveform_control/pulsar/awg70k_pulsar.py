@@ -9,8 +9,11 @@ import time
 try:
     from pycqed.instrument_drivers.physical_instruments.AWG70002A \
         import AWG70002A
+    from pycqed.instrument_drivers.virtual_instruments.virtual_AWG70002A \
+        import VirtualAWG70002A
 except Exception:
     AWG70002A = type(None)
+    VirtualAWG70002A = type(None)
 
 from .pulsar import PulsarAWGInterface
 
@@ -23,7 +26,7 @@ class AWG70kPulsar(PulsarAWGInterface):
         Currently supports the way SuperQuLAN uses the 70k:
         Slow trigger mode, no marker channels."""
 
-    AWG_CLASSES = [AWG70002A]
+    AWG_CLASSES = [AWG70002A, VirtualAWG70002A]
 
     GRANULARITY = 160
     ELEMENT_START_GRANULARITY = 160 / 25e9
