@@ -194,9 +194,9 @@ class PulsarAWGInterface(ABC):
                              initial_value=0,
                              unit="s",
                              parameter_class=ManualParameter,
-                             docstring="Global delay applied to this channel. "
+                             docstring="Global delay applied to this AWG. "
                                        "Positive values move pulses on this "
-                                       "channel forward in time. "
+                                       "AWG forward in time. "
                                        "Can be a dict with trigger "
                                        "group names as keys.")
         pulsar.add_parameter(f"{name}_trigger_channels",
@@ -263,6 +263,13 @@ class PulsarAWGInterface(ABC):
                              label=f"{ch_name} delay", unit='s',
                              vals=vals.MultiType(vals.Enum(None),
                                                  vals.Numbers()),
+                             docstring="Specific software delay applied to "
+                                       "this channel. It can have any float "
+                                       "value, and sampling rate and "
+                                       "granularity are taken care of later. "
+                                       "This delay does not change trigger "
+                                       "pulses, and operates within the "
+                                       "space provided by min_element_buffer.",
                              parameter_class=ManualParameter)
 
         if ch_type == "analog":
@@ -660,17 +667,26 @@ class Pulsar(Instrument):
             label="Minimum element buffer",
             vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
             parameter_class=ManualParameter,
-            docstring="Enforces a minimum buffer length of zeros at the start "
-                      "and end of each element.")
+            docstring="Introduces the buffer for each element to allow using "
+                      "software channel delays on all channels of all AWGs. "
+                      "Could take any float value. "
+                      "The actual buffer length might be longer than "
+                      "specified here due to granularity or other reasons; "
+                      "however, this parameter enforces a minimum buffer "
+                      "length (at the start and end of each element), which "
+                      "ensures correct working of software delays.")
         self.add_parameter("max_element_start_time",
             initial_value=None, unit='s',
             label="Maximum element start time",
             vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
             parameter_class=ManualParameter,
-            docstring="Enforces the latest t_start of each element in each "
-                      "sequence, i.e. an element would start at most then. "
-                      "Intended usage is for fixing the instrument triggers "
-                      "at some (relatively early) algorithm time.")
+            docstring="With this parameter activated (not None), every "
+                      "element will start at most at max_element_start_time "
+                      "in the algorithm time. If the element already starts "
+                      "earlier, no update is made. Intended usage is while "
+                      "e.g. specifying the algorithm_start to be the start of "
+                      "readout and then fixing the physical timing of "
+                      "the devices' trigger with this parameter.")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names

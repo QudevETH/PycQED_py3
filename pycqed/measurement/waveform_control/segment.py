@@ -142,8 +142,8 @@ class Segment:
         self.pulsar_tmp_vals = []
         """temporary values for pulsar, specific to this segment, in the
         format [('param_name', val), ...]. This should only be used for
-        virtual parameters that influence waveform generation (e.g., channel
-        delay) and not for physical device parameters."""
+        virtual parameters that influence waveform generation (e.g., software
+        channel delay) and not for physical device parameters."""
         self._channel_amps = {}
         # The sweep_params dict is processed by generate_waveforms_sequences
         # and allows to sweep values of nodes of ZI HDAWGs in a hard sweep.
