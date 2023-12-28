@@ -97,6 +97,9 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
     for key, item in data_dict.items():
         if isinstance(key, tuple):
             key = str(key)
+        # hdf5 does not allow int as a group name
+        if isinstance(key, int):
+            key = f"dict_idx_{key}"
 
         # Basic types
         if isinstance(item, (str, float, int, bool, np.number,

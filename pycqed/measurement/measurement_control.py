@@ -88,6 +88,19 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
+        self.add_parameter('cyclic_soft_avg',
+                           label='Cyclic soft averaging',
+                           docstring='If set to True, soft averaging is '
+                                     'performed cyclically over the soft '
+                                     'sweep points. Consecutive soft '
+                                     'averaging currently only works if the '
+                                     'sweep in dim 0 is a hard sweep. '
+                                     'Otherwise it falls  back to measuring '
+                                     'cyclically in dim 1.'
+                                     'Default: True',
+                           parameter_class=ManualParameter,
+                           vals=vals.Bool(),
+                           initial_value=True)
         self.add_parameter('soft_repetitions',
                            label='Number of soft repetitions',
                            docstring='Repeat hard measurements multiple '
@@ -100,6 +113,16 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
+        self.add_parameter('program_only_on_change',
+                           label='Program AWGs only on change',
+                           docstring='Programs AWGs only if the soft sweep '
+                                     'parameters changed from the last '
+                                     'iteration. This speeds up measurements '
+                                     'e.g. when soft averaging with '
+                                     'cyclic_soft_avg = False.',
+                           parameter_class=ManualParameter,
+                           vals=vals.Bool(),
+                           initial_value=False)
 
         self.add_parameter('plotting_max_pts',
                            label='Maximum number of live plotting points',
@@ -451,6 +474,7 @@ class MeasurementControl(Instrument):
         elif self.detector_function.detector_control == 'hard':
             self.get_measurement_preparetime()
             sweep_points = self.get_sweep_points()
+            last_val = {}
 
             while self.get_percdone() < 100:
                 start_idx = self.get_datawriting_start_idx()
@@ -464,6 +488,10 @@ class MeasurementControl(Instrument):
                     for i, sweep_function in enumerate(self.sweep_functions):
                         swf_sweep_points = sweep_points[:, i]
                         val = swf_sweep_points[start_idx]
+                        if self.program_only_on_change() and \
+                                last_val.get(i) == val:
+                            continue
+                        last_val[i] = val
                         # prepare in 2D sweeps is done in set_parameters (though not always
                         # for first upload). Therefore, a common checkpoint is used
                         # in the timer to collect upload times in a single place
@@ -624,11 +652,11 @@ class MeasurementControl(Instrument):
             try:
                 if len(self.sweep_functions) != 1:
                     relevant_swp_points = self.get_sweep_points()[
-                        start_idx:start_idx+len_new_data:]
-                    self.dset[start_idx:, 0:len(self.sweep_functions)] = \
+                        start_idx:stop_idx]
+                    self.dset[start_idx:stop_idx, 0:len(self.sweep_functions)] = \
                         relevant_swp_points
                 else:
-                    self.dset[start_idx:, 0] = self.get_sweep_points()[
+                    self.dset[start_idx:stop_idx, 0] = self.get_sweep_points()[
                         start_idx:start_idx+len_new_data:].T
             except Exception:
                 # There are some cases where the sweep points are not
@@ -1660,8 +1688,11 @@ class MeasurementControl(Instrument):
         '''
         try:
             if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
-                i = int((self.iteration) % self.ylen)
-                y_ind = i
+                if self.cyclic_soft_avg():
+                    i = int(self.iteration % self.ylen)
+                else:
+                    i = int(self.iteration // self.soft_avg())
+
                 cf = self.exp_metadata.get('compression_factor', 1)
                 data = self.detector_function.live_plot_transform(
                     self.dset[i * self.xlen:(i + 1) * self.xlen,
@@ -1675,14 +1706,14 @@ class MeasurementControl(Instrument):
                         y_end = y_start + cf
                         self.TwoD_array[y_start:y_end, :, j] = data_reshaped
                     else:
-                        self.TwoD_array[y_ind, :, j] = data_row
+                        self.TwoD_array[i, :, j] = data_row
                     self.secondary_QtPlot.traces[j]['config']['z'] = \
                         self.TwoD_array[:, :, j]
-
+                is_last_it = self.iteration + 1 == \
+                             (len(self.get_sweep_points()) * self.soft_avg()) \
+                             // self.xlen
                 if (time.time() - self.time_last_2Dplot_update >
-                        self.plotting_interval()
-                        or self.iteration + 1 == len(
-                            self.sweep_points) / self.xlen):
+                        self.plotting_interval() or is_last_it):
                     self.time_last_2Dplot_update = time.time()
                     self.secondary_QtPlot.update_plot()
         except Exception as e:
@@ -2300,9 +2331,19 @@ class MeasurementControl(Instrument):
         else:
             max_sweep_points = np.shape(self.get_sweep_points())[0]
 
-        start_idx = int(self.total_nr_acquired_values % max_sweep_points)
-        self.soft_iteration = int(
-            self.total_nr_acquired_values//max_sweep_points)
+        if self.detector_function.detector_control == 'hard' and \
+                len(self.sweep_functions) > 1 and \
+                not self.cyclic_soft_avg():
+            y_ind = ((self.total_nr_acquired_values // self.xlen)
+                     // self.soft_avg())
+            start_idx = y_ind * self.xlen
+            self.soft_iteration = ((self.total_nr_acquired_values // self.xlen)
+                                   % self.soft_avg())
+        else:
+            start_idx = int(
+                self.total_nr_acquired_values % max_sweep_points)
+            self.soft_iteration = int(
+                self.total_nr_acquired_values // max_sweep_points)
 
         return start_idx
 

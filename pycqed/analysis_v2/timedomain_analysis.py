@@ -10930,6 +10930,9 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             self.fitted_amp_sc_errs = {qbn: np.zeros(len_sp2dd)
                                        for qbn in self.qb_names}
         # store fit results T1, T2 {qbn: len_nr_soft_sp}
+        # FIXME: stores fit results as {qbn: {soft_sp_index: {'Tx': val, ...}}}
+        #  while other analyses typically store as {qbn: {'Tx': [vals], ...}}.
+        #  Also, it probably does not make sense to index a dict with integers.
         self.fitted_coh_times = {qbn: {i: '' for i in range(len_sp2dd)}
                                  for qbn in self.qb_names}
         # store fit lines {qbn: 2D array (each row is a fit line)}

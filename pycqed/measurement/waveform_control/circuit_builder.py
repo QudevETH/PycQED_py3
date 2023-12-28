@@ -40,15 +40,9 @@ class CircuitBuilder:
                 - addressing qubits via logical indices (spin indices)
                 - resolution of ParametricValues in self.sweep_n_dim if
                   body_block_func is used
-            - copying pulse dicts with copy instead of with deepcopy. This means
-              that the user has to ensure that mutable pulse parameters (dicts,
-              lists, etc.) do not get modified by their code.
-            - "destroying" segments after resolving them, meaning that they
-                cannot be resolved again. Not assuming that segments can be
-                reused allows to use less deepcopy operations.
-            - not copying time values between calls to Pulse.waveforms,
-                see Segment. This might be an issue in case someone has the
-                weird idea to modify tvals in Pulse.waveforms.
+            - copying pulse dicts with copy instead of with deepcopy. This
+                means that the user has to ensure that mutable pulse parameters
+                (dicts,lists, etc.) do not get modified by their code.
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
@@ -62,6 +56,7 @@ class CircuitBuilder:
         self.dev = dev
         self.qubits, self.qb_names = self.extract_qubits(
             dev, qubits, operation_dict, filter_qb_names)
+        self._prep_sweep_params = {qb: {} for qb in self.qb_names}
         self.update_operation_dict(operation_dict)
         self.cz_pulse_name = kw.get('cz_pulse_name')
         if self.cz_pulse_name is None:
@@ -530,7 +525,7 @@ class CircuitBuilder:
             return Block(block_name, [])
         if prep_params is None:
             prep_params = self.get_prep_params(qb_names)
-        if len(init_state) == 1:
+        if len(init_state) == 1 and isinstance(init_state, str):
             init_state = [init_state] * len(qb_names)
         else:
             assert len(init_state) == len(qb_names), \
@@ -726,6 +721,11 @@ class CircuitBuilder:
                 preparation_pulses += self.get_pulses('RO ' + qbn)
                 preparation_pulses[-1]['ref_point'] = 'start'
                 preparation_pulses[-1]['element_name'] = 'preselection_element'
+
+                for k, v in self._prep_sweep_params[qbn].items():
+                    if k in preparation_pulses[-1]:
+                        preparation_pulses[-1][k] = ParametricValue(v)
+
             preparation_pulses[0]['ref_pulse'] = ref_pulse
             preparation_pulses[0]['name'] = 'preselection_RO'
             preparation_pulses[0]['pulse_delay'] = -ro_separation
