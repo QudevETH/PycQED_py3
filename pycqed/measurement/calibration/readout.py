@@ -315,7 +315,6 @@ class MeasureSSRO(CalibBuilder):
             self.run_update_ro_params()
 
     def run_update_classifier(self):
-        print('Updating qubit classifier.')
         pdd = self.analysis.proc_data_dict
         twoD = len(self.sweep_points.length()) == 2
 
@@ -327,7 +326,7 @@ class MeasureSSRO(CalibBuilder):
             classifier_params = pddap['classifier_params'][qb.name][best_indx]
             qb.acq_classifier_params().update(classifier_params)
             if 'state_prob_mtx_masked' in pddap:
-                # print(f'Updating classifier of {qb.name}')
+                print(f'Updating classifier of {qb.name}')
                 qb.acq_state_prob_mtx(
                     pddap['state_prob_mtx_masked'][qb.name][best_indx])
             else:
