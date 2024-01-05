@@ -13,27 +13,27 @@ log = logging.getLogger(__name__)
 
 
 class MeasureSSRO(CalibBuilder):
-    """
-    Measures in single shot readout the specified states and performs
-    a Gaussian mixture fit to calibrate the state classifier and provide the
-    single shot readout probability assignment matrix. Can also perform
-    multiplexed SSRO on multiple qubits, i.e. measuring the state preparation
-    fidelities for all combinations of states.
+    """ Performs a single shot readout experiment.
 
-    This replaces the `measure_ssro` and `measure_multiplexed_readout` methods
-    from the multi_qubit_module.
+    Prepares the specified states and measures in single shot readout. The
+    analysis performs a Gaussian mixture fit to calibrate the state classifier
+    and outputs a SSRO probability assignment matrix. This class can also
+    perform multiplexed SSRO on multiple qubits, i.e. measuring the state
+    preparation fidelities for all combinations of states.
 
     This is a multitasking experiment, see docstrings of MultiTaskingExperiment
     and of CalibBuilder for general information.
 
     The segment for each task solely consists of state preparation pulses for
     all the states specified in the `states` keyword followed by a readout.
-    Note that sweep points in dimension 0 will be performed alongside the
-    initialisation state sweep.
 
     Sweeps in dimension 0 and 1 will be interpreted as parameters of the
     readout pulse. 'acq_length' is accepted a special parameter as it specifies
-    the acq_length set in the acquisition device.
+    the acq_length set in the acquisition device. Note that sweep points in
+    dimension 0 will be performed alongside the initialisation state sweep.
+
+    For convenience, this class accepts the ``qubits`` argument in which case
+    task_list is not needed and will be created from qubits.
 
     Note: Sweeps of the acq_length do not automatically adjust the holdoff
     between subsequent readouts, i.e. between potential preselection/feedback
@@ -44,7 +44,7 @@ class MeasureSSRO(CalibBuilder):
         task_list: See docstring of MultiTaskingExperiment.
         qubits: List of qubits on which the SSRO measurement should be performed
         sweep_points: See docstring of QuantumExperiment
-        n_shots (int): Number of measurement repetitions.
+        n_shots (int): Number of measurement repetitions, defaults to 2**15.
         states (str, list): States to perform SSRO on/train the classifier on.
             Can specify custom states for individual qubits using the format
             [[qb1_s1, qb2_s1, ..., qbn_s1], ..., [qb1_sm, ..., qbn_cm]]
@@ -53,16 +53,16 @@ class MeasureSSRO(CalibBuilder):
         multiplexed_ssro (bool): Prepares all possible state combinations.
             This will perform the respective multiplexed SSRO analysis.
         update_classifier (bool): Whether to update the qubit classifiers.
+            Takes effect only if ``update=True`` or if ``run_update`` is called
+            manually.
         update_ro_params (bool): Whether to update the readout pulse
-            parameters. Takes effect only if a sweep was performed.
+            parameters. Takes effect only if a sweep was performed, and only if
+            ``update=True`` or if ``run_update`` is called manually.
         sweep_preselection_ro_pulses (bool): Whether to sweep preselection
             readout pulses the same way as the (final) readout pulse.
-        sweep_feedback_ro_pulses (bool): Whether to sweep feedback readout
-            pulses the same way as the (final) readout pulse.
         **kw: keyword arguments. Can be used to provide keyword arguments to
-            parallel_sweep/sweep_n_dim, preprocess_task_list autorun, to the
-            parent class and analysis class (see docstring of
-            MultiQutrit_Singleshot_Readout_Analysis).
+            parallel_sweep/sweep_n_dim, preprocess_task_list, autorun and to
+            the parent class.
             The following keyword arguments will be copied as a key to tasks
             that do not have their own value specified:
             - `amps` as readout pulse amplitude sweep in dimension 1
@@ -86,7 +86,7 @@ class MeasureSSRO(CalibBuilder):
             # prepare task_list
             if task_list is None:
                 if qubits is None:
-                    raise ValueError('Please provide either'
+                    raise ValueError('Please provide either '
                                      '"qubits" or "task_list"')
                 # Create task_list from qubits
                 if not isinstance(qubits, list):
@@ -128,8 +128,7 @@ class MeasureSSRO(CalibBuilder):
                              sweep_points=sweep_points, **kw)
 
             # for compatibility with analysis, it has to be a 2D sweep
-            self.preprocessed_task_list = self.preprocess_task_list(
-                task_list=task_list, **kw)
+            self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
             self.grouped_tasks = {}
             self.group_tasks(**kw)
@@ -138,14 +137,13 @@ class MeasureSSRO(CalibBuilder):
                 self.sweep_functions = []
                 self.generate_sweep_functions()
 
-            # create sequences and mc_points with an empty dummy sweep block.
             self.sequences, self.mc_points = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block, **kw)
 
-            # for SSRO, IQ data should not be projected/rotated
             self.exp_metadata.update({
-                'rotate': False,
+                'rotate': False,  # for SSRO data should not be rotated
                 'states': states,
+                # set the main sweep point to be the initialisation states
                 'main_sp': {t['qb']: 'initialize'
                             for t in self.preprocessed_task_list},
             })
@@ -245,10 +243,11 @@ class MeasureSSRO(CalibBuilder):
 
     def get_detector_function(self, acq_dev):
         """
-        Helper function which is being called by swf.AcquisitionLengthSweep
-        if acq_length is being swept during the measurement. This function
-        returns the detector function of the corresponding acq_dev, which is
-        then used to set the new acq_length.
+        Returns the detector function of the corresponding acq_dev.
+
+        It is a helper function which is called by swf.AcquisitionLengthSweep
+        if acq_length is being swept during the measurement. It is used to
+        set the new acq_length.
         """
         for d in self.df.detectors:
             if d.acq_dev.name == acq_dev:
@@ -272,19 +271,9 @@ class MeasureSSRO(CalibBuilder):
                         if sweep_preselection_ro_pulses:
                             self._prep_sweep_params[qb][
                                 param_name] = param_name
-                    elif param_name not in ['initialize', 'acq_length']:
-                        log.warning(f" Couldn't find RO pulse parameter "
-                                    f"{param_name}, ignoring this sweep "
-                                    f"parameter.")
         return [ro_block]
 
     def run_analysis(self, analysis_kwargs=None, **kw):
-        """
-        Runs analysis and stores analysis instance in self.analysis.
-        :param analysis_kwargs: (dict) keyword arguments for analysis class
-        :param kw: keyword arguments
-            Passed to parent method.
-        """
         if analysis_kwargs is None:
             analysis_kwargs = {}
 
@@ -300,6 +289,11 @@ class MeasureSSRO(CalibBuilder):
             self.run_update_ro_params()
 
     def run_update_classifier(self):
+        """ Updates qubit classifier.
+
+        Chooses the classifiers that yielded the highest fidelities if a sweep
+        was performed.
+        """
         pdd = self.analysis.proc_data_dict
         twoD = len(self.sweep_points.length()) == 2
 
@@ -311,7 +305,7 @@ class MeasureSSRO(CalibBuilder):
             classifier_params = pddap['classifier_params'][qb.name][best_indx]
             qb.acq_classifier_params().update(classifier_params)
             if 'state_prob_mtx_masked' in pddap:
-                print(f'Updating classifier of {qb.name}')
+                log.info(f'Updating classifier of {qb.name}')
                 qb.acq_state_prob_mtx(
                     pddap['state_prob_mtx_masked'][qb.name][best_indx])
             else:
@@ -321,6 +315,11 @@ class MeasureSSRO(CalibBuilder):
                     pddap['state_prob_mtx'][qb.name][best_indx])
 
     def run_update_ro_params(self):
+        """ Updates RO pulse parameters if sweep was performed.
+
+        Sets qubit readout pulse parameters to the values that yielded the
+        highest fidelity.
+        """
         pdd = self.analysis.proc_data_dict
         twoD = len(self.sweep_points.length()) == 2
 
@@ -336,25 +335,19 @@ class MeasureSSRO(CalibBuilder):
                                                        argument_name=k)
                         if param is not None:
                             param(v[best_indx])
-                            print(f"Set parameter {param.full_name} "
-                                  f" to {v[best_indx]}")
+                            log.info(f"Set parameter {param.full_name} "
+                                     f" to {v[best_indx]}")
                         else:
                             log.warning(' Could not set RO pulse param of '
                                         f'{qb.name} to {v[best_indx]}.')
-
-
-    @classmethod
-    def gui_kwargs(cls, device):
-        # TODO
-        d = super().gui_kwargs(device)
-        # TODO
-        return d
-
 
 class OptimalWeights(CalibBuilder):
     """
     Measures time traces for specified states and finds optimal integration
     weights. Applies filters to optimal integration weights if specified.
+
+    For convenience, this class accepts the ``qubits`` argument in which case
+    task_list is not needed and will be created from qubits.
 
     Note: This QE is not implemented for performing custom sweeps. Sweep
     dimension 0 is used for the time samples and sweep dimension 1 is used for
@@ -397,7 +390,7 @@ class OptimalWeights(CalibBuilder):
             # prepare task_list
             if task_list is None:
                 if qubits is None:
-                    raise ValueError('Please provide either'
+                    raise ValueError('Please provide either '
                                      '"qubits" or "task_list"')
                 # Create task_list from qubits
                 if not isinstance(qubits, list):
@@ -408,17 +401,16 @@ class OptimalWeights(CalibBuilder):
                 if 'qb' in task and not isinstance(task['qb'], str):
                     task['qb'] = task['qb'].name
 
-            # check, whether an UHF is used more than once
-            uhf_names = np.array(
-                [qubit.instr_acq.get_instr().name for qubit in qubits])
-            unique, counts = np.unique(uhf_names, return_counts=True)
+            # check, whether an acquisition device is used more than once
+            acq_dev_names = np.array([qb.instr_acq() for qb in qubits])
+            unique, counts = np.unique(acq_dev_names, return_counts=True)
             for u, c in zip(unique, counts):
                 if c != 1:
                     log.warning(
-                        f"{np.array(qubits)[uhf_names == u]} share the same "
-                        f"UHF ({u}) and therefore their timetraces should not "
-                        f"be measured simultaneously, except if you know what "
-                        f"you are doing.")
+                        f"{np.array(qubits)[acq_dev_names == u]} share the "
+                        f"same acquisition device ({u}) and therefore their "
+                        f"timetraces should not be measured simultaneously, "
+                        f"except if you know what you are doing.")
 
             cal_points = CalibrationPoints.multi_qubit(
                     range(len(task_list)), states, n_per_state=1)
@@ -471,11 +463,9 @@ class OptimalWeights(CalibBuilder):
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
 
-            # for compatibility with analysis, it has to be a 2D sweep
-            self.preprocessed_task_list = self.preprocess_task_list(
-                task_list=task_list, **kw)
+            self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
-            # set temporary values for every qubit and TriggerDevice
+            # set temporary values for every qubit
             for task in self.preprocessed_task_list:
                 qb = self.get_qubits(task['qb'])[0][0]
                 self.temporary_values += [(qb.acq_length, acq_length),
@@ -519,10 +509,7 @@ class OptimalWeights(CalibBuilder):
         Creates sweep block for a qubit containing only the readout.
         """
 
-        pulse_modifs = {'all': {'element_name': 'timetrace_ro_pulse'}}
-        ro_block = self.block_from_ops('timetrace_readout', [f'RO {qb}'],
-                                       pulse_modifs=pulse_modifs)
-        return [ro_block]
+        return [self.block_from_ops('timetrace_readout', [f'RO {qb}'])]
 
     def run_measurement(self, **kw):
         self._set_MC()
@@ -550,7 +537,7 @@ class OptimalWeights(CalibBuilder):
 
     def run_update(self, **kw):
         for qb in self.qubits:
-            print(f'Updating qubit weights of {qb.name}.')
+            log.info(f'Updating qubit weights of {qb.name}.')
             weights = self.analysis.proc_data_dict['analysis_params_dict'][
                 'optimal_weights'][qb.name]
             if np.ndim(weights) == 1:
