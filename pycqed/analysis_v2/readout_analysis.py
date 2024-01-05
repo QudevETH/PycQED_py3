@@ -967,26 +967,33 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         """
         Plots fidelity matrix.
 
+        Plots fraction/number of shots as a grid where the row corresponds to
+        the state the qubits are prepared in and the column the state that was
+        assigned by the classifier(s)m, i.e. the target state. Calculates the
+        fidelity by averaging the trace sum.
+
         Args:
-            fm: 2D fidelity matrix to be plotted
-            target_names: assigned state names
-            prep_names: prepared state names, copies ``target_names`` if
+            fm (numpy.ndarray): 2D fidelity matrix to be plotted
+            target_names (list of str): assigned state names
+            prep_names (list of str): prepared state names, copies
+                ``target_names`` if ``None``
+            title (str): Title of the plot
+            auto_shot_info (bool): Whether to count and plot number of shots
+            ax (matplotlib.axis|optional): axis to plot on, creates new if
                 ``None``
-            title: Title of the plot
-            auto_shot_info: Whether to count and plot number of shots
-            ax (optional): axis to plot on, creates new if ``None``
-            cmap (optional): colour map for the fidelity matrix and colour bar,
-                default: ``get.get_cmap('Reds')``
-            normalize: whether to count and normalize ``fm`` row-wise.
-            show: whether to show plot afterward
-            plot_cb: whether to plot colour bar
-            plot_compact: doesn't annotate all fidelity matrix values and
+            cmap (matplotlib.cm|optional): colour map for the fidelity matrix
+                and colour bar, default: ``get.get_cmap('Reds')``
+            normalize (bool): whether to count and normalize ``fm`` row-wise.
+            show (bool): whether to show plot afterward
+            plot_cb (bool): whether to plot colour bar
+            plot_compact (bool): doesn't annotate all fidelity matrix values &
                 doesn't rotate target value tick marks if set to ``True``
-            presel_column: array of ```len(prep_names)`` values in [0, 1]
-                indicating the fraction of shots that made it through
-                preselection, will be added to the plot as a column.
-            plot_norm: set plotting norm, e.g. ``mc.LogNorm()`` for logarithmic
-                colouring (default)
+            presel_column (list): array of ``len(prep_names)`` values in
+                [0, 1] indicating the fraction of shots for which the
+                preselection condition was fulfilled. Will be added to the plot
+                as a separate column.
+            plot_norm (matplotlib.colors.Normalize): set plotting norm, e.g.
+                ``mc.LogNorm()`` for logarithmic colouring (default)
 
         Returns:
             Plotted fidelity matrix as a figure.
@@ -1027,10 +1034,8 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             if presel_column is not None:
                 target_names = ['pre', *target_names]
             ax.set_xticks(np.arange(len(target_names)))
-            if plot_compact:
-                ax.set_xticklabels(target_names, rotation=90)
-            else:
-                ax.set_xticklabels(target_names, rotation=45)
+            ax.set_xticklabels(target_names,
+                               rotation=90 if plot_compact else 45)
 
         # annotate matrix elements with values in readable colour
         thresh = fm.max() / 1.5 if normalize else fm.max() / 2
