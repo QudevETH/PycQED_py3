@@ -7958,9 +7958,9 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
             timetraces = ana_params['timetraces'][qbn] # for convenience
             basis_labels = self.get_param_value('acq_weights_basis', None, 0)
+            n_labels = min(len(ana_params['timetraces'][qbn]) - 1, 2)
             if basis_labels is None:
                 # guess basis labels from # states measured
-                n_labels = min(len(ana_params['timetraces'][qbn]) - 1, 2)
                 basis_labels = ["ge", "ef"][:n_labels]
 
             if isinstance(basis_labels, dict):
