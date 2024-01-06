@@ -7847,14 +7847,6 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                     residual_tone_filter_sigma (float): specifies the width
                         of the Gaussian filter. Defaults to 1e7 (10 MHz)
         """
-
-        if qb_names is not None:
-            self.params_dict = {}
-            for qbn in qb_names:
-                self.params_dict[f'ro_mod_freq_' + qbn] = \
-                    f'Instrument settings.{qbn}.ro_mod_freq'
-            self.numeric_params = list(self.params_dict)
-
         self.qb_names = qb_names
         super().__init__(**kwargs)
 
@@ -8012,29 +8004,17 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 ana_params['optimal_weights_unfiltered'][qbn] = deepcopy(basis)
                 # TODO: Per qb sampling rate
                 sampling_rate = self.get_param_value('acq_sampling_rate', 1.8e9)
-                try:
-                    filter_options = self.get_param_value(
-                        'residual_tone_filter_options', {})[qbn]
-                except KeyError:
-                    raise ValueError(
-                        "Please provide 'residual_tone_filter_options' dict "
-                        "containing per qb dicts containing ro_freq and "
-                        "ro_mod_freq keys and values.")
+                ro_freq = self.get_instrument_setting(f'{qbn}.ro_freq')
+                ro_mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
 
                 if np.ndim(basis) == 1:
-                    basis = self._filter_residual_tones(basis,
-                                                  filter_options['ro_freq'],
-                                                  filter_options['ro_mod_freq'],
-                                                  sampling_rate,
-                                                  filter_fcn)
+                    basis = self._filter_residual_tones(
+                        basis, ro_freq, ro_mod_freq, sampling_rate, filter_fcn)
                 else:
                     assert np.ndim(basis) == 2, "Basis arr should only be 2D."
                     for i in range(len(basis)):
                         basis[i] = self._filter_residual_tones(
-                            basis[i],
-                            filter_options['ro_freq'],
-                            filter_options['ro_mod_freq'],
-                            sampling_rate,
+                            basis[i], ro_freq, ro_mod_freq, sampling_rate,
                             filter_fcn)
 
             ana_params['optimal_weights'][qbn] = basis
@@ -8084,7 +8064,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         num_states = len(eval(states)) if twoD else len(rdd)
         ana_params = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
-            mod_freq = float(rdd[0].get(f'ro_mod_freq_{qbn}'))
+            mod_freq = float(self.get_instrument_setting(f'{qbn}.ro_mod_freq'))
             tbase = rdd[0]['hard_sweep_points']
             basis_labels = pdd["analysis_params_dict"][
                 'optimal_weights_basis_labels'][qbn]

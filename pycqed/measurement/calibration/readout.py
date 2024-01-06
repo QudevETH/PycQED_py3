@@ -481,18 +481,11 @@ class OptimalWeights(CalibBuilder):
 
             self.mc_points[0] = time_samples
 
-            residual_tone_filter_options = {
-                qb.name: {'ro_freq': qb.ro_freq(),
-                          'ro_mod_freq': qb.ro_mod_freq()
-                          } for qb in self.qubits
-            }
-
             self.exp_metadata.update({
                 'states': states,
                 'orthonormalize': orthonormalize,
                 'acq_weights_basis': acq_weights_basis,
-                'acq_sampling_rate': self.acq_sampling_rate,
-                'residual_tone_filter_options': residual_tone_filter_options
+                'acq_sampling_rate': self.acq_sampling_rate
             })
             options_dict = {'orthonormalize': orthonormalize,
                             'acq_weights_basis': acq_weights_basis}
@@ -531,7 +524,7 @@ class OptimalWeights(CalibBuilder):
         options_dict.update(analysis_kwargs.pop("options_dict", {}))
 
         self.analysis = tda.MultiQutrit_Timetrace_Analysis(
-            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            t_start=self.timestamp,
             options_dict=options_dict, **analysis_kwargs)
         return self.analysis
 
