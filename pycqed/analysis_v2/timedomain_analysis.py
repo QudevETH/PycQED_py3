@@ -24,7 +24,7 @@ from copy import deepcopy
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
-import matplotlib.colors as mc
+import matplotlib.colors as plt_cols
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
 import pycqed.analysis_v3.helper_functions as hlp_mod
 import logging
@@ -9131,7 +9131,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         """
         cmap = roa.MultiQubit_SingleShot_Analysis.get_highcontrast_colormap()
         show = self.options_dict.get("show", False)
-        plot_norm = mc.Normalize(vmin=0., vmax=1.)
+        plot_norm = plt_cols.Normalize(vmin=0., vmax=1.)
         plot_compact = len(np.unique(self.cp.states, axis=0)) > 6
 
         pdd = self.proc_data_dict

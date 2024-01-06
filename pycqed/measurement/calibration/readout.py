@@ -73,61 +73,35 @@ class MeasureSSRO(CalibBuilder):
     kw_for_sweep_points = {
         'amps': dict(param_name='amplitude', unit='V',
                      label='RO Pulse Amplitude', dimension=1),
-        'ro_length': dict(param_name='pulse_length', unit='s',
-                          label='RO Pulse Length', dimension=1),
-        'acq_length': dict(param_name='acq_length', unit='s',
-                           label='Acquisition Length', dimension=1)
+        'ro_lengths': dict(param_name='pulse_length', unit='s',
+                           label='RO Pulse Length', dimension=1),
+        'acq_lengths': dict(param_name='acq_length', unit='s',
+                            label='Acquisition Length', dimension=1)
     }
 
     def __init__(self, task_list=None, qubits=None, sweep_points=None,
                  n_shots=2**15, states='ge', multiplexed_ssro=False,
                  update_classifier=True, update_ro_params=True, **kw):
         try:
-            # prepare task_list
-            if task_list is None:
-                if qubits is None:
-                    raise ValueError('Please provide either '
-                                     '"qubits" or "task_list"')
-                # Create task_list from qubits
-                if not isinstance(qubits, list):
-                    qubits = [qubits]
-                task_list = [{'qb': qb.name} for qb in qubits]
-            for task in task_list:
-                if 'qb' in task and not isinstance(task['qb'], str):
-                    task['qb'] = task['qb'].name
+            qubits, tasklist = self.get_qubits_and_tasklist(qubits, task_list)
 
-            # use the methods for cal_point generation to generate the states
-            cal_points = CalibrationPoints.multi_qubit(
-                    range(len(task_list)), states, n_per_state=1,
-                    all_combinations=multiplexed_ssro)
-            states = cal_points.states
-
-            # parse sweep_points
-            sweep_points = SweepPoints(sweep_points)
-            try:
-                sweep_points.add_sweep_parameter(
-                    'initialize', states, label='SSRO states', dimension=0)
-            except AssertionError:
-                log.warning(f'You tried adding {sweep_points.length()[0]} '
-                            f'sweep points to dimension 0 which is used to '
-                            f'sweep the {len(states)} init states. Did you '
-                            f'mean to add the sweep points to dimension 1? '
-                            f'Ignoring the sweep points of dimension 0.')
-                sweep_points[0] = {'initialize': (states, '', 'SSRO states')}
-
-            self.update_classifier = update_classifier
-            self.update_ro_params = update_ro_params
-
-            kw.update({'cal_states': (),  # we don't want any cal_states.
-                       'df_kwargs': {'nr_shots': n_shots},
-                       'df_name': 'int_log_det',
-                       'data_to_fit': {},
-                       'multiplexed_ssro': multiplexed_ssro,
-                       })
+            kw.setdefault('df_name', 'int_log_det')
+            kw.update({'cal_states': ()})  # we don't want any cal_states.
+            if 'df_kwargs' not in kw:
+                kw['df_kwargs'] = {}
+            kw['df_kwargs'].update({'nr_shots': n_shots})
             super().__init__(task_list, qubits=qubits, n_shots=n_shots,
                              sweep_points=sweep_points, **kw)
 
-            # for compatibility with analysis, it has to be a 2D sweep
+            self.update_classifier = update_classifier
+            self.update_ro_params = update_ro_params
+            self.multiplexed_ssro = multiplexed_ssro
+
+            # create cal_points for analysis, no cal points are measured
+            # store in temporary variable because self.parallel_sweep accesses
+            # self.cal_points to generate actual cal_points
+            ana_cal_points = self._configure_sweep_points(states)
+
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
             self.grouped_tasks = {}
@@ -142,19 +116,73 @@ class MeasureSSRO(CalibBuilder):
 
             self.exp_metadata.update({
                 'rotate': False,  # for SSRO data should not be rotated
-                'states': states,
+                'data_to_fit': {},  # no data to fit for SSRO
                 # set the main sweep point to be the initialisation states
                 'main_sp': {t['qb']: 'initialize'
                             for t in self.preprocessed_task_list},
+                'multiplexed_ssro': self.multiplexed_ssro,
             })
+
             # adding cal points for analysis, no actual cal points are measured
-            cal_points.qb_names = self.qb_names
-            self.cal_points = cal_points
+            self.cal_points = ana_cal_points
 
             self.autorun(**kw)
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    @staticmethod
+    def get_qubits_and_tasklist(qubits, task_list):
+        """
+        Extracts the qubits and task_list from arguments. Implements the
+        shortcut where specifying `qubits` will generate a task_list.
+        """
+        # prepare task_list
+        if task_list is None:
+            if qubits is None:
+                raise ValueError('Please provide either '
+                                 '"qubits" or "task_list"')
+            # Create task_list from qubits
+            if not isinstance(qubits, list):
+                qubits = [qubits]
+            task_list = [{'qb': qb.name} for qb in qubits]
+        for task in task_list:
+            if 'qb' in task and not isinstance(task['qb'], str):
+                task['qb'] = task['qb'].name
+        return qubits, task_list
+
+    def _configure_sweep_points(self, states):
+        """
+        Modifies self.sweep_points to perform the SSRO measurement, i.e.
+        sweeps the init states in dimension 0.
+        """
+        # use the methods for cal_point generation to generate the states
+        cal_points = CalibrationPoints.multi_qubit(
+            [t['qb'] for t in self.task_list], states, n_per_state=1,
+            all_combinations=self.multiplexed_ssro)
+        self.states = cal_points.states
+
+        # parse sweep_points
+        try:
+            self.sweep_points.add_sweep_parameter(
+                'initialize', self.states, label='initial state', dimension=0)
+        except AssertionError:
+            if 'initialize' in self.sweep_points.get_parameters():
+                log.warning(f'You tried sweeping "initialize". '
+                            f'This is already swept in dim 0. Ignoring the '
+                            f'manually added sweep of "initialize".')
+                self.sweep_points.remove_sweep_parameter('initialize')
+            elif len(self.sweep_points.get_parameters(dimension=0)):
+                log.warning(f'You tried adding {self.sweep_points.length()[0]}'
+                            f' sweep points to dimension 0 which is used to '
+                            f'sweep the {len(self.states)} init states. Did '
+                            f'you mean to add the sweep points to dimension 1?'
+                            f' Ignoring the sweep points of dimension 0.')
+                for par in self.sweep_points.get_parameters(dimension=0):
+                    self.sweep_points.remove_sweep_parameter(par)
+            self.sweep_points.add_sweep_parameter(
+                'initialize', self.states, label='initial state', dimension=0)
+        return cal_points
 
     def group_tasks(self, **kw):
         """Fills the grouped_tasks dict with a list of tasks from
@@ -234,7 +262,7 @@ class MeasureSSRO(CalibBuilder):
                     "qubits using the same acquisition device, but this is "
                     f"not the case for {acq_dev}.")
             sf = swf.AcquisitionLengthSweep(
-                lambda: self.get_detector_function(acq_dev))
+                lambda s=self, a=acq_dev: s.get_detector_function(a))
             self.sweep_functions_dict.update({
                 tasks[0]['prefix'] + 'acq_length': sf})
             self.sweep_functions_dict.update({
@@ -278,8 +306,7 @@ class MeasureSSRO(CalibBuilder):
             analysis_kwargs = {}
 
         self.analysis = tda.MultiQutrit_Singleshot_Readout_Analysis(
-            qb_names=self.meas_obj_names, t_start=self.timestamp,
-            **analysis_kwargs)
+            t_start=self.timestamp, **analysis_kwargs)
         return self.analysis
 
     def run_update(self, **kw):
@@ -320,26 +347,27 @@ class MeasureSSRO(CalibBuilder):
         Sets qubit readout pulse parameters to the values that yielded the
         highest fidelity.
         """
+        # only update RO parameters if more than one sp
         pdd = self.analysis.proc_data_dict
-        twoD = len(self.sweep_points.length()) == 2
+        if len(self.sweep_points.length()) != 2 or \
+                pdd['n_dim_2_sweep_points'] <= 1:
+            return
 
         for task in self.preprocessed_task_list:
             qb = self.get_qubits(task['qb'])[0][0]
-            # only update RO parameters if more than one sp:
-            if twoD and pdd['n_dim_2_sweep_points'] > 1:
-                best_indx = pdd['best_fidelity'][qb.name]['sweep_index']
-                qb_sp_dict = pdd['sweep_points_2D_dict'][qb.name]
-                if len(qb_sp_dict) > 0:
-                    for k, v in qb_sp_dict.items():
-                        param = qb.get_pulse_parameter(operation_name='RO',
-                                                       argument_name=k)
-                        if param is not None:
-                            param(v[best_indx])
-                            log.info(f"Set parameter {param.full_name} "
-                                     f" to {v[best_indx]}")
-                        else:
-                            log.warning(' Could not set RO pulse param of '
-                                        f'{qb.name} to {v[best_indx]}.')
+            best_indx = pdd['best_fidelity'][qb.name]['sweep_index']
+            qb_sp_dict = pdd['sweep_points_2D_dict'][qb.name]
+            for k, v in qb_sp_dict.items():
+                param = qb.get_pulse_parameter(operation_name='RO',
+                                               argument_name=k)
+                if param is not None:
+                    param(v[best_indx])
+                    log.info(f"Set parameter {param.full_name} "
+                             f" to {v[best_indx]}")
+                else:
+                    log.warning('Could not set RO pulse param of '
+                                f'{qb.name} to {v[best_indx]}.')
+
 
 class OptimalWeights(CalibBuilder):
     """
@@ -385,117 +413,148 @@ class OptimalWeights(CalibBuilder):
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  states=('g', 'e'), acq_length=None, acq_weights_basis=None,
-                 orthonormalize=True, soft_avg=30, n_shots=2**15, **kw):
+                 orthonormalize=True, soft_avg=30, acq_averages=2**15, **kw):
         try:
-            # prepare task_list
-            if task_list is None:
-                if qubits is None:
-                    raise ValueError('Please provide either '
-                                     '"qubits" or "task_list"')
-                # Create task_list from qubits
-                if not isinstance(qubits, list):
-                    qubits = [qubits]
-                # Create task_list from qubits
-                task_list = [{'qb': qb.name} for qb in qubits]
-            for task in task_list:
-                if 'qb' in task and not isinstance(task['qb'], str):
-                    task['qb'] = task['qb'].name
-
-            # check, whether an acquisition device is used more than once
-            acq_dev_names = np.array([qb.instr_acq() for qb in qubits])
-            unique, counts = np.unique(acq_dev_names, return_counts=True)
-            for u, c in zip(unique, counts):
-                if c != 1:
-                    log.warning(
-                        f"{np.array(qubits)[acq_dev_names == u]} share the "
-                        f"same acquisition device ({u}) and therefore their "
-                        f"timetraces should not be measured simultaneously, "
-                        f"except if you know what you are doing.")
-
-            cal_points = CalibrationPoints.multi_qubit(
-                    range(len(task_list)), states, n_per_state=1)
-            states = cal_points.states
-            sweep_points = SweepPoints(sweep_points)
-
-            # get sampling rate from first qubit
-            self.acq_sampling_rate = qubits[
-                0].instr_acq.get_instr().acq_sampling_rate
-
-            # infer acq_length if None
-            if acq_length is None:
-                acq_length = qubits[0].instr_acq.get_instr().acq_weights_n_samples / \
-                             self.acq_sampling_rate
-            self.acq_length = acq_length
-
-            # get number of samples for all qubits
-            samples = [(qb.instr_acq.get_instr(),
-                        qb.instr_acq.get_instr().convert_time_to_n_samples(
-                            acq_length, align_acq_granularity=True)) for qb
-                       in qubits]
-            # sort by number of samples
-            samples.sort(key=lambda t: t[1])
-            # generate sample times from first qb
-            time_samples = samples[0][0].get_sweep_points_time_trace(
-                acq_length, align_acq_granularity=True)
-
-            # ensure no sweep_points in first dimension since used for sampling
-            # times
-            if len(sweep_points.length()) > 0 and sweep_points.length()[0] > 0:
-                log.warning(f'You tried adding sweep points to dimension 0 '
-                            f'which is used for the sampling times. '
-                            f'Ignoring the sweep points of dimension 0.')
-                sweep_points[0] = {}
-
-            # add second dimension sweep_points (timetrace init states)
-            try:
-                sweep_points.add_sweep_parameter(
-                    'initialize', states, label='timetrace states', dimension=1)
-            except AssertionError:
-                log.warning(f'You tried adding {sweep_points.length()[1]} '
-                            f'sweep points to dimension 1 which is used to '
-                            f'sweep the {len(states)} init states. '
-                            f'Ignoring the sweep points of dimension 1.')
-                sweep_points[1] = {'initialize': (states, '', 'timetrace states')}
+            qubits, task_list = MeasureSSRO.get_qubits_and_tasklist(
+                qubits, task_list)
 
             kw.update({'cal_states': (),  # we don't want any cal_states.
-                       'df_name': 'inp_avg_det',
-                       })
+                       'df_name': 'inp_avg_det'})
+
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
 
+            self.soft_avg = soft_avg
+            self.orthonormalize = orthonormalize
+            self.acq_averages = acq_averages
+            self.acq_weights_basis = acq_weights_basis
+
+            self._check_acq_devices()
+            self._configure_time_samples(acq_length)
+            self._configure_sweep_points(states)
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
             # set temporary values for every qubit
             for task in self.preprocessed_task_list:
-                qb = self.get_qubits(task['qb'])[0][0]
-                self.temporary_values += [(qb.acq_length, acq_length),
-                                          (qb.acq_weights_type, 'SSB'), ]
-                if isinstance(n_shots, int):
-                    self.temporary_values += [(qb.acq_averages, n_shots)]
+                qb = self.get_qubit(task)
+                self.temporary_values += [(qb.acq_length, self.acq_length), ]
+                if acq_averages is not None:
+                    self.temporary_values += [(qb.acq_averages, acq_averages)]
 
-            self.soft_avg = soft_avg
-
-            # create sequences and mc_points with an empty dummy sweep block.
-            self.sequences, _ = self.parallel_sweep(
+            # create sequences and mc_points with an empty sweep block.
+            self.sequences, self.mc_points = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block, **kw)
 
-            self.mc_points[0] = time_samples
+            self.mc_points[0] = self.time_samples
 
             self.exp_metadata.update({
-                'states': states,
-                'orthonormalize': orthonormalize,
-                'acq_weights_basis': acq_weights_basis,
+                'states': self.states,
+                'orthonormalize': self.orthonormalize,
+                'acq_weights_basis': self.acq_weights_basis,
                 'acq_sampling_rate': self.acq_sampling_rate
             })
-            options_dict = {'orthonormalize': orthonormalize,
-                            'acq_weights_basis': acq_weights_basis}
-            kw.update(options_dict)
 
             self.autorun(**kw)
         except Exception as x:
             self.exception = x
             traceback.print_exc()
         return
+
+    def get_qubit(self, task):
+        """Shortcut to extract the qubit object from a task.
+        """
+        return self.get_qubits(task['qb'])[0][0]
+
+    def _check_acq_devices(self):
+        """
+        Checks whether an acquisition device is used more than once.
+        """
+        qbs_in_tasks = [self.get_qubit(task) for task in self.task_list]
+        acq_dev_names = np.array([qb.instr_acq() for qb in qbs_in_tasks])
+        unique, counts = np.unique(acq_dev_names, return_counts=True)
+        for u, c in zip(unique, counts):
+            if c != 1:
+                log.warning(
+                    f"{np.array(qbs_in_tasks)[acq_dev_names == u]} share the "
+                    f"same acquisition device ({u}) and therefore their "
+                    f"timetraces should not be measured simultaneously, "
+                    f"except if you know what you are doing.")
+        return
+
+    def _configure_time_samples(self, acq_length):
+        """
+        Populates the fields
+         - self.acq_sampling_rate
+         - self.acq_length
+         - self.time_samples
+        """
+        # get sampling rate from qubits
+        acq_sampling_rates = [self.get_qubit(task).instr_acq
+                                  .get_instr().acq_sampling_rate
+                              for task in self.task_list]
+        unique_vals, count = np.unique(acq_sampling_rates, return_counts=True)
+        if len(count) > 1:
+            raise NotImplementedError("Currently only supports one sampling "
+                                      "rate across all qubits.")
+        self.acq_sampling_rate = unique_vals[0]
+
+        # infer acq_length if None from first qubit
+        if acq_length is None:
+            qb = self.get_qubit(self.task_list[0])
+            acq_length = qb.instr_acq.get_instr().acq_weights_n_samples / \
+                         self.acq_sampling_rate
+        self.acq_length = acq_length
+
+        # get number of samples for all qubits
+        samples = [(self.get_qubit(task).instr_acq.get_instr(),
+                    self.get_qubit(task).instr_acq.get_instr().
+                    convert_time_to_n_samples(acq_length,
+                                              align_acq_granularity=True))
+                   for task in self.task_list]
+        # sort by number of samples
+        samples.sort(key=lambda t: t[1])
+        # generate sample times from first qb
+        self.time_samples = samples[0][0].get_sweep_points_time_trace(
+            self.acq_length, align_acq_granularity=True)
+
+    def _configure_sweep_points(self, states):
+        """
+        Modifies self.sweep_points to perform the time trace measurement, i.e.
+        with sampling times in dimension 0 and the init states in dimension 1.
+        """
+        cal_points = CalibrationPoints.multi_qubit(
+            [t['qb'] for t in self.task_list], states, n_per_state=1)
+        self.states = cal_points.states
+
+        # ensure no sweep_points in dim 0 since used for sampling times
+        if len(self.sweep_points.length()) > 0 and \
+                self.sweep_points.length()[0] > 0:
+            log.warning(f'You tried adding sweep points to dimension 0 '
+                        f'which is used for the sampling times. '
+                        f'Ignoring the sweep points of dimension 0.')
+            for par in self.sweep_points.get_parameters(dimension=0):
+                self.sweep_points.remove_sweep_parameter(par)
+
+        # add dim 1 sweep_points (timetrace init states)
+        try:
+            self.sweep_points.add_sweep_parameter(
+                'initialize', self.states, label='initial state', dimension=1)
+        except AssertionError:
+            if 'initialize' in self.sweep_points.get_parameters():
+                log.warning(f'You tried sweeping "initialize". '
+                            f'This is already swept in dim 1. Ignoring the '
+                            f'manually added sweep of "initialize".')
+                self.sweep_points.remove_sweep_parameter('initialize')
+            elif len(self.sweep_points.get_parameters(dimension=1)):
+                log.warning(f'You tried adding {self.sweep_points.length()[1]} '
+                            f'sweep points to dimension 1 which is used to '
+                            f'sweep the {len(self.states)} init states. '
+                            f'Ignoring the sweep points of dimension 1.')
+                for par in self.sweep_points.get_parameters(dimension=1):
+                    self.sweep_points.remove_sweep_parameter(par)
+            self.sweep_points.add_sweep_parameter(
+                'initialize', self.states, label='initial state', dimension=1)
+
 
     def sweep_block(self, qb, **kw):
         """
@@ -506,26 +565,21 @@ class OptimalWeights(CalibBuilder):
 
     def run_measurement(self, **kw):
         self._set_MC()
-        # set temporary values for MC
+        # set temporary values for MC. If soft_avg > 1, cyclic_soft_avg = False
+        # initialises the states in the order ggg...eee... (instead of
+        # gegege...). program_only_on_change = True speeds up the measurement
+        # if cyclic_soft_avg = False.
         self.temporary_values += [(self.MC.cyclic_soft_avg, False),
                                   (self.MC.live_plot_enabled, False),
                                   (self.MC.program_only_on_change, True)]
-        if isinstance(self.soft_avg, int):
+        if self.soft_avg is not None:
             self.temporary_values += [(self.MC.soft_avg, self.soft_avg)]
         super().run_measurement(**kw)
 
-    def run_analysis(self, analysis_kwargs=None, acq_weights_basis=None,
-                     orthonormalize=True, **kw):
-        if analysis_kwargs is None:
-            analysis_kwargs = {}
-
-        options_dict = dict(orthonormalize=orthonormalize,
-                            acq_weights_basis=acq_weights_basis)
-        options_dict.update(analysis_kwargs.pop("options_dict", {}))
-
+    def run_analysis(self, **kw):
+        analysis_kwargs = kw.pop('analysis_kwargs', {})
         self.analysis = tda.MultiQutrit_Timetrace_Analysis(
-            t_start=self.timestamp,
-            options_dict=options_dict, **analysis_kwargs)
+            t_start=self.timestamp, **analysis_kwargs)
         return self.analysis
 
     def run_update(self, **kw):
@@ -554,11 +608,3 @@ class OptimalWeights(CalibBuilder):
             qb.acq_weights_basis(
                 self.analysis.proc_data_dict['analysis_params_dict'][
                     'optimal_weights_basis_labels'][qb.name])
-
-    @classmethod
-    def gui_kwargs(cls, device):
-        # TODO
-        d = super().gui_kwargs(device)
-        # TODO
-        return d
-
