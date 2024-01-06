@@ -60,6 +60,7 @@ class MeasureSSRO(CalibBuilder):
             ``update=True`` or if ``run_update`` is called manually.
         sweep_preselection_ro_pulses (bool): Whether to sweep preselection
             readout pulses the same way as the (final) readout pulse.
+        preselection (bool): Whether to perform preselection (default: True)
         **kw: keyword arguments. Can be used to provide keyword arguments to
             parallel_sweep/sweep_n_dim, preprocess_task_list, autorun and to
             the parent class.
@@ -81,7 +82,8 @@ class MeasureSSRO(CalibBuilder):
 
     def __init__(self, task_list=None, qubits=None, sweep_points=None,
                  n_shots=2**15, states='ge', multiplexed_ssro=False,
-                 update_classifier=True, update_ro_params=True, **kw):
+                 update_classifier=True, update_ro_params=True,
+                 preselection=True, **kw):
         try:
             qubits, task_list = self.get_qubits_and_tasklist(qubits, task_list)
 
@@ -96,6 +98,7 @@ class MeasureSSRO(CalibBuilder):
             self.update_classifier = update_classifier
             self.update_ro_params = update_ro_params
             self.multiplexed_ssro = multiplexed_ssro
+            self.preselection = preselection
 
             # create cal_points for analysis, no cal points are measured
             # store in temporary variable because self.parallel_sweep accesses
@@ -110,6 +113,12 @@ class MeasureSSRO(CalibBuilder):
             if self.sweep_functions_dict:
                 self.sweep_functions = []
                 self.generate_sweep_functions()
+
+            # set prep_params
+            if self.prep_params is None:
+                self.prep_params = {}
+            self.prep_params['preparation_type'] = 'preselection' \
+                if self.preselection else 'wait'
 
             self.sequences, self.mc_points = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block, **kw)
