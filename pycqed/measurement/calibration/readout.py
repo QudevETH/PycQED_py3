@@ -83,7 +83,7 @@ class MeasureSSRO(CalibBuilder):
                  n_shots=2**15, states='ge', multiplexed_ssro=False,
                  update_classifier=True, update_ro_params=True, **kw):
         try:
-            qubits, tasklist = self.get_qubits_and_tasklist(qubits, task_list)
+            qubits, task_list = self.get_qubits_and_tasklist(qubits, task_list)
 
             kw.setdefault('df_name', 'int_log_det')
             kw.update({'cal_states': ()})  # we don't want any cal_states.
@@ -216,15 +216,7 @@ class MeasureSSRO(CalibBuilder):
             if len(all_length) != 0 and len(ro_len_swept_acq_len_not) != 0:
                 # case some qbs from acq_dev have acq_len swept, some not:
                 # choose acq_len sweep points from qb where acq_len is swept
-                for sp, qbn in ro_len_swept_acq_len_not:
-                    sp.add_sweep_parameter('acq_length', all_length[0], 's',
-                                           dimension=1,
-                                           label='acquisition length (auto)')
-                    log.warning(f" {qbn}: the readout pulse length is "
-                                f"swept while the acquisition length is "
-                                f"not. Automatically sweeping acquisition "
-                                f"length from {all_length[0][0]:.3g}s to "
-                                f"{all_length[0][-1]:.3g}s.")
+                acq_len_sweep = all_length[0]
             if len(all_length) == 0 and len(ro_len_swept_acq_len_not) != 0:
                 # case acq_len not swept of acq_dev: choosing diff = acq_length
                 # - ro_length of the first qb of the acq_dev where ro_len is
@@ -233,27 +225,28 @@ class MeasureSSRO(CalibBuilder):
                 qb = self.get_qubits(qbn)[0][0]
                 diff = qb.acq_length() - qb.ro_length()
                 acq_len_sweep = sp.get_values('pulse_length') + diff
-                for sp, qbn in ro_len_swept_acq_len_not:
-                    sp.add_sweep_parameter('acq_length', acq_len_sweep, 's',
-                                           dimension=1,
-                                           label='acquisition length (auto)')
-                    log.warning(f" {qbn}: the readout pulse length is "
-                                f"swept while the acquisition length is "
-                                f"not. Automatically sweeping acquisition "
-                                f"length from {acq_len_sweep[0]:.3g}s to "
-                                f"{acq_len_sweep[-1]:.3g}s.")
             if len(all_length) == 0 and len(ro_len_swept_acq_len_not) == 0:
                 # case acq_len and ro_len not swept: nothing to do.
                 continue
+            for sp, qbn in ro_len_swept_acq_len_not:
+                sp.add_sweep_parameter('acq_length', acq_len_sweep, 's',
+                                       dimension=1,
+                                       label='acquisition length (auto)')
+                log.warning(f" {qbn}: the readout pulse length is "
+                            f"swept while the acquisition length is "
+                            f"not. Automatically sweeping acquisition "
+                            f"length from {acq_len_sweep[0]:.3g}s to "
+                            f"{acq_len_sweep[-1]:.3g}s.")
 
             # updating all_length
             all_length = np.array([
                 t['sweep_points']['acq_length'] for t in tasks
                 if t['sweep_points'].find_parameter('acq_length') is not None
             ])
-            if np.ndim(all_length) == 1:
-                all_length = [all_length]
-
+            if (all_length == 0).any():
+                raise ValueError(f"Choose non-zero acquisition length. "
+                                 f"Encountered 0 in acq_dev {acq_dev} with "
+                                 f"acquisition lengths {all_length}")
             # check that all acq_lens are the same for the qbs of the acq_dev
             if not all([np.mean(abs(lengths - all_length[0]) / all_length[0])
                         < 1e-10 for lengths in all_length]):
@@ -263,6 +256,7 @@ class MeasureSSRO(CalibBuilder):
                     f"not the case for {acq_dev}.")
             sf = swf.AcquisitionLengthSweep(
                 lambda s=self, a=acq_dev: s.get_detector_function(a))
+            # only add acq_length sweep fcn to the first qb of every acq_dev
             self.sweep_functions_dict.update({
                 tasks[0]['prefix'] + 'acq_length': sf})
             self.sweep_functions_dict.update({
@@ -492,8 +486,8 @@ class OptimalWeights(CalibBuilder):
         acq_sampling_rates = [self.get_qubit(task).instr_acq
                                   .get_instr().acq_sampling_rate
                               for task in self.task_list]
-        unique_vals, count = np.unique(acq_sampling_rates, return_counts=True)
-        if len(count) > 1:
+        unique_vals = np.unique(acq_sampling_rates)
+        if len(unique_vals) > 1:
             raise NotImplementedError("Currently only supports one sampling "
                                       "rate across all qubits.")
         self.acq_sampling_rate = unique_vals[0]
@@ -501,8 +495,12 @@ class OptimalWeights(CalibBuilder):
         # infer acq_length if None from first qubit
         if acq_length is None:
             qb = self.get_qubit(self.task_list[0])
-            acq_length = qb.instr_acq.get_instr().acq_weights_n_samples / \
-                         self.acq_sampling_rate
+            acq_dev = qb.instr_acq.get_instr()
+            if (n := acq_dev.acq_weights_n_samples) is None:
+                raise ValueError(
+                    'acq_length has to be provided because the acquisition '
+                    'device does not have a default acq_weights_n_samples.')
+            acq_length = n / self.acq_sampling_rate
         self.acq_length = acq_length
 
         # get number of samples for all qubits
@@ -511,8 +509,11 @@ class OptimalWeights(CalibBuilder):
                     convert_time_to_n_samples(acq_length,
                                               align_acq_granularity=True))
                    for task in self.task_list]
-        # sort by number of samples
-        samples.sort(key=lambda t: t[1])
+
+        unique_vals = np.unique([s[1] for s in samples])
+        if len(unique_vals) > 1:
+            raise NotImplementedError("Currently only supports one number of "
+                                      "samples across all qubits.")
         # generate sample times from first qb
         self.time_samples = samples[0][0].get_sweep_points_time_trace(
             self.acq_length, align_acq_granularity=True)
@@ -608,3 +609,12 @@ class OptimalWeights(CalibBuilder):
             qb.acq_weights_basis(
                 self.analysis.proc_data_dict['analysis_params_dict'][
                     'optimal_weights_basis_labels'][qb.name])
+            # We intentionally use the key 'centroids' instead of using
+            # the same key 'means_' as used by the GMM classifier. This is
+            # in order to allow storing both information independently and
+            # to avoid unintentionally overwriting one kind of information
+            # with the other.
+            qb.acq_classifier_params().update({'centroids': np.array(
+                self.analysis.proc_data_dict['analysis_params_dict']['means']
+                [qb.name]
+            )})
