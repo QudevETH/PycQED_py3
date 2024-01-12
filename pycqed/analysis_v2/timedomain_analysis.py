@@ -11387,12 +11387,14 @@ class f0g1PitchCatchAnalysis(MultiQubit_TimeDomain_Analysis):
 
         qb = self.metadata['task_list'][0]['qbB']  # our qubit B, now works even
         # if there is only one qubit (A -> A for example)
-        populations_g = pdd['projected_data_dict'][qb]['pg'][0][:-nr_cp]  # populations of g state for this qubit
+        populations_f = pdd['projected_data_dict'][qb]['pf'][0][:-nr_cp]  #
+        # populations of f state for this qubit
 
-        self.fit_dicts[f'fit_pg_qbB'] = {
+        self.fit_dicts[f'fit_pf_qbB'] = {
             'model': model,  # use the tanh model
             'fit_xvals': {'x': self.delay * 1e9},  # x axis -> times (pulse length)
-            'fit_yvals': {'data': populations_g}, }  # y axis -> populations of g
+            'fit_yvals': {'data': populations_f}, }  # y axis -> populations
+        # of f
 
 
     def analyze_fit_results(self):
@@ -11405,13 +11407,21 @@ class f0g1PitchCatchAnalysis(MultiQubit_TimeDomain_Analysis):
         # we create a dictionary for the fitting values : center (and its error)
         pdd['delay_fit'] = OrderedDict()
         pdd['delay_fit_error'] = OrderedDict()
+        pdd['max_value'] = OrderedDict()
 
         # for the qubit we get the value of the center of the fit and its error
-        best_values = self.fit_res[f'fit_pg_qbB'].best_values  # get the fit values
+        best_values = self.fit_res[f'fit_pf_qbB'].best_values  # get the fit
+        # values
         pdd['delay_fit'] = -best_values['c1'] / (2 * best_values['c2']) #get the center of the polynomial
+        pdd['max_value'] = round(best_values['c2'] * (pdd['delay_fit'] ** 2)
+                                 + \
+                           best_values['c1'] * pdd['delay_fit'] + best_values[
+                               'c0'],2) #fitted max value
 
-        error_c1 = self.fit_res[f'fit_pg_qbB'].params['c1'].stderr  # get the fit error for c1
-        error_c2 = self.fit_res[f'fit_pg_qbB'].params['c2'].stderr  # get the fit error for c2
+        error_c1 = self.fit_res[f'fit_pf_qbB'].params['c1'].stderr  # get
+        # the fit error for c1
+        error_c2 = self.fit_res[f'fit_pf_qbB'].params['c2'].stderr  # get
+        # the fit error for c2
         # check if the error is None (if so -> 0) and then add it
         if error_c1 is None: error_c1 = 0
         if error_c2 is None: error_c2 = 0
@@ -11435,30 +11445,33 @@ class f0g1PitchCatchAnalysis(MultiQubit_TimeDomain_Analysis):
             fig_id = f'f0g1PitchCatch_{qb}' #id of the figure
 
             if i_qb == 1:
-                # Pg
-                label = f'pg_{qb}' #label for this data: pg
+                # Pf
+                label = f'pf_{qb}' #label for this data: pf
                 self.plot_dicts[label] = {
                     'fig_id': fig_id,
                     'title': f'f0g1 Pitch and Catch {qb}',
                     'plotfn': self.plot_line, #which type of plot -> points
-                    'yvals': populations['pg'][0][:-nr_cp], # plot g state populations
+                    'yvals': populations['pf'][0][:-nr_cp], # plot f state
+                    # populations
                     'xvals': self.delay * 1e9,
                     'linestyle': 'none',
-                    'setlabel': '$P_g$',
+                    'setlabel': '$P_f$',
                     'xlabel': 'delay',
                     'xunit': 'ns',
                     'ylabel': r'States population',
+                    'color': '#4dba1e'
                 }
 
-                if self.do_fitting:  # if we are doing the fitting
-                    # Pg - fit
-                    label = f'fit_pg_qbB'  # label for this data: pg fit
+                if self.do_fitting:
+                    # Pf - fit
+                    label = f'fit_pf_qbB'
                     self.plot_dicts[label] = {
                         'fig_id': fig_id,
                         'plotfn': self.plot_fit,  # which type of plot -> fit
-                        'fit_res': self.fit_res[label],  # plot the fit for the g state
+                        'fit_res': self.fit_res[label],  # plot the fit for
+                        # the f state
                         'plot_init': self.options_dict.get('plot_init', False),
-                        'setlabel': 'fit $P_g$',
+                        'setlabel': 'fit $P_f$',
                         'color': '#000a38',
                         'axisbelow': True
                     }
@@ -11472,25 +11485,27 @@ class f0g1PitchCatchAnalysis(MultiQubit_TimeDomain_Analysis):
                         'xvals': [pdd['delay_fit'], pdd['delay_fit']],
                         'marker': "None",
                         'linestyle': 'dashed',
-                        'setlabel': f'${pdd["delay_fit"]:.2f}$',
+                        'setlabel': f'${pdd["delay_fit"]:.1f} ns$',
                         'color': '#c7c7c7',
                         'axisbelow': True
                     }
 
             else:
-                # Pg
-                label = f'pg_{qb}'  # label for this data: pg
+                # Pf
+                label = f'pf_{qb}'  # label for this data: pf
                 self.plot_dicts[label] = {
                     'fig_id': fig_id,
                     'title': f'f0g1 Pitch and Catch {qb}',
                     'plotfn': self.plot_line,  # which type of plot -> points
-                    'yvals': populations['pg'][0][:-nr_cp],  # plot g state populations
+                    'yvals': populations['pf'][0][:-nr_cp],  # plot f state
+                    # populations
                     'xvals': self.delay * 1e9,
                     'linestyle': 'none',
                     'xlabel': 'delay',
                     'xunit': 'ns',
+                    'color': '#4dba1e',
                     'ylabel': r'States population',
-                    'setlabel': '$P_g$',
+                    'setlabel': '$P_f$',
                 }
 
 
@@ -11502,24 +11517,28 @@ class f0g1PitchCatchAnalysis(MultiQubit_TimeDomain_Analysis):
                 'xvals': self.delay * 1e9,
                 'yvals': populations['pe'][0][:-nr_cp], # plot e state populations
                 'linestyle': 'none',
-                'setlabel': '$P_e$'
+                'setlabel': '$P_e$',
+                'color': '#f0691c'
             }
 
-            # Pf
-            label = f'pf_{qb}' #label for this data: pf
+            # Pg
+            label = f'pg_{qb}' #label for this data: pg
             self.plot_dicts[label] = {
                 'fig_id': fig_id,
                 'plotfn': self.plot_line,
                 'xvals': self.delay * 1e9,
-                'yvals': populations['pf'][0][:-nr_cp], # plot f state populations
+                'yvals': populations['pg'][0][:-nr_cp], # plot g state
+                # populations
                 'linestyle': 'none',
-                'setlabel': '$P_f$',
+                'setlabel': '$P_g$',
                 'do_legend': True,
+                'color': '#1c83df',
                 'legend_pos': 'upper right',
+                'frameon': True
             }
 
-            # Max Pf
-            label = f'max_achieved_Pf'  # label for this data: center
+            # Max Pf data
+            label = f'max_achieved_Pf_data'  # label for this data: center
             self.plot_dicts[label] = {
                 'fig_id': fig_id,
                 'plotfn': self.plot_line,  # which type of plot -> line
@@ -11527,9 +11546,25 @@ class f0g1PitchCatchAnalysis(MultiQubit_TimeDomain_Analysis):
                 'yvals': 2*[np.max(populations['pf'][0][:-nr_cp])],
                 'marker': "None",
                 'linestyle': 'dashed',
-                'setlabel': f'${100*np.max(populations["pf"][0][:-nr_cp]):.1f}$',
+                'setlabel': f'${100*np.max(populations["pf"][0][:-nr_cp]):.1f} (data)$',
                 'color': '#c7c7c7',
-                'axisbelow': True
+                'axisbelow': True,
+                'grid': True
+            }
+
+            # Max Pf fit
+            label = f'max_achieved_Pf_fit'  # label for this data: center
+            self.plot_dicts[label] = {
+                'fig_id': fig_id,
+                'plotfn': self.plot_line,  # which type of plot -> line
+                'xvals': [self.delay[0] * 1e9, self.delay[-1] * 1e9],
+                'yvals': 2 * [np.max(populations['pf'][0][:-nr_cp])],
+                'marker': "None",
+                'linestyle': 'dashed',
+                'setlabel': f'${100 * pdd["max_value"]} (fit)$',
+                'color': '#c7c7c7',
+                'axisbelow': True,
+                'grid': True
             }
 
 
