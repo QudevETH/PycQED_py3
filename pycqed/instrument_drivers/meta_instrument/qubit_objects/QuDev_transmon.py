@@ -1162,7 +1162,8 @@ class QuDev_transmon(MeasurementObject):
 
         param = f'{self.ge_I_channel()}_centerfreq'
         if param in self.instr_pulsar.get_instr().parameters:
-            self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
+            if np.abs(self.instr_pulsar.get_instr().get(param) - self.get_ge_lo_freq()) > 1:
+                self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
 
         # other preparations
         self.update_detector_functions()
@@ -1643,7 +1644,7 @@ class QuDev_transmon(MeasurementObject):
     def _calibrate_drive_mixer_carrier_common(
             self, detector_generator, update=True, x0=(0., 0.),
             initial_stepsize=0.01, trigger_sep=5e-6, no_improv_break=50,
-            upload=True, plot=True):
+            upload=True, plot=True, **kwargs):
 
         MC = self.instr_mc.get_instr()
         ad_func_pars = {'adaptive_function': opti.nelder_mead,
@@ -1661,6 +1662,8 @@ class QuDev_transmon(MeasurementObject):
         with temporary_value(
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+                (self.instr_pulsar.get_instr().prepend_zeros,
+                 kwargs.get('prepend_zeros', 0)),
                 *self._drive_mixer_calibration_tmp_vals()
         ):
             if upload:
@@ -1743,7 +1746,7 @@ class QuDev_transmon(MeasurementObject):
     def calibrate_drive_mixer_carrier(self, update=True, x0=(0., 0.),
                                       initial_stepsize=0.01, trigger_sep=5e-6,
                                       no_improv_break=50, upload=True,
-                                      plot=True):
+                                      plot=True, **kwargs):
         """Calibrate drive upconversion mixer local oscillator leakage.
 
         Measures the averaged signal at the LO frequency at the output of the
@@ -1772,7 +1775,9 @@ class QuDev_transmon(MeasurementObject):
             plot:
                 Boolean flag, whether to plot the analysis results. Defaults
                 to `True`.
-
+            kwargs:
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
         Return:
             Optimal DC offsets for the I and Q output channels.
         """
@@ -1783,7 +1788,7 @@ class QuDev_transmon(MeasurementObject):
         return self._calibrate_drive_mixer_carrier_common(
             detector_generator, update=update, x0=x0,
             initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
-            no_improv_break=no_improv_break, upload=upload, plot=plot)
+            no_improv_break=no_improv_break, upload=upload, plot=plot, **kwargs)
 
     def calibrate_readout_mixer_carrier(self, other_qb, update=True,
                                         x0=(0., 0.),
@@ -1869,7 +1874,7 @@ class QuDev_transmon(MeasurementObject):
     def calibrate_drive_mixer_carrier_model(self, update=True, trigger_sep=5e-6,
                                             limits=(-0.1, 0.1, -0.1, 0.1),
                                             n_meas=(10, 10), meas_grid=None,
-                                            upload=True):
+                                            upload=True, **kwargs):
         """Method for calibrating the lo leakage of the drive IQ Mixer
 
         By applying DC biases on the I and Q inputs of an IQ mixer one can 
@@ -1906,6 +1911,9 @@ class QuDev_transmon(MeasurementObject):
                 (min bias I, max bias I, min bias Q, max bias Q)
                 Units: Volts
                 Defaults to (-0.1, 0.1, -0.1, 0.1).
+            kwargs:
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
 
         Returns:
             V_I (float): DC bias on I channel that minimizes LO leakage.
@@ -1960,6 +1968,8 @@ class QuDev_transmon(MeasurementObject):
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
                 (chI_par, chI_par()),  # for automatic reset after the sweep
                 (chQ_par, chQ_par()),  # for automatic reset after the sweep
+                (self.instr_pulsar.get_instr().prepend_zeros,
+                 kwargs.get('prepend_zeros', 0)),
                 *self._drive_mixer_calibration_tmp_vals()
         ):
             if upload:
@@ -2131,6 +2141,9 @@ class QuDev_transmon(MeasurementObject):
                 ro_mod_freq setting even though it results in non
                 commensurable LO frequencies for the specified trigger_sep.
                 Defaults to false.
+            kwargs:
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
 
         Returns:
             alpha (float): The amplitude ratio that maximizes the suppression of 
@@ -2173,6 +2186,8 @@ class QuDev_transmon(MeasurementObject):
             (self.ro_mod_freq, self.ro_mod_freq()), # for automatic reset
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+            (self.instr_pulsar.get_instr().prepend_zeros,
+             kwargs.get('prepend_zeros', 0)),
             *self._drive_mixer_calibration_tmp_vals()
         ):
             pulse_list_list = []

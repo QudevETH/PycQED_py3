@@ -674,6 +674,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         super().__init__(**kw)
         self.always_prepare = always_prepare
         self.prepare_and_finish_pulsar = prepare_and_finish_pulsar
+        self._pulsar_started = False
 
         if detectors is None:
             # if no detector is provided then itself is the only detector
@@ -704,7 +705,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         self._channels_value_names_map = None
 
     def prepare(self, sweep_points=None):
-        self.prepare_pulsar()
+        if self.prepare_and_finish_pulsar and not self._pulsar_started:
+            self.prepare_pulsar()
         for acq_dev in self.acq_devs:
             acq_dev.timer = self.timer
 
@@ -716,6 +718,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                     # AWG can be an awg_control_object which can be None
                     awgs_exclude += [awg.name]
             ps.Pulsar.get_instance().start(exclude=awgs_exclude)
+            self._pulsar_started = True
 
     def get_awgs(self):
         return [self.AWG]
@@ -860,6 +863,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         acquisition.
         """
         if self.prepare_and_finish_pulsar:
+            self._pulsar_started = False
             ps.Pulsar.get_instance().stop()
         elif self.AWG is not None:
             self.AWG.stop()

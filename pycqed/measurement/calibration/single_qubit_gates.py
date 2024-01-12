@@ -12,6 +12,7 @@ from pycqed.measurement.waveform_control import segment as seg_mod
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.errors import handle_exception
+from pycqed.utilities import general as gen
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement import multi_qubit_module as mqm
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
@@ -2358,24 +2359,31 @@ class Ramsey(SingleQubitGateCalibExperiment):
 
         :param kw: keyword arguments
         """
-
-        for task in self.preprocessed_task_list:
-            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
-            if self.echo:
-                T2_echo = self.analysis.proc_data_dict[
-                    'analysis_params_dict'][qubit.name]['T2_echo']
-                qubit.set(f'T2{task["transition_name"]}', T2_echo)
-            else:
-                qb_freq = self.analysis.proc_data_dict[
-                    'analysis_params_dict'][qubit.name][
-                    'exp_decay']['new_qb_freq']
-                T2_star = self.analysis.proc_data_dict[
-                    'analysis_params_dict'][qubit.name][
-                    'exp_decay']['T2_star']
-                qubit.set(f'{task["transition_name_input"]}_freq', qb_freq)
-                qubit.set(f'T2_star{task["transition_name"]}', T2_star)
-                if task["transition_name_input"] == 'ef':
-                    qubit.set('anharmonicity', qb_freq - qubit.get('ge_freq'))
+        if self._num_sweep_dims > 1:
+            log.warning('Updating not supported with 2D '
+                        'sweep_points. Skipping update.')
+        else:
+            for task in self.preprocessed_task_list:
+                qubit = [qb for qb in self.meas_objs
+                         if qb.name == task['qb']][0]
+                if self.echo:
+                    T2_echo = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name]['T2_echo']
+                    qubit.set(f'T2{task["transition_name"]}', T2_echo)
+                else:
+                    qb_freq = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name][
+                        'exp_decay']['new_qb_freq']
+                    T2_star = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name][
+                        'exp_decay']['T2_star']
+                    qubit.set(f'{task["transition_name_input"]}_freq',
+                              qb_freq)
+                    qubit.set(f'T2_star{task["transition_name"]}',
+                              T2_star)
+                    if task["transition_name_input"] == 'ef':
+                        qubit.set('anharmonicity',
+                                  qb_freq - qubit.get('ge_freq'))
 
     @classmethod
     def gui_kwargs(cls, device):
@@ -2852,12 +2860,16 @@ class T1(SingleQubitGateCalibExperiment):
         extracted by the analysis.
         :param kw: keyword arguments
         """
-
-        for task in self.preprocessed_task_list:
-            qubit = [qb for qb in self.meas_objs if qb.name == task['qb']][0]
-            T1 = self.analysis.proc_data_dict['analysis_params_dict'][
-                qubit.name]['T1']
-            qubit.set(f'T1{task["transition_name"]}', T1)
+        if self._num_sweep_dims > 1:
+            log.warning('Updating not supported with 2D '
+                        'sweep_points. Skipping update.')
+        else:
+            for task in self.preprocessed_task_list:
+                qubit = [qb for qb in self.meas_objs
+                         if qb.name == task['qb']][0]
+                T1 = self.analysis.proc_data_dict[
+                    'analysis_params_dict'][qubit.name]['T1']
+                qubit.set(f'T1{task["transition_name"]}', T1)
 
     @classmethod
     def gui_kwargs(cls, device):
@@ -3314,6 +3326,11 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
      n_repetitions and amp_scalings. Miscalibrations will be signaled by an
      oscillation of the excited state probability around 50% with increasing N.
 
+    Note: this measurement is built with 2D sweep points (where the second
+     dimension possibly has length 1), and hence needs force_2D_sweep=True
+     (defaults to False in SingleQubitGateCalibExperiment) to correctly store
+     the data in a 2D format as well.
+
     Keyword args
         Can be used to provide keyword arguments to sweep_n_dim, autorun,
         and to the parent classes.
@@ -3354,6 +3371,7 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
                              n_pulses_pi=n_pulses_pi,
                              fixed_scaling=fixed_scaling,
                              analysis_class=tda.NPulseAmplitudeCalibAnalysis,
+                             force_2D_sweep=kw.get('force_2D_sweep', True),
                              **kw)
         except Exception as x:
             self.exception = x
@@ -4037,7 +4055,7 @@ class ActiveReset(CalibBuilder):
                 qb.preparation_params()['threshold_mapping'] = \
                     classifier_params['mapping']
         if self.set_thresholds:
-            self._set_thresholds(self.qubits)
+            [gen.upload_classif_thresholds(qb) for qb in self.qubits]
         self.exp_metadata.update({"thresholds":
                                       self._get_thresholds(self.qubits)})
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
@@ -4089,43 +4107,6 @@ class ActiveReset(CalibBuilder):
         print('Update')
 
     @staticmethod
-    def _set_thresholds(qubits, clf_params=None):
-        """
-        Sets the thresholds in clf_params to the corresponding UHF channel(s)
-        for each qubit in qubits.
-        Args:
-            qubits (list, QuDevTransmon): (list of) qubit(s)
-            clf_params (dict): dictionary containing the thresholds that must
-                be set on the corresponding UHF channel(s).
-                If several qubits are passed, then it assumes clf_params if of the form:
-                {qbi: clf_params_qbi, ...}, where clf_params_qbi contains at least
-                the "threshold" key.
-                If a single qubit qbi is passed (not in a list), then expects only
-                clf_params_qbi.
-                If None, then defaults to qb.acq_classifier_params().
-
-        Returns:
-
-        """
-
-        # check if single qubit provided
-        if np.ndim(qubits) == 0:
-            clf_params = {qubits.name: deepcopy(clf_params)}
-            qubits = [qubits]
-
-        if clf_params is None:
-            clf_params = {qb.name: qb.acq_classifier_params() for qb in qubits}
-
-        for qb in qubits:
-            # perpare correspondance between integration unit (key)
-            # and uhf channel
-            channels = {0: qb.acq_I_channel(), 1: qb.acq_Q_channel()}
-            # set thresholds
-            for unit, thresh in clf_params[qb.name]['thresholds'].items():
-                qb.instr_acq.get_instr().set(
-                    f'qas_0_thresholds_{channels[unit]}_level', thresh)
-
-    @staticmethod
     def _get_thresholds(qubits, from_clf_params=False, all_qb_channels=False):
         """
         Gets the UHF channel thresholds for each qubit in qubits.
@@ -4149,8 +4130,8 @@ class ActiveReset(CalibBuilder):
             # perpare correspondance between integration unit (key)
             # and uhf channel; check if only one channel is asked for
             # (not asked for all qb channels and weight type uses only 1)
-            chs = {i: ch for i, ch in enumerate([
-                qb.get_acq_int_channels(2 if all_qb_channels else None)])}
+            chs = {i: ch[1] for i, ch in enumerate(
+                qb.get_acq_int_channels(2 if all_qb_channels else None))}
 
             #get clf thresholds
             if from_clf_params:

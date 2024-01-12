@@ -478,6 +478,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
     """
     def __init__(self, element_name, name='NZTC pulse', **kw):
         super().__init__(name, element_name, **kw)
+        self.is_net_zero = True
         self._update_cphase()
         self._update_lengths_amps_channels()
 
