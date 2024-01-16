@@ -1882,6 +1882,7 @@ class Segment:
                     el_buffer = self.pulsar.min_element_buffer() or 0.
                     for channel in pulse_channels:
                         extra_delay = self.pulsar.get(channel + '_delay') or 0.
+                        # extra 1e-12 to deal with numerical precision
                         if abs(extra_delay) > el_buffer + 1e-12:
                             raise Exception('Delay on channel {} exceeds the '
                                     'available pulse buffer!'.format(channel))
