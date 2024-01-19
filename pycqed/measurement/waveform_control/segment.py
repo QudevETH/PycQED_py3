@@ -26,7 +26,10 @@ import functools
 
 
 def _with_pulsar_tmp_vals(f):
-    """Decorate methods of Segment to use tmp vals from self.pulsar_tmp_vals"""
+    """A decorator enabling the usage of temporary values for plotting & hashing
+       
+       The temporary values are collected from self.pulsar_tmp_vals.
+    """
     @functools.wraps(f)
     def wrapped_func(self, *args, **kwargs):
         tmp_vals = [(self.pulsar.parameters[p], v)
