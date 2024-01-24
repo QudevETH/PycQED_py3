@@ -7817,35 +7817,43 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         Args:
             qb_names (list): name of the qubits to analyze (can be a subset
                 of the measured qubits)
-            auto (bool): Start analysis automatically
+            auto (bool): Start analysis automatically (default: True)
             **kwargs:
                 t_start: timestamp of the first timetrace
                 t_stop: timestamp of the last timetrace to analyze
-                options_dict (dict): relevant parameters:
-                    acq_weights_basis (list, dict):
-                        list of basis vectors used to compute optimal weight.
-                        e.g. ["ge", 'gf'], the first basis vector will be the
-                        "e" timetrace minus the "g" timetrace and the second basis
-                        vector is f - g. The first letter in each basis state is the
-                        "reference state", i.e. the one of which the timetrace
-                         is substracted. Can also be passed as a dictionary where
-                         keys are the qubit names and the values are lists of basis states
-                         in case different bases should be used for different qubits.
-                    orthonormalize (bool): Whether to orthonormalize the weight basis
-                    scale_weights (bool): scales the weights near unity to avoid
-                        loss of precision on FPGA if weights are too small
-                    filter_residual_tones (bool): Whether to filter the measured
-                        weights. Specify filter using 'residual_tone_filter_fcn'.
-                        Creates new field 'optimal_weights_unfiltered' in
-                        'analysis_params_dict' to save weights before filtering
-                    residual_tone_filter_fcn (fcn, str): function (freq, ro_freq) ->
-                        float specifying the filtering amplitude in frequency
-                        space (in Hz) for given (absolute) frequency 'freq' and
-                        readout frequency 'ro_freq'. Can be a str that parses
-                        into a function using eval(). Defaults to Gaussian with
-                        sigma 'residual_tone_filter_sigma'
-                    residual_tone_filter_sigma (float): specifies the width
-                        of the Gaussian filter. Defaults to 1e7 (10 MHz)
+                options_dict: Dictionary for analysis options (see below)
+
+        options_dict keywords (dict): relevant parameters:
+            acq_weights_basis (list, dict):
+                list of basis vectors used to compute optimal weight.
+                e.g. ['ge', 'gf'], the first basis vector will be the
+                "e" timetrace minus the "g" timetrace and the second basis
+                vector is f - g. The first letter in each basis state is the
+                "reference state", i.e. the one of which the timetrace
+                 is substracted. Can also be passed as a dictionary where
+                 keys are the qubit names and the values are lists of basis states
+                 in case different bases should be used for different qubits.
+                 (default:  ["ge", "ef"] when more than 2 traces are passed to
+                 the analysis, ['ge'] if 2 traces are measured.)
+            orthonormalize (bool): Whether to orthonormalize the weight basis
+                (default: True)
+            scale_weights (bool): scales the weights near unity to avoid
+                loss of precision on FPGA if weights are too small (default: True)
+            filter_residual_tones (bool): Whether to filter the measured
+                weights. Specify filter using ``residual_tone_filter_fcn``.
+                Creates new field ``'optimal_weights_unfiltered'`` in
+                ``analysis_params_dict`` to save weights before filtering
+                (default: True)
+            residual_tone_filter_fcn (fcn, str): function (``freq``, ``ro_freq``) ->
+                float. For a given value of the parameter ``ro_freq`` (in Hz),
+                the function value indicates the complex scaling factor by
+                which a frequency component at frequency ``freq`` (in Hz) is
+                multiplied. Can be a str that parses into a function using
+                eval(). (default: Gaussian centered at ``ro_freq`` with sigma
+                ``residual_tone_filter_sigma``)
+            residual_tone_filter_sigma (float): specifies the width
+                of the Gaussian filter. Ignored if a ``residual_tone_filter_fcn``
+                is provided. (default: 1e7 (10 MHz))
         """
         self.qb_names = qb_names
         super().__init__(**kwargs)
@@ -7997,12 +8005,13 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                               np.max(np.abs(b.imag))) for b in basis])
                 basis /= k
 
-            # residual/spurious tone filtering, only if supported if called by
+            # residual/spurious tone filtering, only supported if called by
             # OptimalWeights
             if self.get_param_value('filter_residual_tones', twoD):
                 # safe copy for comparison
                 ana_params['optimal_weights_unfiltered'][qbn] = deepcopy(basis)
-                # TODO: Per qb sampling rate
+                # TODO: Allow for per qb/acq_instr sampling rates. This change
+                #  requires the respective changes in readout.OptimalWeights.
                 sampling_rate = self.get_param_value('acq_sampling_rate', 1.8e9)
                 ro_freq = self.get_instrument_setting(f'{qbn}.ro_freq')
                 ro_mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
@@ -8033,14 +8042,16 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
     def _filter_residual_tones(w, ro_freq, ro_mod_freq, sampling_rate,
                                filter_fcn):
         """
-        Fitering of timetraces. Filtering is carried out in fourier space in MHz.
+        Filtering of timetraces to reduce residual tones and noise. Filtering
+        is carried out in fourier space in units of MHz.
 
         Args:
             w: complex weigths I + .j * Q to be filtered
             ro_freq: ro freq of qb (in Hz)
             ro_mod_freq: ro modulation freq of qb (in Hz)
             sampling_rate: sampling rate of timetrace acq_instr
-            filter_fcn: filter to be applied around ro_freq
+            filter_fcn: filter to be applied around ro_freq, see docstring of
+            __init__ for more details.
 
         Returns:
             filtered complex weights in time space
@@ -8134,27 +8145,40 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
 
     def __init__(self,
                  options_dict: dict = None, auto=True, **kw):
-        '''
+        """
+        Initializes the SSRO analysis class.
+
+        Args:
+            qb_names (list): name of the qubits to analyze (can be a subset
+                of the measured qubits)
+            auto (bool): Start analysis automatically (default: True)
+            **kw:
+                options_dict: Dictionary for analysis options (see below)
+
         options_dict keywords:
-            'hist_scale' : scale for the y-axis of the 1D histograms: "linear" or "log"
-            'verbose' : see BaseDataAnalysis
-            'presentation_mode' : see BaseDataAnalysis
-            'classif_method': how to classify the data.
+            hist_scale (str) : scale for the y-axis of the 1D histograms:
+                "linear" or "log" (default: 'log')
+            verbose (bool) : see BaseDataAnalysis
+            presentation_mode (bool) : see BaseDataAnalysis
+            classif_method (str): how to classify the data.
                 'ncc' : default. Nearest Cluster Center
-                'gmm': gaussian mixture model.
+                'gmm': gaussian mixture model (default)
                 'threshold': finds optimal vertical and horizontal thresholds.
-            'classif_kw': kw to pass to the classifier, see BaseDataAnalysis.
-            'multiplexed_ssro' (bool): whether to perform multiplexed analysis
-            'plot_single_qb_plots' (bool): Whether to plot the state assignment
+            classif_kw (dict): kw to pass to the classifier.
+            multiplexed_ssro (bool): whether to perform analysis for a
+                multiplexed measurement (default: False)
+            plot_single_qb_plots (bool): Whether to plot the state assignment
                 probability matrices and classification plots (for every qb and
-                sweep point)
-            'plot_mtplx_plots' (bool): Whether to plot the multiplexed state
-                probability matrix (for every sweep point)
-            'plot_sweep_plots' (bool): Whether to plot single qb trend plots in
-                sweeps
-            'plot_mtplx_sweep_plots' (bool): Whether to plot multiplexed trend
-                plots in sweeps
-            'plot_metrics' (list of dicts): Custom metrics of the state
+                sweep point) (default: True if no sweep was performed)
+            plot_mtplx_plots (bool): Whether to plot the multiplexed state
+                probability matrix (for every sweep point) if applicable
+                (default: True if ``multiplexed_ssro``)
+            plot_sweep_plots (bool): Whether to plot single qb trend plots in
+                sweeps if applicable (default: True if a sweep was performed)
+            plot_mtplx_sweep_plots (bool): Whether to plot multiplexed trend
+                plots in sweeps if applicable (default: True if a multiplexed
+                sweep was performed)
+            plot_metrics (list of dicts): Custom metrics of the state
                 assignment probability matrix to be plotted when sweeping. The
                 dictionaries contain the keys:
                 'metric' (str, required): string can be parsed into a lambda
@@ -8162,15 +8186,18 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     probability matrices as a 2D-np.array and returns a float.
                 'plot_name' (str): Title of the custom plot
                 'yscale' (str): 'linear' or 'log'
-            'multiplexed_plot_metrics' (list of dict): Same as 'plot_metrics',
+                Ignored, if no sweep was performed (defaults to plotting
+                fidelity and infidelity plots)
+            multiplexed_plot_metrics (list of dict): Same as ``plot_metrics``,
                 but 'metric' lambda takes the multiplexed state assignment
-                probability matrices.
-            'plot_init_columns' (bool): Whether to plot additional column
+                probability matrices. Ignored if ``multiplexed_ssro`` is False
+                and no sweep was performed.
+            plot_init_columns (bool): Whether to plot additional column
                 representing the percentage of shots that were not filtered in
-                preselection
-            'n_shots_to_plot' (int): Truncates the number of shots to be
-                plotted if not None
-        '''
+                preselection (default: True if ``multiplexed_ssro``)
+            n_shots_to_plot (int): Truncates the number of shots to be
+                plotted if not None. Only affects the plotting (default: None)
+        """
         super().__init__(options_dict=options_dict, auto=False,
                          **kw)
         self.params_dict = {
@@ -8223,7 +8250,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         # e.g. {'qb1': {'g': np.array of shape (n_shots, n_ro_ch}, ...}, ...}
         shots_per_qb = dict()        # store shots per qb and per state
         presel_shots_per_qb = dict() # store preselection ro
-        # means = defaultdict(OrderedDict)    # store mean per qb for each ro_ch
         pdd = self.proc_data_dict    # for convenience of notation
 
         for qbn in self.qb_names:
@@ -8304,8 +8330,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     qb_means[state] = np.mean(
                         shots_per_qb[qbn][dim2_sp_idx, np.tile(mask, n_shots)],
                         axis=0)
-                # print(f'dim_2_indx={dim2_sp_idx}, qbn={qbn}')
-                # print(f'qb_means={qb_means}')
 
                 state_integer = 0
                 for state in qb_means.keys():
@@ -8323,7 +8347,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 pdd['data']['X'][qbn][dim2_sp_idx] = deepcopy(qb_shots[dim2_sp_idx])
                 pdd['data']['prep_states'][qbn][dim2_sp_idx] = prep_states
 
-                # self.proc_data_dict['keyed_data'] = deepcopy(data)
                 assert np.ndim(qb_shots) == 3, \
                     f"Data must be a 3D array. Received shape " \
                     f"{qb_shots.shape}, ndim {np.ndim(qb_shots)}"\
@@ -8421,8 +8444,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 presel_shots = {qbn: shots for qbn, shots
                                 in presel_shots_per_qb.items()}
 
-            # pdd['shots_per_qb'] = shots_per_qb
-            # pdd['presel_shots_per_qb'] = presel_shots_per_qb
             pdd['all_shots'] = all_shots
 
             # create placeholders for analysis data
@@ -8472,8 +8493,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                                      'assigned to a state'
                 unkn_state_mask = sum_state_bools == 0
                 if np.sum(unkn_state_mask) > 0:
-                    # new_states = self._order_multiplexed_state_labels(
-                    #     np.unique(pred_qb_states[unkn_state_mask]) )
                     log.warning(f"{np.sum(unkn_state_mask)} measurements were "
                                 f"assigned a state not given in 'states'. "
                                 f"Ignoring these measurements in plots.")
@@ -8880,7 +8899,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         of __init__ for details on plotting keywords.
 
         Args:
-            **kwargs: not used
+            **kwargs: forwarded to the super
 
         Returns:
 
@@ -9236,7 +9255,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             qbn (str): Name of qb
             plot_settings (dict): Same as 'metrics' kwarg in __init__ docstring
                 without the outer list.
-            multiplexed (bool): Whether the plot is shows multiplexed data
+            multiplexed (bool): Whether the plot shows multiplexed data
 
         Returns:
 
@@ -9320,7 +9339,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         Args:
             qbn (str): Name of qb
             plot_name (str): Name of plot
-            multiplexed (bool): Whether the plot is shows multiplexed data
+            multiplexed (bool): Whether the plot shows multiplexed data
 
         Returns:
 

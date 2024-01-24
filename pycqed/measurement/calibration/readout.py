@@ -43,22 +43,25 @@ class MeasureSSRO(CalibBuilder):
         task_list: See docstring of MultiTaskingExperiment.
         qubits: List of qubits on which the SSRO measurement should be performed
         sweep_points: See docstring of QuantumExperiment
-        n_shots (int): Number of measurement repetitions, defaults to 2**15.
+        n_shots (int): Number of measurement repetitions (default: 2**15)
         states (str, list): States to perform SSRO on/train the classifier on.
             Can specify custom states for individual qubits using the format
             [[qb1_s1, qb2_s1, ..., qbn_s1], ..., [qb1_sm, ..., qbn_cm]]
-            for a measurement of m segments/m sweep points in dimension 0.
-            Defaults to 'ge'.
+            for a measurement of m segments/m sweep points in dimension 0
+             (default: 'ge')
         multiplexed_ssro (bool): Prepares all possible state combinations.
-            This will perform the respective multiplexed SSRO analysis.
+            This will perform the respective multiplexed SSRO analysis
+            (default: False)
         update_classifier (bool): Whether to update the qubit classifiers.
             Takes effect only if ``update=True`` or if ``run_update`` is called
-            manually.
+            manually (default: True)
         update_ro_params (bool): Whether to update the readout pulse
             parameters. Takes effect only if a sweep was performed, and only if
-            ``update=True`` or if ``run_update`` is called manually.
+            ``update=True`` or if ``run_update`` is called manually (default:
+            True)
         sweep_preselection_ro_pulses (bool): Whether to sweep preselection
-            readout pulses the same way as the (final) readout pulse.
+            readout pulses the same way as the (final) readout pulse (default:
+            True)
         preselection (bool): Whether to perform preselection (default: True)
         **kw: keyword arguments. Can be used to provide keyword arguments to
             parallel_sweep/sweep_n_dim, preprocess_task_list, autorun and to
@@ -362,12 +365,12 @@ class OptimalWeights(CalibBuilder):
 
     Note: This QE is not implemented for performing custom sweeps. Sweep
     dimension 0 is used for the time samples and sweep dimension 1 is used for
-    initialising the qubit states specified in `states`.
+    initialising the qubit states specified in ``states``.
 
     Args:
         task_list: See docstring of MultiTaskingExperiment.
-        qubits: List of qubits on which traces should be measured
         sweep_points: See docstring of QuantumExperiment
+        qubits: List of qubits on which traces should be measured
         states (tuple, list, str): if str or tuple of single character strings,
             then interprets each letter as a state and does it on all qubits
              simultaneously. e.g. "ge" or ('g', 'e') --> measures all qbs
@@ -377,26 +380,29 @@ class OptimalWeights(CalibBuilder):
              and each state is calibrated individually. e.g. for 2 qubits:
              [('g', 'g'), ('e', 'e'), ('f', 'g')] --> qb1=qb2=g then qb1=qb2=e
              and then qb1 = "f" != qb2 = 'g'
-        acq_length (float, None): length of timetrace to record
-        acq_weights_basis (list): shortcut for analysis parameter.
-            list of basis vectors used for computing the weights.
-            (see TimetraceAnalysis). e.g. ["ge", "gf"] yields basis vectors e - g
-            and f - g. If None, defaults to  ["ge", "ef"] when more than 2
-            traces are passed to the analysis and to ['ge'] if 2 traces are
-            measured.
+             (default: ('g', 'e'))
+        acq_averages (int): Number of measurement repetitions. The total number
+            of time traces measured per state is acq_averages * soft_avg.
+            (default: 2**15)
+        soft_avg (int): Number of times the measurement is repeated
+            and averaged over (default: 30)
+        acq_length (float): length of timetrace to record (default: None)
+        acq_weights_basis (list): shortcut for the corresponding analysis
+            parameter, see MultiQutrit_Timetrace_Analysis for details.
         orthonormalize (bool): shortcut for analysis parameter. Whether to
-            orthonormalize the optimal weights (see
-            MultiQutrit_Timetrace_Analysis)
+            orthonormalize the optimal weights, see
+            MultiQutrit_Timetrace_Analysis (default: True)
         **kw: keyword arguments. Can be used to provide keyword arguments to
-            parallel_sweep/sweep_n_dim, preprocess_task_list, autorun, to the
-            parent class and analysis class (see MultiQutrit_Timetrace_Analysis).
+            parallel_sweep/sweep_n_dim, preprocess_task_list, autorun, and to
+            the parent class.
     """
     default_experiment_name = 'Timetrace'
     kw_for_task_keys = []
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 states=('g', 'e'), acq_length=None, acq_weights_basis=None,
-                 orthonormalize=True, soft_avg=30, acq_averages=2**15, **kw):
+                 states=('g', 'e'), acq_averages=2**15, soft_avg=30,
+                 acq_length=None, acq_weights_basis=None, orthonormalize=True,
+                 **kw):
         try:
             qubits, task_list = self._prepare_qubits_and_tasklist(
                 qubits, task_list)
