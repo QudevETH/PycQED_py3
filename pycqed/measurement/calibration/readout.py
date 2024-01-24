@@ -268,8 +268,8 @@ class MeasureSSRO(CalibBuilder):
     def sweep_block(self, qb, sweep_points,
                     sweep_preselection_ro_pulses=True, **kw):
         """
-        Adds a RO pulse to the block and replaces pulse parameters with
-        ParametricValues.
+        Creates the sweep block with one RO pulse and replaces the RO pulse
+        parameters with ParametricValues.
         """
 
         ro_block = self.block_from_ops('ssro_readout', [f'RO {qb}'])
