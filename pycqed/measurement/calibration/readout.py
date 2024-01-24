@@ -84,7 +84,8 @@ class MeasureSSRO(CalibBuilder):
                  update_classifier=True, update_ro_params=True,
                  preselection=True, **kw):
         try:
-            qubits, task_list = self.get_qubits_and_tasklist(qubits, task_list)
+            qubits, task_list = self._prepare_qubits_and_tasklist(qubits,
+                                                                  task_list)
 
             kw.setdefault('df_name', 'int_log_det')
             kw.update({'cal_states': ()})  # we don't want any cal_states.
@@ -138,26 +139,6 @@ class MeasureSSRO(CalibBuilder):
         except Exception as x:
             self.exception = x
             traceback.print_exc()
-
-    @staticmethod
-    def get_qubits_and_tasklist(qubits, task_list):
-        """
-        Extracts the qubits and task_list from arguments. Implements the
-        shortcut where specifying `qubits` will generate a task_list.
-        """
-        # prepare task_list
-        if task_list is None:
-            if qubits is None:
-                raise ValueError('Please provide either '
-                                 '"qubits" or "task_list"')
-            # Create task_list from qubits
-            if not isinstance(qubits, list):
-                qubits = [qubits]
-            task_list = [{'qb': qb.name} for qb in qubits]
-        for task in task_list:
-            if 'qb' in task and not isinstance(task['qb'], str):
-                task['qb'] = task['qb'].name
-        return qubits, task_list
 
     def _configure_sweep_points(self, states):
         """
@@ -417,7 +398,7 @@ class OptimalWeights(CalibBuilder):
                  states=('g', 'e'), acq_length=None, acq_weights_basis=None,
                  orthonormalize=True, soft_avg=30, acq_averages=2**15, **kw):
         try:
-            qubits, task_list = MeasureSSRO.get_qubits_and_tasklist(
+            qubits, task_list = self._prepare_qubits_and_tasklist(
                 qubits, task_list)
 
             kw.update({'cal_states': (),  # we don't want any cal_states.
