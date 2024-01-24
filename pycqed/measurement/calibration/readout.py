@@ -575,15 +575,20 @@ class OptimalWeights(CalibBuilder):
 
     def run_measurement(self, **kw):
         self._set_MC()
-        # set temporary values for MC. If soft_avg > 1, cyclic_soft_avg = False
-        # initialises the states in the order ggg...eee... (instead of
-        # gegege...). program_only_on_change = True speeds up the measurement
-        # if cyclic_soft_avg = False.
-        self.temporary_values += [(self.MC.cyclic_soft_avg, False),
-                                  (self.MC.live_plot_enabled, False),
-                                  (self.MC.program_only_on_change, True)]
+        # set temporary values for MC.
+        self.temporary_values += [(self.MC.live_plot_enabled, False)]
         if self.soft_avg is not None:
             self.temporary_values += [(self.MC.soft_avg, self.soft_avg)]
+            if self.soft_avg > 1:
+                # cyclic_soft_avg = False: initialises the states in the order
+                # ggg...eee... (instead of gegege...), if soft_avg > 1, has no
+                # effect if soft_avg == 1.
+                # program_only_on_change = True: speeds up the measurement by
+                # not reprogramming the devices after every soft sweep point.
+                self.temporary_values += [
+                    (self.MC.cyclic_soft_avg, False),
+                    (self.MC.program_only_on_change, True)]
+
         super().run_measurement(**kw)
 
     def run_analysis(self, **kw):
