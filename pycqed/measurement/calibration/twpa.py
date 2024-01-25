@@ -37,6 +37,7 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
             super().__init__(meas_objs=meas_objs,
                              df_name='psd_avg_det',
                              cal_states=[],
+                             drive=None,
                              **kw)
 
             for task in self.task_list:
