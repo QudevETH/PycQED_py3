@@ -671,7 +671,8 @@ class QuDev_transmon(MeasurementObject):
             required bias. See note below.
         :param transition: (str, default: 'ge') the transition whose
             frequency should be calculated. Currently, only 'ge' is
-            implemented.
+            implemented for all models. The model 'transmon_res' also allows to
+            compute the 'ef' and 'gf' transition.
         :param model: (str, default: 'transmon_res') the model to use.
             Currently 'transmon_res' and 'approx' are supported. See
             docstring of self.calculate_frequency
@@ -698,9 +699,12 @@ class QuDev_transmon(MeasurementObject):
 
         if frequency is None:
             frequency = self.ge_freq()
-        if transition not in ['ge']:
+        if model != 'transmon_res' and transition not in ['ge']:
             raise NotImplementedError(
                 'Currently, only ge transition is implemented.')
+        elif transition not in ['ge', 'ef', 'gf']:
+            raise NotImplementedError(
+                'Currently, only the ge, ef & gf transitions are implemented.')
         flux_amplitude_bias_ratio = self.flux_amplitude_bias_ratio()
 
         if model in ['transmon', 'transmon_res']:
@@ -740,7 +744,8 @@ class QuDev_transmon(MeasurementObject):
             val = fit_mods.Qubit_freq_to_dac(frequency, **vfc, branch=branch)
         elif model == 'transmon_res':
             val = fit_mods.Qubit_freq_to_dac_res(
-                frequency, **vfc, branch=branch, single_branch=True)
+                frequency, **vfc, branch=branch, single_branch=True,
+                transition=transition)
         else:
             raise NotImplementedError(
                 "Currently, only the models 'approx' and"
@@ -1019,7 +1024,8 @@ class QuDev_transmon(MeasurementObject):
 
         param = f'{self.ge_I_channel()}_centerfreq'
         if param in self.instr_pulsar.get_instr().parameters:
-            self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
+            if np.abs(self.instr_pulsar.get_instr().get(param) - self.get_ge_lo_freq()) > 1:
+                self.instr_pulsar.get_instr().set(param, self.get_ge_lo_freq())
 
         # other preparations
         self.update_detector_functions()
@@ -1348,95 +1354,6 @@ class QuDev_transmon(MeasurementObject):
             ma.MeasurementAnalysis(close_fig=close_fig, qb_name=self.name,
                                    TwoD=(mode == '2D'))
 
-
-    def measure_readout_pulse_scope(self, delays, freqs, RO_separation=None,
-                                    prep_pulses=None, comm_freq=225e6,
-                                    analyze=True, label=None,
-                                    close_fig=True, upload=True, verbose=False,
-                                    cal_points=((-4, -3), (-2, -1)), MC=None):
-        """
-        From the documentation of the used sequence function:
-
-        Prepares the AWGs for a readout pulse shape and timing measurement.
-
-        The sequence consists of two readout pulses where the drive pulse start
-        time is swept through the first readout pulse. Because the photons in
-        the readout resonator induce an ac-Stark shift of the qubit frequency,
-        we can determine the readout pulse shape by sweeping the drive frequency
-        in an outer loop to determine the qubit frequency.
-
-        Important: This sequence includes two readouts per segment. For this
-        reason the calibration points are also duplicated.
-
-        Args:
-            delays: A list of delays between the start of the first readout pulse
-                    and the center of the drive pulse.
-            RO_separation: Separation between the starts of the two readout pulses.
-                           If the comm_freq parameter is not None, the used value
-                           is increased to satisfy the commensurability constraint.
-            cal_points: True for default calibration points, False for no
-                        calibration points or a list of two lists, containing
-                        the indices of the calibration segments for the ground
-                        and excited state.
-            comm_freq: The readout pulse separation will be a multiple of
-                       1/comm_freq
-        """
-        if self.instr_ge_lo() is None:
-            raise NotImplementedError("qb.measure_readout_pulse_scope is not "
-                                      "implemented for setups without ge LO. "
-                                      "Use quantum experiment "
-                                      "ReadoutPulseScope instead.")
-
-        if delays is None:
-            raise ValueError("Unspecified delays for "
-                             "measure_readout_pulse_scope")
-        if label is None:
-            label = 'Readout_pulse_scope' + self.msmt_suffix
-        if MC is None:
-            MC = self.instr_mc.get_instr()
-        if freqs is None:
-            freqs = self.f_qubit() + np.linspace(-50e6, 50e6, 201)
-        if RO_separation is None:
-            RO_separation = 2 * self.ro_length()
-            RO_separation += np.max(delays)
-            RO_separation += 200e-9  # for slack
-
-        self.prepare(drive='timedomain')
-        MC.set_sweep_function(awg_swf.Readout_pulse_scope_swf(
-            delays=delays,
-            pulse_pars=self.get_ge_pars(),
-            RO_pars=self.get_ro_pars(),
-            RO_separation=RO_separation,
-            cal_points=cal_points,
-            prep_pulses=prep_pulses,
-            comm_freq=comm_freq,
-            verbose=verbose,
-            upload=upload))
-        MC.set_sweep_points(delays)
-        MC.set_sweep_function_2D(swf.Offset_Sweep(
-            mc_parameter_wrapper.wrap_par_to_swf(
-                self.instr_ge_lo.get_instr().frequency),
-            -self.ge_mod_freq(),
-            parameter_name=self.name + ' drive frequency'))
-        MC.set_sweep_points_2D(freqs)
-
-        d = det.IntegratingAveragingPollDetector(
-            acq_dev=self.instr_acq.get_instr(),
-            AWG=self.instr_pulsar.get_instr(),
-            channels=self.int_avg_det.channels,
-            nr_averages=self.acq_averages(),
-            integration_length=self.acq_length(),
-            data_type='raw',
-            values_per_point=2,
-            values_per_point_suffix=['_probe', '_measure'])
-        MC.set_detector_function(d)
-        MC.run_2D(label)
-
-        # Create a MeasurementAnalysis object for this measurement
-        if analyze:
-            ma.MeasurementAnalysis(TwoD=True, auto=True, close_fig=close_fig,
-                                   qb_name=self.name)
-
     def measure_drive_mixer_spectrum(self, if_freqs, amplitude=0.5,
                                      trigger_sep=5e-6, align_frequencies=True):
         """Measure the output spectrum of the drive upconversion mixer.
@@ -1556,7 +1473,7 @@ class QuDev_transmon(MeasurementObject):
     def _calibrate_drive_mixer_carrier_common(
             self, detector_generator, update=True, x0=(0., 0.),
             initial_stepsize=0.01, trigger_sep=5e-6, no_improv_break=50,
-            upload=True, plot=True):
+            upload=True, plot=True, **kwargs):
 
         MC = self.instr_mc.get_instr()
         ad_func_pars = {'adaptive_function': opti.nelder_mead,
@@ -1574,6 +1491,8 @@ class QuDev_transmon(MeasurementObject):
         with temporary_value(
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+                (self.instr_pulsar.get_instr().prepend_zeros,
+                 kwargs.get('prepend_zeros', 0)),
                 *self._drive_mixer_calibration_tmp_vals()
         ):
             if upload:
@@ -1656,7 +1575,7 @@ class QuDev_transmon(MeasurementObject):
     def calibrate_drive_mixer_carrier(self, update=True, x0=(0., 0.),
                                       initial_stepsize=0.01, trigger_sep=5e-6,
                                       no_improv_break=50, upload=True,
-                                      plot=True):
+                                      plot=True, **kwargs):
         """Calibrate drive upconversion mixer local oscillator leakage.
 
         Measures the averaged signal at the LO frequency at the output of the
@@ -1685,7 +1604,9 @@ class QuDev_transmon(MeasurementObject):
             plot:
                 Boolean flag, whether to plot the analysis results. Defaults
                 to `True`.
-
+            kwargs:
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
         Return:
             Optimal DC offsets for the I and Q output channels.
         """
@@ -1696,7 +1617,7 @@ class QuDev_transmon(MeasurementObject):
         return self._calibrate_drive_mixer_carrier_common(
             detector_generator, update=update, x0=x0,
             initial_stepsize=initial_stepsize, trigger_sep=trigger_sep,
-            no_improv_break=no_improv_break, upload=upload, plot=plot)
+            no_improv_break=no_improv_break, upload=upload, plot=plot, **kwargs)
 
     def calibrate_readout_mixer_carrier(self, other_qb, update=True,
                                         x0=(0., 0.),
@@ -1782,7 +1703,7 @@ class QuDev_transmon(MeasurementObject):
     def calibrate_drive_mixer_carrier_model(self, update=True, trigger_sep=5e-6,
                                             limits=(-0.1, 0.1, -0.1, 0.1),
                                             n_meas=(10, 10), meas_grid=None,
-                                            upload=True):
+                                            upload=True, **kwargs):
         """Method for calibrating the lo leakage of the drive IQ Mixer
 
         By applying DC biases on the I and Q inputs of an IQ mixer one can 
@@ -1819,6 +1740,9 @@ class QuDev_transmon(MeasurementObject):
                 (min bias I, max bias I, min bias Q, max bias Q)
                 Units: Volts
                 Defaults to (-0.1, 0.1, -0.1, 0.1).
+            kwargs:
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
 
         Returns:
             V_I (float): DC bias on I channel that minimizes LO leakage.
@@ -1873,6 +1797,8 @@ class QuDev_transmon(MeasurementObject):
                 (self.instr_trigger.get_instr().pulse_period, trigger_sep),
                 (chI_par, chI_par()),  # for automatic reset after the sweep
                 (chQ_par, chQ_par()),  # for automatic reset after the sweep
+                (self.instr_pulsar.get_instr().prepend_zeros,
+                 kwargs.get('prepend_zeros', 0)),
                 *self._drive_mixer_calibration_tmp_vals()
         ):
             if upload:
@@ -2044,6 +1970,9 @@ class QuDev_transmon(MeasurementObject):
                 ro_mod_freq setting even though it results in non
                 commensurable LO frequencies for the specified trigger_sep.
                 Defaults to false.
+            kwargs:
+                prepend_zeros: temporary value for pulsar.prepend_zeros.
+                    Defaults to 0.
 
         Returns:
             alpha (float): The amplitude ratio that maximizes the suppression of 
@@ -2086,6 +2015,8 @@ class QuDev_transmon(MeasurementObject):
             (self.ro_mod_freq, self.ro_mod_freq()), # for automatic reset
             (self.acq_weights_type, 'SSB'),
             (self.instr_trigger.get_instr().pulse_period, trigger_sep),
+            (self.instr_pulsar.get_instr().prepend_zeros,
+             kwargs.get('prepend_zeros', 0)),
             *self._drive_mixer_calibration_tmp_vals()
         ):
             pulse_list_list = []

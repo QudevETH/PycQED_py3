@@ -12,6 +12,7 @@ from pycqed.measurement.waveform_control.segment import UnresolvedPulse
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import pycqed.measurement.awg_sweep_functions as awg_swf
+import pycqed.measurement.sweep_functions as swf
 import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.measurement import multi_qubit_module as mqm
 import logging
@@ -114,6 +115,11 @@ class MultiTaskingExperiment(QuantumExperiment):
         # create_cal_points)
         self.create_cal_points(**kw)
 
+        # The following is only relevant for child classes that make use of
+        # the sweep_functions_dict and call generate_sweep_functions
+        # (see docstring of generate_sweep_functions)
+        self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
+
     def add_to_meas_obj_sweep_points_map(self, meas_objs, sweep_point):
         """
         Add an entry to the meas_obj_sweep_points_map, which will later be
@@ -161,10 +167,12 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
             'preparation_params': self.get_prep_params(),
-            'rotate': len(self.cal_states) != 0 and not self.classified,
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
+        # handle 'rotate' separately, as user might want to specify it
+        self.exp_metadata.setdefault(
+            'rotate', len(self.cal_states) != 0 and not self.classified)
         if len(self.data_to_fit):
             self.exp_metadata.update({'data_to_fit': self.data_to_fit})
 
@@ -192,27 +200,33 @@ class MultiTaskingExperiment(QuantumExperiment):
         super().run_measurement(**kw)
 
     def create_cal_points(self, n_cal_points_per_state=1, cal_states='auto',
-                          for_ef=False, **kw):
+                          for_ef=False, all_states_combinations=False, **kw):
         """
         Creates a CalibrationPoints object based on the given parameters and
-            saves it to self.cal_points.
+        saves it to self.cal_points.
+
+        Custom cal_points for individual measurement objects can be specified.
 
         :param n_cal_points_per_state: number of segments for each
             calibration state
         :param cal_states: str or tuple of str; the calibration states
-            to measure
+            to measure. For custom cal_points per meas_obj use format
+            [[qb1_cs1, qb2_cs1, ..., qbn_cs1], ..., [qb1_csm, ..., qbn_csm]]
         :param for_ef: (deprecated) bool indicating whether to measure the
             |f> calibration state for each qubit
         :param kw: keyword arguments (to allow pass-through kw even if it
             contains entries that are not needed)
+        :param all_states_combinations: see docstring of CalibrationPoints.multi_qubit
         """
         if for_ef:
             log.warning('for_ef is deprecated, use cal_states instead.')
         self.cal_states = CalibrationPoints.guess_cal_states(
             cal_states, for_ef=for_ef)
+
         self.cal_points = CalibrationPoints.multi_qubit(
             self.meas_obj_names, self.cal_states,
-            n_per_state=n_cal_points_per_state)
+            n_cal_points_per_state, all_states_combinations)
+
         self.exp_metadata.update({'cal_points': repr(self.cal_points)})
 
     def preprocess_task_list(self, **kw):
@@ -352,7 +366,162 @@ class MultiTaskingExperiment(QuantumExperiment):
                         gsp[k] = csp[k]
                     # Add without prefix to meas_obj_sweep_points_map
                     self.add_to_meas_obj_sweep_points_map(mo, k)
+
+        # The following is only relevant for child classes that make use of
+        # the sweep_functions_dict and call generate_sweep_functions
+        # (see docstring of generate_sweep_functions)
+        for k, v in task.get('sweep_functions_dict', {}).items():
+            # add task sweep functions to the global sweep_functions_dict with
+            # the appropriately prefixed key
+            self.sweep_functions_dict[prefix + k] = v
+
         return task
+
+    def generate_sweep_functions(self):
+        """Loops over all sweep points and adds the according sweep function to
+        self.sweep_functions. The appropriate sweep function is taken from
+        self.sweep_function_dict. For multiple sweep points in one dimension a
+        multi_sweep is used.
+
+        This method is (for now) not used in this base class, but is only
+        provided to allow child classes to make use of it, in which case
+        the child class needs to populate self.sweep_function_dict before
+        calling this method.
+
+        Caution: Special behaviour if the sweep point param_name is not found in
+        self.sweep_function_dict.keys(): We assume that this sweep point is a
+        pulse parameter and insert the class SegmentSoftSweep as placeholder
+        that will be replaced by an instance in QE._configure_mc.
+        """
+        # The following dict of lists will store the mapping between
+        # (local/global) sweep parameters and (local/global) sweep functions
+        class ListsDict(dict):
+            def append(self, key, value):
+                if key not in self:
+                    self[key] = []
+                self[key].append(value)
+        sf_for_sp = ListsDict()
+        # helper lists needed to determine the mapping
+        all_sp = [sp for d in self.sweep_points for sp in d]
+        prefixes = [t['prefix'] for t in self.preprocessed_task_list]
+        # for each sweep function, find for which sweep params it is needed
+        for sf in self.sweep_functions_dict.keys():
+            if sf in all_sp:  # exact match
+                # local swf for local sp or global swf for global sp
+                sf_for_sp.append(sf, sf)
+            else:
+                # it might be a local sweep function for a global sweep point
+                sp_p = list(set([(sp, p) for sp in all_sp for p in prefixes
+                                 if sf == p + sp]))
+                if len(sp_p):
+                    if len(sp_p) > 1:
+                        raise ValueError(
+                            f'Sweep function matches multiple combinations '
+                            f'of prefix and sweep parameter: {sp_p}.')
+                    sf_for_sp.append(sp_p[0][0], sf)
+        # for each sweep param that does not have a sweep function yet
+        for sp in all_sp:
+            if sp not in sf_for_sp:
+                # It might be a global sweep param that is overridden in all
+                # tasks, in which case we can ignore it.
+                if all([sf_for_sp.get(p + sp, []) for p in prefixes]):
+                    sf_for_sp[sp] = []  # no sweep function needed
+
+        # check if the child class has a separate dict for sweeping pulse
+        # parameters
+        sp_pulses = self.get_sweep_points_for_sweep_n_dim()
+        if sp_pulses == self.sweep_points:
+            sp_pulses = None  # update of a separate dict not needed below
+
+        # We can now add the needed sweep functions to self.sweep_functions.
+        # loop over all sweep_points dimensions
+        for i in range(len(self.sweep_points)):
+            sw_ctrl = None
+            if i >= len(self.sweep_functions):
+                # add new dimension with empty multi_sweep_function
+                # in case i is out of range
+                self.sweep_functions.append(
+                    swf.multi_sweep_function(
+                        [],
+                        parameter_name=f"{i}. dim multi sweep"
+                    )
+                )
+            elif not isinstance(self.sweep_functions[i],
+                                swf.multi_sweep_function):
+                # refactor current sweep function into multi_sweep_function
+                self.sweep_functions[i] = swf.multi_sweep_function(
+                    [self.sweep_functions[i]],
+                    parameter_name=f"{i}. dim multi sweep"
+                )
+
+            for param in self.sweep_points[i].keys():
+                # Add sweep functions according to the mapping sf_for_sp.
+                for sf_key in sf_for_sp.get(param, []):
+                    sf = self.sweep_functions_dict[sf_key]
+                    if sf is None:
+                        continue
+                    sf_sw_ctrl = getattr(sf, 'sweep_control', 'soft')
+                    if sw_ctrl is not None and sf_sw_ctrl != sw_ctrl:
+                        raise ValueError(
+                            f'Cannot combine soft sweep and hard sweep in '
+                            f'dimension {i}.')
+                    if sf_sw_ctrl == 'hard':
+                        if i != 0:
+                            raise ValueError(
+                                f'Hard sweeps are only allowed in dimension '
+                                f'0. Cannot perform hard sweep for {param} '
+                                f'in dim {i}.')
+                        # hard sweep is not encapsulated by Indexed_Sweep
+                        # and we only need one hard sweep per dimension
+                        if sw_ctrl is None:
+                            self.sweep_functions[i] = sf
+                    else:
+                        sweep_function = swf.Indexed_Sweep(
+                            sf, values=self.sweep_points[i][param][0],
+                            name=self.sweep_points[i][param][2],
+                            parameter_name=param
+                        )
+                        self.sweep_functions[i].add_sweep_function(
+                            sweep_function
+                        )
+                    sw_ctrl = sf_sw_ctrl
+                # Params for which no sweep function is present are treated as
+                # pulse parameter sweeps below.
+                if param in sf_for_sp:
+                    continue  # was treated above already
+                elif i == 1:  # dimension 1
+                    # assuming that this parameter is a pulse parameter and we
+                    # therefore need a SegmentSoftSweep as the first sweep
+                    # function in our multi_sweep_function
+                    if not self.sweep_functions[i].sweep_functions \
+                            or self.sweep_functions[i].sweep_functions[0] != \
+                                awg_swf.SegmentSoftSweep:
+                        self.sweep_functions[i].insert_sweep_function(
+                            pos=0,
+                            sweep_function=awg_swf.SegmentSoftSweep
+                        )
+                    if sp_pulses:
+                        sp_pulses[i][param] = self.sweep_points[i][param]
+                else:  # dimension 0
+                    # assuming that this parameter is a pulse parameter, and we
+                    # therefore need a SegmentHardSweep as the first sweep
+                    # function in our multi_sweep_function
+                    if not self.sweep_functions[i].sweep_functions:
+                        # no previous sweep functions defined in dim 0
+                        self.sweep_functions[i].insert_sweep_function(
+                            pos=0,
+                            sweep_function=awg_swf.SegmentHardSweep)
+                    elif self.sweep_functions[i].sweep_functions[
+                             0].sweep_control != 'hard':
+                        # sweep_functinos[0] is not empty but what is there
+                        # isn't a hard sweep;
+                        raise NotImplementedError(
+                            'Combined sweeping of pulse parameters and other '
+                            'parameters for which a sweep function is provided '
+                            'is not supported in dimension 0.')
+                    if sp_pulses:
+                        sp_pulses[i][param] = self.sweep_points[i][param]
+                    sw_ctrl = 'hard'
 
     def parallel_sweep(self, preprocessed_task_list=(), block_func=None,
                        block_align=None, **kw):
@@ -421,6 +590,13 @@ class MultiTaskingExperiment(QuantumExperiment):
                     # needs to be flattened
                     b.prefix_parametric_values(
                         prefix, [k for l in params_to_prefix for k in l])
+                    qbs = self.find_qubits_in_tasks(self.qb_names, [task])
+                    for qb in qbs:
+                        ppqb = self._prep_sweep_params[qb]
+                        for param in [k for l in params_to_prefix for k in l]:
+                            if param in ppqb:
+                                ppqb[param] = prefix + ppqb[param]
+
             # add the new blocks to the lists of blocks
             parallel_blocks.append(new_block)
 
@@ -809,7 +985,7 @@ class CPhase(CalibBuilder):
         FIXME: add further args
         TODO
         :param cz_pulse_name: see CircuitBuilder
-        :param n_cal_points_per_state: see CalibBuilder.get_cal_points()
+        :param n_cal_points_per_state: see MultiTaskingExperiment.create_cal_points()
         :param kw:
             cal_states_rotations: (dict) Overwrite the default choice of
                 cal_states_rotations written to the meta data. The keys are
@@ -833,7 +1009,7 @@ class CPhase(CalibBuilder):
 
             # initialize properties specific to the CPhase measurement
             self.cphases = None
-            self.population_losses = None
+            self.contrast_losses = None
             self.leakage = None
             self.delta_leakage = None
             self.swap_errors = None
@@ -879,7 +1055,7 @@ class CPhase(CalibBuilder):
 
     def cphase_block(self, sweep_points,
                      qbl, qbr, num_cz_gates=1, max_flux_length=None,
-                     prepend_pulse_dicts=None, **kw):
+                     prepend_pulse_dicts=None, cphase=None, **kw):
         """
         This function creates the blocks for a single CPhase measurement task.
         :param sweep_points: sweep points
@@ -891,6 +1067,8 @@ class CPhase(CalibBuilder):
             determined automatically
         :param prepend_pulse_dicts: (dict) prepended pulses, see
             CircuitBuilder.block_from_pulse_dicts
+        :param cphase: (float) conditional phase of the CZ gate (degrees),
+            if allowed by the gate. Defaults to None (180 degrees).
         :param kw: further keyword arguments:
             cz_pulse_name: task-specific prefix of CZ gates (overwrites
                 global choice passed to the class init)
@@ -914,6 +1092,8 @@ class CPhase(CalibBuilder):
 
         fp = self.block_from_ops('flux', [f"{kw.get('cz_pulse_name', 'CZ')} "
                                           f"{qbl} {qbr}"] * num_cz_gates)
+        for p in fp.pulses:
+            p['cphase'] = cphase
         # TODO here, we could do DD pulses (CH 2020-06-19)
 
         for k in sweep_points.get_sweep_dimension(1, default={}):
@@ -986,7 +1166,7 @@ class CPhase(CalibBuilder):
              plot_all_traces: (bool) TODO, default: True
              plot_all_probs: (bool) TODO, default: True
              ref_pi_half: (bool) TODO, default: False
-        :return: cphases, population_losses, leakage, and the analysis instance
+        :return: cphases, contrast_losses, leakage, and the analysis instance
         """
         plot_all_traces = kw.get('plot_all_traces', True)
         plot_all_probs = kw.get('plot_all_probs', True)
@@ -1009,17 +1189,17 @@ class CPhase(CalibBuilder):
                           'channel_map': channel_map,
                           'ref_pi_half': ref_pi_half})
         self.cphases = {}
-        self.population_losses = {}
+        self.contrast_losses = {}
         self.leakage = {}
         self.delta_leakage = {}
         self.swap_errors = {}
         for task in self.task_list:
             self.cphases.update({task['prefix'][:-1]: self.analysis.proc_data_dict[
                 'analysis_params_dict'][f"cphase_{task['qbr']}"]['val']})
-            self.population_losses.update(
+            self.contrast_losses.update(
                 {task['prefix'][:-1]: self.analysis.proc_data_dict[
                     'analysis_params_dict'][
-                    f"population_loss_{task['qbr']}"]['val']})
+                    f"contrast_loss_{task['qbr']}"]['val']})
             if ref_pi_half:
                 self.swap_errors.update(
                     {task['prefix'][:-1]: self.analysis.proc_data_dict[
@@ -1034,7 +1214,7 @@ class CPhase(CalibBuilder):
                     'analysis_params_dict'][
                     f"leakage_increase_{task['qbl']}"]['val']})
 
-        return self.cphases, self.population_losses, self.leakage, \
+        return self.cphases, self.contrast_losses, self.leakage, \
                self.analysis, self.swap_errors
 
 
