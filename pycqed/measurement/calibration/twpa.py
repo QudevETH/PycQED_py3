@@ -31,13 +31,13 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
     """
     task_mobj_keys = ['mobj']
 
-    def __init__(self, meas_objs, sweep_functions_dict=None,
+    def __init__(self, meas_objs, sweep_functions_dict=None, drive=None,
                  **kw):
         try:
             super().__init__(meas_objs=meas_objs,
                              df_name='psd_avg_det',
                              cal_states=[],
-                             drive=None,
+                             drive=drive,
                              **kw)
 
             for task in self.task_list:
