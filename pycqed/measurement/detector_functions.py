@@ -6,6 +6,7 @@ import traceback
 import numpy as np
 from copy import deepcopy
 import time
+import itertools
 from string import ascii_uppercase
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.utilities.timer import Timer, TimedMetaClass
@@ -648,7 +649,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
 
     def __init__(self, acq_dev=None, detectors=None,
                  prepare_and_finish_pulsar=False,
-                 channels=(),
+                 channels=(), always_prepare=False,
                  **kw):
         """
         Init of the PollDetector base class.
@@ -661,6 +662,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
             prepare_and_finish_pulsar (bool, optional): Whether to start and
                 stop all other AWGs in pulsar in addition to the AWGs being part
                 of the df itself. Defaults to False.
+            always_prepare (bool) : when True the acquire/get_values method will
+                first call the prepare statement.
 
         Keyword args: passed to parent class
 
@@ -669,8 +672,9 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         these detectors.
         """
         super().__init__(**kw)
-        self.always_prepare = False
+        self.always_prepare = always_prepare
         self.prepare_and_finish_pulsar = prepare_and_finish_pulsar
+        self._pulsar_started = False
 
         if detectors is None:
             # if no detector is provided then itself is the only detector
@@ -698,9 +702,11 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         else:
             self.channels = deepcopy(channels)
         self.value_names = []
+        self._channels_value_names_map = None
 
     def prepare(self, sweep_points=None):
-        self.prepare_pulsar()
+        if self.prepare_and_finish_pulsar and not self._pulsar_started:
+            self.prepare_pulsar()
         for acq_dev in self.acq_devs:
             acq_dev.timer = self.timer
 
@@ -712,6 +718,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                     # AWG can be an awg_control_object which can be None
                     awgs_exclude += [awg.name]
             ps.Pulsar.get_instance().start(exclude=awgs_exclude)
+            self._pulsar_started = True
 
     def get_awgs(self):
         return [self.AWG]
@@ -856,6 +863,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         acquisition.
         """
         if self.prepare_and_finish_pulsar:
+            self._pulsar_started = False
             ps.Pulsar.get_instance().stop()
         elif self.AWG is not None:
             self.AWG.stop()
@@ -871,9 +879,19 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
             dict, where each key is a measurement object name, and each value
             the list of corresponding value_names from self.value_names
         """
-        ch_vn_map = {ch: vn for ch, vn in zip(self.channels, self.value_names)}
-        return {mobj: [ch_vn_map[ch] for ch in chs]
-                for mobj, chs in self.meas_obj_channel_map.items()}
+        if self._channels_value_names_map is None:
+            self._channels_value_names_map = {
+                ch: vn for ch, vn in zip(self.channels, self.value_names)}
+        movnm = {}
+        for mobj, chs in self.meas_obj_channel_map.items():
+            movnm[mobj] = []
+            for ch, vns in self._channels_value_names_map.items():
+                if not isinstance(vns, tuple):
+                    vns = (vns,)
+                for vn in vns:
+                    if ch in chs and vn not in movnm[mobj]:
+                        movnm[mobj].append(vn)
+        return movnm
 
 
 class MultiPollDetector(PollDetector):
@@ -1281,18 +1299,23 @@ class IntegratingAveragingPollDetector(PollDetector):
         super().__init__(acq_dev, channels=channels, **kw)
         self.name = '{}_integrated_average'.format(data_type)
 
-        self.value_names = [f'{acq_dev.name}_{ch[0]}_{data_type} w{ch[1]}'
-                            for ch in self.channels]
+        self._channels_value_names_map = \
+            acq_dev.get_int_channels_value_names_map(self.channels, data_type)
+        for ch, vn in self._channels_value_names_map.items():
+            if vn not in self.value_names:
+                self.value_names.append(vn)
         value_properties = acq_dev.get_value_properties(
             data_type, integration_length)
         self.value_units = ([value_properties['value_unit']] *
-                            len(self.channels))
+                            len(self.value_names))
         self.scaling_factor = value_properties['scaling_factor']
         self.value_names, self.value_units = self._add_value_name_suffix(
             value_names=self.value_names, value_units=self.value_units,
             values_per_point=values_per_point,
-            values_per_point_suffix=values_per_point_suffix)
+            values_per_point_suffix=values_per_point_suffix,
+            channels_value_names_map=self._channels_value_names_map)
 
+        self._acq_mode = 'int_avg'
         self.single_int_avg = single_int_avg
         if self.single_int_avg:
             self.detector_control = 'soft'
@@ -1314,10 +1337,14 @@ class IntegratingAveragingPollDetector(PollDetector):
 
     def _add_value_name_suffix(self, value_names: list, value_units: list,
                                values_per_point: int,
-                               values_per_point_suffix: list):
+                               values_per_point_suffix: list,
+                               channels_value_names_map=None):
         """
         For use with multiple values_per_point. Adds the strings provided in
         the values_per_point_suffix list.
+
+        Note that this function modifies the provided channels_value_names_map
+        (if provided) in order to reflect the updated value names.
         """
         if values_per_point == 1:
             return value_names, value_units
@@ -1325,12 +1352,18 @@ class IntegratingAveragingPollDetector(PollDetector):
             new_value_names = []
             new_value_units = []
             if values_per_point_suffix is None:
-                values_per_point_suffix = ascii_uppercase[:len(value_names)]
+                values_per_point_suffix = ascii_uppercase[:values_per_point]
 
             for vn, vu in zip(value_names, value_units):
+                _new_value_names = []
                 for val_suffix in values_per_point_suffix:
-                    new_value_names.append('{} {}'.format(vn, val_suffix))
+                    _new_value_names.append('{} {}'.format(vn, val_suffix))
                     new_value_units.append(vu)
+                new_value_names += _new_value_names
+                if channels_value_names_map is not None:
+                    for k in [k for k, v in channels_value_names_map.items()
+                              if v == vn]:
+                        channels_value_names_map[k] = tuple(_new_value_names)
             return new_value_names, new_value_units
 
     def set_polar(self, polar=True):
@@ -1379,9 +1412,18 @@ class IntegratingAveragingPollDetector(PollDetector):
             data = self.convert_to_polar(data)
 
         if reshape_data:
-            n_virtual_channels = len(self.value_names) // len(self.channels)
+            # The following variable counts the number of values per
+            # acquisition delivers by the hardware, which is equivalent to the
+            # number of channels with unique (tuples of) value names. In
+            # particular, the values of the dict are either str (single value
+            # name corresponding a value provided by the acquisition device) or
+            # tuple of str (multiple value names created due to
+            # values_per_point). If this str or tuple is the same for multiple
+            # channels, only one channel is counted.
+            n_val_per_acq = len(set(self._channels_value_names_map.values()))
+            n_virtual_channels = len(self.value_names) // n_val_per_acq
             data = np.reshape(
-                data.T, (-1, n_virtual_channels, len(self.channels))).T
+                data.T, (-1, n_virtual_channels, n_val_per_acq)).T
             data = data.reshape((len(self.value_names), -1))
 
         return data
@@ -1472,7 +1514,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             acquisition_length=self.integration_length,
             averages=self.nr_averages,
             loop_cnt=int(self.nr_shots * self.nr_averages),
-            mode='int_avg', data_type=self.data_type,
+            mode=self._acq_mode, data_type=self.data_type,
         )
 
 
@@ -1739,6 +1781,73 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         # Disable MC live plotting by default for SSRO acquisition
         self.live_plot_allowed = kw.get('live_plot_allowed', False)
 
+
+class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
+    """Detector used for acquiring histograms of integrated single-shots.
+
+    Remark: this class only inherits from IntegratingAveragingPollDetector
+    to avoid code replication in this class. This does not mean that the
+    averager module of the FPGA is used.
+    """
+
+    def __init__(self, acq_dev, nr_shots: int = 4094, nr_bins=None,
+                 peak_to_peak=None, **kw):
+        """
+        Init of the IntegratingHistogramPollDetector.
+        See the IntegratingAveragingPollDetector for the full dostring of the
+        accepted input parameters.
+
+        Args:
+            acq_dev (instrument): data acquisition device
+            nr_shots (int)     : number of acquisition shots
+            nr_bins (dict): number of bins for each integration channel (keys
+                are tuples representing integration channels and values are
+                ints, which must be powers of 2). This arg can be None, in
+                which case the default of 8 bins per channel is used.
+            peak_to_peak (dict): Peak to peak amplitude range of the input
+                signal for each integration channel (keys are tuples
+                representing integration channels and values are the
+                exponents n defining powers of 2, i.e., 2^n. Since the range
+                is in arbitrary units, this parameter can effectively be seen
+                as a rescaling. If the range is chosen lower than some input
+                values, they will wrap around in the histogram results and
+                an overflow flag is raised by the FPGA.
+                FIXME: this should be the actual value in the detector
+                    function, and then caculate the setting for the VC707
+                    in the VC707 acq dev class
+
+        Keyword args:
+            passed to the init of the parent class. In addition,
+            the following keyword arguments are understood:
+            - live_plot_allowed: (bool, default: False) whether to allow MC to
+              use live plotting
+        """
+        super().__init__(acq_dev, nr_averages=1, **kw)
+        self._acq_mode = 'hist'
+
+        self.name = '{}_integration_hist_det'.format(self.data_type)
+        self.nr_shots = nr_shots
+        if nr_bins is None:
+            nr_bins = {k: 8 for k in self.channels}
+        self.nr_bins = nr_bins
+        self.bins = [b for b in itertools.product(*[
+            range(self.nr_bins[k]) for k in self.channels])]
+        self.peak_to_peak = peak_to_peak or {}
+        # Disable MC live plotting by default for histogram acquisition
+        self.live_plot_allowed = kw.get('live_plot_allowed', False)
+        self.value_names = [f'{acq_dev.name}_hist_{b}' for b in self.bins]
+        self.value_units = ['' for k in self.value_names]
+        self.progress_scaling = self.nr_shots
+
+    def prepare(self, sweep_points=None):
+        self.acq_dev.nb_bins = deepcopy(self.nr_bins)
+        self.acq_dev.peak_to_peak = deepcopy(self.peak_to_peak)
+        super().prepare(sweep_points=sweep_points)
+        # undo scaling done in super method because we receive only 1 histogram
+        self.nr_sweep_points //= self.nr_shots
+
+    def process_data(self, data_raw):
+        return [[data['data'][b] for data in data_raw[0]] for b in self.bins]
 
 class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
     """

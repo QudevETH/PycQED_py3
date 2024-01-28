@@ -41,7 +41,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         "analog": tuple(), # TODO: Check if there are indeed no bounds for the offset
         "marker": tuple(), # TODO: Check if there are indeed no bounds for the offset
     }
-    IMPLEMENTED_ACCESSORS = ["offset", "amp", "amplitude_scaling"]
+    IMPLEMENTED_ACCESSORS = ["offset", "amp", "amplitude_scaling", "delay"]
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -241,6 +241,18 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 get_cmd=self._hdawg_mod_mode_getter(awg_nr, output_nr),
                 docstring=f"Modulation mode of channel {ch_name}."
             )
+
+            # Hardware channel delay
+            pulsar.add_parameter(
+                f"{ch_name}_hw_channel_delay",
+                unit='s',
+                initial_value=0,
+                set_cmd=partial(self.awg_setter, id, "delay"),
+                get_cmd=partial(self.awg_getter, id, "delay"),
+                docstring=f"Additional delay of output waveforms on "
+                    f"channel {ch_name}, implemented on the hardware."
+            )
+
             # first channel of a pair
             if (int(id[2:]) - 1) % 2  == 0:
                 param_name = f"{ch_name}_mod_freq"
@@ -379,6 +391,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
             self.awg.set(f"awgs_{awg}_outputs_{output}_amplitude", value)
+        elif param == "delay":
+            self.awg.set(f'sigouts_{ch}_delay', value)
 
     def awg_getter(self, id:str, param:str):
 
@@ -407,6 +421,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
             return self.awg.get(f"awgs_{awg}_outputs_{output}_amplitude")
+        elif param == "delay":
+            return self.awg.get(f'sigouts_{ch}_delay')
 
     def _hdawg_direct_output_amp_setter(self, awg_nr):
         def s(val):

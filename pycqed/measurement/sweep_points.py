@@ -457,6 +457,30 @@ class SweepPoints(list):
                 return dim
         return None
 
+    def get_parameters(self, dimension='all'):
+        """
+        Returns the sweep params of self[dimension].
+
+        Args:
+            dimension (str, int, list/array): dimension in self whose sweep
+                parameters will be returned.
+                If 'all', the sweep parameters of all dimensions are returned.
+                If int, it must correspond to the index of a dimension in self.
+                If list/array, must contain indices of dimensions in self.
+
+        Returns:
+            list of sweep parameters
+        """
+        if dimension == 'all':
+            dimension = range(len(self))
+        elif not hasattr(dimension, '__iter__'):
+            dimension = [dimension]
+
+        params = []
+        for d in dimension:
+            params += list(self[d])
+        return params
+
     def get_values(self, param_name):
         """
         Wraps get_sweep_params_property to get values of a specific

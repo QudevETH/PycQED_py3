@@ -237,12 +237,12 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
                           dac_sweet_spot=0.0, V_per_phi0=None,
                           dac_flux_coefficient=None, phi_park=None,
                           branch='smallest', n_periods=(-1, 2),
-                          single_branch=False):
+                          single_branch=False, transition='ge'):
     """
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
     This function implements the inverse of "Qubit_dac_to_freq_res"
 
-    frequency (array): qubit frequency (Hz).
+    frequency (array): frequency of the specified transition (Hz).
     Ej_max (float): Maximum josephson energy (Hz).
     E_c (float): charging energy of the qubit (Hz).
     V_per_phi0 (float): volt per phi0 (convert voltage to flux).
@@ -262,6 +262,8 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
         close to volt_guess
     single_branch (bool): forces all voltages to lie in a single branch (e.g. to
         avoid jumps in a frequency sweep)
+    transition (str): String specifying the transition of the requested
+        frequency. Valid values are 'ge', 'gf', 'ef'. Defaults to 'ge'.
     """
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
@@ -279,7 +281,7 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
         frequency = [frequency]
         return_float = True
     E_j = [transmon.transmon_resonator_ej_anh_frg_chi(
-            f, ec=E_c, frb=fr, gb=coupling)[0]
+            f, ec=E_c, frb=fr, gb=coupling, transition=transition)[0]
             for f in frequency]
     E_j = np.array(E_j)
 

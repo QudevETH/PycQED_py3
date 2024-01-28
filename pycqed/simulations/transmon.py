@@ -406,9 +406,17 @@ def transmon_resonator_fge_anh_frg_chi(ec: float, ej: float, frb: float,
                                        gb: float, ng: float = 0.,
                                        dim_charge: int = 31,
                                        dim_resonator: int = 10):
+    return transmon_resonator_ftr_anh_frg_chi(ec, ej, frb, gb, ng,
+                                              dim_charge, dim_resonator)
+
+def transmon_resonator_ftr_anh_frg_chi(ec: float, ej: float, frb: float,
+                                       gb: float, ng: float = 0.,
+                                       dim_charge: int = 31,
+                                       dim_resonator: int = 10,
+                                       transition: str = 'ge'):
     """Calculate observable frequencies of a coupled transmon-resonator system.
 
-    Calculates the first transition frequency and anharmonicity of the
+    Calculates the transition frequency and anharmonicity of the
     transmon with the resonator in the ground state, the resonator frequency
     for the qubit in the ground state and the dispersive shift of the resonator.
 
@@ -420,16 +428,24 @@ def transmon_resonator_fge_anh_frg_chi(ec: float, ej: float, frb: float,
         ng: Charge offset of the Hamiltonian.
         dim_charge: Number of charge states to use in calculations.
         dim_resonator: Number of photon number states to use in calculations.
+        transition: Transition for which the transition frequency is calculated.
+            Valid values are 'ge', 'ef', 'gf'. Defaults to 'ge'.
 
     Returns:
         A tuple of 1) qubit transition frequency, 2) qubit anharmonicity,
         3) the resonator frequency for transmon ground state, and 4) the
-        dispersive shift.
+        dispersive shift, which is HALF the frequency difference.
     """
     f10, f20, f01, f11 = transmon_resonator_levels(ec, ej, frb, gb, ng,
                                                    dim_charge,
                                                    dim_resonator)
-    return f10, f20 - 2 * f10, f01, (f11 - f10 - f01) / 2
+    if transition == 'ge':
+        f_tr = f10
+    elif transition == 'ef':
+        f_tr = f20 - f10
+    elif transition == 'gf':
+        f_tr = f20
+    return f_tr, f20 - 2 * f10, f01, (f11 - f10 - f01) / 2
 
 
 def transmon_resonator_ec_ej_frb_gb(fge: float, anh: float, frg: float,
@@ -469,10 +485,11 @@ def transmon_resonator_ec_ej_frb_gb(fge: float, anh: float, frg: float,
     return tuple(ec_ej_frb_gb)
 
 
-def transmon_resonator_ej_anh_frg_chi(fge: float, ec: float, frb: float,
+def transmon_resonator_ej_anh_frg_chi(f_tr: float, ec: float, frb: float,
                                       gb: float, ng: float = 0.,
                                       dim_charge: int = 31,
-                                      dim_resonator: int = 10):
+                                      dim_resonator: int = 10,
+                                      transition: str = 'ge'):
     """Calculate Josephson energy and observable frequencies of a coupled
     transmon-resonator system from the qubit transition frequency and
     Hamiltonian parameters
@@ -483,12 +500,14 @@ def transmon_resonator_ej_anh_frg_chi(fge: float, ec: float, frb: float,
 
     Args:
         ec: Charging energy of the Hamiltonian.
-        fge: The first transition frequency of the transmon.
+        f_tr: The transition frequency of the transmon.
         frb: Bare resonator frequency.
         gb: Bare transmon-resonator coupling strength.
         ng: Charge offset of the Hamiltonian.
         dim_charge: Number of charge states to use in calculations.
         dim_resonator: Number of photon number states to use in calculations.
+        transition: Transition corresponding to f_tr. Valid values are "ge",
+            "ef", "gf". Defaults to "ge".
 
     Returns:
         A tuple of 1) transmon Josephson energy, 2) qubit anharmonicity,
@@ -496,20 +515,28 @@ def transmon_resonator_ej_anh_frg_chi(fge: float, ec: float, frb: float,
         dispersive shift.
     """
 
-    def func(ej_anh_frg_chi_, fge_ec_frb_gb, ng_, dim_charge_, dim_resonator_):
-        fge_, ec_, frb_, gb_ = fge_ec_frb_gb
+    def func(ej_anh_frg_chi_, ftr_ec_frb_gb, ng_, dim_charge_, dim_resonator_,
+             transition_):
+        ftr_, ec_, frb_, gb_ = ftr_ec_frb_gb
         ej, anh, frg, chi = ej_anh_frg_chi_
-        calc_fge_anh_frg_chi = transmon_resonator_fge_anh_frg_chi(
-            ec_, ej, frb_, gb_, ng_, dim_charge_, dim_resonator_)
-        return calc_fge_anh_frg_chi - np.array([fge_, anh, frg, chi])
+        calc_ftr_anh_frg_chi = transmon_resonator_ftr_anh_frg_chi(
+            ec_, ej, frb_, gb_, ng_, dim_charge_, dim_resonator_, transition=transition_)
+        return calc_ftr_anh_frg_chi - np.array([ftr_, anh, frg, chi])
 
+    if transition == 'ge':
+        fge = f_tr
+    if transition == 'ef':
+        fge = f_tr + ec
+    if transition == 'gf':
+        fge = (f_tr + ec)/2
     anh0 = -ec
     ej0 = (fge + ec)**2 / 8 / ec
     frg0 = frb
     chi0 = -gb**2 * (fge + ec) / (fge - frb) / (fge - frb - ec) / 16
     ej_anh_frg_chi = sp.optimize.fsolve(func, np.array([ej0, anh0, frg0, chi0]),
-                                        args=(np.array([fge, ec, frb, gb]),
-                                              ng, dim_charge, dim_resonator))
+                                        args=(np.array([f_tr, ec, frb, gb]),
+                                              ng, dim_charge, dim_resonator,
+                                              transition))
     return tuple(ej_anh_frg_chi)
 
 
