@@ -1979,12 +1979,12 @@ class LeakageAmplification(Chevron):
     """
     def __init__(self, dev, gate_list, sweep_param_1D, sweep_param_2D,
                  sweep_range_dict, unit_dict, labels_dict,
-                 cz_pulse_name, num_cz_gates=16, set_cphase=None,
+                 cz_pulse_name, num_cz_gates=16, cphase=None,
                  task_list=None,
                  *args, **kw):
 
-        if set_cphase is None:
-            set_cphase = ''
+        if cphase is None:
+            cphase = ''
         if cz_pulse_name is None:  # TODO does this work?
             cz_pulse_name = 'CZ'
         else:
@@ -2034,7 +2034,7 @@ class LeakageAmplification(Chevron):
                     dict(qbc=qbh, qbt=qbl,
                          sweep_points=SweepPoints(sp),
                          num_cz_gates=num_cz_gates,
-                         cz_pulse_name=cz_pulse_name + str(set_cphase)
+                         cz_pulse_name=cz_pulse_name + str(cphase)
                          )
                 )
 
