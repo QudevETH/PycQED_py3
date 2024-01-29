@@ -11454,21 +11454,15 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         'steps': number of evaulations used for the fitting, default 1e8, dual_annealing default 1e7
     """
 
-    def calculate_voltage_from_flux(self, vfc, flux):
-        """
-        Adapted from QuDev_transmon.py
-        """
-        return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
-
     def calculate_flux_voltage(self, vfc, flux_amplitude_bias_ratio,
                                frequency=None, flux=None):
         """
-        Adapted from QuDev_transmon.py
-        """
-        # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
-        #  can be called both from the measurement and analysis side, to avoid code dupplication
+        This is a subset of QuDev_transmon.calculate_flux_voltage. Please have a look for details.
 
-        bias = self.calculate_voltage_from_flux(vfc, flux)
+        Avoiding an import of QuDev_transmon for perf reasons.
+        """
+
+        bias = vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
 
         if flux % 0.5:
             pass  # do not shift (well-defined branch)
@@ -11487,11 +11481,11 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def calculate_qubit_frequency(self, flux_amplitude_bias_ratio, amplitude,
                                   vfc, model='transmon_res', bias=None):
-        # """
-        # Adapted from QuDev_transmon.py
-        # """
-        # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
-        #  can be called both from the measurement and analysis side, to avoid code dupplication
+        """
+        This is a subset of QuDev_transmon.calculate_qubit_frequency. Please have a look for details.
+
+        Avoiding an import of QuDev_transmon for perf reasons.
+        """
         # TODO: extend to other transitions than ge (would require to do
         #  the same to calculate_flux_voltage)
         if flux_amplitude_bias_ratio is None:
@@ -11635,8 +11629,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             if model in ['transmon', 'transmon_res']:
                 qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
                 qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL_name}']
-                qbH_bias = self.calculate_voltage_from_flux(qbH_vfc, qbH_flux)
-                qbL_bias = self.calculate_voltage_from_flux(qbL_vfc, qbL_flux)
+                qbH_bias = qbH_vfc['dac_sweet_spot'] + qbH_vfc['V_per_phi0'] * qbH_flux
+                qbL_bias = qbL_vfc['dac_sweet_spot'] + qbL_vfc['V_per_phi0'] * qbL_flux
             else:
                 qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbH_name}']
                 qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbL_name}']
@@ -11767,9 +11761,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 f'flux_amplitude_bias_ratio_{qbL}']
             amplitude2 = self.calculate_flux_voltage(vfc,
                                                      flux_amplitude_bias_ratio,
-                frequency=-fit_res.best_values['offset_freq'] \
-                          +self.proc_data_dict['int_freq_exp'][qbH],
-                flux=self.raw_data_dict[f'flux_parking_{qbL}'])
+                                                     frequency=-fit_res.best_values['offset_freq'] \
+                                                               +self.proc_data_dict['int_freq_exp'][qbH],
+                                                     flux=self.raw_data_dict[f'flux_parking_{qbL}'])
             self.proc_data_dict['analysis_params_dict'][k][
                 'amplitude2_'+self.measurement_strings[qbH].partition('_')[0]]\
                 = amplitude2
