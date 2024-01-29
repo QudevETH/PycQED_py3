@@ -11564,22 +11564,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     4 * J ** 2 + Delta_off ** 2)
             # J is already in angular frequency (see J_fft)
 
-        # def J_fft(t, Delta, data):
-        #     # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
-        #     # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
-        #     J_min = None
-        #     for Delta_index in range(len(Delta)):
-        #         S = sp.fft.fft(data[Delta_index])
-        #         S[0] = 0 # Ignore DC component
-        #         xf = sp.fft.fftfreq(len(t), (t.max()-t.min())/len(t))[0:len(t)//2]
-        #         J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]/2 # 2J = 2pi/T (see thesis), but we want it in Hz
-        #         if J_min == None or J_min > J_fft:
-        #             J_min = J_fft
-        #     return J_min
-
         def cosine_model(x, amplitude, frequency, phase, offset):
             return amplitude * np.cos(
                 2.0 * np.pi * frequency * x + phase) + offset
+                
         def J_fft(t, Delta, data):
             # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
             # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
