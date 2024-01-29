@@ -1960,6 +1960,23 @@ class Chevron(CalibBuilder):
 
 
 class LeakageAmplification(Chevron):
+    """
+    Leakage measurement for several successive CZ gates.
+
+    Measures the final population in the f level of the high-frequency
+    qubit, after num_cz_gates successive, identical gates.
+    Due to the coherent nature of the leakage, this typically creates
+    interference fringes. In order to reach constructive interferences,
+    one can sweep the delay (e.g. buffer) between pulses as one of the two
+    sweep dimensions.
+
+    Args:
+        sweep_param_1D (str): Name of a pulse attribute to sweep as first
+            sweep dimension.
+        sweep_param_2D (str): Name of a pulse attribute to sweep as second
+            sweep dimension.
+        sweep_range_dict (dict): Dictionary of the form
+    """
     def __init__(self, dev, gate_list, sweep_param_1D, sweep_param_2D,
                  sweep_range_dict, unit_dict, labels_dict,
                  cz_pulse_name, num_cz_gates=16, set_cphase=None,
@@ -1979,11 +1996,28 @@ class LeakageAmplification(Chevron):
             for (qbh, qbl) in gate_list:
                 sp = []
                 for p in [sweep_param_1D, sweep_param_2D]:
+                    # The pulse sequence consists of num_cz_gates gates.
+                    # This creates the following pulse_off sweep points for
+                    # each gate (note that 0 means the gate is ON):
+                    #       0 | 1 1 1     1      1 0
+                    #       1 | 1 1 1     1      0 0
+                    #       2 | 1 1 1     1      0 0
+                    #      ...|
+                    # gate  i | 1 1 1   i+j<n    0 0
+                    #      ...|
+                    #      n-2| 1 1 0     0      0 0
+                    #      n-1| 1 0 0     0      0 0
+                    #         ------------------------
+                    #           0 1 2 ... j ... n-1 n
+                    #              sweep points
+                    # While the above example uses sweep points equal to
+                    # [0, 1, ... n], they can be any array of int [j1, j2...].
+                    # The total number of gates (indexed by i) is fixed
                     if p == 'num_cz_gates':
                         sp.append({
                             f'attr=pulse_off, op_code={cz_pulse_name}, occurrence={i}': {
-                                'values': np.concatenate((np.ones(
-                                    num_cz_gates - i), np.zeros(i + 1))),
+                                'values': np.array([i+j<num_cz_gates
+                                                for j in sweep_range_dict[p]]),
                                 'unit': '',
                                 'label': 'Number of CZ gates'}
                             for i in range(num_cz_gates)
