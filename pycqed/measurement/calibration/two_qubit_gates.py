@@ -1983,16 +1983,15 @@ class LeakageAmplification(Chevron):
                  task_list=None,
                  *args, **kw):
 
-        if cphase is None:
-            cphase = ''
-        if cz_pulse_name is None:  # TODO does this work?
+        if cz_pulse_name is None:  # TODO already happens in cb
             cz_pulse_name = 'CZ'
         else:
             self.cz_pulse_name = cz_pulse_name
         self.default_experiment_name = f'Leakage_amplification_{sweep_param_2D}'
 
-        if task_list is None:
+        if task_list is None:  # TODO allow sp? Logic for building + modifying?
             task_list = []
+            op_code = cz_pulse_name + ('' if cphase is None else str(cphase))
             for (qbh, qbl) in gate_list:
                 sp = []
                 for p in [sweep_param_1D, sweep_param_2D]:
@@ -2015,7 +2014,7 @@ class LeakageAmplification(Chevron):
                     # The total number of gates (indexed by i) is fixed
                     if p == 'num_cz_gates':
                         sp.append({
-                            f'attr=pulse_off, op_code={cz_pulse_name}, occurrence={i}': {
+                            f'attr=pulse_off, op_code={op_code}, occurrence={i}': {
                                 'values': np.array([i+j<num_cz_gates
                                                 for j in sweep_range_dict[p]]),
                                 'unit': '',
@@ -2034,7 +2033,7 @@ class LeakageAmplification(Chevron):
                     dict(qbc=qbh, qbt=qbl,
                          sweep_points=SweepPoints(sp),
                          num_cz_gates=num_cz_gates,
-                         cz_pulse_name=cz_pulse_name + str(cphase)
+                         cz_pulse_name=op_code,
                          )
                 )
 
