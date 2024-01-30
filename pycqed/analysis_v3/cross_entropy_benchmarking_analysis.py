@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis import fitting_models as fit_mods
-
+import pycqed.measurement.sweep_points as sp_mod
 import pycqed.measurement.benchmarking.randomized_benchmarking as rb_meas
 
 
@@ -782,6 +782,9 @@ def manual_propagator(gate):
         m[3,3] = np.exp(1j*gate.arg_value)  # qutip convention: positive sign
     else:
         raise ValueError(f"Gate {gate.name} not implemented!")
+        # TODO if needed: fall back to the generic method
+        #  qt.qip.operations.gate_sequence_product(qc.propagators())
+        #  where qc is a qutip quantum circuit containing the gates.
     return m
 
 
@@ -1090,7 +1093,8 @@ pauli_error_from_average_error = lambda avg_err, d: (1 + 1/d) * avg_err
 average_error_from_pauli_error = lambda pauli_err, d: pauli_err / (1 + 1/d)
 
 
-def calculate_cz_error(data_dict1, data_dict2, **params):
+def calculate_cz_error(data_dict1, data_dict2, subtract_1qb_errors=True,
+                       **params):
     timestamp = data_dict2['timestamps'][0]
     meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict1, **params)
     if meas_obj_names is None:
@@ -1098,8 +1102,7 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
             timestamp, 'meas_objs')
     container = ",".join(meas_obj_names)
     metric = params.get('metric', 'fidelity')
-    type = params.get('error_type', 'pauli')
-    s1qb = params.get('subtract_1qb_errors', True)
+    errtype = params.get('error_type', 'pauli')
 
     try:
         e2 = data_dict2[container][f'fit_res_{metric}'].best_values['e']
@@ -1110,7 +1113,7 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
         e2e = data_dict2[container][f'fit_res_{metric}'][
             'params']['e']['stderr']
 
-    if s1qb:
+    if subtract_1qb_errors:
         try:
             # FIXME This try except is used since the fits saved in the data
             #  dict have slightly different formats if the data has been
@@ -1137,9 +1140,9 @@ def calculate_cz_error(data_dict1, data_dict2, **params):
         e2e = np.sqrt(e2e**2 + e1_1e**2 + e1_2e**2)
 
     cz_error_rate = {'value': e2, 'stderr': e2e}
-    if type == 'pauli':
+    if errtype == 'pauli':
         pass
-    elif type == 'average':
+    elif errtype == 'average':
         cz_error_rate = {k: average_error_from_pauli_error(v, 4)
                          for k, v in cz_error_rate.items()}
     else:
@@ -1158,7 +1161,6 @@ def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
         return {}
     try:
         dd1 = hlp_mod.read_analysis_file(timestamp, raise_errors=True)
-        # raise FileNotFoundError
     except FileNotFoundError:
         pp, meas_obj_names1, cycles, nr_seq = single_qubit_xeb_analysis(
             timestamp,
@@ -1188,11 +1190,10 @@ def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
 
 def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
                          meas_data_dtype=None, meas_obj_names=None,
-                         idx0f=0, idx0p=0,):
+                         idx0f=0, idx0p=0, idx_cp_break=None):
     """
     TODO
     """
-    from pycqed.measurement import sweep_points as sp_mod
 
     task_id = 0
 
@@ -1215,28 +1216,25 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
     sp_full = sp_mod.SweepPoints(
         pp_full.data_dict['exp_metadata']['sweep_points'])
 
-    for idx in range(len(cphases)):  # loop over cphases
+    for idx_cp in range(len(cphases)):  # loop over cphases
         pp = deepcopy(pp_full)
         # Trim sp
         sp = rb_meas.TwoQubitXEBMultiCphase.extract_combined_sweep_points(
-            sp_full=sp_full, idx=idx, deep=True)
+            sp_full=sp_full, idx=idx_cp, deep=True)
         pp.data_dict['exp_metadata']['sweep_points'] = sp
 
         # Set cphase
-        pp.data_dict['exp_metadata']['cphase'] = cphases[idx]
+        pp.data_dict['exp_metadata']['cphase'] = cphases[idx_cp]
 
         # Trim data and only keep what corresponds to one cphase
         data = pp.data_dict[','.join(meas_obj_names)]['correct_readout']
         data = data.reshape(
             [sp.length(1), len(cphases), sp.length(0),
-             9])[:, idx, :, :].reshape([-1, 9])
+             9])[:, idx_cp, :, :].reshape([-1, 9])
         pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
 
         # Set mospm
         mospm = sp.get_meas_obj_sweep_points_map(meas_obj_names)
-        # for v in mospm.values():
-        #     v.pop(1)
-        print(f"mospm = {mospm}")
         pp.data_dict['exp_metadata']['meas_obj_sweep_points_map'] = mospm
 
         # Analysis
@@ -1277,7 +1275,7 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         plt.close('all')
         if timer:
             timer.checkpoint('pp.save.start')
-        # pp.save()  # Removed for speed reasons. Could keep once works properly
+        # pp.save()  # Removed for speed reasons. Re-add once works properly
         if timer:
             timer.checkpoint('pp.save.end')
         dd = pp.data_dict
@@ -1289,8 +1287,9 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
                 del dd[mobjn]
         dd2.append(dd)
 
-        # if idx >= 1:
-        #     break
+        if idx_cp_break:  # Stop at this index, for debugging
+            if idx_cp >= idx_cp_break:
+                break
 
     del pp_full
     return dd2
