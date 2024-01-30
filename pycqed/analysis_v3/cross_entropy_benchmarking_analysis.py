@@ -315,7 +315,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         nr_seq = swpts.length(1)
         compression_factor = hlp_mod.get_param('compression_factor', data_dict,
                                                **params)
-        n_shots = hlp_mod.get_instr_param_from_hdf_file(
+        n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
         prep_params = hlp_mod.get_param_from_metadata_group(
             timestamp, 'preparation_params')
@@ -524,8 +524,8 @@ def get_sg_qb_gate_lengths(timestamp):
     params_dict.update({f'{qbn}_ge_nr_sigma':
                             f'Instrument settings.{qbn}.ge_nr_sigma'
                         for qbn in meas_obj_names})
-    dd = hlp_mod.get_params_from_hdf_file({}, params_dict,
-                                          folder=a_tools.get_folder(timestamp))
+    dd = hlp_mod.get_params_from_files({}, params_dict,
+                                       folder=a_tools.get_folder(timestamp))
     gate_lengths = {qbn: dd[f'{qbn}_ge_sigma']*dd[f'{qbn}_ge_nr_sigma']
                     for qbn in meas_obj_names}
     return gate_lengths
@@ -538,15 +538,15 @@ def get_two_qb_gate_length(timestamp, dev_name, gate_name='CZ_nztc',
                                                                'meas_objs')
     assert len(meas_obj_names) == 2
     params_dict = {f'pulse_length':
-                       f'Instrument settings.{dev_name}.{gate_name}_'
-                       f'{meas_obj_names[0]}_{meas_obj_names[1]}_pulse_length'}
-    dd = hlp_mod.get_params_from_hdf_file({}, params_dict,
-                                          folder=a_tools.get_folder(timestamp))
+                       f'Instrument settings.{dev_name}.{gate_name}_{meas_obj_names[0]}_'
+                       f'{meas_obj_names[1]}_pulse_length'}
+    dd = hlp_mod.get_params_from_files({}, params_dict,
+                                       folder=a_tools.get_folder(timestamp))
     if dd['pulse_length'] == 0:
         params_dict = {f'pulse_length':
-                           f'Instrument settings.{dev_name}.{gate_name}_'
-                           f'{meas_obj_names[1]}_{meas_obj_names[0]}_pulse_length'}
-        dd = hlp_mod.get_params_from_hdf_file(
+                           f'Instrument settings.{dev_name}.{gate_name}_{meas_obj_names[1]}_'
+                           f'{meas_obj_names[0]}_pulse_length'}
+        dd = hlp_mod.get_params_from_files(
             {}, params_dict, folder=a_tools.get_folder(timestamp))
     return dd['pulse_length']
 
@@ -915,7 +915,7 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         cycles = swpts.get_sweep_params_property('values', 0)
         nr_seq = swpts.length(1)
         compression_factor = hlp_mod.get_param('compression_factor', data_dict)
-        n_shots = hlp_mod.get_instr_param_from_hdf_file(
+        n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
         prep_params = hlp_mod.get_param_from_metadata_group(
             timestamp, 'preparation_params')
@@ -1763,13 +1763,31 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
 
 pdf_PT = lambda x, d: (d - 1) * (1 - x) ** (d - 2)
 cdf_PT = lambda x, d: 1 - (1 - x) ** (d - 1)
-def get_cdfs(pops, d):
-    x_sample = pops
-    x = np.sort(x_sample)
-    y_cdf_experiment = np.linspace(0, 1, len(x)+1, endpoint=True)[1:]
-    y_cdf_theory = cdf_PT(x, d)
-    return x, y_cdf_experiment, y_cdf_theory, \
-           np.mean(np.abs(y_cdf_experiment - y_cdf_theory))
+
+
+def get_cdf(pops, d, staircase=False):
+    """For each sample s in pops, gives the cumulative probability p<=s
+
+    This is computed by ordering x values, and for each sample in x giving the
+    fraction of samples which are smaller or equal, which is (i+1)/N since the
+    samples are ordered (with index i from 0 to N-1).
+    """
+    x = np.sort(pops)
+    y = np.linspace(0, 1, len(x)+1, endpoint=True)[1:]
+    y_theory = cdf_PT(x, d)  # Only used to compute the distance
+    distance = np.mean(np.abs(y - y_theory))
+    if staircase:
+        # In order to plot as staircase: for each sample indexed by i,
+        # add a point at (x[i], y[i-1]). Then finally add (0,0) and (1,1),
+        # since we know that x is in [0,1].
+        x = np.array([x[i] for i in range(len(x)) for _ in range(2)])
+        # We add this first point removed above, to keep the logic cleaner
+        y = np.concatenate(([0], y))
+        y = np.array([[y[i-1], y[i]] for i in range(1, len(y))]).flatten()
+        # Add end points
+        x = np.concatenate(([0], x, [1]))
+        y = np.concatenate(([0], y, [1]))
+    return x, y, distance
 
 
 def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
@@ -1871,7 +1889,7 @@ def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
                     proba_exp = proba_exp[:, i, :]
 
                     # get cdfs
-                    x, y_exp, _, distance = get_cdfs(proba_exp.flatten(), d)
+                    x, y_exp, distance = get_cdf(proba_exp.flatten(), d, True)
                     # Plot data
                     ax.plot(x, y_exp, linewidth=2, label='Measured data')
                     # Porter-Thomas distrib:

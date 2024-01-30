@@ -1317,9 +1317,9 @@ def get_meas_obj_coh_times(data_dict, extract_T2s=True, **params):
             params_dict[f'{mobjn}.{trans_name}_nr_sigma'] = \
                 s + f'.{trans_name}_nr_sigma'
     if len(params_dict) > 0:
-        hlp_mod.get_params_from_hdf_file(data_dict, params_dict=params_dict,
-                                         numeric_params=list(params_dict),
-                                         **params)
+        hlp_mod.get_params_from_files(data_dict, params_dict=params_dict,
+                                      numeric_params=list(params_dict),
+                                      **params)
 
 
 def calculate_rb_confidence_intervals(

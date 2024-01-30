@@ -40,9 +40,9 @@ class CircuitBuilder:
                 - addressing qubits via logical indices (spin indices)
                 - resolution of ParametricValues in self.sweep_n_dim if
                   body_block_func is used
-            - copy pulse dicts with copy instead of with deepcopy. This means
-              that the user has to ensure that mutable pulse parameters (dicts,
-              lists, etc.) do not get modified by their code.
+            - copying pulse dicts with copy instead of with deepcopy. This
+                means that the user has to ensure that mutable pulse parameters
+                (dicts,lists, etc.) do not get modified by their code.
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
@@ -56,6 +56,7 @@ class CircuitBuilder:
         self.dev = dev
         self.qubits, self.qb_names = self.extract_qubits(
             dev, qubits, operation_dict, filter_qb_names)
+        self._prep_sweep_params = {qb: {} for qb in self.qb_names}
         self.update_operation_dict(operation_dict)
         self.cz_pulse_name = kw.get('cz_pulse_name')
         if self.cz_pulse_name is None:
@@ -366,43 +367,53 @@ class CircuitBuilder:
                 qb_dec = None
                 if decomp_info==True:
                     # If True: we decompose the gate
-                    # By default: use the first qubit involved in the gate
-                    qb_dec = qbn[0]
+                    # By default: use the qubit order defined in the op code
+                    # to apply the single-qubit gates
+                    qb_dec = qbn
                 elif isinstance(decomp_info, list):
                     # If list: we decompose the gate if it is in the list...
                     for gate_to_decomp in decomp_info:
                         for qbn_reordered in [qbn, qbn[::-1]]:
-                            if qbn_reordered==gate_to_decomp:
+                            if qbn_reordered == gate_to_decomp:
                                 # ... and apply the single-qubit gates to the
-                                # first qubit passed in decompose_rotation_gates
-                                qb_dec = gate_to_decomp[0]
+                                # qubits in the order passed in
+                                # decompose_rotation_gates
+                                qb_dec = gate_to_decomp
+                # Force resolving to a single CZ if no cphase is required
+                # (note that CZ180 will still be decomposed)
+                if cphase is None:
+                    qb_dec = None
                 # If qb_dec is not None, we decompose the gate
                 if qb_dec:
-                    # Index (in the following list) of the gate whose phase
-                    # will set the cphase
-                    cphase_gate_index = 5
+                    if isinstance(cphase, ParametricValue):
+                        # Update the op_split info in the ParametricValue,
+                        # such that it matches the operation decomposition
+                        cphase.op_split[0] = 'Z'
+                    # CZ_x = diag(1,1,1,e^-i*x)  # pycqed sign convention
+                    #  = e^(i*x/4)*Z1(-x/2)*Z0(-x/2)*H1*CZ*H1*Z1(x/2)*H1*CZ*H1
+                    # and replacing each Hadamard H = i*Y*Z(pi) and
+                    # discarding the global phase gives the decomposition:
                     decomposed_op = [
-                        f'Z180 {qb_dec}',
-                        f'Y90 {qb_dec}',
+                        f'Y90 {qb_dec[0]}',
                         device_op,
-                        f'Z180 {qb_dec}',
-                        f'Y90 {qb_dec}',
-                        f'Z0 {qb_dec}',  # phase set to the cphase below
-                        f'Z180 {qb_dec}',
-                        f'Y90 {qb_dec}',
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        f'Z0 {qb_dec[0]}',  # phase set below
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
                         device_op,
-                        f'Z180 {qb_dec}',
-                        f'Y90 {qb_dec}',
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        f'Z0 {qb_dec[0]}',  # phase set below
+                        f'Z0 {qb_dec[1]}',  # phase set below
                     ]
                     p = [
                         self.copy_op(self.operation_dict[do])
                         for do in decomposed_op
                     ]
-                    if isinstance(cphase, ParametricValue):
-                        # Update the op_split info in the ParametricValue,
-                        # such that it matches the operation decomposition
-                        cphase.op_split[0] = 'Z'
-                    p[cphase_gate_index]['basis_rotation'] = {qb_dec: cphase}
+                    p[4]['basis_rotation'] = {qb_dec[0]: cphase/2}
+                    p[10]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
+                    p[11]['basis_rotation'] = {qb_dec[1]: -cphase/2}
                 else:
                     p = [self.copy_op(self.operation_dict[device_op])]
                     if cphase is not None:
@@ -514,7 +525,7 @@ class CircuitBuilder:
             return Block(block_name, [])
         if prep_params is None:
             prep_params = self.get_prep_params(qb_names)
-        if len(init_state) == 1:
+        if len(init_state) == 1 and isinstance(init_state, str):
             init_state = [init_state] * len(qb_names)
         else:
             assert len(init_state) == len(qb_names), \
@@ -710,6 +721,11 @@ class CircuitBuilder:
                 preparation_pulses += self.get_pulses('RO ' + qbn)
                 preparation_pulses[-1]['ref_point'] = 'start'
                 preparation_pulses[-1]['element_name'] = 'preselection_element'
+
+                for k, v in self._prep_sweep_params[qbn].items():
+                    if k in preparation_pulses[-1]:
+                        preparation_pulses[-1][k] = ParametricValue(v)
+
             preparation_pulses[0]['ref_pulse'] = ref_pulse
             preparation_pulses[0]['name'] = 'preselection_RO'
             preparation_pulses[0]['pulse_delay'] = -ro_separation
@@ -1246,7 +1262,7 @@ class CircuitBuilder:
                             vals = sweep_points.get_sweep_params_property(
                                 'values', dim, param)
                             setattr(seg, param[len('Segment.'):],
-                                    vals[j if dim == 0 else i])
+                                    deepcopy(vals[j if dim == 0 else i]))
                 # add the new segment to the sequence
                 seq.add(seg)
             if cal_points is not None:
