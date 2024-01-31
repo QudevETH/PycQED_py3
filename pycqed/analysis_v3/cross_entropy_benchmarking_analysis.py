@@ -1240,9 +1240,6 @@ def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         timer.checkpoint('two_qubit_xeb_analysis.end')
     sp_full = sp_mod.SweepPoints(
         pp_full.data_dict['exp_metadata']['sweep_points'])
-    # Set mospm
-    pp_full.data_dict['exp_metadata']['meas_obj_sweep_points_map'] =\
-        sp_full.get_meas_obj_sweep_points_map(meas_obj_names)
 
     cphases = hlp_mod.get_param_from_metadata_group(timestamp, 'task_list')[
         task_id].get('cphases')
@@ -1264,6 +1261,10 @@ def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
             [sp.length(1), len(cphases), sp.length(0),
              9])[:, idx_cp, :, :].reshape([-1, 9])
         pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
+
+        # Set mospm
+        pp.data_dict['exp_metadata']['meas_obj_sweep_points_map'] = \
+            sp.get_meas_obj_sweep_points_map(meas_obj_names)
 
         # Analysis
         if timer:
