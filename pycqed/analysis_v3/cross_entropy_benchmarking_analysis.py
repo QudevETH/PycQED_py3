@@ -1095,6 +1095,16 @@ average_error_from_pauli_error = lambda pauli_err, d: pauli_err / (1 + 1/d)
 
 def calculate_cz_error(data_dict1, data_dict2, subtract_1qb_errors=True,
                        **params):
+    """
+    Extracts the CZ error from fit results
+
+    Args:
+        data_dict1 (dict): Single-qubit characterisation data dict (only
+            used if subtract_1qb_errors)
+        data_dict2 (dict): Two-qubit characterisation data dict
+        subtract_1qb_errors (bool): Whether or not to subtract single-qubit
+            errors from the two-qubit errors when calculating the CZ errors
+    """
     timestamp = data_dict2['timestamps'][0]
     meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict1, **params)
     if meas_obj_names is None:
@@ -1152,10 +1162,12 @@ def calculate_cz_error(data_dict1, data_dict2, subtract_1qb_errors=True,
     return cz_error_rate
 
 
-def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
+def get_1qb_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
                          idx0f=0, idx0p=0,):
     """
-    TODO
+    Runs the single-qubit XEB analysis and plotting
+
+    Args: see the respective methods to which they are passed.
     """
     if timestamp is None:
         return {}
@@ -1188,11 +1200,28 @@ def get_1qb_multi_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
     return dd1
 
 
-def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
+def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
                          meas_data_dtype=None, meas_obj_names=None,
                          idx0f=0, idx0p=0, idx_cp_break=None):
     """
-    TODO
+    Runs the two-qubit multi-cphase XEB analysis and plotting
+
+    Compatible with multi-phase XEB (TwoQubitXEBMultiCphase) only.
+    First extracts the data, then successively trims the part corresponding
+    to each single cphase and reshapes it to make it analysable by the
+    single-phase XEB analysis.
+    TODO: if needed, make this compatible with single-phase XEB (TwoQubitXEB),
+     in which case the loop should run once, and should not trim data and sp.
+
+    Args:
+        clear_some_memory: Clears raw data from the final data dicts
+        timer: Optional timer object
+        idx_cp_break: Optional cphase index after which the loop should
+        stop (for debugging purposes).
+        Other: see the respective methods to which they are passed.
+    Returns:
+        Data dict. For a multi-phase XEB (TwoQubitXEBMultiCphase),
+        the returned value is a list of dict of length len(cphase).
     """
 
     task_id = 0
@@ -1217,6 +1246,8 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
 
     cphases = hlp_mod.get_param_from_metadata_group(timestamp, 'task_list')[
         task_id].get('cphases')
+
+    # Multi-phase XEB (TwoQubitXEBMultiCphase)
     for idx_cp in range(len(cphases)):  # loop over cphases
         pp = deepcopy(pp_full)
         # Trim sp
@@ -1277,7 +1308,7 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         # pp.save()
         # if timer:
         #     timer.checkpoint('pp.save.end')
-        dd = pp.data_dict
+        dd = pp.data_dict  # Keeping only the data dict
         del pp
         if clear_some_memory:
             for mobjn in meas_obj_names:
@@ -1286,22 +1317,23 @@ def get_2qb_multi_xeb_dd(timestamp, clear_some_memory=True, timer=None,
                 del dd[mobjn]
         dd2.append(dd)
 
-        if idx_cp_break:  # Stop at this index, for debugging
+        if idx_cp_break:  # Stop at this index
             if idx_cp >= idx_cp_break:
                 break
-
     del pp_full
     return dd2
 
 
-def get_multi_xeb_results_from_dd(dd1, dd2, meas_obj_names=None, **kw):
+def get_multi_xeb_results_from_dd(dd2, dd1=None, meas_obj_names=None, **kw):
     """
-    TODO
+    Helper method to extract various error rates from analysed XEB measurements
 
     Args:
-        meas_obj_names (list): mobj names in case they aren't saved by the
-            experiment in the correct order, preventing to recalculate the
-            quantum circuits here. FIXME this should be saved correctly instead
+        dd2 (dict): Previously analysed two-qubit multi-cphase XEB data dict
+        dd1 (dict): Previously analysed single-qubit XEB data dict
+        meas_obj_names (list): mobj names, which may need to be passed e.g. in
+            case they aren't saved by the experiment in the correct order
+            (necessary to correctly simulate the quantum circuits here).
     """
     results = {}
     for dd in dd2:
@@ -1561,8 +1593,8 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
                             fmts = ['png']
                         fn = copy(filename)
                         if fn is None:
-                            fn = f'XEB_{mobjn}_{cycles[-1]}cycles_{nr_seq}seqs_' \
-                                 f'{cz_name}_{timestamp}'
+                            fn = (f'XEB_{mobjn}_{cycles[-1]}cycles_'
+                                  f'{nr_seq}seqs_{cz_name}_{timestamp}')
                         if log_scale:
                             fn += '_log'
                         fn = f'{filename_prefix}{fn}'
@@ -1650,11 +1682,13 @@ def fit_plot_leakage_1qb(data_dict, meas_obj_names, data_key='correct_readout',
             ax.set_xlabel('Number of Cycles, $m$')
             ax.set_ylabel('Probability, $P(f)$')
             timestamp = data_dict['timestamps'][0]
-            ax.set_title(f'{filename_prefix}Leakage{cz_name} {mobjn} - {timestamp}')
+            ax.set_title(f'{filename_prefix}Leakage{cz_name} {mobjn} - '
+                         f'{timestamp}')
 
             if savefig:
                 fig.savefig(data_dict['folders'][0] +
-                            f'\\{filename_prefix}Leakage{cz_name}_{mobjn}_{timestamp}.png',
+                            f'\\{filename_prefix}Leakage{cz_name}_{mobjn}_'
+                            f'{timestamp}.png',
                             dpi=600, bbox_inches='tight')
             if show:
                 plt.show()
@@ -1739,7 +1773,8 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
         timestamp = data_dict['timestamps'][0]
         cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}"\
             if 'cphase' in data_dict['exp_metadata'] else ''
-        axs[0].set_title(f'{filename_prefix}Leakage{cz_name} {mobjn_joined} - {timestamp}')
+        axs[0].set_title(f'{filename_prefix}Leakage{cz_name} {mobjn_joined} '
+                         f'- {timestamp}')
 
         # add to data dict
         hlp_mod.add_param(f'{mobjn_joined}.fit_results.leakage',
@@ -1748,7 +1783,8 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
 
         if savefig:
             fig.savefig(data_dict['folders'][0] +
-                        f'\\{filename_prefix}Leakage{cz_name}_{mobjn_joined}_{timestamp}.png',
+                        f'\\{filename_prefix}Leakage{cz_name}_'
+                        f'{mobjn_joined}_{timestamp}.png',
                         dpi=600, bbox_inches='tight')
         if show:
             plt.show()
