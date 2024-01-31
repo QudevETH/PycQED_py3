@@ -744,13 +744,11 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                 iteration of a sequence consisting of nr_cycles cycles.
             cycles (list/array): integers specifying the number of
                 random cycles to apply in a sequence.
-            randomize_cphases (bool): whether to do parametric C-phase gates,
-                with a random angle in each cycle
             See docstring of base class for remaining parameters.
 
         Keyword args:
             cphase (float; default: None): value of the C-phase gate angle
-                in degrees. If None,
+                in degrees.
                 Allowed values:
                     float: angle of the CZ gates (deg)
                     None: a standard CZ gate (180 deg) is done (see
