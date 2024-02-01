@@ -1346,8 +1346,10 @@ class BaseDataAnalysis(object):
             pdict = self.plot_dicts[key]
             plot_touching = pdict.get('touching', False)
 
-            if pdict.get('plotfn') is None:
-                continue
+            if 'plotfn' not in pdict:
+                raise ValueError(f"No 'plotfn' set in plot_dicts['{key}']!")
+            elif pdict['plotfn'] is None:
+                continue  # Do not plot anything is the plotfn is None
             elif type(pdict['plotfn']) is str:
                 plotfn = getattr(self, pdict['plotfn'])
             else:
