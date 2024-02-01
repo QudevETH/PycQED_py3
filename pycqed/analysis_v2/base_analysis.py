@@ -1660,8 +1660,8 @@ class BaseDataAnalysis(object):
         plot_xscale = pdict.get('xscale', None)
         plot_grid = pdict.get('grid', None)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
-        if pdict.get('color') is not None:
-            plot_linekws['color'] = pdict.get('color')
+        if 'color' in pdict:
+            plot_linekws['color'] = pdict['color']
 
         plot_linekws['alpha'] = pdict.get('alpha', 1)
         # plot_multiple = pdict.get('multiple', False)
