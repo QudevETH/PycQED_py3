@@ -900,6 +900,20 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
 
 
 class TwoQubitXEBMultiCphase(MultiTaskingExperiment):
+    """
+    Runs multiple interleaved TwoQubitXEB
+
+    Runs multiple TwoQubitXEB, each for a different value of the 'cphase'
+    parameter, while interleaving their sequences.
+    From inner to outer loop, a measurement proceeds as follows:
+    TwoQubitXEB (for comparison): [cycles (hard sweep), seeds]
+    TwoQubitXEBMultiCphase: [cycles (hard sweep), cphases, seeds]
+
+    Note that this effectively 3-D sweep is implemented in a non-standard way,
+    by instantiating several TwoQubitXEB and then interleaving their sequences.
+    This in turn requires hacks to deal with sweep points, indicated as FIXMEs.
+    """
+
     default_experiment_name = 'TwoQubitXEBMultiCphase'
     kw_for_task_keys = ('cphases')
     task_mobj_keys = ['qb_1', 'qb_2']
@@ -921,49 +935,30 @@ class TwoQubitXEBMultiCphase(MultiTaskingExperiment):
                     assert len(task['cphases']) == nr_cphases,\
                         "Number of cphases inconsistent between tasks!"
                     task['cphase'] = task['cphases'][i]
-                    if 'sweep_points' in task:
+                    if 'full_sweep_points' in task:
                         # Allows to reuse a task list from a previous
-                        # measurement, by undoing self.combine_sweep_points
-                        task['sweep_points'] = \
-                            self.extract_combined_sweep_points(
-                                task['sweep_points'], i)
+                        # measurement, by taking sweep points number i
+                        task['sweep_points'] = task['full_sweep_points'][i]
                 self.xeb_measurements += [
                     TwoQubitXEB(tl, sweep_points, qubits, nr_seqs=nr_seqs,
                                 cycles=cycles, measure=False, **kw)]
+            for i, task in enumerate(self.task_list):
+                # FIXME hack: Storing sweep points as a list, to make them
+                #  available to the analysis. Cannot use 'sweep_points' key,
+                #  as this would confuse MC (e.g. extracting units), as well
+                #  as the super init above in case of reloading the task list.
+                task['full_sweep_points'] = \
+                    [xebm.preprocessed_task_list[i]['sweep_points']
+                     for xebm in self.xeb_measurements]
+
             # interleave sequences
             self.sequences, self.mc_points = \
                 self.xeb_measurements[0].sequences[0].interleave_sequences(
                     [xeb.sequences for xeb in self.xeb_measurements])
-            # combine sweep points
-            self.combine_sweep_points()
+            # FIXME hack: fill in with dummy sweep points, see FIXME above
+            self.sweep_points = self.xeb_measurements[0].sweep_points
 
             self.autorun(**kw)
         except Exception as x:
             self.exception = x
             traceback.print_exc()
-
-    def combine_sweep_points(self):
-        for i, xebm in enumerate(self.xeb_measurements):
-            sweep_points = SweepPoints(xebm.sweep_points)
-            sweep_points.append_suffix_to_sweep_params(str(i))
-            self.sweep_points.update(sweep_points)
-
-    @staticmethod
-    def extract_combined_sweep_points(sp_full, idx, deep=False):
-        if deep:
-            sp = deepcopy(sp_full)
-        else:
-            sp = sp_full
-        suffix = f'_{idx}'
-        # Trim sp
-        for d in sp:
-            for key in list(d):
-                # Remove prefixed value
-                val = d.pop(key)
-                # Re-add it (without prefix)
-                # only if it has the correct prefix
-                if key.endswith(suffix):
-                    new_key = key[:-len(suffix)]
-                    d[new_key] = val
-        return sp
-

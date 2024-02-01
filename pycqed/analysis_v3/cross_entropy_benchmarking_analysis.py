@@ -1224,7 +1224,7 @@ def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         the returned value is a list of dict of length len(cphase).
     """
 
-    task_id = 0
+    task_id = 0  # FIXME: currently only tested for a single task
 
     dd2 = []
     if timer:
@@ -1238,8 +1238,6 @@ def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
     )
     if timer:
         timer.checkpoint('two_qubit_xeb_analysis.end')
-    sp_full = sp_mod.SweepPoints(
-        pp_full.data_dict['exp_metadata']['sweep_points'])
 
     cphases = hlp_mod.get_param_from_metadata_group(timestamp, 'task_list')[
         task_id].get('cphases')
@@ -1247,11 +1245,10 @@ def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
     # Multi-phase XEB (TwoQubitXEBMultiCphase)
     for idx_cp in range(len(cphases)):  # loop over cphases
         pp = deepcopy(pp_full)
-        # Trim sp
-        sp = rb_meas.TwoQubitXEBMultiCphase.extract_combined_sweep_points(
-            sp_full=sp_full, idx=idx_cp, deep=True)
+        # Extract sp corresponding to a single cphase
+        sp = sp_mod.SweepPoints(pp_full.data_dict['exp_metadata'][
+            'task_list'][task_id]['full_sweep_points'][idx_cp])
         pp.data_dict['exp_metadata']['sweep_points'] = sp
-
         # Set cphase
         pp.data_dict['exp_metadata']['cphase'] = cphases[idx_cp]
 
