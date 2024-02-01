@@ -1066,6 +1066,18 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 plotfn(pdict=pdict,
                        axs=axs[pdict['fig_id']].flatten()[
                            pdict['ax_id']])
+                # FIXME forcing h/wspace after the plotting in plotfn
+                #  (which possibly calls tight_layout()) is bad
+                #  design, but many analyses currently rely on this (e.g.
+                #  raw data plots) and should be cleaned if removing it
+                if (hspace := pdict.get('force_hspace', 0.4)) is not None:
+                    axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=hspace)
+                if (wspace := pdict.get('force_wspace', 0.25)) is not None:
+                    axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        wspace=wspace)
 
         # most normal plot functions also work, it is required
         # that these accept an "ax" argument to plot on and
@@ -1080,6 +1092,18 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 plotfn(pdict=pdict,
                        axs=axs[pdict['fig_id']].flatten()[
                            pdict['ax_id']])
+                # FIXME forcing h/wspace after the plotting in plotfn
+                #  (which possibly calls tight_layout()) is bad
+                #  design, but many analyses currently rely on this (e.g.
+                #  raw data plots) and should be cleaned if removing it
+                if (hspace := pdict.get('force_hspace', 0.4)) is not None:
+                    axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=hspace)
+                if (wspace := pdict.get('force_wspace', 0.25)) is not None:
+                    axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        wspace=wspace)
         else:
             raise ValueError(
                 f'"{plotfn}" is not a valid plot function')
