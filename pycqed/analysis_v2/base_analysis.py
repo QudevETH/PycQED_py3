@@ -1690,8 +1690,7 @@ class BaseDataAnalysis(object):
         if plot_multiple:
             p_out = []
             len_color_cycle = pdict.get('len_color_cycle', len(plot_yvals))
-            color = plot_linekws.pop('color')
-            if color is None:
+            if 'color' not in plot_linekws:
                 # Default gives max contrast
                 cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
                 if cmap == 'tab10':
@@ -1704,6 +1703,7 @@ class BaseDataAnalysis(object):
                 # FIXME: might be useful to have more complete checks to
                 #  distinguish e.g. an array of 3-4 numbers corresponding to
                 #  a single color
+                color = plot_linekws.pop('color')
                 if isinstance(color, str):
                     color = [color]*len_color_cycle
 
