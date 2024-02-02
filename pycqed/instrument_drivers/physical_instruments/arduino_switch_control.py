@@ -420,7 +420,7 @@ class ArduinoSwitchControl(Instrument):
         if ser is None or override:
             if ser is not None and ser.is_open:
                 ser.close()  # close open serial
-            ser = serial.Serial(self.port, 57600, timeout=1)  # reate new serial
+            ser = serial.Serial(self.port, baudrate=57600, timeout=1)  # create new serial
             self.add_port(self.port, ser)  # add serial to _open_ports
             self.serial = ser  # save serial
 
@@ -428,7 +428,7 @@ class ArduinoSwitchControl(Instrument):
             setup_string = self.serial.readline().decode()
             if not setup_string.startswith('RT switch box'):  # setup
                 # invalid init string
-                print(f"Invalid init string: {setup_string}")
+                print(f"Invalid init string: {setup_string}.")
             else:
                 self.setup_dict = dict(
                     [[s2.strip() for s2 in s1.split(':')] for s1 in
@@ -437,7 +437,7 @@ class ArduinoSwitchControl(Instrument):
                         self.setup_dict['IO expander status'] ==
                         '1'*self.NUM_IO):
                     print(f'\nSetup failed for IO-Expander '
-                          f'{self.setup_dict["IO expander status"]}')
+                          f'{self.setup_dict["IO expander status"]}.')
 
         # save found serial. Serial might be closed, might have to be opened
         # manually.
