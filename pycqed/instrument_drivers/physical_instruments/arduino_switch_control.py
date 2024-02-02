@@ -285,8 +285,8 @@ class ArduinoSwitchControl(Instrument):
     NUM_IO = 5
     NUM_IO_SWITCHES = 4
     MAX_SWITCHES = NUM_IO*NUM_IO_SWITCHES
-    READ_DELAY = 0.05  # after reading a switch
-    WRITE_DELAY = 0.15  # after setting a switch
+    READ_DELAY = 0.01  # after reading a switch
+    WRITE_DELAY = 0.01  # after setting a switch
 
     # Properties
     # ----------
@@ -420,22 +420,24 @@ class ArduinoSwitchControl(Instrument):
         if ser is None or override:
             if ser is not None and ser.is_open:
                 ser.close()  # close open serial
-            ser = serial.Serial(self.port, timeout=1)  # reate new serial
+            ser = serial.Serial(self.port, 57600, timeout=1)  # reate new serial
             self.add_port(self.port, ser)  # add serial to _open_ports
             self.serial = ser  # save serial
 
             # handle output during setup
-            setup_string = self.serial.readline()
-            setup_string = setup_string.decode().rstrip()
-            if setup_string != 's':  # setup started returns 's'
-                print("Setup did not start.")
+            setup_string = self.serial.readline().decode()
+            if not setup_string.startswith('RT switch box'):  # setup
+                # invalid init string
+                print(f"Invalid init string: {setup_string}")
             else:
-                # end of setup returns l
-                # failed communication with IO-expander returns group id
-                error_string = ser.readline()
-                error_string = error_string.decode().rstrip()
-                if error_string != 'l':
-                    print(f'\nSetup failed for IO-Expander {error_string}')
+                self.setup_dict = dict(
+                    [[s2.strip() for s2 in s1.split(':')] for s1 in
+                     setup_string.split(';')])
+                if not ('IO expander status' in self.setup_dict and
+                        self.setup_dict['IO expander status'] ==
+                        '1'*self.NUM_IO):
+                    print(f'\nSetup failed for IO-Expander '
+                          f'{self.setup_dict["IO expander status"]}')
 
         # save found serial. Serial might be closed, might have to be opened
         # manually.
@@ -886,7 +888,7 @@ class ArduinoSwitchControl(Instrument):
         # make sure that the serial port is open
         self.assure_serial()
         # create command for the arduino and send it
-        input_string = 'r' + str(id[0]) + str(id[1])
+        input_string = f'GET {id[0]} {id[1]}\n'
         self.serial.write(input_string.encode('ascii'))
         time.sleep(self.READ_DELAY)
         # retrieve result
@@ -930,7 +932,7 @@ class ArduinoSwitchControl(Instrument):
         # make sure that the serial port is open
         self.assure_serial()
         # create command for the arduino and send it
-        input_string = str(id[0]) + str(id[1]) + str(state)
+        input_string = f'SET {id[0]} {id[1]} {state}\n'
         self.serial.write(input_string.encode('ascii'))
         time.sleep(self.WRITE_DELAY)
         # read switch after setting it, to confirm switching
