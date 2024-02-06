@@ -701,6 +701,12 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                 self.channels += deepcopy(chs)
         else:
             self.channels = deepcopy(channels)
+        if len(self.channels) != len(set(self.channels)):
+            log.warning(
+                'Duplicate use of acquisition channel(s) detected. This can '
+                'happen when multiple measurement objects are configured to '
+                'use the same acq_I_channel/acq_Q_channel. Used channels '
+                f'for {self.acq_devs}: {self.channels}.')
         self.value_names = []
         self._channels_value_names_map = None
 

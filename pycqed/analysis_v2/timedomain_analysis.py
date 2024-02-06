@@ -7959,7 +7959,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         rdd = self.raw_data_dict
         ana_params = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
-            mod_freq = float(self.get_instrument_setting(f'{qbn}.ro_mod_freq'))
+            mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
             tbase = rdd[0]['hard_sweep_points']
             basis_labels = pdd["analysis_params_dict"][
                 'optimal_weights_basis_labels'][qbn]

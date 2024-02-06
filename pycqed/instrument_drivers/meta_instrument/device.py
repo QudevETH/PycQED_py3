@@ -426,6 +426,166 @@ class Device(Instrument):
          for qb in qbs]
         return channel_map
 
+    def get_interaction_frequencies(self, qubit_pairs=None, cz_pulse_name=None,
+                                    reference_qb='high'):
+        """
+        Gets the interaction frequencies for CZ gates between specified qubit pairs.
+
+        Args:
+            qubit_pairs (list[tuple], optional): List of qubit pairs. If None,
+                retrieves the pairs using "[self.get_qubits(pair) for pair in
+                self.connectivity_graph()]". Defaults to None.
+            cz_pulse_name (str, optional): Name of the CZ pulse.
+                Takes self.default_cz_gate_name if not provided by the user.
+            reference_qb (str, optional): Specifies whether to reference the 'high'
+                or 'low' qubit. Defaults to 'high'.
+
+        Returns:
+            dict: A dictionary where keys are qubit pairs and values are their
+                corresponding interaction frequencies.
+
+        Raises:
+            ValueError: If reference_qb is neither 'high' nor 'low'.
+        """
+        if qubit_pairs is None:
+            qubit_pairs = [tuple(self.get_qubits(pair)) for pair
+                           in self.connectivity_graph()]
+
+        interaction_frequencies = {}
+        for qubit_pair in qubit_pairs:
+            qbi, qbj = qubit_pair
+            interaction_freq = self.get_interaction_frequency(qbi, qbj,
+                                                              cz_pulse_name,
+                                                              reference_qb)
+            interaction_frequencies[qubit_pair] = interaction_freq
+
+        return interaction_frequencies
+
+    def get_interaction_frequency(self, qbi, qbj, cz_pulse_name=None,
+                                  reference_qb='high'):
+        """
+        Gets the interaction frequency of a CZ gate between two qubits.
+        The interaction frequency is defined as the ef frequency of the high
+        frequency qubit when reference_qb = 'high' and the ge frequency of
+        the data qubit when reference_ab = 'low'.
+
+        Args:
+            qbi (QuDevTransmon, str): One of the qubits involved in the CZ gate.
+            qbj (QuDevTransmon, str): The other qubit involved in the CZ gate.
+            cz_pulse_name (str, optional): Name of the CZ pulse.
+                Defaults to self.default_cz_gate_name.
+            reference_qb (str, optional): Specifies whether to reference the 'high'
+                or 'low' qubit. Defaults to 'high'.
+
+        Returns:
+            float: The calculated interaction frequency.
+
+        Raises:
+            AssertionError: If qbi is the same as qbj.
+            ValueError: If reference_qb is neither 'high' nor 'low'.
+        """
+        assert qbi != qbj
+
+        # ensure to get qubit objects
+        qbi, qbj = self.get_qubits([qbi, qbj])
+
+        if cz_pulse_name is None:
+            cz_pulse_name = self.default_cz_gate_name()
+
+        # Determine the higher and lower frequency qubits
+        if qbi.ge_freq() > qbj.ge_freq():
+            qbh, qbl = qbi, qbj
+        else:
+            qbh, qbl = qbj, qbi
+
+        # Use the specified reference qubit to calculate interaction frequency
+        if reference_qb == 'high':
+            amp = self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
+                                     'amplitude')()
+            f = qbh.calculate_frequency(amplitude=amp, flux=qbh.flux_parking(),
+                                        transition='ef')
+
+        elif reference_qb == 'low':
+            amp = self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
+                                     'amplitude2')()
+            f = qbl.calculate_frequency(amplitude=amp, flux=qbl.flux_parking())
+        else:
+            raise ValueError(
+                f'reference_qb should be "high" or "low" but was passed as'
+                f' "{reference_qb}".')
+
+        return f
+
+    def set_interaction_frequency(self, qbi, qbj, int_freq, cz_pulse_name=None,
+                                  update=True):
+        """
+        Sets the interaction frequency for a CZ gate between two qubits.
+
+        Args:
+            qbi (QuDevTransmon or str): One of the qubits involved in the CZ gate.
+            qbj (QuDevTransmon or str): The other qubit involved in the CZ gate.
+            int_freq (float): The desired interaction frequency for the CZ gate.
+            cz_pulse_name (str, optional): Name of the CZ pulse.
+                Defaults to self.default_cz_pulse_name.
+            update (bool): If True, updates the pulse parameters. Defaults
+                to True. The 'amplitude' parameter of the high-frequency qubit and
+                the 'amplitude2' parameter of the low-frequency qubit are modified.
+
+        Returns:
+            Tuple[float, float]: The amplitudes corresponding to the high and low qubits.
+
+        Raises:
+            AssertionError: If qbi is the same as qbj.
+        """
+       # check that qubits are connected
+        self.check_connection(qbi, qbj)
+
+        # ensure to get qubit objects
+        qbi, qbj = self.get_qubits([qbi, qbj])
+
+        # Determine the higher and lower frequency qubits
+        if qbi.ge_freq() > qbj.ge_freq():
+            qbh, qbl = qbi, qbj
+        else:
+            qbh, qbl = qbj, qbi
+
+        # Calculate amplitudes based on interaction frequency and flux parking states
+        amph = -np.abs(qbh.calculate_flux_voltage(int_freq,
+                                                  flux=qbh.flux_parking(),
+                                                  transition='ef'))
+        ampl = np.abs(qbl.calculate_flux_voltage(int_freq, flux=qbl.flux_parking()))
+
+        # Update pulse parameters if requested
+        if update:
+            if cz_pulse_name is None:
+                cz_pulse_name = self.default_cz_gate_name()
+            self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
+                               'amplitude')(amph)
+            self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
+                               'amplitude2')(ampl)
+
+        return amph, ampl
+
+    def set_interaction_frequencies(self, interaction_frequencies,
+                                    cz_pulse_name=None,
+                                    update=True):
+        """
+        Sets interaction frequencies for CZ gates based on the provided
+        dictionary.
+
+        Args:
+            interaction_frequencies (dict): A dictionary where keys are qubit pairs
+                and values are their corresponding interaction frequencies.
+            cz_pulse_name (str, optional): Name of the CZ pulse. Defaults to None.
+            update (bool): If True, updates the pulse parameters.
+                See docstring of Device.set_interaction_frequency.
+                Defaults to True.
+        """
+        for qubit_pair, int_freq in interaction_frequencies.items():
+            qbi, qbj = qubit_pair
+            self.set_interaction_frequency(qbi, qbj, int_freq, cz_pulse_name,
+                                           update)
+
     def set_pulse_par(self, gate_name, qb1, qb2, param, value):
         """
         Sets a value to a two qubit gate parameter.
