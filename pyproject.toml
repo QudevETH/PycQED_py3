@@ -28,7 +28,6 @@ dependencies = [
     'more-itertools',
     "msgpack",
     "msgpack_numpy",
-    'neupy',
     "nlopt",
     "numpy",
     "pandas",
@@ -41,7 +40,6 @@ dependencies = [
     'scikit-learn',
     "scipy",
     "sympy",
-    'tensorflow',
     'zhinst',
 ]
 
@@ -53,6 +51,10 @@ docs = [
 ]
 linting = [
     "pylint",
+]
+machine_learning = [
+    'neupy',
+    'tensorflow',
 ]
 measurement_setup = [
     "influxdb",
