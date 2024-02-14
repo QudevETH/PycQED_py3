@@ -702,7 +702,7 @@ class MeasurementControl(Instrument):
         # is currently only implemented for the case of a single sweep
         # function (e.g., break in the if statement inside the for loop)
         batch_mode = (len(self.sweep_functions) == 1 and
-                      sweep_functions[0].supports_batch_mode)
+                      self.sweep_functions[0].supports_batch_mode)
         if np.size(x) != len(self.sweep_functions) and not batch_mode:
             raise ValueError(
                 'size of x "%s" not equal to # sweep functions' % x)
