@@ -1917,6 +1917,8 @@ class BaseDataAnalysis(object):
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_xtick_loc = pdict.get('xtick_loc', None)
         plot_ytick_loc = pdict.get('ytick_loc', None)
+        plot_xtick_rotation = pdict.get('xtick_rotation', 90)
+        plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_transpose = pdict.get('transpose', False)
         plot_nolabel = pdict.get('no_label', False)
         plot_nolabel_units = pdict.get('no_label_units', False)
@@ -2028,10 +2030,10 @@ class BaseDataAnalysis(object):
         # FIXME Ignores thranspose option. Is it ok?
         if plot_xtick_labels is not None:
             axs.xaxis.set_ticklabels(plot_xtick_labels,
-                                     rotation=pdict.get(
-                                         'xlabels_rotation', 90))
+                                     rotation=plot_xtick_rotation)
         if plot_ytick_labels is not None:
-            axs.yaxis.set_ticklabels(plot_ytick_labels)
+            axs.yaxis.set_ticklabels(plot_ytick_labels,
+                                     rotation=plot_ytick_rotation)
         if plot_xtick_loc is not None:
             axs.xaxis.set_ticks(plot_xtick_loc)
         if plot_ytick_loc is not None:

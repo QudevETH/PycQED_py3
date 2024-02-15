@@ -34,7 +34,6 @@ gauss_2D_guess, \
     gaussianCDF, ro_double_gauss_guess
 from pycqed.analysis.tools.plotting import SI_val_to_msg_str
 from pycqed.analysis.tools.plotting import set_xlabel
-from pycqed.analysis_v3.helper_functions import get_qb_channel_map_from_file
 
 odict = OrderedDict
 
@@ -1612,6 +1611,8 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
             value_names = self.raw_data_dict['value_names']
             if 'w' in value_names[0]:
                 # FIXME: avoid dependencies ana_v2 -> ana_v3 or vice versa
+                from pycqed.analysis_v3.helper_functions import \
+                    get_qb_channel_map_from_file
                 self.channel_map = get_qb_channel_map_from_file(
                     self.get_param_value('qb_names'), value_names=value_names,
                     file_path=self.raw_data_dict['folder'])
