@@ -1151,6 +1151,8 @@ class Pulsar(Instrument):
             awgs: List of AWGs names, or ``"all"``
         """
 
+        # This ensures that a new timer is created every time when starting
+        # a measurement (must be set back to None in self.stop)
         if self.timer is None:
             self.timer = Timer(self.name)
             sequence.timer.children.update({self.name: self.timer})
