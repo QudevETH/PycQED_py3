@@ -144,7 +144,7 @@ class T1FrequencySweep(CalibBuilder):
             else:
                 qubit_freqs = None
             amplitudes = None
-            for key in sweep_points[1].keys():
+            for key in sweep_points[1]:
                 if 'amplitude' in key:  # Detect e.g. amplitude2 from 2qb gates
                     amplitudes = sweep_points[key]
             qubits, _ = self.get_qubits(task['qb'])
