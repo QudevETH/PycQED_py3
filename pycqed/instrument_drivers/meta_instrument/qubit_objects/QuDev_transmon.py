@@ -2385,7 +2385,8 @@ class QuDev_transmon(MeasurementObject):
                               freqs=None, amplitudes=None, phases=[0,120,240],
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
-                              exp_metadata=None, operation_dict=None):
+                              exp_metadata=None, operation_dict=None,
+                              vfc_kwargs=None):
         """
         Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
@@ -2428,30 +2429,23 @@ class QuDev_transmon(MeasurementObject):
             label:
             n_cal_points_per_state:
             exp_metadata:
+            vfc_kwargs: Additional arguments for self.calculate_flux_voltage
 
         Returns:
 
         """
         if operation_dict is None:
             operation_dict = self.get_operation_dict()
-        vfc = self.fit_ge_freq_from_dc_offset()
         if freqs is not None:
-            amplitudes = fit_mods.Qubit_freq_to_dac_res(freqs, **vfc)
-
+            vfc_kwargs = vfc_kwargs or {}
+            amplitudes = self.calculate_flux_voltage(
+                frequency=freqs,
+                **vfc_kwargs,
+            )
         amplitudes = np.array(amplitudes)
 
         if cz_pulse_name is None:
             cz_pulse_name = 'FP ' + self.name
-
-        if np.any((amplitudes > abs(vfc['dac_sweet_spot']))):
-            amplitudes -= vfc['V_per_phi0']
-        elif np.any((amplitudes < -abs(vfc['dac_sweet_spot']))):
-            amplitudes += vfc['V_per_phi0']
-
-        if np.any((amplitudes > abs(vfc['V_per_phi0']) / 2)):
-            amplitudes -= vfc['V_per_phi0']
-        elif np.any((amplitudes < -abs(vfc['V_per_phi0']) / 2)):
-            amplitudes += vfc['V_per_phi0']
 
         if np.any(np.isnan(amplitudes)):
             raise ValueError('Specified frequencies resulted in nan amplitude. '
@@ -2465,7 +2459,6 @@ class QuDev_transmon(MeasurementObject):
         MC = self.instr_mc.get_instr()
         self.prepare(drive='timedomain')
 
-        amplitudes = np.array(amplitudes)
         if flux_lengths is not None:
             flux_lengths = np.array(flux_lengths)
         phases = np.array(phases)
