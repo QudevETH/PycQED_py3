@@ -11816,11 +11816,23 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
 
         Args:
             cmap_lim: z range limit for the 2D data plot. These should be
-            chosen such that the rescaled data fit in the lower plot. Default
-            (None): chooses a small margin around the data.
-            xtransform: additional x-axis transformation function
-            draw_lower_lines: draw lines for each row of data below the maximum
-            **kw (dict): additional formatting arguments, TODO
+                chosen such that the rescaled data fit in the lower plot.
+                Default (None): chooses a small margin around the data.
+            cmap_margin (float): margin for z range, relative to cmap_lim
+            xtransform (function): optional x-axis transformation
+            pop_scale_right (float): scaling factor for right axis
+            pop_unit_right (str): unit for right axis
+            pop_scale_left (float): scaling factor for left axis
+            pop_unit_left (str): unit for left axis
+            draw_lower_lines (bool): in the projected data panel (bottom),
+                whether to draw lines to connect each row of data below the
+                maximum (line instead of scatter)
+            gate_yticks (list): Set explicit values for the left yticks. If
+                None (default), they are set to match the (automatic)
+                locations of the right panel ticks.
+            gate_yticks_prec (int): precision (digits) of the left tick labels
+            **kw (dict): Additional formatting arguments, currently 'title',
+                'cmap'.
 
         Note: all data are handled in terms of total leakage for n gates. The y
         label of the bottom plot shows the leakage for 1 gate.
