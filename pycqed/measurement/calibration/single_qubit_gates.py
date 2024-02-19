@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 class T1FrequencySweep(CalibBuilder):
 
     default_experiment_name = 'T1_frequency_sweep'
-    kw_for_task_keys = ['for_ef']
+    kw_for_task_keys = ['transition_name']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         """
@@ -52,7 +52,8 @@ class T1FrequencySweep(CalibBuilder):
             If this parameter is provided it will be used for all qubits.
         :param qubits: list of QuDev_transmon class instances
         :param kw: keyword arguments
-            for_ef (bool, default: False): measure f level T1
+            transition_name (str, default: 'ge'): Qubit transition to
+                measure. Supported values: 'ge', 'ef'.
             spectator_op_codes (list, default: []): see t1_flux_pulse_block
             all_fits (bool, default: True) passed to run_analysis; see
                 docstring there
@@ -76,6 +77,11 @@ class T1FrequencySweep(CalibBuilder):
                 if not isinstance(task['qb'], str):
                     task['qb'] = task['qb'].name
 
+            if 'cal_states' not in kw:
+                kw['cal_states'] = "gef" if ('ef' in [
+                    task.get('transition_name') for task in task_list]
+                    + [kw.get('transition_name')]) else "ge"
+
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
 
@@ -86,8 +92,9 @@ class T1FrequencySweep(CalibBuilder):
                 [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            trans_to_pop = {'ge': 'pe', 'ef': 'pf'}
             self.data_to_fit = {
-                task['qb']: 'pf' if task.get('for_ef', False) else 'pe'
+                task['qb']: trans_to_pop[task.get('transition_name', 'ge')]
                 for task in self.preprocessed_task_list}
             if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
                 self.sweep_points.reduce_dim(1, inplace=True)
@@ -198,7 +205,7 @@ class T1FrequencySweep(CalibBuilder):
                                  [f'X180 {qubit_name}'] +
                                  kw.get('spectator_op_codes', []),
                                  pulse_modifs=pulse_modifs)]
-        if kw.get('for_ef', False):
+        if kw.get('transition_name') == 'ef':
             pp += [self.block_from_ops('pipulse_ef',
                                      [f'X180_ef {qubit_name}'] +
                                      kw.get('spectator_op_codes', []),
