@@ -1349,7 +1349,7 @@ class BaseDataAnalysis(object):
             if 'plotfn' not in pdict:
                 raise ValueError(f"No 'plotfn' set in plot_dicts['{key}']!")
             elif pdict['plotfn'] is None:
-                continue  # Do not plot anything is the plotfn is None
+                continue  # Do not plot anything if the plotfn is None
             elif type(pdict['plotfn']) is str:
                 plotfn = getattr(self, pdict['plotfn'])
             else:
