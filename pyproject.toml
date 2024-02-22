@@ -63,7 +63,7 @@ measurement_setup = [
     "zhinst-qcodes",
 ]
 user = [
-    "cython",
+    "cython < 3.0.0",  # Due to Qutip 4.7.5
     "jupyter",
     "jupyter-contrib-nbextensions",
     "notebook < 7.0.0",
