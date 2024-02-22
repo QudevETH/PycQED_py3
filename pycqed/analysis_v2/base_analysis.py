@@ -476,28 +476,29 @@ class BaseDataAnalysis(object):
     def get_reset_params(self, qbn=None, default_value=None):
         """Retrieves the reset parameters for the analysis.
 
-        This method retrieves the reset parameters to be used for the analysis. It
-        first checks if the legacy way of specifying reset parameters is used by
-        checking the value of 'preparation_params' and 'reset_params' attributes.
-        If 'reset_params' is not specified while 'preparation_params' is present,
-        a warning is logged indicating the deprecation of using 'preparation_params'
-        and suggests using 'reset_params' instead. The method assumes that the
-        provided 'preparation_params' are in the adequate format (legacy format)
-        for the analysis and returns 'preparation_params' in this case.
+        It first checks if the legacy way of specifying reset parameters is used
+        by checking the value of 'preparation_params' and 'reset_params'
+        attributes:
 
-        If 'reset_params' is provided, the method calls the
-        'translate_reset_to_prep_params' method to translate the reset parameters
-        to preparation parameters required by the analysis framework.
+        - If 'reset_params' is not specified while 'preparation_params' is
+        present, a warning is logged indicating the deprecation of using
+        'preparation_params' and suggests using 'reset_params' instead. The
+        method assumes that the provided 'preparation_params' are in the
+        adequate format (legacy format) for the analysis and returns
+        'preparation_params' in this case.  
+        - If 'reset_params' is provided, the method calls the
+        'translate_reset_to_prep_params' method to translate the reset
+        parameters to preparation parameters required by the analysis framework.
 
         Args:
             qbn (Optional[str]): Qubit name of which the reset parameters
-            should be extracted. In the new framework, each qubit
-             can have its own type of reset and thus the
-             returned analysis instructions can depend on the qubit.
-             In the old framework, there is only one global set of preparation
-             parameters. `qbn` indicates the reset parameters of which are used
-             as global preparation parameters for the legacy analysis code.
-             Defaults to the first qubit listed in reset_params['analysis_instructions'].
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
             default_value (Optional): Default value to be returned if the reset
                 parameters do not match any known patterns. Defaults to None.
 
@@ -534,13 +535,13 @@ class BaseDataAnalysis(object):
         Args:
             reset_params (str or dict): The reset parameters to be translated.
             qbn (Optional[str]): Qubit name of which the reset parameters
-            should be extracted. In the new framework, each qubit
-             can have its own type of reset and thus the
-             returned analysis instructions can depend on the qubit.
-             In the old framework, there is only one global set of preparation
-             parameters. `qbn` indicates the reset parameters of which are used
-             as global preparation parameters for the legacy analysis code.
-             Defaults to the first qubit listed in reset_params['analysis_instructions'].
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
             default_value (Optional): Default value to be returned if the reset
                 parameters do not match any known patterns. Defaults to None.
 
@@ -583,7 +584,6 @@ class BaseDataAnalysis(object):
         # in most QE based measurements the stored reset params is a dict which
         # stores instructions for the analysis.
         elif isinstance(reset_params, dict):
-            print(reset_params)
             if "analysis_instructions" not in reset_params:
                 log.warning(f'Reset params dictionary does not contain '
                             f'"analysis_instructions": {reset_params}.'
@@ -597,6 +597,7 @@ class BaseDataAnalysis(object):
                     # empty list, i.e. no reset steps
                     return dict(preparation_type="wait")
                 elif len(reset_params['analysis_instructions'][qbn]) > 1:
+                # FIXME: Implement the support of multiple steps / analysis_instructions
                     log.warning(f'Reset params dictionary contains several'
                                 f' steps: {reset_params["steps"]}, '
                                 f'currently the analysis will consider'
