@@ -153,12 +153,19 @@ class PulsarAWGInterface(ABC):
                              docstring="Group all the pulses on this AWG into "
                                        "a single element. Useful for making "
                                        "sure the master AWG has only one "
-                                       "waveform per segment.",
+                                       "waveform per segment. This parameter will"
+                                       "modify _join_or_split_elements. Setting"
+                                       "this to False only has an effect if "
+                                       "_join_or_split_elements is 'ese'.",
+                             vals=vals.Bool(),
                              get_cmd=lambda s=self.pulsar:
                              s.get(f'{name}_join_or_split_elements') == 'ese',
                              set_cmd=lambda v, s=self.pulsar:
                              (s.set(f'{name}_join_or_split_elements', 'ese')
-                              if v else None), )
+                              if v else (s.set(
+                                f'{name}_join_or_split_elements', 'default') if
+                                s.get(f'{name}_join_or_split_elements') == 'ese' else
+                                         None)), )
         pulsar.add_parameter(f"{name}_join_or_split_elements",
                              initial_value="default",
                              vals=vals.MultiType(
