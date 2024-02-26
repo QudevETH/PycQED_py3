@@ -9279,7 +9279,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     for pm in plot_metrics:
                         self.prepare_sweep_plot(qbn, pm)
 
-
     def prepare_sweep_plot(self, qbn, plot_settings, multiplexed=False):
         """
         Helper function for ``prepare_plots``: Prepares (single qb) trend plots
@@ -9315,7 +9314,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             yvals = np.array([metric(fm) for fm in self.proc_data_dict[
                 'analysis_params']['state_prob_mtx'][qbn]])
             raw_fig_key = f'ssro_{plot_name}_{qbn}'
-
 
         ymin = np.nanmin(yvals)
         ymax = plot_settings.get('ymax', np.nanmax(yvals))
@@ -9419,8 +9417,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'legend_ncol': 1,
             'do_legend': True,
             'legend_bbox_to_anchor': (1, -0.15),
-            'legend_pos': 'upper right',
-            'grid' : True, # TODO: doesn't yet work -> modify base analysis
+            'legend_pos': 'upper right'
         }
         
         textstr = f'best fidelity: {best_fidelity * 100:.2f}%'
