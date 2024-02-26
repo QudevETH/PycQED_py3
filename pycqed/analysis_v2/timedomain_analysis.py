@@ -8295,8 +8295,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         np.expand_dims(presel_shots_per_qb[qbn], axis=0)
 
         n_sweep_pts_dim1 = len(self.cp.states)
-        n_sweep_pts_dim2 = np.shape(shots_per_qb[qbn])[0]
-        n_shots = np.shape(shots_per_qb[qbn])[1] // n_sweep_pts_dim1
+        n_sweep_pts_dim2 = np.shape(shots_per_qb[self.qb_names[0]])[0]
+        n_shots = np.shape(shots_per_qb[self.qb_names[0]])[1]//n_sweep_pts_dim1
 
         # entry for every measured qubit and sweep point
         qb_dict = {qbn: [None]*n_sweep_pts_dim2 for qbn in self.qb_names}
@@ -8399,7 +8399,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
 
                 self.clf_[qbn][dim2_sp_idx] = clf
                 if self.preselection:
-                    #redo with classification first of preselection and masking
+                    # redo with classification 1st of preselection and masking
                     pred_presel = self.clf_[qbn][dim2_sp_idx].predict(
                         presel_shots_per_qb[qbn][dim2_sp_idx])
                     try:
@@ -8444,165 +8444,177 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 'fidelity': np.nanmax(fids),
                 'sweep_index': np.nanargmax(fids)}
 
-        # -----------------------------------
-        #   Multiplexed SSRO analysis
-        # -----------------------------------
-
         if self.get_param_value('multiplexed_ssro', False):
-            unique_states = self._order_multiplexed_state_labels(
-                np.unique(np.array(self.cp.states), axis=0))
-            state_idx = np.arange(len(unique_states))
-            prep_states = np.array([
-                np.argmax(np.all(unique_states == state, axis=-1))
-                for state in np.array(self.cp.states)])
-            prep_states = np.tile(prep_states, n_shots)
-            states_int = np.array(
-                [[self.states_info[self.cp.qb_names[i]][s]['int']
-                  for i, s in enumerate(state)] for state in unique_states])
-
-            # create dict with measurements sorted by prepared state
-            all_shots = {qbn: s for qbn, s in shots_per_qb.items()}
-            if self.preselection:
-                presel_shots = {qbn: shots for qbn, shots
-                                in presel_shots_per_qb.items()}
-
-            pdd['all_shots'] = all_shots
-
-            # create placeholders for analysis data
-            pdd['mtplx_data'] = {'prep_states': prep_states,
-                                 'pred_states':
-                                     np.zeros((n_sweep_pts_dim2,
-                                               n_sweep_pts_dim1*n_shots )),
-                                 'pred_states_raw':
-                                     np.zeros((n_sweep_pts_dim2,
-                                               n_sweep_pts_dim1*n_shots,
-                                               len(self.qb_names))),
-                                 'unique_states': list(unique_states)
-                                 }
-            pdd_ap['mtplx_state_prob_mtx'] = [None]*n_sweep_pts_dim2
-            pdd_ap['mtplx_n_shots'] = [None]*n_sweep_pts_dim2
-            pdd['mtplx_avg_fidelities'] = np.zeros(n_sweep_pts_dim2)
-
-            # create placeholders for analysis with preselection
-            if self.preselection:
-                pdd['presel_shots'] = presel_shots
-                pdd['mtplx_data_masked'] = \
-                    {'prep_states': [None] * n_sweep_pts_dim2,
-                     'pred_states': [None] * n_sweep_pts_dim2,
-                     'pred_presel_states_raw':
-                         np.zeros((n_sweep_pts_dim2,
-                                   n_sweep_pts_dim1 * n_shots,
-                                   len(self.qb_names))),
-                     'presel_filter': [None] * n_sweep_pts_dim2,
-                     }
-                pdd['mtplx_avg_fidelities_masked'] = [None]*n_sweep_pts_dim2
-                pdd_ap['mtplx_state_prob_mtx_masked'] = [None]*n_sweep_pts_dim2
-                pdd_ap['mtplx_n_shots_masked'] = [None]*n_sweep_pts_dim2
-                pdd_ap['mtplx_presel_fraction_per_state'] = [None]*n_sweep_pts_dim2
-
-            for dim2_sp_idx in range(n_sweep_pts_dim2):
-                assert np.ndim(qb_shots) == 3, \
-                    f"Data must be a 3D array. Received shape " \
-                    f"{qb_shots.shape}, ndim {np.ndim(qb_shots)}"
-
-                pred_qb_states = np.array([self.clf_[qbn][dim2_sp_idx].predict(
-                    all_shots[qbn][dim2_sp_idx])for qbn in self.cp.qb_names]).T
-                pred_state_bools = np.array([np.all(states_int==pred, axis=-1)
-                                        for pred in pred_qb_states])
-                sum_state_bools = np.sum(pred_state_bools, axis=-1)
-                assert np.all(sum_state_bools <= 1), 'A measurement result ' \
-                                                     'could not be uniquely ' \
-                                                     'assigned to a state'
-                unkn_state_mask = sum_state_bools == 0
-                if np.sum(unkn_state_mask) > 0:
-                    log.warning(f"{np.sum(unkn_state_mask)} measurements were "
-                                f"assigned a state not given in 'states'. "
-                                f"Ignoring these measurements in plots.")
-
-                pdd_ap['mtplx_n_shots'][dim2_sp_idx] = \
-                    np.sum(unkn_state_mask == False)
-                pred_states = np.array([np.argmax(np.all(states_int == pred,
-                                                         axis=-1))
-                                        for pred in pred_qb_states])
-                pred_states[unkn_state_mask] = -1
-
-                pdd['mtplx_data']['pred_states_raw']\
-                    [dim2_sp_idx] = pred_qb_states
-                pdd['mtplx_data']['pred_states'][dim2_sp_idx] = pred_states
-
-                fm = self.fidelity_matrix(prep_states, pred_states,
-                                          labels=state_idx)
-                pdd['mtplx_avg_fidelities'][dim2_sp_idx] = np.trace(
-                    fm) / float(np.sum(fm))
-
-                # save fidelity matrix
-                pdd_ap['mtplx_state_prob_mtx'][dim2_sp_idx] = fm
-
-                if self.preselection:
-                    # redo with classification first of preselection & masking
-                    pred_presel_qb_states = np.array(
-                        [self.clf_[qbn][dim2_sp_idx].predict(
-                            presel_shots[qbn][dim2_sp_idx]) for qbn in
-                            self.qb_names]).T
-                    try:
-                        init_state = np.array(
-                            [self.states_info[qbn]['g']['int']
-                             for qbn in self.qb_names])
-                    except KeyError:
-                        log.warning(f"{qbn}: Classifier not trained on g-state"
-                                    f" to classify for preselection! "
-                                    f"Skipping multiplexed preselection data "
-                                    f"& figures.")
-                        continue
-
-                    presel_filter = np.all(pred_presel_qb_states == init_state,
-                                           axis=-1)
-
-                    pdd['mtplx_data_masked']['pred_presel_states_raw']\
-                        [dim2_sp_idx] = pred_presel_qb_states
-                    pdd['mtplx_data_masked']['presel_filter']\
-                        [dim2_sp_idx] = presel_filter
-
-                    if np.sum(presel_filter) == 0:
-                        log.warning(
-                            f"Sweep point {dim2_sp_idx} (dim 2): "
-                            f"No data left after preselection! "
-                            f"Skipping preselection data & figures.")
-                        continue
-
-                    prep_states_masked = prep_states[presel_filter]
-                    pred_states_masked = pred_states[presel_filter]
-
-                    pdd['mtplx_data_masked']['pred_states'][dim2_sp_idx] = \
-                        pred_states_masked
-                    pdd['mtplx_data_masked']['prep_states'][dim2_sp_idx] = \
-                        prep_states_masked
-
-                    presel_frac = np.array([np.sum(prep_states_masked == s)/
-                                            (np.sum(prep_states == s))
-                                            for s in state_idx])
-
-                    pdd_ap['mtplx_presel_fraction_per_state'][dim2_sp_idx] = \
-                        presel_frac
-
-                    fm_masked = self.fidelity_matrix(prep_states_masked,
-                                                     pred_states_masked,
-                                                     labels=state_idx)
-                    pdd_ap['mtplx_state_prob_mtx_masked'][
-                        dim2_sp_idx] = fm_masked
-                    pdd['mtplx_avg_fidelities_masked'][dim2_sp_idx] = \
-                        np.trace(np.nan_to_num(fm_masked)) \
-                        / float(np.nansum(fm_masked))
-                    pdd_ap['mtplx_n_shots_masked'][dim2_sp_idx] = \
-                        sum(presel_filter)
-
-            fids = pdd['mtplx_avg_fidelities_masked'] if \
-                self.preselection else pdd['mtplx_avg_fidelities']
-            pdd['mtplx_best_fidelity'] = {
-                'fidelity': np.nanmax(fids),
-                'sweep_index': np.nanargmax(fids)}
+            # perform data analysis for multiplexed SSRO measurements
+            self.process_data_multiplexed(shots_per_qb, presel_shots_per_qb)
 
         self.save_processed_data()
+
+    def process_data_multiplexed(self, shots_per_qb, presel_shots_per_qb):
+        pdd = self.proc_data_dict    # for convenience of notation
+        pdd_ap = pdd['analysis_params']
+        n_sweep_pts_dim1 = len(self.cp.states)
+        n_sweep_pts_dim2 = np.shape(shots_per_qb[self.qb_names[0]])[0]
+        n_shots = np.shape(shots_per_qb[self.qb_names[0]])[1]//n_sweep_pts_dim1
+
+        # have a list of unique multiplexed states
+        unique_states = self._order_multiplexed_state_labels(
+            np.unique(np.array(self.cp.states), axis=0))
+        # assign every multiplexed state in unique_states an index
+        state_idx = np.arange(len(unique_states))
+        # prepared states as a list of multiplexed state indexes
+        prep_states = np.array([
+            np.argmax(np.all(unique_states == state, axis=-1))
+            for state in np.array(self.cp.states)])
+        prep_states = np.tile(prep_states, n_shots)
+        # a list of which single qb states correspond to which mltplxed state
+        states_int = np.array(
+            [[self.states_info[self.cp.qb_names[i]][s]['int']
+              for i, s in enumerate(state)] for state in unique_states])
+
+        # create placeholders for analysis data
+        pdd['mtplx_data'] = {'prep_states': prep_states,
+                             'pred_states':
+                                 np.zeros((n_sweep_pts_dim2,
+                                           n_sweep_pts_dim1 * n_shots)),
+                             'pred_states_raw':
+                                 np.zeros((n_sweep_pts_dim2,
+                                           n_sweep_pts_dim1 * n_shots,
+                                           len(self.qb_names))),
+                             'unique_states': list(unique_states)
+                             }
+        pdd_ap['mtplx_state_prob_mtx'] = [None] * n_sweep_pts_dim2
+        pdd_ap['mtplx_n_shots'] = [None] * n_sweep_pts_dim2
+        pdd['mtplx_avg_fidelities'] = np.zeros(n_sweep_pts_dim2)
+
+        # create placeholders for analysis with preselection
+        if self.preselection:
+            pdd['mtplx_data_masked'] = \
+                {'prep_states': [None] * n_sweep_pts_dim2,
+                 'pred_states': [None] * n_sweep_pts_dim2,
+                 'pred_presel_states_raw':
+                     np.zeros((n_sweep_pts_dim2,
+                               n_sweep_pts_dim1 * n_shots,
+                               len(self.qb_names))),
+                 'presel_filter': [None] * n_sweep_pts_dim2,
+                 }
+            pdd['mtplx_avg_fidelities_masked'] = [None] * n_sweep_pts_dim2
+            pdd_ap['mtplx_state_prob_mtx_masked'] = [None] * n_sweep_pts_dim2
+            pdd_ap['mtplx_n_shots_masked'] = [None] * n_sweep_pts_dim2
+            pdd_ap['mtplx_presel_fraction_per_state'] = [None]*n_sweep_pts_dim2
+
+        for dim2_sp_idx in range(n_sweep_pts_dim2):
+            for qbn, qb_shots in shots_per_qb.items():
+                assert np.ndim(qb_shots) == 3, \
+                    f"Data must be a 3D array. Received shape " \
+                    f"{qb_shots.shape}, ndim {np.ndim(qb_shots)} for {qbn}"
+
+            # single qb predictions (each row contains single qb predictions)
+            pred_qb_states = np.array([self.clf_[qbn][dim2_sp_idx].predict(
+                shots_per_qb[qbn][dim2_sp_idx]) for qbn in self.cp.qb_names]).T
+            # find corresponding multiplexed state int
+            pred_state_bools = np.array([np.all(states_int == pred, axis=-1)
+                                         for pred in pred_qb_states])
+            # we expect the measured state to correspond to one or none of the
+            # prepared multiplexed states
+            sum_state_bools = np.sum(pred_state_bools, axis=-1)
+            assert np.all(sum_state_bools <= 1), 'A measurement result ' \
+                                                 'could not be uniquely ' \
+                                                 'assigned to a state'
+            # create a mask for the shots that were not assigned to a state in
+            # unique_states
+            unkn_state_mask = sum_state_bools == 0
+            if np.sum(unkn_state_mask) > 0:
+                log.warning(f"{np.sum(unkn_state_mask)} measurements were "
+                            f"assigned a state not given in 'states'. "
+                            f"Ignoring these measurements in plots.")
+
+            # count the shots that were assigned a state in unique_states
+            pdd_ap['mtplx_n_shots'][dim2_sp_idx] = \
+                np.sum(unkn_state_mask == False)
+            # per shot array containing assigned multiplexed state int
+            pred_states = np.array([np.argmax(np.all(states_int == pred,
+                                                     axis=-1))
+                                    for pred in pred_qb_states])
+            # assign state -1 to states not in unique_states
+            pred_states[unkn_state_mask] = -1
+
+            pdd['mtplx_data']['pred_states_raw'] \
+                [dim2_sp_idx] = pred_qb_states
+            pdd['mtplx_data']['pred_states'][dim2_sp_idx] = pred_states
+
+            fm = self.fidelity_matrix(prep_states, pred_states,
+                                      labels=state_idx)
+            pdd['mtplx_avg_fidelities'][dim2_sp_idx] = np.trace(
+                fm) / float(np.sum(fm))
+
+            # save fidelity matrix
+            pdd_ap['mtplx_state_prob_mtx'][dim2_sp_idx] = fm
+
+            if self.preselection:
+                # redo with classification first of preselection & masking
+                pred_presel_qb_states = np.array(
+                    [self.clf_[qbn][dim2_sp_idx].predict(
+                        presel_shots_per_qb[qbn][dim2_sp_idx]) for qbn in
+                        self.qb_names]).T
+                try:
+                    init_state = np.array(
+                        [self.states_info[qbn]['g']['int']
+                         for qbn in self.qb_names])
+                except KeyError:
+                    log.warning(f"{qbn}: Classifier not trained on g-state"
+                                f" to classify for preselection! "
+                                f"Skipping multiplexed preselection data "
+                                f"& figures.")
+                    continue
+
+                presel_filter = np.all(pred_presel_qb_states == init_state,
+                                       axis=-1)
+
+                pdd['mtplx_data_masked']['pred_presel_states_raw'] \
+                    [dim2_sp_idx] = pred_presel_qb_states
+                pdd['mtplx_data_masked']['presel_filter'] \
+                    [dim2_sp_idx] = presel_filter
+
+                if np.sum(presel_filter) == 0:
+                    log.warning(
+                        f"Sweep point {dim2_sp_idx} (dim 2): "
+                        f"No data left after preselection! "
+                        f"Skipping preselection data & figures.")
+                    continue
+
+                prep_states_masked = prep_states[presel_filter]
+                pred_states_masked = pred_states[presel_filter]
+
+                pdd['mtplx_data_masked']['pred_states'][dim2_sp_idx] = \
+                    pred_states_masked
+                pdd['mtplx_data_masked']['prep_states'][dim2_sp_idx] = \
+                    prep_states_masked
+
+                presel_frac = np.array([np.sum(prep_states_masked == s) /
+                                        (np.sum(prep_states == s))
+                                        for s in state_idx])
+
+                pdd_ap['mtplx_presel_fraction_per_state'][dim2_sp_idx] = \
+                    presel_frac
+
+                fm_masked = self.fidelity_matrix(prep_states_masked,
+                                                 pred_states_masked,
+                                                 labels=state_idx)
+                pdd_ap['mtplx_state_prob_mtx_masked'][
+                    dim2_sp_idx] = fm_masked
+                pdd['mtplx_avg_fidelities_masked'][dim2_sp_idx] = \
+                    np.trace(np.nan_to_num(fm_masked)) \
+                    / float(np.nansum(fm_masked))
+                pdd_ap['mtplx_n_shots_masked'][dim2_sp_idx] = \
+                    sum(presel_filter)
+
+        fids = pdd['mtplx_avg_fidelities_masked'] if \
+            self.preselection else pdd['mtplx_avg_fidelities']
+        pdd['mtplx_best_fidelity'] = {
+            'fidelity': np.nanmax(fids),
+            'sweep_index': np.nanargmax(fids)}
+        return
 
     @staticmethod
     def _extract_snr(gmm=None,  state_labels=None, clf_params=None,):
