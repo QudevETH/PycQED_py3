@@ -31,6 +31,7 @@ import logging
 
 from pycqed.utilities import math
 from pycqed.utilities.general import find_symmetry_index
+from pycqed.utilities.state_and_transition_translation import STATE_ORDER
 import pycqed.measurement.waveform_control.segment as seg_mod
 import datetime as dt
 log = logging.getLogger(__name__)
@@ -8865,8 +8866,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                        plot_fitting=plot_fitting, **kwargs)
 
     @staticmethod
-    def _order_state_labels(states_labels,
-                            order="gefhabcdijklmnopqrtuvwxyz0123456789"):
+    def _order_state_labels(states_labels, order=STATE_ORDER):
         """
         Orders state labels according to provided ordering. e.g. for default
         ("f", "e", "g") would become ("g", "e", "f")
@@ -8890,7 +8890,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             return states_labels
 
     @staticmethod
-    def _order_multiplexed_state_labels(states_labels, order="gefhabcdij",
+    def _order_multiplexed_state_labels(states_labels, order=STATE_ORDER[:10],
                                         most_significant_state_first=True):
         """
         Orders multiplexed state labels according to provided ordering. e.g.
