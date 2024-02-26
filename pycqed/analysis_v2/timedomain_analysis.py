@@ -7907,23 +7907,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ana_params['means'] = defaultdict(dict)
 
         if self.get_param_value('filter_residual_tones', True):
-            ana_params['optimal_weights_unfiltered'] = defaultdict(dict)
-            filter_fcn = self.get_param_value(
-                'residual_tone_filter_fcn', None)
-            if filter_fcn is None:
-                # if no filter is given, use gaussian filter with width sigma
-                sigma = self.get_param_value('residual_tone_filter_sigma', 1e7)
-                filter_fcn = lambda f, f0: np.exp(
-                    -.5 * (f - f0) ** 2 / sigma ** 2)
-            else:
-                try:
-                    filter_fcn = eval(filter_fcn) if \
-                        isinstance(filter_fcn, str) else filter_fcn
-                except SyntaxError:
-                    log.warning(
-                        'Could not parse the custom filter function. '
-                        'Either pass a valid lambda function '
-                        'directly or as a string')
+            filter_fcn = self._get_residual_tone_filter_fcn()
 
         for qb_indx, qbn in enumerate(self.qb_names):
             # retrieve time traces
@@ -8005,26 +7989,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                               np.max(np.abs(b.imag))) for b in basis])
                 basis /= k
 
-            # residual/spurious tone filtering, only supported if called by
-            # OptimalWeights
             if self.get_param_value('filter_residual_tones', twoD):
-                # safe copy for comparison
-                ana_params['optimal_weights_unfiltered'][qbn] = deepcopy(basis)
-                # TODO: Allow for per qb/acq_instr sampling rates. This change
-                #  requires the respective changes in readout.OptimalWeights.
-                sampling_rate = self.get_param_value('acq_sampling_rate', 1.8e9)
-                ro_freq = self.get_instrument_setting(f'{qbn}.ro_freq')
-                ro_mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
-
-                if np.ndim(basis) == 1:
-                    basis = self._filter_residual_tones(
-                        basis, ro_freq, ro_mod_freq, sampling_rate, filter_fcn)
-                else:
-                    assert np.ndim(basis) == 2, "Basis arr should only be 2D."
-                    for i in range(len(basis)):
-                        basis[i] = self._filter_residual_tones(
-                            basis[i], ro_freq, ro_mod_freq, sampling_rate,
-                            filter_fcn)
+                basis = self._get_filtered_basis(basis, filter_fcn, qbn)
 
             ana_params['optimal_weights'][qbn] = basis
             ana_params['optimal_weights_basis_labels'][qbn] = basis_labels
@@ -8037,6 +8003,62 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 for state in 'gef'[:n_labels + 1]]
 
             self.save_processed_data()
+
+    def _get_residual_tone_filter_fcn(self):
+        pdd = self.proc_data_dict
+        ana_params = pdd['analysis_params_dict']
+
+        ana_params['optimal_weights_unfiltered'] = defaultdict(dict)
+        filter_fcn = self.get_param_value(
+            'residual_tone_filter_fcn', None)
+        if filter_fcn is None:
+            # if no filter is given, use gaussian filter with width sigma
+            sigma = self.get_param_value('residual_tone_filter_sigma', 1e7)
+            filter_fcn = lambda f, f0: np.exp(
+                -.5 * (f - f0) ** 2 / sigma ** 2)
+        else:
+            try:
+                filter_fcn = eval(filter_fcn) if \
+                    isinstance(filter_fcn, str) else filter_fcn
+            except SyntaxError:
+                log.warning(
+                    'Could not parse the custom filter function. '
+                    'Either pass a valid lambda function '
+                    'directly or as a string')
+        return filter_fcn
+
+    def _get_filtered_basis(self, basis, filter_fcn, qbn):
+        """
+        Residual/spurious tone filtering, only supported if called by
+        OptimalWeights.
+
+        Applies ``filter_fcn`` to the time trace in ``basis`` with the
+        RO-frequency and RO modulation frequency of the qubit ``qbn``, returns
+        the modified basis.
+        """
+        pdd = self.proc_data_dict
+        ana_params = pdd['analysis_params_dict']
+
+        # safe copy for comparison
+        ana_params['optimal_weights_unfiltered'][qbn] = deepcopy(basis)
+        # TODO: Allow for per qb/acq_instr sampling rates. This change
+        #  requires the respective changes in readout.OptimalWeights.
+        sampling_rate = self.get_param_value('acq_sampling_rate', None)
+        if sampling_rate is None:
+            raise ValueError("Please provide acq_sampling_rate.")
+        ro_freq = self.get_instrument_setting(f'{qbn}.ro_freq')
+        ro_mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
+
+        if np.ndim(basis) == 1:
+            basis = self._filter_residual_tones(
+                basis, ro_freq, ro_mod_freq, sampling_rate, filter_fcn)
+        else:
+            assert np.ndim(basis) == 2, "Basis arr should only be 2D."
+            for i in range(len(basis)):
+                basis[i] = self._filter_residual_tones(
+                    basis[i], ro_freq, ro_mod_freq, sampling_rate,
+                    filter_fcn)
+        return basis
 
     @staticmethod
     def _filter_residual_tones(w, ro_freq, ro_mod_freq, sampling_rate,
