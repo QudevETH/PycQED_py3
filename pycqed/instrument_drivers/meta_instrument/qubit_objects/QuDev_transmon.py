@@ -2653,9 +2653,36 @@ class QuDev_transmon(MeasurementObject):
     def add_reset_schemes(self, preselection=True,
                           parametric_flux_reset=True,
                           feedback_reset=True):
+        """
+        Adds reset schemes to a given instance of ResetControl.
+
+        This function adds reset schemes to the ResetControl instance of an
+        experiment. It checks if each scheme is already present before adding,
+        so that no duplicates are created. If a scheme is added successfully, a
+        message will be logged stating this. If a submodule with the same name
+        as one being attempted to add already exists in self.reset.submodules,
+        a ValueError will be raised. The error message will specify which
+        submodule and instance names it was called on.
+
+        Args:
+            preselection (bool, optional): If True, adds the Preselection
+                scheme. Default is True.
+            parametric_flux_reset (bool, optional): If True, adds the
+                ParametricFluxReset scheme. Default is True.
+            feedback_reset (bool, optional): If True, adds the FeedbackReset
+            scheme. Default is True.
+
+        Returns: None
+
+        Raises: ValueError: If a submodule with the same name already exists in
+            self.reset.submodules. The error message will specify which
+            submodule and instance names it was called on.
+        """
+
         from pycqed.measurement.waveform_control import reset_schemes as reset
         msg = "{} submodule already in {}.reset.submodules. " \
               "Submodule won't be created again. "
+
         if preselection:
             submodule_name = reset.Preselection.DEFAULT_INSTANCE_NAME
             if submodule_name in self.reset.submodules:
