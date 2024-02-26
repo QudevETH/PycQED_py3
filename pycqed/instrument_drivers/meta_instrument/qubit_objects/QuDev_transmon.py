@@ -2654,9 +2654,9 @@ class QuDev_transmon(MeasurementObject):
                           parametric_flux_reset=True,
                           feedback_reset=True):
         """
-        Adds reset schemes to a given instance of ResetControl.
+        Adds reset schemes to the current instance.
 
-        This function adds reset schemes to the ResetControl instance of an
+        This function adds reset schemes to the current instance of an
         experiment. It checks if each scheme is already present before adding,
         so that no duplicates are created. If a scheme is added successfully, a
         message will be logged stating this. If a submodule with the same name
