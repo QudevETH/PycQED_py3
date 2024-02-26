@@ -914,7 +914,7 @@ class MultiPollDetector(PollDetector):
         """
         def __init__(self, master_awg, awgs=()):
             self.master_awg = master_awg
-            self.awgs = list(set(awgs))
+            self.awgs = list(set([a for a in awgs if a is not None]))
 
         def start(self, **kw):
             for awg in self.awgs:

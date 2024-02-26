@@ -7836,14 +7836,6 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                         loss of precision on FPGA if weights are too small
 
         """
-
-        if qb_names is not None:
-            self.params_dict = {}
-            for qbn in qb_names:
-                self.params_dict[f'ro_mod_freq_' + qbn] = \
-                    f'Instrument settings.{qbn}.ro_mod_freq'
-            self.numeric_params = list(self.params_dict)
-
         self.qb_names = qb_names
         super().__init__(**kwargs)
         if auto:
