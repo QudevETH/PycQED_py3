@@ -9381,6 +9381,13 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         pdd = self.proc_data_dict
         sp_dict = pdd['sweep_points_2D_dict'][qbn]
 
+        main_sp = self.get_param_value('main_sp')
+        if len(sp_dict) > 1 and main_sp is not None and \
+                (sp_name := main_sp.get(qbn)) and \
+                sp_name not in self.sp.get_parameters(dimension=0):
+            sp_vals, sp_unit, sp_hrs = self.sp.get_sweep_params_description(
+                sp_name)
+        elif len(sp_dict) != 1:
             # fall back to sweep point indx if this qb is not swept or if there
             # are more than parameters that are swept
             sp_unit = None

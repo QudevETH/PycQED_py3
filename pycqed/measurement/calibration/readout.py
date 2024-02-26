@@ -129,9 +129,6 @@ class MeasureSSRO(CalibBuilder):
             self.exp_metadata.update({
                 'rotate': False,  # for SSRO data should not be rotated
                 'data_to_fit': {},  # no data to fit for SSRO
-                # set the main sweep point to be the initialisation states
-                'main_sp': {t['qb']: 'initialize'
-                            for t in self.preprocessed_task_list},
                 'multiplexed_ssro': self.multiplexed_ssro,
             })
 
