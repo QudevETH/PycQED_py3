@@ -2711,28 +2711,44 @@ class QuDev_transmon(MeasurementObject):
             transition_name='ge',
             pulse_type='BufferedCZPulse'):
         """
-        Method to add a parametric flux based reset operation.
+        Adds a parametric flux based reset operation to the qubit object.
+
+        This method allows the user to add a parametric flux modulation
+        operation to the qubit object, which can be used to perform a reset
+        operation based on the parametric flux. The operation name, parameter
+        prefix, transition name, and pulse type can be specified.
 
         Args:
-            op_name:
-            parameter_prefix:
-            transition_name:
-            pulse_type:
+            op_name (str, optional): The name of the operation to be added.
+                Defaults to "PFM".
+
+            parameter_prefix (str, optional): The prefix for the parameters
+            associated with the operation. Defaults to 'parametric_flux_modulation'.
+
+            transition_name (str, optional): The name of the transition for
+                which the operation is defined. Defaults to 'ge'.
+
+            pulse_type (str, optional): The type of pulse to be used for the
+                operation. Defaults to 'BufferedCZPulse'.
+
+        Raises:
+            KeyError: If the operation name already exists in the qubit object.
+            KeyError: If the pulse type is not recognized.
 
         Returns:
-
+            None
         """
+        import pycqed.measurement.waveform_control.pulse as bpl
+
         tn = '' if transition_name == 'ge' else f'_{transition_name}'
         op_name = f"{op_name}{tn}"
 
         # find pulse module
-        import pycqed.measurement.waveform_control.pulse as bpl
-        pulse_func = bpl.get_pulse_class(pulse_type)
-
         parameter_prefix = f'{parameter_prefix}{tn}'
         self.add_operation(op_name)
 
         # get default pulse params for the pulse type
+        pulse_func = bpl.get_pulse_class(pulse_type)
         params = pulse_func.pulse_params()
         for param, init_val in params.items():
             self.add_pulse_parameter(
