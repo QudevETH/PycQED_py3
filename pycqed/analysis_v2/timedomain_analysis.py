@@ -9273,6 +9273,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             })
             if multiplexed:
                 for pm in plot_metrics:
+                    # here the qbn is only used to identify the plot in
+                    # plot_dicts, thus we can take the first qbn w.l.o.g.
                     self.prepare_sweep_plot(self.qb_names[0], pm, multiplexed=True)
             else:
                 for qbn in self.qb_names:
@@ -9305,7 +9307,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         'the state probability matrix as an argument and '
                         'returning a single value, e.g. the fidelity.')
 
-        plot_name = plot_settings.get('plot_name', 'fidelity')
+        plot_name = plot_settings.get('plot_name', '')
         if multiplexed:
             yvals = np.array([metric(fm) for fm in self.proc_data_dict[
                 'analysis_params']['mtplx_state_prob_mtx']])
@@ -9378,7 +9380,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         """
         pdd = self.proc_data_dict
         sp_dict = pdd['sweep_points_2D_dict'][qbn]
-        if len(sp_dict) != 1:
+
             # fall back to sweep point indx if this qb is not swept or if there
             # are more than parameters that are swept
             sp_unit = None
