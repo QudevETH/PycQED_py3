@@ -9002,13 +9002,25 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             # iterates over slices if 2nd dimension was swept
             if was_sweep:
                 sp_dict = self.proc_data_dict['sweep_points_2D_dict']
-                first_qbn = list(sp_dict.keys())[0]
-                # use only first sweep parameter to indicate slice
-                sp_name, sp_vals = next(iter(sp_dict[first_qbn].items()))
-                _, sp_unit, sp_hrs = self.sp.get_sweep_params_description(
-                    sp_name)
+                main_qbn = list(sp_dict.keys())[0]
+                main_sp = self.get_param_value('main_sp')
+                main_sp_names = [(sp_name, qbn) for qbn in self.qb_names
+                                 if main_sp is not None
+                                 and (sp_name := main_sp.get(qbn))
+                                 and sp_name not in self.sp.get_parameters(dimension=0)]
+                if len(sp_dict) > 1 and len(main_sp_names):
+                    # use main sp of first qb that has it specified to indicate
+                    # slice
+                    sp_vals, sp_unit, sp_hrs = \
+                        self.sp.get_sweep_params_description(main_sp_names[0][0])
+                    main_qbn = main_sp_names[0][1]
+                else:
+                    # use only first sweep parameter to indicate slice
+                    sp_name, sp_vals = next(iter(sp_dict[main_qbn].items()))
+                    _, sp_unit, sp_hrs = self.sp.get_sweep_params_description(
+                        sp_name)
                 for i in range(n_sweep_points):
-                    slice_title = f"\nSweep Point {i}: {first_qbn} {sp_hrs} " \
+                    slice_title = f"\nSweep Point {i}: {main_qbn} {sp_hrs} " \
                                   f"= {sp_vals[i]}{sp_unit}"
                     self.plot_multiplexed_plots(slice_title=slice_title,
                                                 sweep_indx=i,
@@ -9294,9 +9306,21 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             })
             if multiplexed:
                 for pm in plot_metrics:
-                    # here the qbn is only used to identify the plot in
-                    # plot_dicts, thus we can take the first qbn w.l.o.g.
-                    self.prepare_sweep_plot(self.qb_names[0], pm, multiplexed=True)
+                    # here the qbn is used to identify the plot in
+                    # plot_dicts, and to specify from which qb the best pulse
+                    # parameters are listed below a multiplexed sweep plot
+                    sp_dict = self.proc_data_dict['sweep_points_2D_dict']
+                    main_qbn = list(sp_dict.keys())[0]
+                    main_sp = self.get_param_value('main_sp')
+                    main_sp_qbns = [qbn for qbn in self.qb_names
+                                    if main_sp is not None
+                                    and (sp_name := main_sp.get(qbn))
+                                    and sp_name not in self.sp.get_parameters(
+                                    dimension=0)]
+                    main_qbn = main_sp_qbns[0] if len(main_sp_qbns) \
+                        else main_qbn
+
+                    self.prepare_sweep_plot(main_qbn, pm, multiplexed=True)
             else:
                 for qbn in self.qb_names:
                     for pm in plot_metrics:
