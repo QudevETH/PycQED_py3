@@ -8192,6 +8192,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             classif_kw (dict): kw to pass to the classifier.
             multiplexed_ssro (bool): whether to perform analysis for a
                 multiplexed measurement (default: False)
+            plot (bool): Whether to plot any plots (default: True)
             plot_single_qb_plots (bool): Whether to plot the state assignment
                 probability matrices and classification plots (for every qb and
                 sweep point) (default: True if no sweep was performed)
@@ -8968,6 +8969,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         Returns:
 
         """
+        if not self.get_param_value("plot", True):
+            return  # no plotting if "plot" is False
+
         # prepares the processed data before plotting
         n_sweep_points = self.proc_data_dict['n_dim_2_sweep_points']
 
@@ -9050,9 +9054,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         Returns:
             ``None``
         """
-        if not self.get_param_value("plot", True):
-            return  # no plotting if "plot" is False
-
         clf_ = self.clf_
         pdd = self.proc_data_dict
         pdd_ap = pdd['analysis_params']
