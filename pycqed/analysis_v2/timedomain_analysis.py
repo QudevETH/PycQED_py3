@@ -8976,19 +8976,10 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         was_sweep = self.get_param_value('TwoD', False) and n_sweep_points > 1
         was_mtplx = self.get_param_value('multiplexed_ssro', False)
 
-        def get_default_plots():  # sensible plots for all combinations
-            if not was_sweep and not was_mtplx:
-                return True, False
-            elif was_sweep and not was_mtplx:
-                return False, False
-            elif not was_sweep and was_mtplx:
-                return True, True
-            elif was_sweep and was_mtplx:
-                return False, False
-
-        defaults = get_default_plots()
-        plot_single_qb = self.get_param_value('plot_single_qb_plots', defaults[0])
-        plot_mtplx = self.get_param_value('plot_mtplx_plots', defaults[1])
+        plot_single_qb = self.get_param_value('plot_single_qb_plots',
+                                              not was_sweep)
+        plot_mtplx = self.get_param_value('plot_mtplx_plots',
+                                          was_mtplx and not was_sweep)
 
         if plot_single_qb:
             for qbn in self.qb_names:
