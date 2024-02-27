@@ -8187,6 +8187,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 'ncc' : default. Nearest Cluster Center
                 'gmm': gaussian mixture model (default)
                 'threshold': finds optimal vertical and horizontal thresholds.
+            retrain_classifier (bool): whether to retrain the classifier
+                (default) or to use the classifier stored in instrument_setting
             classif_kw (dict): kw to pass to the classifier.
             multiplexed_ssro (bool): whether to perform analysis for a
                 multiplexed measurement (default: False)
@@ -8378,6 +8380,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                     self._classify(qb_shots[dim2_sp_idx], prep_states,
                                    method=self.classif_method, qb_name=qbn,
                                    dim2_sweep_indx=dim2_sp_idx,
+                                   train_new_classifier=self.get_param_value(
+                                       "retrain_classifier", True),
                                    **self.options_dict.get("classif_kw", dict()))
                 # order "unique" states to have in usual order "gef" etc.
                 state_labels_ordered = self._order_state_labels(
@@ -8706,7 +8710,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         return slopes
 
     def _classify(self, X, prep_state, method, qb_name, dim2_sweep_indx=None,
-                  **kw):
+                  train_new_classifier=True, **kw):
         """
 
         Args:
@@ -8716,7 +8720,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             qb_name: name of the qubit to classify
             dim2_sweep_indx: specifies which slice of self.proc_data_dict is to
             be used.
-
+            train_new_classifier: Whether to fit a new classifier or to use the
+            one specified in instrument_settings. Only implemented for gmm.
         Returns:
 
         """
@@ -8725,6 +8730,10 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         params = dict()
 
         if method == 'ncc':
+            if not train_new_classifier:
+                raise NotImplementedError("NCC classification doesn't "
+                                          "support classification from "
+                                          "trained classifier.")
             ncc = SSROQutrit.NCC(
                 self.proc_data_dict['analysis_params']['means'][qb_name])
             pred_states = ncc.predict(X)
@@ -8732,41 +8741,58 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             return pred_states, dict(), ncc
 
         elif method == 'gmm':
-            cov_type = kw.pop("covariance_type", "tied")
-            # full allows full covariance matrix for each level. Other options
-            # see GM documentation
-            # assumes if repeated state, should be considered of the same component
-            # this classification method should not be used for multiplexed SSRO
-            # analysis
-            n_qb_states = len(np.unique(self.cp.get_states(qb_name)[qb_name]))
-            # give same weight to each class by default
-            weights_init = kw.pop("weights_init",
-                                  np.ones(n_qb_states)/n_qb_states)
-            if dim2_sweep_indx is None:
-                means = [mu for _, mu in
-                         self.proc_data_dict['analysis_params']
-                         ['means'][qb_name].items()]
-            else:
-                means = [mu for _, mu in
-                         self.proc_data_dict['analysis_params']
-                         ['means'][qb_name][dim2_sweep_indx].items()]
+            if train_new_classifier:
+                cov_type = kw.pop("covariance_type", "tied")
+                # full allows full covariance matrix for each level. Other
+                # options see GM documentation
+                # assumes if repeated state, should be considered of the same
+                # component this classification method should not be used for
+                # multiplexed SSRO analysis
+                n_qb_states = len(np.unique(self.cp.get_states(qb_name)[qb_name]))
+                # give same weight to each class by default
+                weights_init = kw.pop("weights_init",
+                                      np.ones(n_qb_states)/n_qb_states)
+                if dim2_sweep_indx is None:
+                    means = [mu for _, mu in
+                             self.proc_data_dict['analysis_params']
+                             ['means'][qb_name].items()]
+                else:
+                    means = [mu for _, mu in
+                             self.proc_data_dict['analysis_params']
+                             ['means'][qb_name][dim2_sweep_indx].items()]
 
-            # calculate delta of means and set tol and cov based on this
-            delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
-                                    for mu_j in means]).flatten().max()
+                # calculate delta of means and set tol and cov based on this
+                delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
+                                        for mu_j in means]).flatten().max()
 
-            tol = delta_means/10 if delta_means > 1e-5 else 1e-6
-            tol = kw.pop("tol", tol)
-            reg_covar = tol**2
+                tol = delta_means/10 if delta_means > 1e-5 else 1e-6
+                tol = kw.pop("tol", tol)
+                reg_covar = tol**2
 
-            gm = GM(n_components=n_qb_states,
-                    covariance_type=cov_type,
-                    random_state=0,
-                    tol=tol,
-                    reg_covar=reg_covar,
-                    weights_init=weights_init,
-                    means_init=means, **kw)
-            gm.fit(X)
+                gm = GM(n_components=n_qb_states,
+                        covariance_type=cov_type,
+                        random_state=0,
+                        tol=tol,
+                        reg_covar=reg_covar,
+                        weights_init=weights_init,
+                        means_init=means, **kw)
+                gm.fit(X)
+            else:  # restore GMM from instrument_setting
+                gm = GM()
+                params = self.get_instrument_setting(
+                    f"{qb_name}.acq_classifier_params")
+                if not isinstance(params, dict):
+                    raise ValueError(f"Please make sure that {qb_name} has a "
+                                     f"trained GMM classifier.")
+                for name in ['means_', 'covariances_', 'covariance_type',
+                             'weights_', 'precisions_cholesky_']:
+                    if name not in params.keys():
+                        raise ValueError(f"Classifier stored in instrument "
+                                         f"setting doesn't contain the "
+                                         f"parameter {name}.")
+                    setattr(gm, name, params[name])
+                setattr(gm, 'n_components', params['means_'].shape[0])
+
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
             params['means_'] = gm.means_
@@ -8777,6 +8803,10 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             return pred_states, params, gm
 
         elif method == "threshold":
+            if not train_new_classifier:
+                raise NotImplementedError("Threshold classification doesn't "
+                                          "support classification from "
+                                          "trained classifier.")
             tree = DTC(max_depth=kw.pop("max_depth", X.shape[1]),
                        random_state=0, **kw)
             tree.fit(X, prep_state)
