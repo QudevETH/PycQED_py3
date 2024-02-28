@@ -8921,7 +8921,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             return states_labels
 
     @staticmethod
-    def _order_multiplexed_state_labels(states_labels, order=STATE_ORDER[:10],
+    def _order_multiplexed_state_labels(states_labels, order=STATE_ORDER,
                                         most_significant_state_first=True):
         """
         Orders multiplexed state labels according to provided ordering. e.g.
@@ -8929,25 +8929,17 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         becomes [['g', 'g'], ['e', 'g'], ['g', 'e'], ['e', 'e']].
         Args:
             states_labels (2D list, tuple): list of states_labels to be sorted
-            order (str): custom string order (not more than 10 states)
+            order (str): custom string order
             most_significant_state_first: setting this to False orders by the
             last state in the array first, default True.
 
         Returns:
             ordered list of multiplexed states
         """
-        states_labels = np.array(states_labels)
-        if len(order) > 10:
-            log.error(f"More than 10 states are not supported."
-                      f" Returning same as input order")
-            return states_labels
         try:
-            indices = np.array([int(''.join(
-                np.array([order.index(s) for s in states], dtype=str)
-                [::1 if most_significant_state_first else -1]))
-                for states in states_labels])
-            order_for_states = np.argsort(indices).astype(np.int32)
-            return np.array(states_labels)[order_for_states]
+            key = lambda x: [order.index(c) for c in x][
+                            ::1 if most_significant_state_first else -1]
+            return np.array(sorted(states_labels, key=key))
         except Exception as e:
             log.error(f"Could not find order in state_labels:"
                       f"{states_labels}. Probably because one or several "
