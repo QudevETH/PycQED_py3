@@ -16,6 +16,8 @@ from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v2 import analysis_daemon
+from pycqed.instrument_drivers.mock_qcodes_interface import \
+    ParameterNotFoundError
 from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
     write_warning_message_to_text_file)
 from pycqed.analysis.analysis_toolbox import get_color_order as gco
@@ -29,11 +31,10 @@ import datetime
 import json
 import lmfit
 import h5py
-from pycqed.measurement.hdf5_data import write_dict_to_hdf5
-from pycqed.measurement.hdf5_data import read_dict_from_hdf5
-from pycqed.measurement.hdf5_data import get_hdf_group_by_name
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
+from pycqed.utilities.io import hdf5 as hdf5_io
+import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
 import logging
@@ -149,8 +150,22 @@ class BaseDataAnalysis(object):
         try:
             # set error-handling behavior
             self.raise_exceptions = raise_exceptions
+            # set container for config files
+            self.config_files = setman.SettingsManager()
 
-            # initialize an empty dict to store results of analysis
+            # Child classes may call create_job to fill this with a job
+            # string representation of the analysis.
+            self.job = None
+
+            # Initialize an empty dict to store results of analysis
+            # FIXME most 2-D data arrays are stored with shape
+            #  [hard sweep dimension, soft sweep dimension].
+            #  But there are two exceptions:
+            #  - self.proc_data_dict['projected_data_dict']
+            #  - self.proc_data_dict['data_to_fit']
+            #  which are transposed (seemingly consistently across analysis_v2).
+            #  This works because of some additional transposes in the
+            #  plotting code as well. This should be cleaned up.
             self.proc_data_dict = OrderedDict()
             if options_dict is None:
                 self.options_dict = OrderedDict()
@@ -380,10 +395,10 @@ class BaseDataAnalysis(object):
         """
         file_path = self._get_analysis_result_file_path()
         with h5py.File(file_path, 'a') as data_file:
-            analysis_group = get_hdf_group_by_name(data_file,
-                                                   "Analysis")
+            analysis_group = hdf5_io.get_hdf_group_by_name(
+                data_file, "Analysis")
             if isinstance(analysis_group, h5py.Group):
-                write_dict_to_hdf5(
+                hdf5_io.write_dict_to_hdf5(
                     {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
                     entry_point=analysis_group
                 )
@@ -557,68 +572,148 @@ class BaseDataAnalysis(object):
                                                          1])
         return recursive_search(param_name, search_attrs[0])
 
+    def get_instrument_settings(self, params_dict, timestamp=-1):
+        """
+        Returns a dictionary with the parameters loaded from the settings
+        specified by the timestamp (default is the first timestamp in
+        self.timestamps). If the parameters are not in the station,
+        it tries to update the station, see mock_qcodes_interface.Station
+        Args:
+            params_dict (dict): Dictionary of the form
+                { 'custom parameter name': 'path_to_parameter',
+                    ...
+                }
+                where path_to_parameter is of the form %instrument%.%parameter%
+            timestamp(str, int): Timestamp of the instrument settings. If
+                integer, it is the index of the timestamp in
+                self.config_files.stations.
+
+        Returns: Returns a dictionary with the keys defined by params_dict and
+            the values from the parameters specified by 'path_to_parameter'.
+
+        """
+        return_dict = {}
+
+        self.config_files.update_station(timestamp, list(params_dict.values()))
+        for save_par, file_par in params_dict.items():
+            return_dict[save_par] = self.config_files.get_parameter(file_par,
+                                                                    timestamp)
+        return return_dict
+
+    def get_instrument_setting(self, param_name, timestamp=-1):
+        """
+        Extracts a parameter from the instrument settings and updates the
+        station if needed. See SettingsManager.get_parameter for more
+        information.
+
+        Args:
+            param_name(str):path to the parameter of the form
+                %instrument%.%parameter% or %instrument%.%submodule.%parameter%
+            timestamp (int, str): timestamp or index of the station inside the
+                settings manager self.config_files. If the timestamp is given as
+                a string it loads the file if the station does not exist in the
+                SM.
+                Default is -1, i.e. the most recent added station.
+        """
+
+        return self.config_files.get_parameter(param_name, timestamp)
+
     def get_data_from_timestamp_list(self, params_dict, numeric_params=(),
                                      timestamps=None):
+        # Instrument settings are specified with the SETTINGS_PREFIX due to
+        # legacy reasons (used to be stored in the group Instrument settings
+        # inside the hdf-file). This prefix is used to distinguish instrument
+        # settings from other parameters, e.g. metadata.
+        SETTINGS_PREFIX = 'Instrument settings.'
+        # Extracting all instrument settings from the params_dict
+        settings_keys = [k for k, v in params_dict.items() if
+                         v.startswith(SETTINGS_PREFIX)]
+        settings_dict = {k: v[len(SETTINGS_PREFIX):] for k, v in
+                         params_dict.items()
+                         if k in settings_keys}
+        # extracting the remaining parameters
+        params_dict = {k: v for k, v in params_dict.items()
+                         if k not in settings_keys}
         if timestamps is None:
             timestamps = self.timestamps
         raw_data_dict = []
+        h5mode = self.options_dict.get('h5mode', 'r')
         for timestamp in timestamps:
-            raw_data_dict_ts = OrderedDict([(param, []) for param in
-                                            params_dict])
+            # open current hdf-file
+            # FIXME: Use a context manager instead of opening the file and
+            #  dress it around a try-except statement.
+            #  Can we avoid using a_tools.open_hdf_file() at all instances by
+            #  using a context manager?
 
-            folder = a_tools.get_folder(timestamp)
-            h5mode = self.options_dict.get('h5mode', 'r')
-            h5filepath = a_tools.measurement_filename(folder)
-            data_file = h5py.File(h5filepath, h5mode)
+            data_file = a_tools.open_hdf_file(timestamp, mode=h5mode)
             try:
-                if 'timestamp' in raw_data_dict_ts:
+
+                raw_data_dict_ts = dict()
+                folder = a_tools.get_folder(timestamp)
+
+                # add special items
+                if 'timestamp' in params_dict:
                     raw_data_dict_ts['timestamp'] = timestamp
-                if 'folder' in raw_data_dict_ts:
+                if 'folder' in params_dict:
                     raw_data_dict_ts['folder'] = folder
-                if 'measurementstring' in raw_data_dict_ts:
+                if 'measurementstring' in params_dict:
                     raw_data_dict_ts['measurementstring'] = \
                         os.path.split(folder)[1][7:]
-                if 'measured_data' in raw_data_dict_ts:
+                if 'measured_data' in params_dict:
                     raw_data_dict_ts['measured_data'] = \
                         np.array(data_file['Experimental Data']['Data']).T
+                if 'measured_values' in params_dict:
+                    log.warning('Deprecation warning: Parameter measured_values'
+                                ' is not extracted from the file. '
+                                'An empty list will be returned.')
+                    raw_data_dict_ts['measured_values'] = []
 
+                # add hdf attributes and groups
                 for save_par, file_par in params_dict.items():
-                    if len(file_par.split('.')) == 1:
-                        par_name = file_par.split('.')[0]
-                        for group_name in data_file.keys():
-                            if par_name in list(data_file[group_name].attrs):
-                                raw_data_dict_ts[save_par] = \
-                                    self.get_hdf_datafile_param_value(
-                                        data_file[group_name], par_name)
-                            elif par_name in list(data_file[group_name].keys()) or\
-                                    (par_name == "Timers" and group_name == "Timers"):
-                                raw_data_dict_ts[save_par] = \
-                                    read_dict_from_hdf5({}, data_file[
-                                        group_name])
-                    else:
-                        group_name = '/'.join(file_par.split('.')[:-1])
-                        par_name = file_par.split('.')[-1]
-                        if group_name in data_file:
-                            if par_name in list(data_file[group_name].attrs):
-                                raw_data_dict_ts[save_par] = \
-                                    self.get_hdf_datafile_param_value(
-                                        data_file[group_name], par_name)
-                            elif par_name in list(data_file[group_name].keys()):
-                                raw_data_dict_ts[save_par] = \
-                                    read_dict_from_hdf5({}, data_file[
-                                        group_name][par_name])
-                    if isinstance(raw_data_dict_ts[save_par], list) and \
-                            len(raw_data_dict_ts[save_par]) == 1:
+                    if save_par in raw_data_dict_ts:  # was treated above
+                        continue
+                    elif file_par == 'Timers':
                         raw_data_dict_ts[save_par] = \
-                            raw_data_dict_ts[save_par][0]
+                            hdf5_io.read_dict_from_hdf5({}, data_file[file_par])
+                    elif len(file_par.split('.')) == 1:
+                        # Group was not specified. The following code tries to find an
+                        # attribute or subgroup in any of the groups in the hdf file.
+                        # FIXME: is this "find anywhere" functionality really needed?
+                        #  it is used e.g. in BaseDataAnalysis.extract_data
+                        #  Shouldn't child classe rather specify the precise path?
+                        #  Due to this features, it is impossible to query complete groups
+                        #  here, which is the reason why Timers needs special treatment above.
+                        par_name = file_par.split('.')[0]
+                        for i, group_name in enumerate(data_file.keys()):
+                            try:
+                                raw_data_dict_ts[save_par] = \
+                                    hdf5_io.read_from_hdf5(
+                                        par_name, data_file[group_name])
+                            except ParameterNotFoundError as e:
+                                if i == len(data_file.keys()) - 1:
+                                    # not found in any of the groups
+                                    raise e
+                                else:
+                                    continue  # try next group
+                            break  # keep first found parameter
+                    else:
+                        raw_data_dict_ts[save_par] = \
+                            hdf5_io.read_from_hdf5(file_par, data_file)
+                a_tools.close_files([data_file])
+                # add settings
+                raw_data_dict_ts.update(
+                    self.get_instrument_settings(
+                        settings_dict, timestamp))
+
                 for par_name in raw_data_dict_ts:
                     if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
+                raw_data_dict.append(raw_data_dict_ts)
+
             except Exception as e:
-                data_file.close()
+                a_tools.close_files([data_file])
                 raise e
-            raw_data_dict.append(raw_data_dict_ts)
 
         if len(raw_data_dict) == 1:
             raw_data_dict = raw_data_dict[0]
@@ -1118,8 +1213,8 @@ class BaseDataAnalysis(object):
 
             with h5py.File(fn, 'a') as data_file:
                 try:
-                    analysis_group = get_hdf_group_by_name(data_file,
-                                                           "Analysis")
+                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                        data_file, "Analysis")
 
                     # Iterate over all the fit result dicts as not to
                     # overwrite old/other analysis
@@ -1135,7 +1230,7 @@ class BaseDataAnalysis(object):
                             fr_group = analysis_group.create_group(fr_key)
 
                         d = self._convert_dict_rec(copy.deepcopy(fit_res))
-                        write_dict_to_hdf5(d, entry_point=fr_group)
+                        hdf5_io.write_dict_to_hdf5(d, entry_point=fr_group)
                 except Exception as e:
                     data_file.close()
                     raise e
@@ -1191,16 +1286,16 @@ class BaseDataAnalysis(object):
 
             with h5py.File(fn, 'a') as data_file:
                 try:
-                    analysis_group = get_hdf_group_by_name(data_file,
-                                                           "Analysis")
-                    proc_data_group = get_hdf_group_by_name(analysis_group,
-                                                            "Processed data")
+                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                        data_file, "Analysis")
+                    proc_data_group = hdf5_io.get_hdf_group_by_name(
+                        analysis_group, "Processed data")
 
                     if key in proc_data_group.keys():
                         del proc_data_group[key]
 
                     d = {key: self.proc_data_dict[key]}
-                    write_dict_to_hdf5(d, entry_point=proc_data_group,
+                    hdf5_io.write_dict_to_hdf5(d, entry_point=proc_data_group,
                                        overwrite=overwrite)
                 except Exception as e:
                     data_file.close()
@@ -1676,6 +1771,12 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict.get('ylabel', None)
         plot_xunit = pdict.get('xunit', None)
         plot_yunit = pdict.get('yunit', None)
+        plot_xtick_labels = pdict.get('xtick_labels', None)
+        plot_ytick_labels = pdict.get('ytick_labels', None)
+        plot_xtick_loc = pdict.get('xtick_loc', None)
+        plot_ytick_loc = pdict.get('ytick_loc', None)
+        plot_xtick_rotation = pdict.get('xtick_rotation', 90)
+        plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_title = pdict.get('title', None)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
@@ -1779,6 +1880,17 @@ class BaseDataAnalysis(object):
             axs.set_xscale(plot_xscale)
         if plot_grid:
             axs.grid(True)
+
+        if plot_xtick_loc is not None:
+            axs.xaxis.set_ticks(plot_xtick_loc)
+        if plot_ytick_loc is not None:
+            axs.yaxis.set_ticks(plot_ytick_loc)
+        if plot_xtick_labels is not None:
+            axs.xaxis.set_ticklabels(plot_xtick_labels,
+                                     rotation=plot_xtick_rotation)
+        if plot_ytick_labels is not None:
+            axs.yaxis.set_ticklabels(plot_ytick_labels,
+                                     rotation=plot_ytick_rotation)
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -1950,6 +2062,8 @@ class BaseDataAnalysis(object):
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_xtick_loc = pdict.get('xtick_loc', None)
         plot_ytick_loc = pdict.get('ytick_loc', None)
+        plot_xtick_rotation = pdict.get('xtick_rotation', 90)
+        plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_transpose = pdict.get('transpose', False)
         plot_nolabel = pdict.get('no_label', False)
         plot_nolabel_units = pdict.get('no_label_units', False)
@@ -2061,10 +2175,10 @@ class BaseDataAnalysis(object):
         # FIXME Ignores thranspose option. Is it ok?
         if plot_xtick_labels is not None:
             axs.xaxis.set_ticklabels(plot_xtick_labels,
-                                     rotation=pdict.get(
-                                         'xlabels_rotation', 90))
+                                     rotation=plot_xtick_rotation)
         if plot_ytick_labels is not None:
-            axs.yaxis.set_ticklabels(plot_ytick_labels)
+            axs.yaxis.set_ticklabels(plot_ytick_labels,
+                                     rotation=plot_ytick_rotation)
         if plot_xtick_loc is not None:
             axs.xaxis.set_ticks(plot_xtick_loc)
         if plot_ytick_loc is not None:
@@ -2385,7 +2499,7 @@ class BaseDataAnalysis(object):
 
     def clock(self, awg=None, channel=None, pulsar=None):
         """
-        Returns the clock frequency of an AWG from the instrument settings,
+        Returns the clock frequency of an AWG from the config file,
         or tries to determine it based on the instrument type if it is not
         stored in the settings.
         :param awg: (str) AWG name (can be None if channel and pulsar are
@@ -2398,16 +2512,13 @@ class BaseDataAnalysis(object):
         if awg is None:
             assert pulsar is not None and channel is not None, \
                 'If awg is not provided, channel and pulsar must be provided.'
-            pulsar_dd = self.get_data_from_timestamp_list({
-                'awg': f'Instrument settings.{pulsar}.{channel}_awg'})
-            awg = pulsar_dd['awg']
-
-        awg_dd = self.get_data_from_timestamp_list({
-            'clock_freq': f'Instrument settings.{awg}.clock_freq',
-            'IDN': f'Instrument settings.{awg}.IDN'})
-        if awg_dd['clock_freq']:
-            return awg_dd['clock_freq']
-        model = awg_dd['IDN'].get('model', None)
+            awg = self.get_instrument_setting(f'{pulsar}.{channel}_awg')
+        try:
+            return self.get_instrument_setting(
+                f'{awg}.clock_freq')
+        except ParameterNotFoundError:
+            model = self.get_instrument_setting(
+                f'{awg}.IDN').get('model', None)
         if model == 'HDAWG8':
             return 2.4e9
         elif model == 'UHFQA':
@@ -2417,34 +2528,19 @@ class BaseDataAnalysis(object):
         else:
             raise NotImplementedError(f"Unknown AWG type: {model}.")
 
-    def get_hdf_attr_names(self, path='Instrument settings',  hdf_file_index=0):
+    def get_instruments_by_class(self, instr_class, file_index=0):
         """
-        Returns all attributes in a path. Path could also be e.g. a particular qubit
+        Returns all instrument names of a given class
         """
-        h5mode = 'r'
-        folder = a_tools.get_folder(self.timestamps[hdf_file_index])
-        h5filepath = a_tools.measurement_filename(folder)
-        data_file = h5py.File(h5filepath, h5mode)
-
-        try:
-            attr_names = list(data_file[path]) + list(data_file[path].attrs)
-            data_file.close()
-            return attr_names
-        except Exception as e:
-            data_file.close()
-            raise e
-
-    def get_instruments_by_class(self, instr_class, hdf_file_index=0):
-        """
-        Returns all instruments of a given class
-        """
-        instruments = self.get_hdf_attr_names(hdf_file_index= hdf_file_index)
+        # loads the entire settings file to the station in case it was just
+        # partially loaded
+        self.config_files.update_station(timestamp=file_index,)
+        instruments = self.config_files.get_instrument_objects(
+            timestamp=file_index)
         dev_names = []
         for instrument in instruments:
-            instrument_class = self.get_hdf_param_value(path_to_group='Instrument settings/'+instrument,
-                                                        attribute='__class__', hdf_file_index=hdf_file_index)
-            if  instrument_class == instr_class:
-                dev_names.append(instrument)
+            if instrument.classname == instr_class:
+                dev_names.append(instrument.name)
         return dev_names
 
 

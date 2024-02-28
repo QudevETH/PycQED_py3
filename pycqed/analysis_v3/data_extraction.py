@@ -90,7 +90,7 @@ def extract_data_hdf(data_dict=None, timestamps=None,
             storing_key will be created in data_dict for storing the data
             indicated by path_to_data as a parameter name or a
             path + parameter name inside an HDF file.
-        numeric_params (list or tuple): passed to get_params_from_hdf_file, see
+        numeric_params (list or tuple): passed to get_params_from_files, see
             docstring there.
         append_data (bool): passed to add_measured_data_hdf, see docstring there
         replace_data (bool): passed to add_measured_data_hdf, see docstring
@@ -133,7 +133,7 @@ def extract_data_hdf(data_dict=None, timestamps=None,
         # combine_metadata_list, then extract all other parameters.
         # Otherwise, data_dict['exp_metadata'] is a list and it is unclear
         # from where to extract parameters.
-        hlp_mod.get_params_from_hdf_file(
+        hlp_mod.get_params_from_files(
             data_dict,
             params_dict={'exp_metadata':
                              'Experimental Data.Experimental Metadata'},
@@ -145,7 +145,7 @@ def extract_data_hdf(data_dict=None, timestamps=None,
         # of metadata dicts extracted above for each timestamp
         combine_metadata_list(data_dict, **params)
 
-    # call get_params_from_hdf_file which gets values for params
+    # call get_params_from_files which gets values for params
     # in params_dict and adds them to the dictionary data_dict
     params_dict_temp = params_dict
     params_dict = OrderedDict(
@@ -155,7 +155,7 @@ def extract_data_hdf(data_dict=None, timestamps=None,
          'exp_metadata.value_units': 'value_units',
          'exp_metadata.measurementstrings': 'measurementstring'})
     params_dict.update(params_dict_temp)
-    hlp_mod.get_params_from_hdf_file(
+    hlp_mod.get_params_from_files(
         data_dict, params_dict=params_dict, numeric_params=numeric_params,
         folder=data_dict['folders'][-1],
         add_param_method=add_param_method)

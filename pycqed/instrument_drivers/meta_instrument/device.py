@@ -426,6 +426,166 @@ class Device(Instrument):
          for qb in qbs]
         return channel_map
 
+    def get_interaction_frequencies(self, qubit_pairs=None, cz_pulse_name=None,
+                                    reference_qb='high'):
+        """
+        Gets the interaction frequencies for CZ gates between specified qubit pairs.
+
+        Args:
+            qubit_pairs (list[tuple], optional): List of qubit pairs. If None,
+                retrieves the pairs using "[self.get_qubits(pair) for pair in
+                self.connectivity_graph()]". Defaults to None.
+            cz_pulse_name (str, optional): Name of the CZ pulse.
+                Takes self.default_cz_gate_name if not provided by the user.
+            reference_qb (str, optional): Specifies whether to reference the 'high'
+                or 'low' qubit. Defaults to 'high'.
+
+        Returns:
+            dict: A dictionary where keys are qubit pairs and values are their
+                corresponding interaction frequencies.
+
+        Raises:
+            ValueError: If reference_qb is neither 'high' nor 'low'.
+        """
+        if qubit_pairs is None:
+            qubit_pairs = [tuple(self.get_qubits(pair)) for pair
+                           in self.connectivity_graph()]
+
+        interaction_frequencies = {}
+        for qubit_pair in qubit_pairs:
+            qbi, qbj = qubit_pair
+            interaction_freq = self.get_interaction_frequency(qbi, qbj,
+                                                              cz_pulse_name,
+                                                              reference_qb)
+            interaction_frequencies[qubit_pair] = interaction_freq
+
+        return interaction_frequencies
+
+    def get_interaction_frequency(self, qbi, qbj, cz_pulse_name=None,
+                                  reference_qb='high'):
+        """
+        Gets the interaction frequency of a CZ gate between two qubits.
+        The interaction frequency is defined as the ef frequency of the high
+        frequency qubit when reference_qb = 'high' and the ge frequency of
+        the data qubit when reference_ab = 'low'.
+
+        Args:
+            qbi (QuDevTransmon, str): One of the qubits involved in the CZ gate.
+            qbj (QuDevTransmon, str): The other qubit involved in the CZ gate.
+            cz_pulse_name (str, optional): Name of the CZ pulse.
+                Defaults to self.default_cz_gate_name.
+            reference_qb (str, optional): Specifies whether to reference the 'high'
+                or 'low' qubit. Defaults to 'high'.
+
+        Returns:
+            float: The calculated interaction frequency.
+
+        Raises:
+            AssertionError: If qbi is the same as qbj.
+            ValueError: If reference_qb is neither 'high' nor 'low'.
+        """
+        assert qbi != qbj
+
+        # ensure to get qubit objects
+        qbi, qbj = self.get_qubits([qbi, qbj])
+
+        if cz_pulse_name is None:
+            cz_pulse_name = self.default_cz_gate_name()
+
+        # Determine the higher and lower frequency qubits
+        if qbi.ge_freq() > qbj.ge_freq():
+            qbh, qbl = qbi, qbj
+        else:
+            qbh, qbl = qbj, qbi
+
+        # Use the specified reference qubit to calculate interaction frequency
+        if reference_qb == 'high':
+            amp = self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
+                                     'amplitude')()
+            f = qbh.calculate_frequency(amplitude=amp, flux=qbh.flux_parking(),
+                                        transition='ef')
+
+        elif reference_qb == 'low':
+            amp = self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
+                                     'amplitude2')()
+            f = qbl.calculate_frequency(amplitude=amp, flux=qbl.flux_parking())
+        else:
+            raise ValueError(
+                f'reference_qb should be "high" or "low" but was passed as'
+                f' "{reference_qb}".')
+
+        return f
+
+    def set_interaction_frequency(self, qbi, qbj, int_freq, cz_pulse_name=None,
+                                  update=True):
+        """
+        Sets the interaction frequency for a CZ gate between two qubits.
+
+        Args:
+            qbi (QuDevTransmon or str): One of the qubits involved in the CZ gate.
+            qbj (QuDevTransmon or str): The other qubit involved in the CZ gate.
+            int_freq (float): The desired interaction frequency for the CZ gate.
+            cz_pulse_name (str, optional): Name of the CZ pulse.
+                Defaults to self.default_cz_pulse_name.
+            update (bool): If True, updates the pulse parameters. Defaults
+                to True. The 'amplitude' parameter of the high-frequency qubit and
+                the 'amplitude2' parameter of the low-frequency qubit are modified.
+
+        Returns:
+            Tuple[float, float]: The amplitudes corresponding to the high and low qubits.
+
+        Raises:
+            AssertionError: If qbi is the same as qbj.
+        """
+       # check that qubits are connected
+        self.check_connection(qbi, qbj)
+
+        # ensure to get qubit objects
+        qbi, qbj = self.get_qubits([qbi, qbj])
+
+        # Determine the higher and lower frequency qubits
+        if qbi.ge_freq() > qbj.ge_freq():
+            qbh, qbl = qbi, qbj
+        else:
+            qbh, qbl = qbj, qbi
+
+        # Calculate amplitudes based on interaction frequency and flux parking states
+        amph = -np.abs(qbh.calculate_flux_voltage(int_freq,
+                                                  flux=qbh.flux_parking(),
+                                                  transition='ef'))
+        ampl = np.abs(qbl.calculate_flux_voltage(int_freq, flux=qbl.flux_parking()))
+
+        # Update pulse parameters if requested
+        if update:
+            if cz_pulse_name is None:
+                cz_pulse_name = self.default_cz_gate_name()
+            self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
+                               'amplitude')(amph)
+            self.get_pulse_par(cz_pulse_name, qbh.name, qbl.name,
+                               'amplitude2')(ampl)
+
+        return amph, ampl
+
+    def set_interaction_frequencies(self, interaction_frequencies,
+                                    cz_pulse_name=None,
+                                    update=True):
+        """
+        Sets interaction frequencies for CZ gates based on the provided
+        dictionary.
+
+        Args:
+            interaction_frequencies (dict): A dictionary where keys are qubit pairs
+                and values are their corresponding interaction frequencies.
+            cz_pulse_name (str, optional): Name of the CZ pulse. Defaults to None.
+            update (bool): If True, updates the pulse parameters.
+                See docstring of Device.set_interaction_frequency.
+                Defaults to True.
+        """
+        for qubit_pair, int_freq in interaction_frequencies.items():
+            qbi, qbj = qubit_pair
+            self.set_interaction_frequency(qbi, qbj, int_freq, cz_pulse_name,
+                                           update)
+
     def set_pulse_par(self, gate_name, qb1, qb2, param, value):
         """
         Sets a value to a two qubit gate parameter.
@@ -616,6 +776,8 @@ class Device(Instrument):
         Configure pulse generation instrument settings.
 
         For now, only sets AWG channel delays.
+        Note: self.relative_delay_graph() should only contain channels for which
+        hardware delays are supported by their AWG.
 
         Args:
             qb_used: see get_channel_delays
@@ -625,10 +787,10 @@ class Device(Instrument):
 
         # configure channel delays
         channel_delays = self.get_channel_delays(qb_used=qb_used)
+
         for ch, v in channel_delays.items():
-            awg = pulsar.get_channel_awg(ch)
-            chid = int(pulsar.get(f'{ch}_id')[2:]) - 1
-            awg.set(f'sigouts_{chid}_delay', v)
+            # Set the qcodes parameter to the respective value
+            pulsar.set(f"{ch}_hw_channel_delay", v)
 
     def configure_flux_crosstalk_cancellation(self, qubits='auto', rounds=-1):
         """
@@ -910,7 +1072,7 @@ class Device(Instrument):
                 raise e
 
 
-class RelativeDelayGraph:
+class RelativeDelayGraph(dict):
     """
     Contains the information about relative delays of channels of the device.
 
@@ -935,13 +1097,7 @@ class RelativeDelayGraph:
     """
 
     def __init__(self, reld=None):
-        if isinstance(reld, RelativeDelayGraph):
-            self._reld = deepcopy(reld._reld)
-        else:
-            if reld is None:
-                self._reld = {}
-            else:
-                self._reld = deepcopy(reld)
+        super().__init__({} if reld is None else reld)
 
     def increment_relative_delay(self, parent, child, delta_delay):
         """Increment a relative delay between two nodes.
@@ -956,10 +1112,10 @@ class RelativeDelayGraph:
                 Measured delay difference between the parent and the
                 child node that will be added to the graph.
         """
-        if child in self._reld[parent]:
-            self._reld[parent][child] += delta_delay
-        elif parent in self._reld[child]:
-            self._reld[child][parent] -= delta_delay
+        if child in self[parent]:
+            self[parent][child] += delta_delay
+        elif parent in self[child]:
+            self[child][parent] -= delta_delay
         else:
             raise KeyError(f'No direct connection between {parent} and {child}'
                            ' in relative delay graph')
@@ -973,10 +1129,10 @@ class RelativeDelayGraph:
         Returns:
             relative delay between parent and child
         """
-        if child in self._reld[parent]:
-            return self._reld[parent][child]
-        elif parent in self._reld[child]:
-            return -self._reld[child][parent]
+        if child in self[parent]:
+            return self[parent][child]
+        elif parent in self[child]:
+            return -self[child][parent]
         else:
             raise KeyError(f'No direct connection between {parent} and {child}'
                            f' in relative delay graph')
@@ -993,10 +1149,10 @@ class RelativeDelayGraph:
             delay: float
                 Raw delay delay difference between parent and child node.
         """
-        if child in self._reld[parent]:
-            self._reld[parent][child] = delay
-        elif parent in self._reld[child]:
-            self._reld[child][parent] = -delay
+        if child in self[parent]:
+            self[parent][child] = delay
+        elif parent in self[child]:
+            self[child][parent] = -delay
         else:
             raise KeyError(f'No connection between {parent} and {child} in '
                             'relative delay graph')
@@ -1014,9 +1170,9 @@ class RelativeDelayGraph:
         min_delay = np.inf
         refs = set()
         children = set()
-        for ref in self._reld:
+        for ref in self:
             refs.add(ref)
-            for child in self._reld[ref]:
+            for child in self[ref]:
                 refs.add(child)
                 children.add(child)
         roots = refs - children
@@ -1025,16 +1181,20 @@ class RelativeDelayGraph:
 
         while len(roots) > 0:
             ref = list(roots)[0]
-            for child in self._reld.get(ref, []):
-                abs_delays[child] = abs_delays[ref] - self._reld[ref][child]
+            for child in self.get(ref, []):
+                abs_delays[child] = abs_delays[ref] - self[ref][child]
                 min_delay = min(min_delay, abs_delays[child])
                 roots.add(child)
             roots.remove(ref)
 
+        # Shift min_delay to be non-positive. This is needed as delay of
+        # root is set to 0. If the root is also the channel with the
+        # smallest delay, the delays of all channels would be shifted
+        # by the negative of the smallest delay, and hence the delay
+        # of the root would be negative, which cannot be set as
+        # channel delay.
+        min_delay = min(0, min_delay)
         for ref in abs_delays:
             abs_delays[ref] -= min_delay
 
         return abs_delays
-
-    def __repr__(self):
-        return self._reld.__repr__()

@@ -1,10 +1,11 @@
 import numpy as np
 from collections import OrderedDict
+from copy import copy
 import traceback
 from pycqed.utilities.general import assert_not_none, \
     configure_qubit_mux_readout
 from pycqed.utilities.math import dbm_to_vp
-from pycqed.measurement.calibration.two_qubit_gates import CalibBuilder
+from pycqed.measurement.calibration import two_qubit_gates as twoqbcal
 from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.sweep_functions as swf
@@ -15,7 +16,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-class MultiTaskingSpectroscopyExperiment(CalibBuilder):
+class MultiTaskingSpectroscopyExperiment(twoqbcal.CalibBuilder):
     """Adds functionality to sweep LO and modulation frequencies in
     a spectroscopy experiment. Automatically determines whether the LO, the
     mod. freq. or both are swept. Compatible with hard sweeps.
@@ -33,6 +34,13 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         sweep_functions_dict (dict, optional): Dictionary of sweep functions
             with the key of a value being the name of the sweep parameter for
             which the sweep function will be used. Defaults to `dict()`.
+            Remark: if the Device object passed in the keyword argument dev
+            has an attribute fluxlines_dict, the flux voltage parameters
+            provided for the qubits in this dict will be added to the
+            sweep_functions_dict of the task of the respective qubits as
+            sweep functions for the sweep parameter 'volt' (to be potentially
+            used by child classes, and to be ignored if no such sweep
+            parameter exists).
         df_name (str, optional): Specify a specific detector function to be
             used. See :meth:`mqm.get_multiplexed_readout_detector_functions`
             for available options.
@@ -74,7 +82,6 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         super().__init__(task_list, sweep_points=sweep_points,
                          df_name=df_name, cal_states=cal_states,
                          df_kwargs=df_kwargs, **kw)
-        self.sweep_functions_dict = kw.get('sweep_functions_dict', {})
         self.sweep_functions = []
         self.sweep_points_pulses = SweepPoints(
             min_length=2 if self.force_2D_sweep else 1)
@@ -119,152 +126,13 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
 
     def preprocess_task(self, task, global_sweep_points,
                         sweep_points=None, **kw):
-        preprocessed_task = super().preprocess_task(task, global_sweep_points,
-                                                    sweep_points, **kw)
-
-        prefix = preprocessed_task['prefix']
-        for k, v in preprocessed_task.get('sweep_functions_dict', {}).items():
-            # add task sweep functions to the global sweep_functions_dict with
-            # the appropriately prefixed key
-            self.sweep_functions_dict[prefix + k] = v
-
-        return preprocessed_task
-
-    def generate_sweep_functions(self):
-        """Loops over all sweep points and adds the according sweep function to
-        self.sweep_functions. The appropriate sweep function is taken from
-        self.sweep_function_dict. For multiple sweep points in one dimension a
-        multi_sweep is used.
-
-        Caution: Special behaviour if the sweep point param_name is not found in
-        self.sweep_function_dict.keys(): We assume that this sweep point is a
-        pulse parameter and insert the class SegmentSoftSweep as placeholder
-        that will be replaced by an instance in QE._configure_mc.
-        """
-        # The following dict of lists will store the mapping between
-        # (local/global) sweep parameters and (local/global) sweep functions
-        class ListsDict(dict):
-            def append(self, key, value):
-                if key not in self:
-                    self[key] = []
-                self[key].append(value)
-        sf_for_sp = ListsDict()
-        # helper lists needed to determine the mapping
-        all_sp = [sp for d in self.sweep_points for sp in d]
-        prefixes = [t['prefix'] for t in self.preprocessed_task_list]
-        # for each sweep function, find for which sweep params it is needed
-        for sf in self.sweep_functions_dict.keys():
-            if sf in all_sp:  # exact match
-                # local swf for local sp or global swf for global sp
-                sf_for_sp.append(sf, sf)
-            else:
-                # it might be a local sweep function for a global sweep point
-                sp_p = list(set([(sp, p) for sp in all_sp for p in prefixes
-                                 if sf == p + sp]))
-                if len(sp_p):
-                    if len(sp_p) > 1:
-                        raise ValueError(
-                            f'Sweep function matches multiple combinations '
-                            f'of prefix and sweep parameter: {sp_p}.')
-                    sf_for_sp.append(sp_p[0][0], sf)
-        # for each sweep param that does not have a sweep function yet
-        for sp in all_sp:
-            if sp not in sf_for_sp:
-                # It might be a global sweep param that is overridden in all
-                # tasks, in which case we can ignore it.
-                if all([sf_for_sp.get(p + sp, []) for p in prefixes]):
-                    sf_for_sp[sp] = []  # no sweep function needed
-
-        # We can now add the needed sweep functions to self.sweep_functions.
-        # loop over all sweep_points dimensions
-        for i in range(len(self.sweep_points)):
-            sw_ctrl = None
-            if i >= len(self.sweep_functions):
-                # add new dimension with empty multi_sweep_function
-                # in case i is out of range
-                self.sweep_functions.append(
-                    swf.multi_sweep_function(
-                        [],
-                        parameter_name=f"{i}. dim multi sweep"
-                    )
-                )
-            elif not isinstance(self.sweep_functions[i],
-                                swf.multi_sweep_function):
-                # refactor current sweep function into multi_sweep_function
-                self.sweep_functions[i] = swf.multi_sweep_function(
-                    [self.sweep_functions[i]],
-                    parameter_name=f"{i}. dim multi sweep"
-                )
-
-            for param in self.sweep_points[i].keys():
-                # Add sweep functions according to the mapping sf_for_sp.
-                for sf_key in sf_for_sp.get(param, []):
-                    sf = self.sweep_functions_dict[sf_key]
-                    if sf is None:
-                        continue
-                    sf_sw_ctrl = getattr(sf, 'sweep_control', 'soft')
-                    if sw_ctrl is not None and sf_sw_ctrl != sw_ctrl:
-                        raise ValueError(
-                            f'Cannot combine soft sweep and hard sweep in '
-                            f'dimension {i}.')
-                    if sf_sw_ctrl == 'hard':
-                        if i != 0:
-                            raise ValueError(
-                                f'Hard sweeps are only allowed in dimension '
-                                f'0. Cannot perform hard sweep for {param} '
-                                f'in dim {i}.')
-                        # hard sweep is not encapsulated by Indexed_Sweep
-                        # and we only need one hard sweep per dimension
-                        if sw_ctrl is None:
-                            self.sweep_functions[i] = sf
-                    else:
-                        sweep_function = swf.Indexed_Sweep(
-                            sf, values=self.sweep_points[i][param][0],
-                            name=self.sweep_points[i][param][2],
-                            parameter_name=param
-                        )
-                        self.sweep_functions[i].add_sweep_function(
-                            sweep_function
-                        )
-                    sw_ctrl = sf_sw_ctrl
-                # Params for which no sweep function is present are treated as
-                # pulse parameter sweeps below.
-                if param in sf_for_sp:
-                    continue  # was treated above already
-                elif i == 1:  # dimension 1
-                    # assuming that this parameter is a pulse parameter and we
-                    # therefore need a SegmentSoftSweep as the first sweep
-                    # function in our multi_sweep_function
-                    if not self.sweep_functions[i].sweep_functions \
-                            or self.sweep_functions[i].sweep_functions[0] != \
-                                awg_swf.SegmentSoftSweep:
-                        self.sweep_functions[i].insert_sweep_function(
-                            pos=0,
-                            sweep_function=awg_swf.SegmentSoftSweep
-                        )
-                    self.sweep_points_pulses[i][param] = \
-                        self.sweep_points[i][param]
-                else:  # dimension 0
-                    # assuming that this parameter is a pulse parameter, and we
-                    # therefore need a SegmentHardSweep as the first sweep
-                    # function in our multi_sweep_function
-                    if not self.sweep_functions[i].sweep_functions:
-                        # no previous sweep functions defined in dim 0
-                        self.sweep_functions[i].insert_sweep_function(
-                            pos=0,
-                            sweep_function=awg_swf.SegmentHardSweep)
-                    elif self.sweep_functions[i].sweep_functions[
-                             0].sweep_control != 'hard':
-                        # sweep_functinos[0] is not empty but what is there
-                        # isn't a hard sweep;
-                        raise NotImplementedError(
-                            'Combined sweeping of pulse parameters and other '
-                            'parameters for which a sweep function is provided '
-                            'is not supported in dimension 0.')
-
-                    self.sweep_points_pulses[i][param] = \
-                        self.sweep_points[i][param]
-                    sw_ctrl = 'hard'
+        if self.dev and (fld := getattr(self.dev, 'fluxlines_dict', None)):
+            if (param := fld.get(self.get_qubit(task).name)):
+                task = copy(task)
+                task.setdefault('sweep_functions_dict', {})
+                task['sweep_functions_dict'].setdefault('volt', param)
+        return super().preprocess_task(task, global_sweep_points,
+                                       sweep_points, **kw)
 
     def resolve_freq_sweep_points(self, optimize_mod_freqs=False, **kw):
         """
@@ -525,6 +393,22 @@ class MultiTaskingSpectroscopyExperiment(CalibBuilder):
         return (lo if isinstance(lo, str)
                 else '_'.join([f'{s}' for s in lo])) + '_freq'
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['kwargs'][twoqbcal.MultiTaskingExperiment.__name__].update({
+            'n_cal_points_per_state': (int, 0),
+        })
+        d['sweeping_parameters'].update({
+            MultiTaskingSpectroscopyExperiment.__name__: {
+                0: {
+                    'freq': 'Hz',
+                },
+                1: {},
+            }
+        })
+        return d
+
 
 class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
     """Base class to be able to perform 1d and 2d feedline spectroscopies on one
@@ -559,7 +443,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             FIXME: as soon as the fluxline voltage is accesible through the
             qubit, a convenience wrapper should be implemented.
             (2. dim. sweep points)
-        ro_amplitude: List or np.array of amplitudes of the RO pulse.
+        ro_amp: List or np.array of amplitudes of the RO pulse.
             (2. dim. sweep points)
         ro_length: List or np.array of pulse lengths of the RO pulse.
             (2. dim. sweep points)
@@ -592,6 +476,8 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
         # all RO pulses that are different are programmed to the AWG.
         repeat_ro = kw.pop('repeat_ro', False)
         try:
+            if task_list is None and (qubits := kw.get('qubits')):
+                task_list = [dict(qb=qb) for qb in qubits]
             super().__init__(task_list, sweep_points=sweep_points,
                              trigger_separation=trigger_separation,
                              drive=drive,
@@ -747,6 +633,16 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             ResonatorSpectroscopy.__name__: OrderedDict({
                 'trigger_separation': (float, 5e-6)
             })
+        })
+        d['sweeping_parameters'].update({
+            ResonatorSpectroscopy.__name__: {
+                0: {},
+                1: {
+                    'volt': 'V',
+                    'amplitude': 'V',
+                    'pulse_length': 's',
+                },
+            }
         })
         return d
 
@@ -1032,6 +928,8 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
             drive += '_modulated' if self.modulated else ''
             self.default_experiment_name += '_pulsed' if self.pulsed \
                                                     else '_continuous'
+            if task_list is None and (qubits := kw.get('qubits')):
+                task_list = [dict(qb=qb) for qb in qubits]
             super().__init__(task_list, sweep_points=sweep_points,
                             drive=drive,
                             trigger_separation=trigger_separation,
@@ -1258,6 +1156,19 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 self.temporary_values.append((amp,
                                               dbm_to_vp(qb.spec_power())))
 
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d['sweeping_parameters'].update({
+            QubitSpectroscopy.__name__: {
+                0: {},
+                1: {
+                    'volt': 'V',
+                    'spec_power': 'dBm',
+                },
+            }
+        })
+        return d
 
 
 class QubitSpectroscopy1D(QubitSpectroscopy):

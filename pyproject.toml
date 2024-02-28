@@ -20,11 +20,14 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
+    "blosc2",
     'func-timeout',
+    "h5py",
     'lmfit',
     "matplotlib",
     'more-itertools',
-    'neupy',
+    "msgpack",
+    "msgpack_numpy",
     "nlopt",
     "numpy",
     "pandas",
@@ -37,7 +40,6 @@ dependencies = [
     'scikit-learn',
     "scipy",
     "sympy",
-    'tensorflow',
     'zhinst',
 ]
 
@@ -50,6 +52,21 @@ docs = [
 linting = [
     "pylint",
 ]
+
+# The following libraries are updating slowly
+# or not at all.
+#
+# - Neupy is not maintained anymore as of 2024.02 
+#   see https://github.com/itdxer/neupy
+#
+# - and PyTorch is having the lead ahead of Tensorflow.
+# - further Tensorflow is owned by Google, who are known to
+#   kill products at random points in time.
+#
+slow_machine_learning = [
+    'neupy',
+    'tensorflow',
+]
 measurement_setup = [
     "influxdb",
     "nidaqmx",
@@ -59,9 +76,10 @@ measurement_setup = [
     "zhinst-qcodes",
 ]
 user = [
-    "cython",
+    "cython < 3.0.0",  # Due to Qutip 4.7.5
     "jupyter",
     "jupyter-contrib-nbextensions",
+    "notebook < 7.0.0",
     "psutil",
     "plotly",
     "pyyaml",

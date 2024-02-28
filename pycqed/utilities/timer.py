@@ -6,7 +6,7 @@ import logging
 import time
 from collections import OrderedDict
 from matplotlib.transforms import blended_transform_factory
-from pycqed.measurement.hdf5_data import write_dict_to_hdf5
+from pycqed.utilities.io.hdf5 import write_dict_to_hdf5
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import functools

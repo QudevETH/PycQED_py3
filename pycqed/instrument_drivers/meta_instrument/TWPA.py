@@ -82,10 +82,6 @@ class TWPAObject(MeasurementObject):
         self.add_parameter('pulse_amplitude', parameter_class=ManualParameter,
                            vals=vals.Numbers(0, 1.0), unit='V',
                            initial_value=0.01)
-        self.add_parameter('acq_mod_freq', parameter_class=ManualParameter,
-                           vals=vals.Numbers(-900e6, 900e6), unit='Hz',
-                           label='Intermediate frequency',
-                           initial_value=225e6)
 
 
     def on(self):
