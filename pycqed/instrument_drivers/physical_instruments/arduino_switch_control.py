@@ -287,6 +287,7 @@ class ArduinoSwitchControl(Instrument):
     MAX_SWITCHES = NUM_IO*NUM_IO_SWITCHES
     READ_DELAY = 0.01  # after reading a switch
     WRITE_DELAY = 0.01  # after setting a switch
+    BAUD_RATE = 57600
 
     # Properties
     # ----------
@@ -420,7 +421,7 @@ class ArduinoSwitchControl(Instrument):
         if ser is None or override:
             if ser is not None and ser.is_open:
                 ser.close()  # close open serial
-            ser = serial.Serial(self.port, baudrate=57600, timeout=1)  # create new serial
+            ser = serial.Serial(self.port, baudrate=self.BAUD_RATE, timeout=1)  # create new serial
             self.add_port(self.port, ser)  # add serial to _open_ports
             self.serial = ser  # save serial
 
