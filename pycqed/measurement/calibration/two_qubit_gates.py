@@ -1995,7 +1995,7 @@ class LeakageAmplification(Chevron):
             for (qbh, qbl) in gate_list:
                 sp = []
                 for p in [sweep_param_1D, sweep_param_2D]:
-                    # The pulse sequence consists of num_cz_gates gates.
+                    # The gate sequence consists of num_cz_gates gates.
                     # This creates the following pulse_off sweep points for
                     # each gate (note that 0 means the gate is ON):
                     #       0 | 1 1 1     1      1 0
