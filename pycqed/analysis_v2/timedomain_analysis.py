@@ -11930,6 +11930,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             # Create the figure + disable the top right axis
             self.plot_dicts[figname + "_emptyaxis"] = {
                 'fig_id': figname,
+                'plotfn': None,
                 'ax_id': 1,
                 'plotsize': (plotsize[1], plotsize[0]),
                 'gridspec_kw': {'width_ratios': [10, 1], 'wspace': 0,
