@@ -11848,13 +11848,6 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
 
         y_err_f = lambda pop, n: np.sqrt(pop * (1-pop) / n)
 
-        # Converting between single-gate and n-gate populations
-        f_nto1 = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(p)))/n)**2
-        f_1ton = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(p)))*n)**2
-        # Checking if 1-gate value is in the first period of the sin
-        f_1ton_valid = lambda p, n: (np.abs( np.arcsin(np.sqrt(np.abs(p)))*n )
-                                     <=np.pi/2)
-
         ts = self.timestamps[0]
 
         for task in self.metadata['task_list']:
@@ -11980,6 +11973,21 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             if gate_yticks is not None:
                 # Set explicit values for the left yticks, and compute their
                 # locations (corresponding to the scale of the colorbar axis)
+
+                # Conversion from 1-gate to n-gate leakage, to assign the
+                # locations of requested gate_yticks (1-gate leakage) to match
+                # the right axis (n-gate leakage)
+                if (f_1ton := kw.get('f_1ton')) is None:
+                    f_1ton = lambda p, n: np.sin(
+                        np.arcsin(np.sqrt(np.abs(p))) * n) ** 2
+                # Returns True on 1-gate leakage values for which f_1ton is
+                # injective (first period of the sin). Used to check if
+                # requested gate_yticks can be in 1-to-1 mapping with right
+                # ticks (n-gate leakage).
+                if (f_1ton_valid := kw.get('f_1ton_valid')) is None:
+                    f_1ton_valid = lambda p, n: np.abs(np.arcsin(np.sqrt(
+                        np.abs(p))) * n) <= np.pi / 2
+
                 self.plot_dicts[figname + f"_1D_scatter"].update({
                     'ytick_loc': f_1ton(gate_yticks, n)/pop_scale_right,
                     'ytick_labels': [f'{p/pop_scale_left:.{gate_yticks_prec}g}'
@@ -11993,6 +12001,14 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             else:
                 # Fall back to using the existing yticks (as on the colorbar
                 # right axis), and format their labels
+
+                if (f_nto1 := kw.get('f_nto1')) is None:
+                    # Conversion from n-gate to 1-gate leakage, to determine
+                    # which 1-gate leakage values correspond to the n-gate
+                    # leakage ticks of the right axis
+                    f_nto1 = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(
+                        p))) / n) ** 2
+
                 def formatter(p_n, _):
                     p_1 = f_nto1(p_n*pop_scale_right, n)/pop_scale_left
                     return f'{p_1:.{gate_yticks_prec}g}'
