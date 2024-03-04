@@ -11806,11 +11806,12 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
         super().prepare_plots()
         self.plot_leakage_amp()
 
-    def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05, xtransform=None,
-                         pop_scale_right=None, pop_unit_right=None,
-                         pop_scale_left=None, pop_unit_left=None,
-                         draw_lower_lines=True, gate_yticks=None,
-                         gate_yticks_prec=2, **kw):
+    def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05,
+                         xtransform=None, draw_lower_lines=True,
+                         pop_scale_right=None, pop_scale_left=None,
+                         pop_unit_right=None, pop_unit_left=None,
+                         pop_label_right=None, pop_label_left=None,
+                         gate_yticks=None, gate_yticks_prec=2, **kw):
         """
         Plots leakage amplification results (2D map, and 1D with maximum line)
 
@@ -11818,19 +11819,21 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             cmap_lim: z range limit for the 2D data plot. These should be
                 chosen such that the rescaled data fit in the lower plot.
                 Default (None): chooses a small margin around the data.
-            cmap_margin (float): margin for z range, relative to cmap_lim
-            xtransform (function): optional x-axis transformation
-            pop_scale_right (float): scaling factor for right axis
-            pop_unit_right (str): unit for right axis
-            pop_scale_left (float): scaling factor for left axis
-            pop_unit_left (str): unit for left axis
-            draw_lower_lines (bool): in the projected data panel (bottom),
+            cmap_margin (float): Margin for z range, relative to cmap_lim
+            xtransform (function): Optional x-axis transformation
+            draw_lower_lines (bool): In the projected data panel (bottom),
                 whether to draw lines to connect each row of data below the
                 maximum (line instead of scatter)
+            pop_scale_right (float): Scaling factor for right axis
+            pop_scale_left (float): Scaling factor for left axis
+            pop_unit_right (str): Unit for right axis
+            pop_unit_left (str): Unit for left axis
+            pop_label_right (str): Right axis label (overrides pop_unit_right)
+            pop_label_left (str): Left axis label (overrides pop_unit_left)
             gate_yticks (list): Set explicit values for the left yticks. If
                 None (default), they are set to match the (automatic)
                 locations of the right panel ticks.
-            gate_yticks_prec (int): precision (digits) of the left tick labels
+            gate_yticks_prec (int): Precision (digits) of the left tick labels
             **kw (dict): Additional formatting arguments, currently 'title',
                 'cmap'.
 
@@ -11952,7 +11955,8 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'cmap': kw.get('cmap'),
                 'title': title,
                 'plotcbar': True,
-                'clabel': f"Total leakage ({pop_unit_right})",
+                'clabel': pop_label_right if pop_label_right else
+                          f"Total leakage $P_N$ ({pop_unit_right})",
                 'cax_id': 3,
             }
 
@@ -11968,7 +11972,8 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'scatter': True,
                 'line_kws': {'zorder': 1},
                 'xlabel': nice_labels[0],
-                'ylabel': f"Gate leakage ({pop_unit_left})",
+                'ylabel': pop_label_left if pop_label_left else
+                          f"Coh. leakage $P_1$ ({pop_unit_left})",
             }
             if gate_yticks is not None:
                 # Set explicit values for the left yticks, and compute their
