@@ -291,10 +291,6 @@ def get_timestamps_by_daystamp(daystamp: str) -> list:
     Args:
         `daystamp`: string of format "YYYYmmdd" ("%Y%m%d").
 
-    Raises:
-        ValueError: if passed `daystamp` is not a valid date in "YYYYmmdd"
-            ("%Y%m%d") format.
-
     Returns:
         list: array of timestamp/experiment paths in a given `daystamp`
             folder. For example: [
