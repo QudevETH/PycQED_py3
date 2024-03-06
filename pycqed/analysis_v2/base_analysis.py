@@ -473,9 +473,9 @@ class BaseDataAnalysis(object):
         """
         with h5py.File(data_file_path, 'r') as data_file:
             try:
-                job = BaseDataAnalysis.get_hdf_datafile_param_value(
-                    data_file['Analysis'],
-                    BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF
+                job = hdf5_io.read_from_hdf5(
+                    BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF,
+                    data_file['Analysis']
                 )
             except Exception as exception:
                 raise LookupError(
