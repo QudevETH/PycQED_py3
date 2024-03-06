@@ -428,23 +428,6 @@ class BaseDataAnalysis(object):
         with open(filepath, "w") as f:
             f.write(job)
 
-    @staticmethod
-    def get_hdf_datafile_param_value(group, param_name):
-        '''
-        Returns an attribute "key" of the group "Experimental Data"
-        in the hdf5 datafile.
-        '''
-        s = group.attrs[param_name]
-        # converts byte type to string because of h5py datasaving
-        if isinstance(s, bytes):
-            s = s.decode('utf-8')
-        # If it is an array of value decodes individual entries
-        if isinstance(s, np.ndarray) or isinstance(s, list):
-            s = [s.decode('utf-8') if isinstance(s, bytes) else s for s in s]
-        try:
-            return eval(s)
-        except Exception:
-            return s
 
     @staticmethod
     def get_analysis_object_from_hdf5_file_path(data_file_path: str):
@@ -496,31 +479,6 @@ class BaseDataAnalysis(object):
 
         return analysis_daemon.AnalysisDaemon.execute_job(job)
 
-    def get_hdf_param_value(self, path_to_group, attribute, hdf_file_index=0):
-        """
-        Gets the attribute (i.e. parameter) of a given group in the hdf file.
-        Args:
-            path_to_group (str): path to group. e.g. "Instrument settings/qb1"
-            attribute: attribute name. e.g. "T1"
-            hdf_file_index: index of the file to use in case of
-                multiple timestamps.
-
-        Returns:
-
-        """
-        h5mode = self.options_dict.get('h5mode', 'r')
-        folder = a_tools.get_folder(self.timestamps[hdf_file_index])
-        h5filepath = a_tools.measurement_filename(folder)
-        data_file = h5py.File(h5filepath, h5mode)
-
-        try:
-            value = self.get_hdf_datafile_param_value(data_file[path_to_group],
-                                                      attribute)
-            data_file.close()
-            return value
-        except Exception as e:
-            data_file.close()
-            raise e
 
     def _get_param_value(self, param_name, default_value=None, metadata_index=0):
         log.warning('Deprecation warning: please use new function '
