@@ -92,9 +92,6 @@ class AnalysisViewer(object):
         Args:
             timestamp: str of format "YYYYmmdd_HHMMSS" ("%Y%m%d_%H%M%S").
 
-        Raises:
-            Exception: in case of invalid `timestamp`.
-
         Returns:
             str: path to measurement data HDF5 file.
         """
