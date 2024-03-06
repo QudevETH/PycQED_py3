@@ -68,7 +68,8 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
     supports_batch_mode = True
 
     def __init__(self, circuit_builder, params, block=None,
-                 block_func=None, **kw):
+                 block_func=None, parameter_name='None',
+                 unit='', upload=True, **kw):
         """Sweep function used to efficiently iterate between different
         parameter sets of a parameterized quantum circuit (represented by a
         `Block`).
@@ -85,10 +86,16 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
             block_func (Callable, optional): Function that is passed to
                 sweep_n_dim. Either block or block_func need to be specified.
                 Defaults to None.
+            parameter_name (str, optional): _description_. Defaults to 'None'.
+            unit (str, optional): Unit of the sweep parameter. Defaults to ''.
+            upload (bool, optional): Whether to upload the sequences before
+                measurement. Defaults to True.
             kw (optional): Keyword arguments, e.g., `sweep_kwargs` which will
                 be passed to `sweep_n_dim` in `self.set_parameter`.
         """
-        super().__init__(sequence=None, upload_first=False, **kw)
+        super().__init__(sequence=None, upload=upload,
+                         upload_first=False,
+                         parameter_name=parameter_name, unit=unit, **kw)
         self.name = 'Block soft sweep'
         self.block = block
         self.block_func = block_func
