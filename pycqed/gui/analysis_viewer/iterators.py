@@ -135,7 +135,7 @@ class TimestampBidirectionalIterator(object):
         """
         analysis_toolbox.verify_daystamp(daystamp)
         self.timestamp_iterator = BidirectionalIterator(
-            analysis_toolbox.get_timestamps_by_daystamp(daystamp)[1])
+            analysis_toolbox.get_timestamps_by_daystamp(daystamp))
 
     def next(self) -> str:
         """Gets next element.

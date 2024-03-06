@@ -1938,7 +1938,7 @@ def copy_data_in_range(timestamp_start, timestamp_end=None, source_dir=None,
               delete_if_exists=delete_if_exists)
 
 
-def get_timestamps_by_daystamp(daystamp: str) -> tuple:
+def get_timestamps_by_daystamp(daystamp: str) -> list:
     """Gets all experiment paths for a given `daystamp`.
 
     Args:
@@ -1949,7 +1949,7 @@ def get_timestamps_by_daystamp(daystamp: str) -> tuple:
             ("%Y%m%d") format.
 
     Returns:
-        tuple: array of timestamp/experiment paths in a given `daystamp`
+        list: array of timestamp/experiment paths in a given `daystamp`
             folder. For example: [
                 'C:\\Users\\Name\\pycqed\\data\\20231002\\133806_Rabi_ge_qb1',
                 'C:\\Users\\Name\\pycqed\\data\\20231002\\133824_Rabi_ge_qb1qb2',
@@ -1962,7 +1962,6 @@ def get_timestamps_by_daystamp(daystamp: str) -> tuple:
         older_than=(daystamp + '_235959'),
         or_equal=True,
         return_all=True,
-        return_timestamp=True,
         return_path=True
     )
     return timestamps
