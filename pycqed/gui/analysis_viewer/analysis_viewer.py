@@ -115,11 +115,10 @@ class AnalysisViewer(object):
 class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
     """MainWindow of `AnalysisViewer` responsible for displaying plots.
 
-    Iterates of `BaseDataAnalysis` from given `ExperimentIterator` and
-    displays plots from current `BaseDataAnalysis` one by one.
-    User can navigate through plots with arrow keys: up/down navigates
-    between experiments, right/left navigates between plots in the current
-    experiment.
+    Iterates over `BaseDataAnalysis` objects from given `ExperimentIterator` and
+    displays plots from current `BaseDataAnalysis` one by one. User can
+    navigate through plots with arrow keys: up/down navigates between
+    experiments, right/left navigates between plots in the current experiment.
 
     Attributes:
         _figure_top: float position of the top edge of the subplots,
