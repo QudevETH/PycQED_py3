@@ -674,6 +674,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         super().__init__(**kw)
         self.always_prepare = always_prepare
         self.prepare_and_finish_pulsar = prepare_and_finish_pulsar
+        self._pulsar_started = False
 
         if detectors is None:
             # if no detector is provided then itself is the only detector
@@ -700,11 +701,18 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                 self.channels += deepcopy(chs)
         else:
             self.channels = deepcopy(channels)
+        if len(self.channels) != len(set(self.channels)):
+            log.warning(
+                'Duplicate use of acquisition channel(s) detected. This can '
+                'happen when multiple measurement objects are configured to '
+                'use the same acq_I_channel/acq_Q_channel. Used channels '
+                f'for {self.acq_devs}: {self.channels}.')
         self.value_names = []
         self._channels_value_names_map = None
 
     def prepare(self, sweep_points=None):
-        self.prepare_pulsar()
+        if self.prepare_and_finish_pulsar and not self._pulsar_started:
+            self.prepare_pulsar()
         for acq_dev in self.acq_devs:
             acq_dev.timer = self.timer
 
@@ -716,6 +724,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                     # AWG can be an awg_control_object which can be None
                     awgs_exclude += [awg.name]
             ps.Pulsar.get_instance().start(exclude=awgs_exclude)
+            self._pulsar_started = True
 
     def get_awgs(self):
         return [self.AWG]
@@ -860,6 +869,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         acquisition.
         """
         if self.prepare_and_finish_pulsar:
+            self._pulsar_started = False
             ps.Pulsar.get_instance().stop()
         elif self.AWG is not None:
             self.AWG.stop()
@@ -904,7 +914,7 @@ class MultiPollDetector(PollDetector):
         """
         def __init__(self, master_awg, awgs=()):
             self.master_awg = master_awg
-            self.awgs = list(set(awgs))
+            self.awgs = list(set([a for a in awgs if a is not None]))
 
         def start(self, **kw):
             for awg in self.awgs:
