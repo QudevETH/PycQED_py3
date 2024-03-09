@@ -2151,6 +2151,57 @@ class Segment:
         """
         return samples / self.pulsar.clock(**kw)
 
+    def get_waveforms_export(self, instruments=None, channels=None,
+                             trigger_groups=None, normalized_amplitudes=False):
+        codeword_warning_issued = False
+        self.resolve_segment()
+        wfs = self.waveforms(awgs=instruments, channels=None,
+                             trigger_groups=trigger_groups)
+        t_start = min([t[0]
+                       for t_ins in self.element_start_end.values()
+                       for t in t_ins.values()])
+        wfs_export = dict()
+        sorted_keys = sorted(wfs.keys()) if instruments is None \
+            else [i for i in instruments if i in wfs]
+        for i, instr in enumerate(sorted_keys):
+            wfs_export[instr] = dict()
+            for elem_name, v in wfs[instr].items():
+                for k, wf_per_ch in v.items():
+                    if k != "no_codeword":
+                        if not codeword_warning_issued:
+                            log.warning(
+                                'Codewords are currently not supported in '
+                                'waveform export. Pulses with codewords will '
+                                'be ignored.')
+                            codeword_warning_issued = True
+                        continue
+                    sorted_chans = sorted(wf_per_ch.keys())
+                    for n_wf, ch in enumerate(sorted_chans):
+                        if channels is not None and \
+                                ch not in channels.get(instr, []):
+                            continue
+                        ins_ch = f"{instr}_{ch}"
+                        t_clk = 1 / self.pulsar.clock(channel=ins_ch)
+                        wfs_export[instr].setdefault(ch, np.array(
+                            [[t_start], [0]]))
+                        w_exp = wfs_export[instr][ch]
+                        wf = wf_per_ch[ch]
+                        if not normalized_amplitudes:
+                            wf = wf * self._channel_amps[f'{instr}_{ch}']
+                        tvals = self.tvals([ins_ch], elem_name[1])[ins_ch]
+                        w_add = np.arange(w_exp[0][-1], tvals[0], t_clk)
+                        if len(w_add):
+                            w_exp = np.append(
+                                w_exp, np.array(
+                                    [w_add[1:], np.zeros_like(w_add[1:])]),
+                                axis=1)
+                        wfs_export[instr][ch] = np.append(
+                            w_exp, [tvals, wf], axis=1)
+        return wfs_export
+
+    def export_waveforms(self, filename, **kw):
+        np.save(filename, self.get_waveforms_export(**kw))
+
     def plot(self, instruments=None, channels=None, legend=True,
              delays=None, savefig=False, prop_cycle=None, frameon=True,
              channel_map=None, plot_kwargs=None, axes=None, demodulate=False,

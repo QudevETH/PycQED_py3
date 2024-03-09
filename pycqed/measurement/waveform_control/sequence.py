@@ -736,6 +736,16 @@ class Sequence:
         """
         return self.segments.keys()
 
+    def get_waveforms_export(self, **kw):
+        wfs = dict()
+        for k, seg in self.segments.items():
+            seg.resolve_segment()
+            wfs[k] = seg.get_waveforms_export(**kw)
+        return wfs
+
+    def export_waveforms(self, filename, **kw):
+        np.save(filename, self.get_waveforms_export(**kw))
+
     def plot(self, segments=None, show_and_close=True, **segment_plot_kwargs):
         """
         :param segments: list of segment names to plot
