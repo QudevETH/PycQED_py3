@@ -757,7 +757,7 @@ class MeasurementControl(Instrument):
                 # shots and prepare will get a sweep point for each shot of
                 # each segment, see IntegratingAveragingPollDetector.prepare.
                 self.detector_function.prepare(
-                    np.tile(x, self.acq_data_len_scaling))
+                    np.tile(x, [self.acq_data_len_scaling, 1]))
                 break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
@@ -820,39 +820,37 @@ class MeasurementControl(Instrument):
         # self.iteration = datasetshape[0] + 1
 
         if filter_out:
-            vals = np.ones(len(self.detector_function.value_names)) * np.nan
+            vals = np.ones((1, len(self.detector_function.value_names)))*np.nan
         else:
-            vals = self.detector_function.acquire_data_point()
-
-        if batch_mode:
             # FIXME: add an explaining comment why the transpose is needed
-            vals = vals.T
+            vals = self.detector_function.acquire_data_point().T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        if batch_mode:
+        if True:
             # Because x is allowed to be a list of tuples (batch sampling), we
             # need to reshape and reformat x and vals accordingly before we can
             # save them to the dset.
             x = np.atleast_2d(x) # to unify format of x
             vals = vals.reshape((-1, len(self.detector_function.value_names)))
             # the following np.concatenate ensures that the measured values are
-            # concatenated with the correct parameters in x.
+            # concatenated with the correct parameters in x.  TODO explain
             new_data = np.concatenate(
                 (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
                 axis=-1
             )
-        else:
-            # FIXME: the batch_mode code above is supposed to also treat the
-            #  case without batch mode correctly. However, until someone
-            #  verifies this rigorously (both for measure_soft_adaptive and for
-            #  measure_soft_static with 1D, 2D, 3D sweeps) and adds explaining
-            #  comments, we rather play safe and explicitly keep the
-            #  previous implementation as else branch.
-            new_data = np.append(x, vals)
+        if not batch_mode:
+            # FIXME: this np.append flattens both arrays and appends them,
+            #  meaning that, for a single point with two I and Q values,
+            #  vals.shape = (2,1), and for a 2D sweep x.shape = (2,), we get
+            #  new_data.shape = (1, 4) (one row in the hdf file). This is why
+            #  for a single point (no batch mode) the above .T was not needed.
+            # TODO remove these lines after testing
+            new_data_oldversion = np.append(x, vals.T)
+            assert np.all(new_data == new_data_oldversion)
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
@@ -2488,7 +2486,8 @@ class MeasurementControl(Instrument):
             if self.detector_function.detector_control == 'soft':
                 # FIXME: this is an inconsistency that should not be there.
                 xlen = np.shape(new_data)[1]
-            else:
+                log.warning('Deleted branch in MC: check that percdone works!')
+            if True:
                 # in case of an N-D Hard detector dataset
                 xlen = np.shape(new_data)[0]
 
