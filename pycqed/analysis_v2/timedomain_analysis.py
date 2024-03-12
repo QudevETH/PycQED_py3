@@ -11973,7 +11973,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'line_kws': {'zorder': 1},
                 'xlabel': nice_labels[0],
                 'ylabel': pop_label_left if pop_label_left else
-                          f"Coh. leakage $P_1$ ({pop_unit_left})",
+                          f"Gate leakage $P_1$ ({pop_unit_left})",
             }
             if gate_yticks is not None:
                 # Set explicit values for the left yticks, and compute their
