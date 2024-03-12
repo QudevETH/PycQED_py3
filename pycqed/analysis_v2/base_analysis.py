@@ -4,6 +4,7 @@ File containing the BaseDataAnalysis class.
 from inspect import signature
 import os
 import sys
+import time
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -394,14 +395,20 @@ class BaseDataAnalysis(object):
             RuntimeError: in case `write_dict_to_hdf5` fails.
         """
         file_path = self._get_analysis_result_file_path()
-        with h5py.File(file_path, 'a') as data_file:
-            analysis_group = hdf5_io.get_hdf_group_by_name(
-                data_file, "Analysis")
-            if isinstance(analysis_group, h5py.Group):
-                hdf5_io.write_dict_to_hdf5(
-                    {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
-                    entry_point=analysis_group
-                )
+        file_written = False
+        while not file_written:
+            try:
+                with h5py.File(file_path, 'a') as data_file:
+                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                        data_file, "Analysis")
+                    if isinstance(analysis_group, h5py.Group):
+                        hdf5_io.write_dict_to_hdf5(
+                            {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
+                            entry_point=analysis_group
+                        )
+                file_written = True
+            except (IOError, PermissionError):
+                time.sleep(1)
 
     def check_plotting_delegation(self):
         """
