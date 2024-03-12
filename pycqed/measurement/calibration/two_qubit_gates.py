@@ -1997,7 +1997,8 @@ class LeakageAmplification(Chevron):
                 for p in [sweep_param_1D, sweep_param_2D]:
                     # The gate sequence consists of num_cz_gates gates.
                     # This creates the following pulse_off sweep points for
-                    # each gate (note that 0 means the gate is ON):
+                    # each gate (note that pulse_off=0 means the gate is
+                    # applied, while pulse_off=1 means that it is not applied):
                     #       0 | 1 1 1     1      1 0
                     #       1 | 1 1 1     1      0 0
                     #       2 | 1 1 1     1      0 0
