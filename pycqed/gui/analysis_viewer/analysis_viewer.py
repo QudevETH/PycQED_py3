@@ -53,14 +53,12 @@ class AnalysisViewer(object):
             rc_params: dict of matplotlib rcParams. Modifies rcParams only
                 for the `AnalysisViewer` plots.
         """
-        # Set GUI app and matplotlib backend.
+        # Set GUI app.
         if not QtWidgets.QApplication.instance():
             self._app: QtWidgets.QApplication = QtWidgets.QApplication(sys.argv)
         else:
             self._app: QtWidgets.QApplication = (
                 QtWidgets.QApplication.instance())
-        gui_utilities.handle_matplotlib_backends(self._app)
-        sys.modules.get('matplotlib').use('Agg')
 
         # Set the current analysis object.
         file_path = self.resolve_file_path(timestamp)
@@ -107,7 +105,11 @@ class AnalysisViewer(object):
         return file_path
 
     def show(self):
-        """Displays the GUI."""
+        """Displays the GUI and handles matplotlib backend change and reset."""
+        # Setup matplotlib backend
+        gui_utilities.handle_matplotlib_backends(self._app)
+        sys.modules.get('matplotlib').use('Agg')
+        # Show the window
         self._main_window.show()
         self._app.exec_()
 
