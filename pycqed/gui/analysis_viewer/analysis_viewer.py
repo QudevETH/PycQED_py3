@@ -123,10 +123,6 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
     experiments, right/left navigates between plots in the current experiment.
 
     Attributes:
-        _figure_top: float position of the top edge of the subplots,
-            as a fraction of the figure height. As defined in
-            https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplots_adjust.html
-        _dpi: int dpi used for all plots.
         rc_params: dict of matplotlib rcParams. Modifies rcParams only
             for the `AnalysisViewer` plots.
         _base_data_analysis: `BaseDataAnalysis` object whose plots will be
@@ -143,6 +139,15 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
         _axes: `matplotlib.axes.Axes` object or `numpy.ndarray` of those
             objects that are axes of the current plot.
     """
+
+    FIGURE_TOP: float = 0.9
+    """Position of the top edge of the subplots,
+    as a fraction of the figure height. As defined in
+    https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplots_adjust.html
+    """
+
+    DPI: int = 100
+    """Dpi used for all plots."""
 
     def __init__(
             self,
@@ -168,10 +173,6 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
                 `QtWidgets.QMainWindow.__init__()`.
         """
         super(MainWindow, self).__init__(*args, **kwargs)
-
-        # Constant like attributes for figure/plot style.
-        self._figure_top: float = 0.9
-        self._dpi: int = 100
 
         # Set up matplotlib rcParams.
         self.rc_params: dict = gui_rc_params()
@@ -224,7 +225,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
 
             # Set figure properties and associate it with the canvas.
             self._figure.set_canvas(self._canvas)
-            self._figure.dpi = self._dpi
+            self._figure.dpi = MainWindow.DPI
             self._canvas.figure = self._figure
 
             # Close the old figure saved at the start of the function.
@@ -329,7 +330,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
 
     def _adjust_subplots(self):
         """Adjust some subplot and figure values for nicer display."""
-        self._figure.subplots_adjust(top=self._figure_top)
+        self._figure.subplots_adjust(top=MainWindow.FIGURE_TOP)
         # in case there are multiple subplots, more padding is needed
         if isinstance(self._axes, numpy.ndarray):
             self._figure.tight_layout(pad=5.0)
