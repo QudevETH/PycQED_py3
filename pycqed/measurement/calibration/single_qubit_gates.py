@@ -5334,7 +5334,7 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
         #                     'pulse_length': flux_pulse_length,
         #                     'frequency': flux_pulse_frequency}}
         modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
-                                               [f'PFM_ef {qb}'] * num_LRUs,
+                                               [f'PFM{transition_name} {qb}'] * num_LRUs,
                                                # pulse_modifs=pulse_modifs
                                                )
         # create ParametricValues from param_name in sweep_points
