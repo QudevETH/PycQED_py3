@@ -14298,7 +14298,7 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
             if 'pulse_length' in self.mospm[qbn] and 'frequency' in \
                     self.mospm[qbn]:
                 data = self.proc_data_dict['projected_data_dict'][qbn]['pf'][
-                       :,:-3]
+                       :,:-self.num_cal_points]
                 pulse_lengths = self.sp.get_values('pulse_length')
                 frequencies = self.sp.get_values('frequency')
                 # Define the boxcar filter kernel to smooth the data which
