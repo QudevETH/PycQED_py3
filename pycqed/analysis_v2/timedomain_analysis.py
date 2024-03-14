@@ -5663,9 +5663,9 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'old_qb_freq'] = old_qb_freq
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
-                'new_qb_freq'] = old_qb_freq + \
-                                 self.artificial_detuning_dict[qbn] - \
-                                 fit_res.best_values['frequency']
+                'new_qb_freq'] = old_qb_freq \
+                                 + fit_res.best_values['frequency'] \
+                                 - self.artificial_detuning_dict[qbn]
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq_stderr'] = fit_res.params['frequency'].stderr
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
@@ -7638,7 +7638,7 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
                 delta_tau = delta_tau[m]
                 phases = self.proc_data_dict['analysis_params_dict'][
                     f'phases_{qbn}']
-                delta_phases_vals = -np.diff(phases['val'])[m]
+                delta_phases_vals = np.diff(phases['val'])[m]
                 delta_phases_vals = (delta_phases_vals + np.pi) % (
                             2 * np.pi) - np.pi
                 delta_phases_errs = (np.sqrt(
