@@ -1636,7 +1636,7 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     Returns:
         np.ndarray, np.ndarray: The predistorted and modulated outputs.
     """
-    phi = 360 * mod_frequency * (tvals - tval_phaseref) + phase
+    phi = 360 * mod_frequency * (tvals - tval_phaseref) - phase  # TODO comment
     phii = phi + phi_skew
     phiq = phi + 90
 
