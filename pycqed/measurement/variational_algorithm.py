@@ -1,17 +1,17 @@
 import numpy as np
 import logging
 
-import pycqed.measurement.calibration.two_qubit_gates as twoqbcal
+from pycqed.measurement import quantum_experiment as qe_mod
 from pycqed.measurement import awg_sweep_functions as awg_swf
 # import pycqed.analysis_v3 as ana_v3
-# import pycqed.analysis_v3.processing_pipeline as pp_mod
-# import pycqed.analysis_v3.helper_functions as hlp_mod
+import pycqed.analysis_v3.processing_pipeline as pp_mod
+import pycqed.analysis_v3.helper_functions as hlp_mod
 # ana_v3.reload_anav3()
 
 log = logging.getLogger(__name__)
 
 
-class VariationalAlgorithm(twoqbcal.MultiTaskingExperiment):
+class VariationalAlgorithm(qe_mod.QuantumExperiment):
     """Experiment to train a variational quantum algorithm.
 
     The blocks are hard coded at the moment because this was the easiest way to implement parallel
@@ -21,7 +21,8 @@ class VariationalAlgorithm(twoqbcal.MultiTaskingExperiment):
 
     default_experiment_name = 'VariationalAlgorithm'
 
-    def __init__(self, qubits, task_list=None, sweep_points=None,
+    def __init__(self, qubits,
+                 training_state_labels=None,  # FIXME
                  optimize=True, optimizer=None, **kw):
         super().__init__(**kw)
 
@@ -31,6 +32,7 @@ class VariationalAlgorithm(twoqbcal.MultiTaskingExperiment):
             if None in [optimizer]:
                 raise ValueError("Not all parameters provided")
             self.optimizer = optimizer  # TODO or pass kw and instantiate here?
+            self.training_state_labels = training_state_labels  # FIXME
             self.sweep_functions = [
                 awg_swf.BlockSoftHardSweep(self,
                                            self.params,
@@ -50,18 +52,24 @@ class VariationalAlgorithm(twoqbcal.MultiTaskingExperiment):
             ))
         else:
             pass
-            # TODO pass sweep_points/task_list to normal super init
+            # TODO pass sweep_points to normal super init
 
         self.autorun()
 
     def set_block_and_params(self):
 
         self.params = ['angle0']
+        self.block = self.simultaneous_blocks(
+            block_name='single_qb_gates',
+            blocks=[self.block_from_anything(
+                f"Y:angle_{qb.name} {qb.name}", f"rot_{qb.name}")
+                for qb in self.qubits],
+            block_align='middle',
+            destroy=True,
+        )
 
-        self.block
-
-    @staticmethod
-    def _data_processing_function(vals, dset=None):
+    # @staticmethod  # FIXME?
+    def _data_processing_function(self, vals, dset=None):
         timestamp = '20230209_014813'
 
         meas_obj_names = ['qb2']
@@ -100,9 +108,11 @@ class VariationalAlgorithm(twoqbcal.MultiTaskingExperiment):
                     keys_out=[f'{mobjn}.post_selected'],
                     meas_obj_names=mobjn)
 
-        labels = list(training_state_labels.values())
-        n_shots = qb2.acq_shots()
-        n_segments = len(labels)
+        labels = list(self.training_state_labels.values())
+        n_shots = self.qubits[0].acq_shots()
+        n_segments = len(labels) * self.optimizer.optimizer_kw.get('n_parallel', 1)
+        n_segments = n_segments*5  # FIXME
+        print(self.optimizer.optimizer_kw.get('n_parallel', 1))
 
         pp.add_node('average_data',
                     shape=(n_shots, n_segments),
@@ -128,7 +138,7 @@ class VariationalAlgorithm(twoqbcal.MultiTaskingExperiment):
         meas_obj_value_names_map = {qb.name: [
             f'{qb.instr_acq()}_{qb.acq_unit()}_{data_type} w{ch} {qb.instr_acq()}'
             for ch in [qb.acq_I_channel(), qb.acq_Q_channel()]] for i, qb in
-                                    enumerate(qcnn_qubits)}
+                                    enumerate(self.qubits)}
 
         pp.resolve(meas_obj_value_names_map=meas_obj_value_names_map)
 
@@ -137,8 +147,9 @@ class VariationalAlgorithm(twoqbcal.MultiTaskingExperiment):
         channels = meas_obj_value_names_map[mobjn]
         data_dict[mobjn] = {channels[0]: vals[:, 0], channels[1]: vals[:, 1]}
         pp.run(data_dict, overwrite_data_dict=True)
-        MSE = pp.data_dict[mobjn]['MSE'][
-            0]  # remove index `[0]` when using batch sampling (EGO)
+        MSE = pp.data_dict[mobjn]['MSE']  # FIXME remove index `[0]` when using
+            # batch sampling (EGO)
+        print(f"MSE = {MSE}")
         return MSE
 
     def _prepare_sequences(self, sequences=None, sequence_function=None,
@@ -205,10 +216,15 @@ class QCNNExperiment(VariationalAlgorithm):
                                             set_end_after_all_pulses=True,
                                             destroy=True)
 
+        self.params = [f'prep{i}' for i in range(7)]
+        self.params += [f'theta{i}' for i in range(2)]
+
 
 class VQAOptimizer:
     """
     Wrapper
+
+    TODO ensure this can be instantiated and inspected
 
     TODO clarify which methods are used and in which order:
         MC.measure_soft_adaptive
@@ -235,7 +251,7 @@ class VQAOptimizer:
 
     def __call__(self, fun, **kw):
         self.measurement_function = fun
-        return self.optimizer_function(self._full_circuit, self.optimizer_kw)
+        return self.optimizer_function(self._full_circuit, **self.optimizer_kw)
 
     def _full_circuit(self, params):
         all_params, targets = self.get_batch_params(params)
@@ -257,7 +273,7 @@ class VQAOptimizer:
             used in the list comprehension.
             'fixed_params_values': [[x0, x1 ...] ...],
             'out_targets': [y ...],  # corresponding target outputs
-            'trainable_params_init_values': [x0, x1 ...],  TODO here or in optimizer_kw?
+            'trainable_params_init_values': [x0, x1 ...],  TODO here or in optimizer_kw? unused now
         }
 
         Returns:
@@ -266,13 +282,20 @@ class VQAOptimizer:
         fixed_params_values = self.training_settings['fixed_params_values']
         trainable_params_values = np.atleast_2d(trainable_params_values)
         out_targets = self.training_settings['out_targets']
-        all_params_values = np.array([
+        params_values = np.array([
             [
                 np.append(vf, vt)
                 for vf in fixed_params_values
             ] for vt in trainable_params_values
         ])
-        return all_params_values, out_targets
+        # Flatten the first 2 dimensions, to iterate jointly over vf and vt
+        # Final shape: (
+        #  number of sets of fixed params * number of sets of trainable params,
+        #  number of params (= number of parametrised gates)
+        # )
+        params_values = params_values.reshape(-1, params_values.shape[-1])
+        print(f"all_params_values = {params_values.shape}")
+        return params_values, out_targets
 
     def _set_optimizer_function(self, optimizer_function, optimizer_kw):
         self.optimizer_function = None
@@ -301,6 +324,7 @@ class VQAOptimizer:
                         print_global=False)
                 # Here the kw are used to instantiate the optimiser
                 ego = EGO(**optimizer_kw)
+                self.ego = ego  # FIXME store this somewhere
                 self.optimizer_function = ego.optimize
                 self.optimizer_kw = {}
                 self.optimizer_callback = callback
