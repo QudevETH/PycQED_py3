@@ -11956,7 +11956,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'title': title,
                 'plotcbar': True,
                 'clabel': pop_label_right if pop_label_right else
-                          f"Total leakage $P_N$ ({pop_unit_right})",
+                          f"Total leakage, $P_N$ ({pop_unit_right})",
                 'cax_id': 3,
             }
 
@@ -11973,7 +11973,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'line_kws': {'zorder': 1},
                 'xlabel': nice_labels[0],
                 'ylabel': pop_label_left if pop_label_left else
-                          f"Gate leakage $P_1$ ({pop_unit_left})",
+                          f"Leakage, $P_1$ ({pop_unit_left})",
             }
             if gate_yticks is not None:
                 # Set explicit values for the left yticks, and compute their
