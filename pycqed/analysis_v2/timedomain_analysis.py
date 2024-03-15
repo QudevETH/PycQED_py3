@@ -12021,8 +12021,9 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     'set_major_formatter': {'yaxis': formatter},
                 })
 
+            key = figname + f"_1D_line"
             if draw_lower_lines:
-                self.plot_dicts[figname + f"_1D_line"] = {
+                self.plot_dicts[key] = {
                     'fig_id': figname,
                     'ax_id': 2,
                     'plotfn': self.plot_line,
@@ -12032,6 +12033,9 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     'line_kws': {'zorder': 0},
                     'color': 'k',
                 }
+            else:
+                # Reset to default (in case this method got called previously)
+                self.plot_dicts[key] = {'plotfn': None}
 
             self.plot_dicts[figname + f"_1D_line_max"] = {
                 'fig_id': figname,
