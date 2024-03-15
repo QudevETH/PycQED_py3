@@ -901,6 +901,14 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             timeout=600
         )
 
+    def _save_awg_str(
+            self,
+            awg_str,
+    ):
+        if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
+            self._awg.store_awg_source_string(self._awg_nr, awg_str)
+            # otherwise, configure_awg_from_string stores it automatically
+
     def _generate_command_table_entry(
             self,
             entry_index: int,
