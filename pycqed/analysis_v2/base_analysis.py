@@ -408,7 +408,13 @@ class BaseDataAnalysis(object):
                         )
                 file_written = True
             except (IOError, PermissionError):
-                time.sleep(1)
+                sleep_duration = 5
+                log.warning(
+                    f"Unable to open the HDF5 file {file_path} for writing. "
+                    "Make sure to close the HDF Viewer if it is open. "
+                    f"Trying again in {sleep_duration} s."
+                )
+                time.sleep(sleep_duration)
 
     def check_plotting_delegation(self):
         """
