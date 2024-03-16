@@ -1396,13 +1396,16 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
         return self.fp.get_mirror_pulse_obj_and_pattern()
 
 
-class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
+class GaussFilteredCosIQPulsePolyChromatic(pulse.Pulse):
     def __init__(self,
                  I_channel,
                  Q_channel,
                  element_name,
-                 name='gauss filtered cos IQ pulse multi chromatic',
+                 name=None,
                  **kw):
+        if not name:
+            name = "Polychromatic Gaussian-filtered cosine IQ pulse"
+
         super().__init__(name, element_name, **kw)
 
         self.I_channel = I_channel
@@ -1410,7 +1413,7 @@ class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
         self.channels = [self.I_channel, self.Q_channel]
 
         if np.ndim(self.mod_frequency) != 1:
-            raise ValueError("MultiChromatic Pulse requires a list or 1D array "
+            raise ValueError("A polychromatic pulse requires a list or 1D array "
                              f"of frequencies. Instead {self.mod_frequency} "
                              f"was given")
 
@@ -1437,7 +1440,7 @@ class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
         super().__init__ method.
         """
         params = {
-            'pulse_type': 'GaussFilteredCosIQPulseMultiChromatic',
+            'pulse_type': 'GaussFilteredCosIQPulsePolyChromatic',
             'I_channel': None,
             'Q_channel': None,
             'amplitude': 0,
@@ -1495,12 +1498,34 @@ class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
         hashlist += self.mod_frequency
         hashlist += [self.gaussian_filter_sigma]
         hashlist += [self.buffer_length_start, self.buffer_length_end, self.pulse_length]
+        # self.phase and self.mod_frequency must be lists for polychromatic readout
         phase = [p + 360 * (not self.phase_lock) * f * self.algorithm_time() \
                  for p, f in zip(self.phase, self.mod_frequency)]
         hashlist += self.alpha
         hashlist += self.phi_skew
         hashlist += phase
         return hashlist
+
+
+class GaussFilteredCosIQPulseMultiChromatic(GaussFilteredCosIQPulsePolyChromatic):
+    def __init__(self,
+                 I_channel,
+                 Q_channel,
+                 element_name,
+                 name=None,
+                 **kw):
+        log.warning(
+            "DeprecationWarning: The GaussFilteredCosIQPulseMultiChromatic "
+            "pulse is deprecated; use GaussFilteredCosIQPulsePolyChromatic "
+            "instead."
+        )
+        super().__init__(
+            I_channel,
+            Q_channel,
+            element_name,
+            name=name,
+            **kw
+        )
 
 
 class VirtualPulse(pulse.Pulse):

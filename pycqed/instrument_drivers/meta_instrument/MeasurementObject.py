@@ -15,7 +15,7 @@ from pycqed.measurement import sweep_functions as swf
 class MeasurementObject(Instrument):
     _acq_weights_type_aliases = {}  # see self.get_acq_weights_type()
     _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
-                           'GaussFilteredCosIQPulseMultiChromatic']
+                           'GaussFilteredCosIQPulsePolyChromatic']
     _allowed_drive_modes = [None]
 
     def __init__(self, name, **kw):
@@ -323,17 +323,8 @@ class MeasurementObject(Instrument):
         The RO LO freq is calculated from self.ro_mod_freq (intermediate
         frequency) and self.ro_freq.
         """
-        # in case of multichromatic readout, take first ro freq, else just
-        # wrap the frequency in a list and take the first
-        if np.ndim(self.ro_freq()) == 0:
-            ro_freq = [self.ro_freq()]
-        else:
-            ro_freq = self.ro_freq()
-        if np.ndim(self.ro_mod_freq()) == 0:
-            ro_mod_freq = [self.ro_mod_freq()]
-        else:
-            ro_mod_freq = self.ro_mod_freq()
-        return ro_freq[0] - ro_mod_freq[0]
+        # For polychromatic readout, ro_freq and ro_mod_freq may be lists
+        return np.mean(self.ro_freq()) - np.mean(self.ro_mod_freq())
 
     def get_pulse_parameter(self, operation_name=None, argument_name=None):
         """
@@ -513,7 +504,7 @@ class MeasurementObject(Instrument):
         operation_dict['Acq ' + self.name]['amplitude'] = 0
 
         if np.ndim(self.ro_freq()) != 0:
-            delta_freqs = np.diff(self.ro_freq(), prepend=self.ro_freq()[0])
+            delta_freqs = self.ro_freq() - np.mean(self.ro_freq())
             mods = [self.ro_mod_freq() + d for d in delta_freqs]
             operation_dict['RO ' + self.name]['mod_frequency'] = mods
 

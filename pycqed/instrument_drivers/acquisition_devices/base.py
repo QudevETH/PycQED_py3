@@ -562,8 +562,20 @@ class AcquisitionDevice():
         tbase = np.arange(
             0, acq_length,
             1 / self.acq_sampling_rate)
-        cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
-        sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
+        # PolyChromatic readout ('()' is np.shape(float))
+        if np.shape(mod_freq) > ():
+            cosI = np.zeros_like(tbase)
+            sinI = np.zeros_like(tbase)
+            for mod_f in mod_freq:
+                cosI += np.cos(2 * np.pi * mod_f * tbase + acq_IQ_angle) / len(mod_freq)
+                sinI += np.sin(2 * np.pi * mod_f * tbase + acq_IQ_angle) / len(mod_freq)
+            # cosI = np.cos(2 * np.pi * np.mean(mod_freq) * tbase + acq_IQ_angle)
+            # sinI = np.sin(2 * np.pi * np.mean(mod_freq) * tbase + acq_IQ_angle)
+        # Monochromatic readout
+        else:
+            cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
+            sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
+
         if weights_type == 'SSB':
             return [(cosI, -sinI), (sinI * aQs, cosI * aQs)]
         elif weights_type in 'DSB':

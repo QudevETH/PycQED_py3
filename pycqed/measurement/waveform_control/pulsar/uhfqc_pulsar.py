@@ -146,6 +146,9 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         if param == "offset":
             return self.awg.get(f"sigouts_{ch}_offset")
         elif param == "amp":
+            # UHFQA seems to already return 50 Ohm values if the impedance
+            # is set to 50 Ohm (i.e. already divided by 2) when using
+            # LabOne 23.06.46739, so do not divide by 2 here
             if self.pulsar.awgs_prequeried:
                 return self.awg.parameters[f"sigouts_{ch}_range"].get_latest() / 2
             else:

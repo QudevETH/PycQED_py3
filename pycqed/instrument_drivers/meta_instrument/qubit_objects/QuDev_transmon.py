@@ -59,7 +59,7 @@ class QuDev_transmon(MeasurementObject):
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
     _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
-                           'GaussFilteredCosIQPulseMultiChromatic',
+                           'GaussFilteredCosIQPulsePolyChromatic',
                            'GaussFilteredCosIQPulseWithFlux']
     _allowed_drive_modes = [None, 'continuous_spec',
                             'continuous_spec_modulated', 'pulsed_spec',
