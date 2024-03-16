@@ -607,7 +607,7 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
         'xtick_labels': list(np.array(list(observables.keys()))[obs_filter]),
         'origin': 'upper',
         'cmap': cm,
-        'aspect': 'equal'
+        'aspect': 'auto'
     }
 
     hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
