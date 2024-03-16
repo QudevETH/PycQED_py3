@@ -1332,7 +1332,15 @@ class CircuitBuilder:
             tomo_qubits = [all_qubit_names.index(i) for i in tomo_qubits]
         # sort qubit indices to ensure that basis_rots are always applied on
         # qubits in ascending order as defined by self.get_qubits().
+        tomo_qubits_before_sorting = deepcopy(tomo_qubits)
         tomo_qubits.sort()
+        if tomo_qubits_before_sorting != tomo_qubits:
+            log.warning("The circuit builder of the tomography pulses sorts "
+                        "the qubits into the ascending order as in "
+                        "device.get_qubits(). This changes the qubit order "
+                        "that you specified in the task_list and could lead "
+                        "to unexpected behaviors. Please define task list in "
+                        "the same qubit order as they will be sorted to.")
 
         if all_rots:
             basis_rots = list(itertools.product(basis_rots,
