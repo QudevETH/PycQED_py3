@@ -21,18 +21,14 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     default_experiment_name = 'VariationalAlgorithm'
 
-    def __init__(self, qubits,
-                 training_state_labels=None,  # FIXME
-                 optimize=True, optimizer=None, **kw):
+    def __init__(self, optimize=True, optimizer=None, **kw):
         super().__init__(**kw)
-
         self.set_block_and_params()
 
         if optimize:
             if None in [optimizer]:
                 raise ValueError("Not all parameters provided")
             self.optimizer = optimizer  # TODO or pass kw and instantiate here?
-            self.training_state_labels = training_state_labels  # FIXME
             self.sweep_functions = [
                 awg_swf.BlockSoftHardSweep(self,
                                            self.params,
@@ -47,7 +43,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             # TODO check usage and possibly modify
             self.MC.set_adaptive_function_parameters(dict(
                 adaptive_function=self.optimizer,
-                # TODO either auto-generate here or process in base QE
                 data_processing_function=self._data_processing_function,
             ))
         else:
@@ -69,88 +64,59 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         )
 
     # @staticmethod  # FIXME?
-    def _data_processing_function(self, vals, dset=None):
-        timestamp = '20230209_014813'
+    def _data_processing_function(self, vals,
+                                  dset=None  # TODO remove
+                                  ):
 
-        meas_obj_names = ['qb2']
+        meas_objs = self.meas_objs  # Only non-static variable
 
-        pp = pp_mod.ProcessingPipeline()
-
+        # FIXME this won't exist when running a separate analysis offline
+        classifier_params = {mobj.name: mobj.acq_classifier_params()
+                             for mobj in meas_objs}
+        # FIXME using these as a hack for now
         classifier_params = hlp_mod.get_clf_params_from_hdf_file(
-            timestamp, meas_obj_names)
-        state_prob_mtxs = hlp_mod.get_state_prob_mtxs_from_hdf_file(
-            timestamp, meas_obj_names)
-        for mobjn, mtx in state_prob_mtxs.items():
-            if mtx is None:
-                if any(correct_readout):
-                    log.warning(f'The acq_state_prob_mtx was not provided '
-                                f'for {mobjn}. The acq_state_prob_mtxs '
-                                f'must be specified for both qubits in '
-                                f'order to perform readout correction.')
-                if False in correct_readout:
-                    # only do the readout-uncorrected analysis if the user
-                    # wanted this originally
-                    correct_readout = (False,)
-                else:
-                    raise Exception
-
-        mobjn = meas_obj_names[0]
+            '20230209_014813', [mobj.name for mobj in meas_objs])
+        # Could do readout correction here:
+        # state_prob_mtxs = qb.acq_state_prob_mtx() ...
 
         probability_states = ['pg', 'pe', 'pf']
 
-        pp.add_node('classify_gm', keys_in='raw',
-                    keys_out=[f'{mobjn}.classify_gm.{ps}'
-                              for ps in probability_states],
-                    clf_params=classifier_params.get(mobjn, None),
-                    meas_obj_names=mobjn)
+        # Setup pipeline
+        pp = pp_mod.ProcessingPipeline()
+        # FIXME: creating a dummy meas_obj_value_names_map since this is
+        #  only used in the first node to re-extract the data (keys_in='raw')
+        #  Can this create any problems? How to re-run offline?
+        movnm = {mobj.name: [f'{mobj.name}_{i}' for i in range(2)]  # I,Q
+                 for mobj in meas_objs}
+        for mobj in meas_objs:
+            pp.add_node('classify_gm', keys_in='raw',
+                        keys_out=[f'{mobj.name}.classify_gm.{ps}'
+                                  for ps in probability_states],
+                        clf_params=classifier_params.get(mobj.name, None),
+                        meas_obj_names=mobj.name)
 
-        pp.add_node('do_postselection_f_level', keys_in='previous',
-                    keys_out=[f'{mobjn}.post_selected'],
-                    meas_obj_names=mobjn)
+            pp.add_node('do_postselection_f_level', keys_in='previous',
+                        keys_out=[f'{mobj.name}.post_selected'],
+                        meas_obj_names=mobj.name)
+        pp.resolve(meas_obj_value_names_map=movnm)
 
-        labels = list(self.training_state_labels.values())
-        n_shots = self.qubits[0].acq_shots()
-        n_segments = len(labels) * self.optimizer.optimizer_kw.get('n_parallel', 1)
-        n_segments = n_segments*5  # FIXME
-        print(self.optimizer.optimizer_kw.get('n_parallel', 1))
-
-        pp.add_node('average_data',
-                    shape=(n_shots, n_segments),
-                    final_shape=(n_segments),
-                    averaging_axis=0,
-                    selection_map=None,
-                    keys_in='previous',
-                    keys_out=[f'{mobjn}.expectation_value'],
-                    meas_obj_names=mobjn)
-
-        pp.add_node('mean_squared_error',
-                    keys_in='previous',
-                    keys_out=[f'{mobjn}.MSE'],
-                    sorted_by_label=False,
-                    # specifies the order in which the measurements were performed
-                    labels=labels,
-                    meas_obj_names=mobjn,
-                    )
-
-        # WARNING: meas_obj_value_names_map is somewhat hard coded to match
-        # the value names generated in IntegratingAveragingPollDetector
-        data_type = "raw"
-        meas_obj_value_names_map = {qb.name: [
-            f'{qb.instr_acq()}_{qb.acq_unit()}_{data_type} w{ch} {qb.instr_acq()}'
-            for ch in [qb.acq_I_channel(), qb.acq_Q_channel()]] for i, qb in
-                                    enumerate(self.qubits)}
-
-        pp.resolve(meas_obj_value_names_map=meas_obj_value_names_map)
-
-        data_dict = dict()
+        # Run pipeline with raw data
         vals = np.atleast_2d(vals)
-        channels = meas_obj_value_names_map[mobjn]
-        data_dict[mobjn] = {channels[0]: vals[:, 0], channels[1]: vals[:, 1]}
+        # Construct an initial data dict with the raw data (vals, TODO rename)
+        # data_dict = { TODO
+        data_dict = {
+            mobj.name: {
+                movnm[mobj.name][ch_i]: vals[:, 2*mobj_i+ch_i]
+                for ch_i in [0, 1]
+            } for mobj_i, mobj in enumerate(meas_objs)
+        }
         pp.run(data_dict, overwrite_data_dict=True)
-        MSE = pp.data_dict[mobjn]['MSE']  # FIXME remove index `[0]` when using
-            # batch sampling (EGO)
-        print(f"MSE = {MSE}")
-        return MSE
+
+        data = np.array([pp.data_dict[mobj.name]['post_selected']
+                         for mobj in meas_objs])
+        # Shape at this point:
+        # [mobjs, shots, product of optimizer dims (trainable + fixed params)]
+        return data
 
     def _prepare_sequences(self, sequences=None, sequence_function=None,
                            sequence_kwargs=None):
@@ -236,8 +202,9 @@ class VQAOptimizer:
                             measurement_function
                             data_processing_function
                         cost_function
-                callback?
-            callback?
+                self.callback?
+            MC.af_pars['callback']? (passed to optimizer, to remove)
+
     Args:
         training_settings: settings, in a format understood by get_batch_params
     """
@@ -251,29 +218,40 @@ class VQAOptimizer:
 
     def __call__(self, fun, **kw):
         self.measurement_function = fun
-        return self.optimizer_function(self._full_circuit, **self.optimizer_kw)
+        result = self.optimizer_function(self._full_circuit,
+                                         **self.optimizer_kw)
+        # if self.optimizer_callback is not None:
+        #     result = self.optimizer_callback(result)
+        return result
 
     def _full_circuit(self, params):
-        all_params, targets = self.get_batch_params(params)
-        meas = self.measurement_function(all_params)
-        cost = self.cost_function(meas, targets)
+        all_params, batch_shape, targets = self.get_batch_params(params)
+        data = self.measurement_function(all_params)
+        data = np.reshape(data, [len(data), -1, *batch_shape])
+        # shape = [len(mobj), n_shots, *data_shape]
+        cost = self.cost_function(data, targets)
+        # shape = [len(batch)]
         return cost
 
     def get_batch_params(self, trainable_params_values):
         """
 
+        This is the only method which knows about the format/shape of both
+        training_settings and data (FIXME for now mean_square_error also does)
+
         Args:
             params:
 
         training_settings = {  TODO should these belong to the QE?
-            'params': [''],
+            'params': [''],  TODO unused
             'trainable_params': int,  # Could be generalised to a list of
             bool of the same length as 'params'. For now, this method
             assumes that params are ordered (fixed then trainable). This is
             used in the list comprehension.
             'fixed_params_values': [[x0, x1 ...] ...],
             'out_targets': [y ...],  # corresponding target outputs
-            'trainable_params_init_values': [x0, x1 ...],  TODO here or in optimizer_kw? unused now
+            TODO unused. Use, and generate random choice if None?
+            'trainable_params_init_values': [x0, x1 ...],
         }
 
         Returns:
@@ -288,14 +266,19 @@ class VQAOptimizer:
                 for vf in fixed_params_values
             ] for vt in trainable_params_values
         ])
-        # Flatten the first 2 dimensions, to iterate jointly over vf and vt
-        # Final shape: (
-        #  number of sets of fixed params * number of sets of trainable params,
+        # Shape at this point: (
+        #  number of sets of fixed params,
+        #  number of sets of trainable params,
         #  number of params (= number of parametrised gates)
         # )
+        # Extract the first 2 dimensions: this is the real shape of the data
+        # (which will be returned flattened by the experiment, see next line).
+        batch_shape = params_values.shape[:-1]
+        # Flatten the first 2 dimensions, to iterate jointly over vf and vt
+        # in the experiment (single sweep). The last dimension just
+        # corresponds to the number of params, which are swept jointly.
         params_values = params_values.reshape(-1, params_values.shape[-1])
-        print(f"all_params_values = {params_values.shape}")
-        return params_values, out_targets
+        return params_values, batch_shape, out_targets
 
     def _set_optimizer_function(self, optimizer_function, optimizer_kw):
         self.optimizer_function = None
@@ -308,26 +291,26 @@ class VQAOptimizer:
                 self.optimizer_function = minimize
                 self.optimizer_kw = optimizer_kw
             elif optimizer_function == 'ego':
-                def callback(opt_result):
-                    log.warning('TODO check what is in opt_result')
-                    x_opt, y_opt, _, x_data, y_data = opt_result
-                    self.optimizer_result = dict(x_opt=x_opt, y_opt=y_opt,
-                                                 x_data=x_data, y_data=y_data)
-                    return x_opt
+                # TODO could use to filter what ends up in MC.adaptive_result
+                # def callback(opt_result):
+                #     x_opt, y_opt, _, x_data, y_data = opt_result
+                #     self.optimizer_result = dict(x_opt=x_opt, y_opt=y_opt,
+                #                                  x_data=x_data, y_data=y_data)
+                #     return x_opt
+                # self.optimizer_callback = callback
                 from smt.applications import EGO
                 if 'xlimits' in optimizer_kw:
                     xlimits = optimizer_kw.pop('xlimits')
                     # needed to specify bounds on parameters
-                    from smt.surrogate_models import KRG
+                    from smt.surrogate_models import KRG, DesignSpace
                     optimizer_kw['surrogate'] = KRG(
-                        xlimits=xlimits,
+                        design_space=DesignSpace(xlimits),
                         print_global=False)
                 # Here the kw are used to instantiate the optimiser
                 ego = EGO(**optimizer_kw)
                 self.ego = ego  # FIXME store this somewhere
                 self.optimizer_function = ego.optimize
                 self.optimizer_kw = {}
-                self.optimizer_callback = callback
         if self.optimizer_function is None:
             raise ValueError
 
@@ -340,6 +323,14 @@ class VQAOptimizer:
             raise ValueError
 
     # TODO in cost_functions.py? Or keep here and delete that module?
+    # TODO this is currently specific to the application (which dimensions
+    #  to average and reshape on). How to make this generic and integrate in
+    #  the rest of the framework?
     @staticmethod
-    def mean_square_error(self, vals, targets):
-        return np.mean((vals-targets)**2)
+    def mean_square_error(vals, targets):
+        # shape: [mobj, shots, trainable pars, fixed pars]
+        vals = np.average(vals, (0, 1))
+        vals = np.array([(val-targets)**2 for val in vals])
+        vals = np.average(vals, 1)
+        vals = np.reshape(vals, (-1, 1))  # TODO why 2nd dim needed?
+        return vals
