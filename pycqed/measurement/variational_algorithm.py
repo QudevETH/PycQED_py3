@@ -53,7 +53,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     def set_block_and_params(self):
 
-        self.params = ['angle0']
+        self.params = [f"angle_{qb.name}" for qb in self.qubits]
         self.block = self.simultaneous_blocks(
             block_name='single_qb_gates',
             blocks=[self.block_from_anything(
@@ -257,7 +257,9 @@ class VQAOptimizer:
         Returns:
 
         """
-        fixed_params_values = self.training_settings['fixed_params_values']
+        fixed_params_values = self.training_settings.get('fixed_params_values')
+        if fixed_params_values is None:
+            fixed_params_values = [[]]
         trainable_params_values = np.atleast_2d(trainable_params_values)
         out_targets = self.training_settings['out_targets']
         params_values = np.array([
