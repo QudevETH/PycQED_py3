@@ -1536,16 +1536,16 @@ class Segment:
 
         new_cluster = True
         for i in range(len(overlapping_elements) - 1):
-            # making use of overlapping elements being sorted
             # check whether the next set of elements from
             # overlapping_elements shares an element name with
             # the previous entry in joint_overlapping_elements
-            if len(joint_overlapping_elements[-1] & \
-                   overlapping_elements[i + 1]) != 0:
-                joint_overlapping_elements[-1] = \
-                    joint_overlapping_elements[-1] | \
-                    overlapping_elements[i + 1]
-                new_cluster = False
+            for j in range(len(joint_overlapping_elements)):
+                if len(joint_overlapping_elements[j] & \
+                       overlapping_elements[i + 1]) != 0:
+                    joint_overlapping_elements[j] = \
+                        joint_overlapping_elements[j] | \
+                        overlapping_elements[i + 1]
+                    new_cluster = False
 
             # if the new element from overlapping_elements overlaps
             # with none of the previously added elements in
