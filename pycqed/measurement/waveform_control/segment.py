@@ -1378,8 +1378,15 @@ class Segment:
         element to which the trigger pulse is closest.
         """
 
-        time_distance = []
+        if trigger_pulse_time == float('-inf'):
+            el_starts = []
+            for element in self.elements_on_awg[trigger_group]:
+                el_starts.append(self.element_start_length(element, trigger_group)[0])
+            return self.elements_on_awg[trigger_group][np.argmin(el_starts)]
+        elif np.isinf(trigger_pulse_time):
+            NotImplementedError('Non-finite trigger_pulse_time other than -inf are not implemented')
 
+        time_distance = []
         for element in self.elements_on_awg[trigger_group]:
             [el_start, samples] = self.element_start_length(
                 element, trigger_group)
