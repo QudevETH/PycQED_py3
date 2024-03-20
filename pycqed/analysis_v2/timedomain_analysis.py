@@ -8526,7 +8526,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         data["prep_states"][:n_shots_to_plot],
                         **kwargs)
 
-                    # HACK
+                    # FIXME HACK
                     # With Matplotlib 3.8.3, this plot ends up with an extra
                     # blank axis as the first one which breaks the logic below
                     # I did not hunt through the mess to find the root cause
