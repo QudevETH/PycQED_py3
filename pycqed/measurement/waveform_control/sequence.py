@@ -96,6 +96,10 @@ class Sequence:
             sequence still need to be resolved. If not provided,
             self.is_resolved is checked to determine whether segments
             need to be resolved.
+        :param awg_sequences: (dict, optional) Sequences, as previously
+            returned by this method. Can be used for caching in case this
+            method is called multiple times. If provided, it is assumed that
+            this dict is complete (no error handling in case keys are missing).
         :return: a tuple of waveforms, sequences as described above if
             get_channel_hashes==False. Otherwise, a tuple channel_hashes,
             sequences.
