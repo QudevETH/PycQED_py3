@@ -1348,9 +1348,13 @@ class BaseDataAnalysis(object):
                     plotfn(pdict=pdict,
                            axs=self.axs[pdict['fig_id']].flatten()[
                                pdict['ax_id']])
-                    self.axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
-                        hspace=0.35)
+                    # FIXME forcing subplots_adjust after the plotting in
+                    #  plotfn (which possibly calls tight_layout()) is bad
+                    #  design, but many analyses currently rely on this (e.g.
+                    #  raw data plots) and should be cleaned if removing it
+                    if pdict.get('force_subplots_adjust', True):
+                        self.axs[pdict['fig_id']].flatten()[
+                            pdict['ax_id']].figure.subplots_adjust(hspace=0.35)
 
             # most normal plot functions also work, it is required
             # that these accept an "ax" argument to plot on and **kwargs
@@ -1364,9 +1368,13 @@ class BaseDataAnalysis(object):
                     plotfn(pdict=pdict,
                            axs=self.axs[pdict['fig_id']].flatten()[
                                pdict['ax_id']])
-                    self.axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
-                        hspace=0.35)
+                    # FIXME forcing subplots_adjust after the plotting in
+                    #  plotfn (which possibly calls tight_layout()) is bad
+                    #  design, but many analyses currently rely on this (e.g.
+                    #  raw data plots) and should be cleaned if removing it
+                    if pdict.get('force_subplots_adjust', True):
+                        self.axs[pdict['fig_id']].flatten()[
+                            pdict['ax_id']].figure.subplots_adjust(hspace=0.35)
             else:
                 raise ValueError(
                     '"{}" is not a valid plot function'.format(plotfn))
@@ -1917,6 +1925,8 @@ class BaseDataAnalysis(object):
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_xtick_loc = pdict.get('xtick_loc', None)
         plot_ytick_loc = pdict.get('ytick_loc', None)
+        plot_xtick_rotation = pdict.get('xtick_rotation', 90)
+        plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_transpose = pdict.get('transpose', False)
         plot_nolabel = pdict.get('no_label', False)
         plot_nolabel_units = pdict.get('no_label_units', False)
@@ -2028,10 +2038,10 @@ class BaseDataAnalysis(object):
         # FIXME Ignores thranspose option. Is it ok?
         if plot_xtick_labels is not None:
             axs.xaxis.set_ticklabels(plot_xtick_labels,
-                                     rotation=pdict.get(
-                                         'xlabels_rotation', 90))
+                                     rotation=plot_xtick_rotation)
         if plot_ytick_labels is not None:
-            axs.yaxis.set_ticklabels(plot_ytick_labels)
+            axs.yaxis.set_ticklabels(plot_ytick_labels,
+                                     rotation=plot_ytick_rotation)
         if plot_xtick_loc is not None:
             axs.xaxis.set_ticks(plot_xtick_loc)
         if plot_ytick_loc is not None:
@@ -2370,8 +2380,12 @@ class BaseDataAnalysis(object):
             return self.get_instrument_setting(
                 f'{awg}.clock_freq')
         except ParameterNotFoundError:
-            model = self.get_instrument_setting(
-                f'{awg}.IDN').get('model', None)
+            try:
+                return self.get_instrument_setting(
+                    f'{awg}.system_clocks_sampleclock_freq')
+            except ParameterNotFoundError:
+                model = self.get_instrument_setting(f'{awg}.IDN').get(
+                    'model', None)
         if model == 'HDAWG8':
             return 2.4e9
         elif model == 'UHFQA':

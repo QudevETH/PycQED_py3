@@ -155,8 +155,9 @@ def to_hex_string(byteval):
 
 def load_settings(instrument,
                   label: str='', folder: str=None,
-                  timestamp: str=None, update=True, **kw):
-    '''
+                  timestamp: str=None, update=True,
+                  load_settings_submodules=True, **kw):
+    """
     Loads settings from an hdf5 file onto the instrument handed to the
     function. By default uses the last hdf5 file in the datadirectory.
     By giving a label or timestamp another file can be chosen as the
@@ -173,27 +174,91 @@ def load_settings(instrument,
         timestamp (str)       : timestamp of file in the datadir
         update (bool, default True): if set to False, the loaded settings
             will be returned instead of updating them in the instrument.
+        load_settings_submodules (bool): whether or not the parameters of
+            submodules of `instrument` (and their child submodules recursively)
+            should be loaded. Defaults to True.
+            If set to True, all parameters of all submodules are loaded,
+            independently of the kwarg params_to_set.
 
     Kwargs:
         params_to_set (list)    : list of strings referring to the parameters
-            that should be set for the instrument
-    '''
-    from numpy import array  # DO not remove. Used in eval(array(...))
-    from collections import OrderedDict  # DO NOT remove. Used in eval()
+            that should be loaded for the instrument. If not provided, all
+            parameters are loaded.
+            Note that loading parameters from submodules is not affected by
+            this kwarg. Either all or no parameters of submodules are loaded,
+            depending on the value of load_settings_submodules.
+    """
     from pycqed.utilities import settings_manager as setman
-    if folder is None:
-        folder_specified = False
-    else:
-        folder_specified = True
+
+    def _load_settings(instrument, ins_loaded, params_to_set=None,
+                       load_settings_submodules=True, update=True,
+                       verbose=True):
+        if isinstance(instrument, str) and not update:
+            instrument_name = instrument
+        else:
+            instrument_name = instrument.name
+
+        if verbose:
+            print('Loaded settings successfully from the file.')
+        if params_to_set is not None:
+            if len(params_to_set) == 0:
+                log.warning('The list of parameters to update is empty.')
+            if verbose and update:
+                print('Setting parameters {} for {}.'.format(
+                    params_to_set, instrument_name))
+            params_to_set = [(param, val()) for (param, val) in
+                             ins_loaded.parameters.items() if param in
+                             params_to_set]
+        else:
+            if verbose and update:
+                print('Setting parameters for {}.'.format(instrument_name))
+            params_to_set = [
+                (param, val()) for (param, val) in ins_loaded.parameters.items()
+                if param not in getattr(
+                    instrument, '_params_to_not_load', {})]
+
+        if not update:
+            params_dict = {parameter: value for parameter, value in \
+                           params_to_set}
+            return params_dict
+
+        for parameter, value in params_to_set:
+            if parameter in instrument.parameters.keys() and \
+                    hasattr(instrument.parameters[parameter], 'set'):
+                try:
+                    instrument.set(parameter, value)
+                except Exception:
+                    log.error('Could not set parameter '
+                              '"%s" to "%s" '
+                              'for instrument "%s"' % (
+                                  parameter, value,
+                                  instrument_name))
+
+        if load_settings_submodules:
+            for submodule in ins_loaded.submodules.keys():
+                try:
+                    _load_settings(
+                        getattr(instrument, submodule),
+                        ins_loaded.submodules[submodule],
+                        params_to_set=None,
+                        load_settings_submodules=load_settings_submodules,
+                        verbose=verbose,
+                        update=update)
+                except Exception as e:
+                    log.error(f"Could not load settings onto "
+                              f"submodule {submodule}"
+                              f" of instrument {instrument_name}: {e}.")
+
+    verbose = kw.pop('verbose', True)
+    older_than = kw.pop('older_than', None)
+    success = False
+    count = 0
+    folder_specified = False if folder is None else True
 
     if isinstance(instrument, str) and not update:
         instrument_name = instrument
     else:
         instrument_name = instrument.name
-    verbose = kw.pop('verbose', True)
-    older_than = kw.pop('older_than', None)
-    success = False
-    count = 0
     # Will try multiple times in case the last measurements failed and
     # created corrupt data files.
     while success is False and count < 10:
@@ -208,42 +273,13 @@ def load_settings(instrument,
                                                    param_path=[instrument_name])
             ins_loaded = station.components[instrument_name]
 
-            if verbose:
-                print('Loaded settings successfully from the file.')
-            params_to_set = kw.pop('params_to_set', None)
-            if params_to_set is not None:
-                if len(params_to_set) == 0:
-                    log.warning('The list of parameters to update is empty.')
-                if verbose and update:
-                    print('Setting parameters {} for {}.'.format(
-                        params_to_set, instrument_name))
-                params_to_set = [(param, val()) for (param, val) in
-                                 ins_loaded.parameters.items() if param in
-                                 params_to_set]
-            else:
-                if verbose and update:
-                    print('Setting parameters for {}.'.format(instrument_name))
-                params_to_set = [
-                    (param, val()) for (param, val) in ins_loaded.parameters.items()
-                    if param not in getattr(
-                        instrument, '_params_to_not_load', {})]
-
-            if not update:
-                params_dict = {parameter : value for parameter, value in \
-                        params_to_set}
-                return params_dict
-
-            for parameter, value in params_to_set:
-                if parameter in instrument.parameters.keys() and \
-                        hasattr(instrument.parameters[parameter], 'set'):
-                    try:
-                        instrument.set(parameter, value)
-                    except Exception:
-                        log.error('Could not set parameter '
-                                  '"%s" to "%s" '
-                                  'for instrument "%s"' % (
-                                      parameter, value,
-                                      instrument_name))
+            p = _load_settings(
+                instrument, ins_loaded,
+                params_to_set=kw.get('params_to_set', None),
+                load_settings_submodules=load_settings_submodules,
+                verbose=verbose, update=update)
+            if p is not None:
+                return p
             success = True
         except Exception as e:
             logging.warning(e)

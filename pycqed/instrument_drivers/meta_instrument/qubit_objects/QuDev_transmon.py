@@ -10,17 +10,12 @@ from qcodes.instrument.parameter import (
     ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
 
-from pycqed.analysis_v2.readout_analysis import Singleshot_Readout_Analysis_Qutrit
 from pycqed.measurement import detector_functions as det
 from pycqed.measurement import awg_sweep_functions as awg_swf
-from pycqed.measurement import awg_sweep_functions_multi_qubit as awg_swf2
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
-from pycqed.analysis_v3.processing_pipeline import ProcessingPipeline
 from pycqed.measurement.pulse_sequences import single_qubit_tek_seq_elts as sq
 from pycqed.measurement.pulse_sequences import fluxing_sequences as fsqs
-from pycqed.analysis_v3 import pipeline_analysis as pla
 from pycqed.analysis import measurement_analysis as ma
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.utilities.general import add_suffix_to_dict_keys
@@ -29,9 +24,7 @@ from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from pycqed.measurement import optimization as opti
 from pycqed.measurement import mc_parameter_wrapper
 import pycqed.analysis_v2.spectroscopy_analysis as sa
-from pycqed.utilities import math
 import pycqed.analysis.fitting_models as fit_mods
-import os
 import \
     pycqed.measurement.waveform_control.fluxpulse_predistortion as fl_predist
 from pycqed.instrument_drivers.meta_instrument.MeasurementObject import \
@@ -54,6 +47,14 @@ class QuDev_transmon(MeasurementObject):
         compensation_pulse_delay=100e-9,
         compensation_pulse_gaussian_filter_sigma=0,
     )
+
+    DEFAULT_GE_LO_CALIBRATION_PARAMS = dict(
+        mode='fixed',  # or 'freq_dependent'
+        freqs=[],
+        I_offsets=[],
+        Q_offsets=[],
+    )
+
     _acq_weights_type_aliases = {
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
@@ -496,15 +497,9 @@ class QuDev_transmon(MeasurementObject):
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
                             initial_value=DEFAULT_PREP_PARAMS, vals=vals.Dict())
 
-        DEFAULT_GE_LO_CALIBRATION_PARAMS = dict(
-            mode='fixed', # or 'freq_dependent'
-            freqs=[],
-            I_offsets=[],
-            Q_offsets=[],
-        )
         self.add_parameter('ge_lo_leakage_cal',
                            parameter_class=ManualParameter,
-                           initial_value=DEFAULT_GE_LO_CALIBRATION_PARAMS,
+                           initial_value=self.DEFAULT_GE_LO_CALIBRATION_PARAMS,
                            vals=vals.Dict())
 
         # switch parameters

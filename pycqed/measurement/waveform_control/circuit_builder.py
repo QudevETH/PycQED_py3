@@ -1291,7 +1291,7 @@ class CircuitBuilder:
                             vals = sweep_points.get_sweep_params_property(
                                 'values', dim, param)
                             setattr(seg, param[len('Segment.'):],
-                                    vals[j if dim == 0 else i])
+                                    deepcopy(vals[j if dim == 0 else i]))
                 # add the new segment to the sequence
                 seq.add(seg)
             if cal_points is not None:
