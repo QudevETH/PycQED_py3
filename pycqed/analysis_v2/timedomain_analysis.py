@@ -8526,8 +8526,17 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         data["prep_states"][:n_shots_to_plot],
                         **kwargs)
 
+                    # HACK
+                    # With Matplotlib 3.8.3, this plot ends up with an extra
+                    # blank axis as the first one which breaks the logic below
+                    # I did not hunt through the mess to find the root cause
+                    # of the change; instead, the lines of code below check if
+                    # this first blank axis was created, and, if so, deletes it
+                    if fig.get_axes()[0].get_xlabel() == "":
+                        fig.delaxes(fig.get_axes()[0])
                     # plot clf_boundaries
                     main_ax = fig.get_axes()[0]
+
                     self.plot_clf_boundaries(data['X'], self.clf_[qbn], ax=main_ax,
                                              cmap=tab_x)
                     # plot means and std dev
