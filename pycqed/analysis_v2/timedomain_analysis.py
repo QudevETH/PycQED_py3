@@ -12034,7 +12034,8 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     'color': 'k',
                 }
             else:
-                # Reset to default (in case this method got called previously)
+                # If this method got called previously with draw_lower_lines,
+                # this entry will be populated. Here resetting it to default.
                 self.plot_dicts[key] = {'plotfn': None}
 
             self.plot_dicts[figname + f"_1D_line_max"] = {
