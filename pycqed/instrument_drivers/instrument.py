@@ -73,11 +73,19 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
 
 
 class InstrumentModule(QcodesInstrumentModule):
+    """
+    Required as standard interface for QCoDeS instrument modules.
+
+    See QCoDeS docs for more details.
+    """
     def get_idn(self):
+        """Get the Instrument Module's ID and Name.
+
+        Returns:
+            dict: A dictionary with two keys: 'driver' and 'name'.
+                The values are the name of the driver and the name of the instrument (set during initialization).
         """
-        Required as a standard interface for QCoDeS instrument modules.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
+        return {'driver': self.__class__.__name__, 'name': self.name}
 
 
 class DummyVisaHandle:
