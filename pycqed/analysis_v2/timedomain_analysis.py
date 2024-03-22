@@ -7855,6 +7855,9 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             residual_tone_filter_sigma (float): specifies the width
                 of the Gaussian filter. Ignored if a ``residual_tone_filter_fcn``
                 is provided. (default: 1e7 (10 MHz))
+            plot_end_time (float): specifies the time up to which the
+                timetraces and weights are plotted, no effect if None (default:
+                None)
         """
         self.qb_names = qb_names
         super().__init__(**kwargs)
@@ -8097,9 +8100,12 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         states = self.get_param_value('states', None)
         num_states = len(eval(states)) if twoD else len(rdd)
         ana_params = self.proc_data_dict['analysis_params_dict']
+        plot_end_time = self.get_param_value('plot_end_time', None)
         for qbn in self.qb_names:
             mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
             tbase = rdd[0]['hard_sweep_points']
+            plot_end_idx = np.where(tbase < plot_end_time)[0][-1] \
+                if plot_end_time is not None else None
             basis_labels = pdd["analysis_params_dict"][
                 'optimal_weights_basis_labels'][qbn]
             title = 'Optimal SNR weights ' + qbn + \
@@ -8117,16 +8123,17 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                         'fig_id': plot_name,
                         'ax_id': ax_id,
                         'plotfn': self.plot_line,
-                        'xvals': tbase,
+                        'xvals': tbase[:plot_end_idx],
                         "marker": "",
-                        'yvals': func(ttrace*modulation),
+                        'yvals': func(ttrace*modulation)[:plot_end_idx],
                         'ylabel': 'Voltage, $V$',
                         'yunit': 'V',
                         "sharex": True,
-                        "setdesc": label + f"_{state}",
+                        "setdesc": label + rf"$_{{\vert {state}\rangle}}$",
                         "setlabel": "",
                         "do_legend":True,
-                        "legend_pos": "upper right",
+                        "legend_pos": "best",
+                        'legend_ncol': 2,
                         'numplotsx': 1,
                         'numplotsy': num_states + 1, # #states + 1 for weights
                         'plotsize': (10,
@@ -8139,19 +8146,20 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                         'fig_id': plot_name,
                         'ax_id': ax_id,
                         'plotfn': self.plot_line,
-                        'xvals': tbase,
+                        'xvals': tbase[:plot_end_idx],
                         'xlabel': xlabel,
                         "setlabel": "",
                         "marker": "",
                         'xunit': 's',
-                        'yvals': func(weights * modulation),
+                        'yvals': func(weights * modulation)[:plot_end_idx],
                         'ylabel': 'Voltage, $V$ (arb.u.)',
                         "sharex": True,
-                        "xrange": [self.get_param_value('tmin', min(tbase), 0),
-                                   self.get_param_value('tmax', max(tbase), 0)],
-                        "setdesc": label + f"_{i+1}",
+                        "xrange": [self.get_param_value('tmin', min(tbase[:plot_end_idx]), 0),
+                                   self.get_param_value('tmax', max(tbase[:plot_end_idx]), 0)],
+                        "setdesc": label + rf"$_{i+1}$",
                         "do_legend": True,
-                        "legend_pos": "upper right",
+                        "legend_pos": "best",
+                        'legend_ncol': 2,
                         }
 
 
