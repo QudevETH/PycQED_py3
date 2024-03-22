@@ -10,6 +10,11 @@ from qcodes.utils import validators
 
 
 class ResetScheme(InstrumentModule):
+    """
+    Basic control and execution of the Active Reset scheme.
+    """
+    # By default the reset scheme takes default values from the parent
+    # operation declared in the qubit.
     DEFAULT_VALUE = "from parent"
 
     def __init__(self, parent, name, operations=(),
