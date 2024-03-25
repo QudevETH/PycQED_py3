@@ -2657,12 +2657,12 @@ class QuDev_transmon(MeasurementObject):
         Adds reset schemes to the current instance.
 
         This function adds reset schemes to the current instance of an
-        experiment. It checks if each scheme is already present before adding,
-        so that no duplicates are created. If a scheme is added successfully, a
-        message will be logged stating this. If a submodule with the same name
-        as one being attempted to add already exists in self.reset.submodules,
-        a ValueError will be raised. The error message will specify which
-        submodule and instance names it was called on.
+        QuDev_transmon. It checks if each scheme is already present before
+        adding, so that no duplicates are created. If a scheme is not added
+        successfully, a message will be logged stating this. If a submodule
+        with the same name as one being attempted to add already exists in
+        self.reset.submodules, a ValueError will be raised. The error message
+        will specify which submodule and instance names it was called on.
 
         Args:
             preselection (bool, optional): If True, adds the Preselection
@@ -2721,13 +2721,10 @@ class QuDev_transmon(MeasurementObject):
         Args:
             op_name (str, optional): The name of the operation to be added.
                 Defaults to "PFM".
-
             parameter_prefix (str, optional): The prefix for the parameters
             associated with the operation. Defaults to 'parametric_flux_modulation'.
-
             transition_name (str, optional): The name of the transition for
                 which the operation is defined. Defaults to 'ge'.
-
             pulse_type (str, optional): The type of pulse to be used for the
                 operation. Defaults to 'BufferedCZPulse'.
 
