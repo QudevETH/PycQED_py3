@@ -695,7 +695,7 @@ class CircuitBuilder:
                 same number of times across all qubits sharing that acquisition
                 device. Note that this function does not name the elements explicitly
                 for the acquisition (this is handled by Segment.add()),
-                and it WILL ALLOW steps which does not satisfy this
+                and it WILL ALLOW steps which do not satisfy this
                 constraint (in case the constraint is relaxed in the future by ZI).
             step_alignment (str): "start", "center" or "end". Indicates whether
                 step i on all qubits should be start, center- or end- aligned.
@@ -710,6 +710,7 @@ class CircuitBuilder:
             block_name (str): Name of the preparation block.
 
         Returns:
+            sequantial_blocks: A Reset_{qb_names} block with a list of prep blocks.
 
         """
         qubits, qb_names = self.get_qubits(qb_names)
@@ -1240,7 +1241,7 @@ class CircuitBuilder:
         #  but maybe a cleaner solution would be to have a separate block for the
         #  end reset after the readout?
         all_ro_op_codes = [p['op_code'] for p in ro.pulses if "op_code" in p
-                           and (p['op_code'].startswith('RO ') # space after RO required to avoid
+                           and (p['op_code'].startswith('RO ') # space after RO required to avoid matching the wrong OP code
                                 or p['op_code'].startswith('Acq'))]
         if body_block is not None:
             op_codes = [p['op_code'] for p in body_block.pulses if 'op_code'
