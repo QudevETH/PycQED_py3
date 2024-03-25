@@ -115,7 +115,7 @@ class Sequence:
                                 and not self.is_resolved):
             for seg in self.segments.values():
                 seg.resolve_segment()
-                seg.gen_elements_on_awg()
+                seg.gen_elements_on_awg(return_sorted=True)
 
         if trigger_groups is None:
             trigger_groups = set()

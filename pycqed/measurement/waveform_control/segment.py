@@ -1132,7 +1132,7 @@ class Segment:
 
         return pulses
 
-    def gen_elements_on_awg(self):
+    def gen_elements_on_awg(self, return_sorted=False):
         """
         Updates the self.elements_on_AWG dictionary
         """
@@ -1153,6 +1153,14 @@ class Segment:
                         self.elements_on_awg[group] = [element]
                     elif element not in self.elements_on_awg[group]:
                         self.elements_on_awg[group].append(element)
+
+        # sort elements on awg according to start time
+        if not return_sorted:
+            return
+
+        for group in self.elements_on_awg.keys():
+            self.elements_on_awg[group] = sorted(self.elements_on_awg[group],
+                                                 key=lambda element: self.get_element_start(element, group))
 
     def find_trigger_group_hierarchy(self):
         masters = {group for group in self.pulsar.trigger_groups
@@ -1293,7 +1301,7 @@ class Segment:
 
         # Generate the dictionary elements_on_awg, that for each AWG contains
         # a list of the elements on that AWG
-        self.gen_elements_on_awg()
+        self.gen_elements_on_awg(return_sorted=True)
 
         # First, add trigger pulses that are requested in pulse parameters
         # FIXME We need to test and possibly debug the case where multiple
