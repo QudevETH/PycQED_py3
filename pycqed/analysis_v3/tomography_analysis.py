@@ -26,14 +26,17 @@ def get_prep_params(data_dict, **params):
     translating them if necessary.
 
     Args:
-        data_dict (OrderedDict): An ordered dictionary containing the experimental data and metadata.
+        data_dict (OrderedDict): An ordered dictionary containing the
+        experimental data and metadata.
 
     Returns:
         dict: A dictionary containing the preparation parameters.
 
     Raises:
-        ValueError: If the 'reset_params' key is not found in the metadata and the 'preparation_params' key is also not found.
+        ValueError: If the 'reset_params' key is not found in the metadata and
+        the 'preparation_params' key is also not found.
     """
+
     # Extract prep params
     metadata = data_dict.get('exp_metadata', {})
 

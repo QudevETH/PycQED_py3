@@ -198,7 +198,6 @@ class Preselection(ResetScheme):
                            vals=validators.Bool(),
                            parameter_class=ManualParameter)
 
-
     def _reset_block(self, name, sweep_params, **kwargs):
         op_dict = self.instr_ref.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which

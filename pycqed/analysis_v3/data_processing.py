@@ -1175,7 +1175,6 @@ def calculate_meas_ops_and_covariations_cal_points(
         data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
         **params)
 
-
     # Extract prep params
     metadata = data_dict.get('exp_metadata', {})
 
