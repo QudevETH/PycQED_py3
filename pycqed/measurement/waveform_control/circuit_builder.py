@@ -691,12 +691,13 @@ class CircuitBuilder:
                 Constraints: if a step includes acquisition(s)
                 (e.g. preselection, active reset), then they
                 should happen simultaneously for all qubits which are on
-                the same acquisition unit (constraint of ZI devices) and the
+                the same acquisition unit (constraint of, e.g., ZI devices) and the
                 same number of times across all qubits sharing that acquisition
                 device. Note that this function does not name the elements explicitly
                 for the acquisition (this is handled by Segment.add()),
                 and it WILL ALLOW steps which do not satisfy this
-                constraint (in case the constraint is relaxed in the future by ZI).
+                constraint (in case the constraint is relaxed in the future by the
+                instrument drivers).
             step_alignment (str): "start", "center" or "end". Indicates whether
                 step i on all qubits should be start, center- or end- aligned.
                 Note that if the steps contain readout pulses which
