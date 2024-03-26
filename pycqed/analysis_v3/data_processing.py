@@ -3,6 +3,7 @@ log = logging.getLogger(__name__)
 
 import itertools
 import numpy as np
+import pycqed.analysis_v2.base_analysis as ba
 from collections import OrderedDict
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v3 import helper_functions as hlp_mod
@@ -1173,11 +1174,18 @@ def calculate_meas_ops_and_covariations_cal_points(
     meas_obj_names = hlp_mod.get_measurement_properties(
         data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
         **params)
-    import pycqed.analysis_v2.base_analysis as ba
-    # translate new reset params format to legacy format that the analysis
-    # understands
-    prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
-        hlp_mod.get_param('reset_params', data_dict, **params))
+
+
+    # Extract prep params
+    metadata = data_dict.get('exp_metadata', {})
+
+     # New reset format
+    if 'reset_params' in metadata:
+        prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
+            hlp_mod.get_param('reset_params', data_dict, **params))
+    # Legacy reset format
+    else:
+        prep_params = hlp_mod.get_param('preparation_params', data_dict, **params)
 
     try:
         preselection_obs_idx = list(observables.keys()).index('pre')
