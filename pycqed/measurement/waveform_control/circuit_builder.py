@@ -131,7 +131,6 @@ class CircuitBuilder:
         else:
             return reset_params
 
-
     def update_operation_dict(self, operation_dict=None):
         """
         Updates the stored operation_dict based on the passed operation_dict or
@@ -711,14 +710,14 @@ class CircuitBuilder:
             block_name (str): Name of the preparation block.
 
         Returns:
-            sequantial_blocks: A Reset_{qb_names} block with a list of prep blocks.
-
+            sequantial_blocks: A Reset_{qb_names} block with a sequential list
+            of simultaneous prep blocks.
         """
+
         qubits, qb_names = self.get_qubits(qb_names)
         if block_name is None:
             block_name = f"Reset_{qb_names}"
 
-        prep = []
         # parse steps if not yet done.
         if not isinstance(steps, dict):
             steps, _ = self._get_reset_steps(qb_names, steps)
@@ -737,25 +736,44 @@ class CircuitBuilder:
                 raise NotImplementedError("Only start and end alignment of "
                                           "the preparation block is currently"
                                           " supported.")
+
+        # Fill prep list first with parallel reset blocks
+        prep = []
         for i in range(max_steps):
-            step_blocks = []
+
+            # Collect all parallel Blocks in current step i for each qubit
+            simultaneous_blocks = []
             for qb in qubits:
                 if steps[qb.name][i] == "padding":
-                    step_blocks.append(Block(f'padding_step_{i}_{qb.name}', []))
-                else:
+                    simultaneous_blocks.append(
+                        Block(f"padding_step_{i}_{qb.name}", [])
+                    )
+                else: # if reset block
                     try:
                         reset_scheme = qb.reset.instrument_modules[steps[qb.name][i]]
                     except KeyError as e:
-                        log.error(f'Reset Step "{steps[qb.name][i]}" not known for {qb.name}.'
-                                  f' Available steps are: {qb.reset.instrument_modules.keys()}')
+                        log.error(
+                            f"Reset Step '{steps[qb.name][i]}' not known for {qb.name}."
+                            f"Available steps are: {qb.reset.instrument_modules.keys()}")
                         raise e
-                    step_blocks.append(reset_scheme.reset_block(
-                        f'step_{i}_{qb.name}',
-                        sweep_params=self._prep_sweep_params.get(
-                            qb.name, None)))
-            prep.append(self.simultaneous_blocks(f"Reset_step_{i}", step_blocks,
-                                      set_end_after_all_pulses=True,
-                                      block_align=step_alignment))
+
+                    simultaneous_blocks.append(
+                        reset_scheme.reset_block(
+                            f"step_{i}_{qb.name}",
+                            sweep_params=self._prep_sweep_params.get(qb.name, None),
+                        )
+                    )
+
+            # Finally append all parallel blocks of step i
+            prep.append(
+                self.simultaneous_blocks(
+                    f"Reset_step_{i}",
+                    simultaneous_blocks,
+                    set_end_after_all_pulses=True,
+                    block_align=step_alignment,
+                )
+            )
+
         return self.sequential_blocks(block_name, prep)
 
     def mux_readout(self, qb_names='all', element_name='RO', block_name="Readout",
