@@ -1240,15 +1240,10 @@ def get_reset_reps_from_data_dict(data_dict):
     """
     Retrieves the number of reset repetitions from a data dictionary.
 
-    This function parses a data dictionary from a quantum experiment to find
-    the number of reset repetitions specified in the experiment's metadata. It
-    supports both new and legacy formats for specifying reset parameters. If
-    'reset_params' is found within the 'exp_metadata', it translates this new
-    format to the legacy format understood by the analysis functions. If
-    'preparation_params' is specified instead, it directly fetches the reset
-    repetitions from this legacy format. If neither parameter is specified, or
-    if the 'active' reset preparation type isn't set, it defaults to 0 reset
-    repetitions.
+    This function parses a data dictionary to find the number of reset
+    repetitions. It supports both new and legacy formats for reset parameters.
+    If 'reset_params' is found, it translates to the legacy format. If neither
+    is set, it defaults to 0 reset repetitions.
 
     Args:
         data_dict (dict): The data dictionary containing experiment information,
