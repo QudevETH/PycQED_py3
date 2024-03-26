@@ -1093,20 +1093,20 @@ pauli_error_from_average_error = lambda avg_err, d: (1 + 1/d) * avg_err
 average_error_from_pauli_error = lambda pauli_err, d: pauli_err / (1 + 1/d)
 
 
-def calculate_cz_error(data_dict1, data_dict2, subtract_1qb_errors=True,
+def calculate_cz_error(data_dict2, data_dict1=None, subtract_1qb_errors=True,
                        **params):
     """
     Extracts the CZ error from fit results
 
     Args:
+        data_dict2 (dict): Two-qubit characterisation data dict
         data_dict1 (dict): Single-qubit characterisation data dict (only
             used if subtract_1qb_errors)
-        data_dict2 (dict): Two-qubit characterisation data dict
         subtract_1qb_errors (bool): Whether or not to subtract single-qubit
             errors from the two-qubit errors when calculating the CZ errors
     """
     timestamp = data_dict2['timestamps'][0]
-    meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict1, **params)
+    meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict2, **params)
     if meas_obj_names is None:
         meas_obj_names = hlp_mod.get_param_from_metadata_group(
             timestamp, 'meas_objs')
@@ -1338,10 +1338,10 @@ def get_multi_xeb_results_from_dd(dd2, dd1=None, meas_obj_names=None, **kw):
         cphase = dd['exp_metadata']['cphase']
         results[cphase] = res = {}
         res['tot'] = calculate_cz_error(
-            dd1, dd, meas_obj_names=meas_obj_names,
+            dd, dd1, meas_obj_names=meas_obj_names,
             metric='fidelity', error_type='average', **kw)
         res['inc'] = calculate_cz_error(
-            dd1, dd, meas_obj_names=meas_obj_names,
+            dd, dd1, meas_obj_names=meas_obj_names,
             metric='purity', error_type='average', **kw)
         res['coh'] = {
             'value': res['tot']['value'] - res['inc']['value'],
