@@ -6,6 +6,7 @@ import h5py
 import traceback
 import itertools
 import numpy as np
+import pycqed.analysis_v2.base_analysis as ba
 from numpy import array  # Needed for eval. Do not remove.
 from copy import deepcopy
 from collections import OrderedDict
@@ -1236,18 +1237,42 @@ def get_cal_sweep_points(sweep_points_array, cal_points, qb_name):
 
 
 def get_reset_reps_from_data_dict(data_dict):
+    """
+    Retrieves the number of reset repetitions from a data dictionary.
+
+    This function parses a data dictionary from a quantum experiment to find
+    the number of reset repetitions specified in the experiment's metadata. It
+    supports both new and legacy formats for specifying reset parameters. If
+    'reset_params' is found within the 'exp_metadata', it translates this new
+    format to the legacy format understood by the analysis functions. If
+    'preparation_params' is specified instead, it directly fetches the reset
+    repetitions from this legacy format. If neither parameter is specified, or
+    if the 'active' reset preparation type isn't set, it defaults to 0 reset
+    repetitions.
+
+    Args:
+        data_dict (dict): The data dictionary containing experiment information,
+            including metadata under 'exp_metadata'.
+
+    Returns:
+        int: The number of repetitions for reset operations, defaulting to 0
+            if not explicitly specified in the data dictionary.
+    """
     reset_reps = 0
     metadata = data_dict.get('exp_metadata', {})
-    if 'reset_params' in metadata:
-        import pycqed.analysis_v2.base_analysis as ba
-        # translate new reset params format to legacy format that the analysis
-        # understands
+
+    # new active reset
+    if "reset_params" in metadata:
         prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
-            metadata['reset_params'], default_value={})
-        if 'active' in prep_params.get(
-                'preparation_type', 'wait'):
-            reset_reps = prep_params.get(
-                'reset_reps', 3)
+            metadata["reset_params"], default_value={}
+        )
+        if "active" in prep_params.get("preparation_type", "wait"):
+            reset_reps = prep_params.get("reset_reps", 3)
+    # legacy reset/preparation
+    elif "preparation_params" in metadata:  
+        if "active" in metadata["preparation_params"].get("preparation_type", "wait"):
+            reset_reps = metadata["preparation_params"].get("reset_reps", 3)
+
     return reset_reps
 
 
@@ -1680,4 +1705,3 @@ def read_from_hdf(data_dict, hdf_group, split_char='.', raise_exceptions=False):
             raise e
         else:
             log.error(traceback.format_exc())
-
