@@ -18,6 +18,7 @@ from pycqed.analysis_v3 import rabi_analysis as rabi_ana
 from pycqed.analysis_v3 import ramsey_analysis as ramsey_ana
 from pycqed.analysis_v3 import randomized_benchmarking_analysis as rb_ana
 from pycqed.analysis_v3 import tomography_analysis as tomo_ana
+from pycqed.analysis_v3 import cost_functions as cf_mod
 
 
 from importlib import reload
@@ -35,3 +36,4 @@ def reload_anav3():
     reload(ramsey_ana)
     reload(rb_ana)
     reload(tomo_ana)
+    reload(cf_mod)

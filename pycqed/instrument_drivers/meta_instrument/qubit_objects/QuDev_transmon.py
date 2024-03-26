@@ -1528,6 +1528,8 @@ class QuDev_transmon(MeasurementObject):
         mixer. Uses the Nelder-Mead optimization algorithm and the scope_fft_det
         detector function.
 
+        FIXME: not tested after the changes in MC in !330
+
         Args:
             update:
                 Boolean flag, whether to update the qubit parameters with the
@@ -1621,6 +1623,8 @@ class QuDev_transmon(MeasurementObject):
                                         plot=True):
         """
         Calibrate readout upconversion mixer local oscillator leakage
+
+        FIXME: not tested after the changes in MC in !330
 
         Args:
             other_qb:
@@ -1846,6 +1850,8 @@ class QuDev_transmon(MeasurementObject):
         Measures the averaged signal of a square-pulse at the other sideband
         frequency. Uses the Nelder-Mead optimization algorithm and the
         int_avg_det_spec detector function.
+
+        FIXME: not tested after the changes in MC in !330
 
         Args:
             update:
