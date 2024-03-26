@@ -670,7 +670,7 @@ class CircuitBuilder:
               step_alignment='start', alignment="end",
               block_name=None, **kws):
         """
-        Resets a list of qubits using a sequence of steps (globally provided
+        Prepares a reset of a list of qubits using a sequence of steps (globally provided
         as argument to this function or individually specified from qubit.init.steps).
 
         qb0 --[step 0 ] -- ... - [step i]
@@ -695,7 +695,7 @@ class CircuitBuilder:
                 same number of times across all qubits sharing that acquisition
                 device. Note that this function does not name the elements explicitly
                 for the acquisition (this is handled by Segment.add()),
-                and it WILL ALLOW steps which do not satisfy this
+                and it DOES ALLOW steps which do not satisfy this
                 constraint (in case the constraint is relaxed in the future by the
                 instrument drivers).
             step_alignment (str): "start", "center" or "end". Indicates whether
