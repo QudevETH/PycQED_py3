@@ -16,8 +16,8 @@ from matplotlib.figure import Figure
 from pycqed.analysis import analysis_toolbox
 from pycqed.analysis_v2.base_analysis import BaseDataAnalysis
 from pycqed.gui import gui_utilities
-from pycqed.gui.analysis_viewer.iterators import (
-    TimestampBidirectionalIterator, ExperimentIterator, BidirectionalIterator)
+from pycqed.gui.analysis_viewer.iterators import (ExperimentIterator,
+                                                  BidirectionalIterator)
 from pycqed.gui.gui_utilities import TriggerResizeEventMixin, \
     reinitialize_toolbar
 from pycqed.gui.qt_compat import QtWidgets, QtCore, QtGui
@@ -68,9 +68,7 @@ class AnalysisViewer(object):
 
         # Get daystamps and setup iterator with them.
         daystamps = analysis_toolbox.get_all_daystamps(analysis_toolbox.datadir)
-        experiment_iterator = ExperimentIterator(
-            TimestampBidirectionalIterator(daystamps)
-        )
+        experiment_iterator = ExperimentIterator(daystamps)
 
         # Create MainWindow which is responsible for the whole functionality.
         if isinstance(base_data_analysis, BaseDataAnalysis):

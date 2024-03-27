@@ -60,6 +60,19 @@ class BidirectionalIterator(object):
         self.index = index
         return self.collection[self.index]
 
+    def reset(self):
+        """Resets the iterator to starting position"""
+        self.index = -1
+
+    def first(self) -> Any:
+        """Gets the first element and points `index` to it.
+
+        Returns:
+            The first element of the collection.
+        """
+        self.reset()
+        return self.next()
+
     def last(self) -> Any:
         """Gets the last element and points `index` to it.
 
@@ -137,6 +150,24 @@ class TimestampBidirectionalIterator(object):
         self.timestamp_iterator = BidirectionalIterator(
             analysis_toolbox.get_timestamps_by_daystamp(daystamp))
 
+    def set_pointer_to_timestamp(self, timestamp_folder: str):
+        """Points the iterator to `timestamp_folder`.
+
+        Args:
+            `timestamp_folder`: string which specifies full path to a folder
+                that holds the HDF5 file of the experiment. For example
+                'C:\\\\Users\\\\Username\\\\pycqed\\\\data\\\\20230511
+                \\\\141202_resonator_scan_qb1'. (Quadruple backslashes used
+                for sphinx documentation generation, actual values should use
+                single backslashes).
+        """
+        self.timestamp_iterator.reset()
+        self.daystamp_iterator.reset()
+        while True:
+            current = self.next()
+            if timestamp_folder == current:
+                break
+
     def next(self) -> str:
         """Gets next element.
 
@@ -149,7 +180,9 @@ class TimestampBidirectionalIterator(object):
         Returns:
             str: A timestamp folder path. For example:
                 'C:\\\\Users\\\\Username\\\\pycqed\\\\data\\\\20230511
-                \\\\141202_resonator_scan_qb1'.
+                \\\\141202_resonator_scan_qb1'. (Quadruple backslashes used
+                for sphinx documentation generation, actual values should use
+                single backslashes).
         """
         try:
             result = self.timestamp_iterator.next()
@@ -174,7 +207,9 @@ class TimestampBidirectionalIterator(object):
         Returns:
             str: A timestamp folder path. For example:
                 'C:\\\\Users\\\\Username\\\\pycqed\\\\data\\\\20230511
-                \\\\141202_resonator_scan_qb1'.
+                \\\\141202_resonator_scan_qb1'. (Quadruple backslashes used
+                for sphinx documentation generation, actual values should use
+                single backslashes).
         """
         try:
             result = self.timestamp_iterator.prev()
@@ -201,62 +236,54 @@ class TimestampBidirectionalIterator(object):
         Returns:
             str: A timestamp folder path. For example:
                 'C:\\\\Users\\\\Username\\\\pycqed\\\\data\\\\20230511
-                \\\\141202_resonator_scan_qb1'.
+                \\\\141202_resonator_scan_qb1'. (Quadruple backslashes used
+                for sphinx documentation generation, actual values should use
+                single backslashes).
         """
         return self.next()
 
 
-class ExperimentIterator(object):
+class ExperimentIterator(TimestampBidirectionalIterator):
     """Specific iterator for `BaseDataAnalysis` objects created from timestamps.
 
-    Wrapping class to use with `TimestampBidirectionalIterator`. It converts
-    the timestamps into `BaseDataAnalysis` objects if a given timestamp has a
+    Child class of `TimestampBidirectionalIterator`. It converts the
+    timestamps into `BaseDataAnalysis` objects if a given timestamp has a
     job string saved in its HDF5 file. If not, it traverses the iterator (in
     the given direction) until it finds a timestamp with a job file. Then
     from the job string it recreates the experiment object and return it.
-
-    Attributes:
-        timestamp_bidirectional_iterator: `TimestampBidirectionalIterator`
-            for iteration
 
     Raises:
         StopIteration: if iteration end is reached in either direction.
     """
 
-    def __init__(self,
-                 timestamp_bidirectional_iterator:
-                 TimestampBidirectionalIterator):
-        """Initializes with `timestamp_bidirectional_iterator` provided.
-
-        Args:
-            timestamp_bidirectional_iterator:
-                `TimestampBidirectionalIterator` used for actual iteration,
-                from whose elements `BaseDataAnalysis` objects are recovered.
-        """
-        self.timestamp_bidirectional_iterator: TimestampBidirectionalIterator \
-            = timestamp_bidirectional_iterator
-
     def set_pointer_to_timestamp(self, timestamp_folder: str):
-        """Points `timestamp_bidirectional_iterator` to `timestamp_folder`.
+        """Points iterator to `timestamp_folder`.
 
         Args:
             `timestamp_folder`: string which specifies full path to a folder
                 that holds the HDF5 file of the experiment. For example
                 'C:\\\\Users\\\\Username\\\\pycqed\\\\data\\\\20230511
-                \\\\141202_resonator_scan_qb1'.
+                \\\\141202_resonator_scan_qb1'. (Quadruple backslashes used
+                for sphinx documentation generation, actual values should use
+                single backslashes).
         """
+        self.timestamp_iterator.reset()
+        self.daystamp_iterator.reset()
         while True:
-            current = self.timestamp_bidirectional_iterator.next()
+            # The super() here is important, because the parent class deals
+            # with timestamps. On the other hand, the ExperimentIterator.next()
+            # returns a BaseAnalysis object and not a string. That's why this
+            # method is overloaded.
+            current = super().next()
             if timestamp_folder == current:
                 break
 
     def next(self) -> base_analysis.BaseDataAnalysis:
         """Gets next element.
 
-        Iterates over `self.timestamp_bidirectional_iterator` in a forward
-        direction until it finds an experiment with a job string saved in
-        HDF5 file from which an analysis/experiment object can be constructed
-        and returns it.
+        Iterates in a forward direction until it finds an experiment with a
+        job string saved in HDF5 file from which an analysis/experiment
+        object can be constructed and returns it.
 
         Raises:
             StopIteration: if iteration end is reached in forward direction.
@@ -266,18 +293,16 @@ class ExperimentIterator(object):
         """
         analysis_object = None
         while not isinstance(analysis_object, base_analysis.BaseDataAnalysis):
-            experiment_folder_path = (
-                self.timestamp_bidirectional_iterator.next())
+            experiment_folder_path = super().next()
             analysis_object = self._get_analysis_object(experiment_folder_path)
         return analysis_object
 
     def prev(self) -> base_analysis.BaseDataAnalysis:
         """Gets previous element.
 
-        Iterates over `self.timestamp_bidirectional_iterator` in a backward
-        direction until it finds an experiment with a job string saved in
-        HDF5 file from which an analysis/experiment object can be constructed
-        and returns it.
+        Iterates in a backward direction until it finds an experiment with a
+        job string saved in HDF5 file from which an analysis/experiment
+        object can be constructed and returns it.
 
         Raises:
             StopIteration: if iteration end is reached in backward direction.
@@ -287,8 +312,7 @@ class ExperimentIterator(object):
         """
         analysis_object = None
         while not isinstance(analysis_object, base_analysis.BaseDataAnalysis):
-            experiment_folder_path = (
-                self.timestamp_bidirectional_iterator.prev())
+            experiment_folder_path = super().prev()
             analysis_object = self._get_analysis_object(experiment_folder_path)
         return analysis_object
 
@@ -312,19 +336,3 @@ class ExperimentIterator(object):
                     .get_analysis_object_from_hdf5_file_path(file_path))
         except Exception:
             return None
-
-    def __iter__(self):
-        """Ensures compliance with python iterator interface.
-
-        Returns:
-            ExperimentIterator: self.
-        """
-        return self
-
-    def __next__(self) -> base_analysis.BaseDataAnalysis:
-        """Ensures compliance with python iterator interface.
-
-        Returns:
-            base_analysis.BaseDataAnalysis: `BaseDataAnalysis` object.
-        """
-        return self.next()
