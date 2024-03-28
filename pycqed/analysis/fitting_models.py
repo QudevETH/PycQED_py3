@@ -468,8 +468,26 @@ def CosFunc(t, amplitude, frequency, phase, offset):
 
 
 def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
-    """
-    function used for fitting model, that fits the following equation:
+    """Calculates the damped oscillation value based on Dr. Paul Magnard's model.
+
+    This function implements equation 5.3 from Dr. Paul Magnard's PhD Thesis (2021).
+
+    Args:
+        t (float): Time value.
+        amp (float): Amplitude.
+        gamma (float): Damping coefficient.
+        kappa (float): Coupling coefficient. 
+        mu_a (float): Coefficient of the oscillation term.
+        mu_b (float): Baseline offset.
+        t0 (float): Initial time.
+        c1 (float): Linear coefficient for coupling strength calculation.
+        c3 (float): Third-order coefficient for coupling strength calculation.
+        c5 (float): Fifth-order coefficient for coupling strength calculation.
+
+    Returns:
+        float: The calculated damped oscillation value at time 't'.
+  
+    Function used for fitting model, that fits the following equation:
 
     Dr. Paul Magnard PhD Thesis, 2021 - equation 5.3 :
                        Γ                                                                                              -
