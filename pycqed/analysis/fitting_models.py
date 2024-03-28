@@ -494,8 +494,19 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
 
 
 def damped_oscillation_guess(model, t, data, **kw):
-    """
-    this function is used to give initial parameters to the fitting model of the damped_oscillation
+    """Provides initial parameter guesses for a damped oscillation fitting model.
+
+    This function generates reasonable starting values for parameters used in
+    damped oscillation modeling.
+
+    Args:
+        model: The fitting model object.
+        t: Time data (independent variable).
+        data: Observed data.
+        **kw: Additional keyword arguments (not used in this function).
+
+    Returns:
+        model.parameters: A parameters object with initial guesses.
     """
 
     params = model.make_params()
@@ -511,18 +522,28 @@ def damped_oscillation_guess(model, t, data, **kw):
 
     return params
 
-def tanh(t, m, n, a, b):
-    """
-    function used for fitting model, that fits the following equation:
+def tanh_fit(t, m, n, a, b):
+    """Function used for fitting model.
+    
+    It fits the following equation:
+        a * (np.tanh(m * t + n) + 1)
     """
     # return a * (np.tanh(m * t + n) + b)
     return a * (np.tanh(m * t + n) + 1)
 
 def tanh_guess(model, t, data):
-    """
-    this function is used to give initial parameters to the fitting model of the tanh
+    """Provides initial parameter guesses for a tanh fitting model.
 
-    we get some approximate values using the following formulas:
+    This function estimates starting parameters for a model fitting a hyperbolic
+    tangent (tanh_fit) function based on the provided data.
+
+    Args:
+        model: The fitting model object.
+        t: Time data (independent variable).
+        data: Observed data.
+
+    Returns:
+        model.parameters: A parameters object with initial guesses.
     """
 
     t, data = np.array(t), np.array(data) #use data as numpy array
@@ -1858,7 +1879,7 @@ GaussianModel_v2 = lmfit.models.GaussianModel
 PolynomialModel = lmfit.models.PolynomialModel
 DampedOscillationModel = lmfit.Model(damped_oscillation, independent_vars=['t', 'amp'])
 DampedOscillationModel.guess = damped_oscillation_guess.__get__(DampedOscillationModel, DampedOscillationModel.__class__)
-TanhModel = lmfit.Model(tanh)
+TanhModel = lmfit.Model(tanh_fit)
 TanhModel.guess = tanh_guess.__get__(TanhModel, TanhModel.__class__)
 
 # 2D models
