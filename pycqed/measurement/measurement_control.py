@@ -729,6 +729,8 @@ class MeasurementControl(Instrument):
     def measurement_function(self, x, index=None):
         '''
         Core measurement function used for soft sweeps
+
+        FIXME: not tested for len(self.sweep_functions) > 2
         '''
         if self.print_debug:
             print("####### measurement_function")
