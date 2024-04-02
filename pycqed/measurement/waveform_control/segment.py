@@ -23,6 +23,7 @@ from collections import OrderedDict as odict
 import re
 from pycqed.utilities.general import temporary_value
 import functools
+from collections import defaultdict
 
 
 def _with_pulsar_tmp_vals(f):
@@ -1546,34 +1547,44 @@ class Segment:
         if len(overlapping_elements) == 0:
             return
 
-        # add first two overlapping elements to list
-        joint_overlapping_elements = [overlapping_elements[0]]
+        def disjoint_graphs(edges):
+            """
+            Merges overlapping_elements into lists of sets.
+            """
+            node_connections = defaultdict(list)
+            sets = []
+            traversed = list()
+            for node1, node2 in edges:
+                node_connections[node1].append(node2)
+                node_connections[node2].append(node1)
 
-        new_cluster = True
-        for i in range(len(overlapping_elements) - 1):
-            # check whether the next set of elements from
-            # overlapping_elements shares an element name with
-            # the previous entry in joint_overlapping_elements
-            for j in range(len(joint_overlapping_elements)):
-                if len(joint_overlapping_elements[j] & \
-                       overlapping_elements[i + 1]) != 0:
-                    joint_overlapping_elements[j] = \
-                        joint_overlapping_elements[j] | \
-                        overlapping_elements[i + 1]
-                    new_cluster = False
+            for node in node_connections.keys():
+                # iterate over nodes
+                if node not in traversed:
+                    # we found new subset! let's go BFS
+                    sets.append(list())
+                    traversed.append(node)
+                    sets[-1].append(node)
+                    node_stack = list(node_connections[node])
+                    stack_pointer = 0
+                    while stack_pointer < len(node_stack):
+                        # iterate over stack
+                        node2 = node_stack[stack_pointer]
+                        if node2 in traversed:
+                            stack_pointer += 1
+                            continue
+                        traversed.append(node2)
+                        sets[-1].append(node2)
+                        node_stack.extend(node_connections[node2])
+                        stack_pointer += 1
+            sets = [set(s) for s in sets]
+            return sets
 
-            # if the new element from overlapping_elements overlaps
-            # with none of the previously added elements in
-            # joint_overlapping_elements (i.e. if new_cluster=True)
-            # add it as a new cluster.
-            if new_cluster:
-                joint_overlapping_elements.append(overlapping_elements[i + 1])
-            new_cluster = True
+        joint_overlapping_elements = disjoint_graphs(overlapping_elements)
 
         for i in range(len(joint_overlapping_elements)):
             self._combine_elements(joint_overlapping_elements[i],
                                    'overlapping_el_{}_{}'.format(i, self.name))
-
 
     def _combine_elements(self, elements, combined_el_name):
         """
