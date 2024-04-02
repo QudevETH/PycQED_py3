@@ -115,8 +115,7 @@ class CircuitBuilder:
             Otherwise, an exception is raised.
 
         Returns:
-            reset_parameters (dict, None):
-
+            reset_parameters (dict, None): FIXME
         """
         if isinstance(reset_params, str):
             return dict(steps=[reset_params])
@@ -205,14 +204,14 @@ class CircuitBuilder:
             reset_params (dict): deep copy of preparation parameters
 
         """
-        if self.reset_params is None:
-            reset_params = {}
-        else:
-            reset_params = deepcopy(self.reset_params)
+        reset_params = deepcopy(self.reset_params) or {}
 
+        # collect them from CircuitBuilder
         steps, analysis_instructions = self._get_reset_steps(
             qb_names=reset_params.get('qb_names', qb_names),
             steps=reset_params.get('steps', None))
+
+        # return reset_steps, analysis_instructions
         reset_params.update(dict(steps=steps, analysis_instructions=
                                  analysis_instructions))
         return reset_params
@@ -229,6 +228,8 @@ class CircuitBuilder:
                 from qb.reset.steps
 
         Returns:
+            reset_steps (dict): preparation parameters
+            analysis_instructions (dict)
 
         """
         qubits, qb_names = self.get_qubits(qb_names)
@@ -795,13 +796,11 @@ class CircuitBuilder:
         if reset_params is None:
             reset_params = self.get_reset_params(qb_names)
 
-        if reset_params.get('location', 'start') == 'end':
-            if len(reset_params) != 0:
-                return self.sequential_blocks(
-                    f"{block_name}_and_reset",
-                    [block, self.reset(**reset_params)])
-            else:
-                return block
+        if reset_params.get("location", "start") == "end":
+            return self.sequential_blocks(
+                f"{block_name}_and_reset",
+                [block, self.reset(**reset_params)]
+            )
         else:
             return block
 
@@ -1113,23 +1112,29 @@ class CircuitBuilder:
         """
 
         simultaneous = Block(block_name, [])
+
         if not hasattr(destroy, '__iter__'):
             destroy = [destroy] * len(blocks)
+
         simultaneous_end_pulses = []
+
+        # saves computation time in Segment.resolve_timing
         if block_align == 'start':
-            # saves computation time in Segment.resolve_timing
             block_align = None
+
         for block, d in zip(blocks, destroy):
             if set_end_after_all_pulses:
                 block.set_end_after_all_pulses()
             # if there is already custom block start, then just update it
             # with block alignment otherwise create it
-            bs = block.block_start if len(block.block_start) else {}
-            bs.update(dict(block_align=block_align))
+            block_start = block.block_start or {'block_align': block_align}
             simultaneous.extend(block.build(
-                ref_pulse=f"start", block_start=bs,
-                name=block.name if disable_block_counter else None, destroy=d))
+                ref_pulse=f"start", block_start=block_start,
+                name=block.name if disable_block_counter else None,
+                destroy=d))
+            # FIXME: This start block is quite contrary to its name, added to the end
             simultaneous_end_pulses.append(simultaneous.pulses[-1]['name'])
+
         # the name of the simultaneous_end_pulse is used in
         # Segment.resolve_timing and should not be changed
         simultaneous.extend([{"name": f"simultaneous_end_pulse",
