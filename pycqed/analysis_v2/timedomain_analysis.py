@@ -3699,7 +3699,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 suffix = '_amp' if p == 0 else '_freq'
                 mask = pdd['mask'][qb]
                 xlabel = r'Flux pulse amplitude' if p == 0 else \
-                    r'Derived qubit frequency'
+                    r'Derived qubit ge frequency'
 
                 if self.do_fitting:
                     # Plot T1 vs flux pulse amplitude
@@ -3746,7 +3746,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'yvals': 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask],
                     'xlabel': xlabel,
                     'xunit': 'V' if p == 0 else 'Hz',
-                    'ylabel': r'Pop. loss @ {:.0f} ns'.format(
+                    'ylabel': r'Pop. loss {} @ {:.0f} ns'.format(
+                        self.data_to_fit[qb],
                         self.lengths[qb][0]/1e-9
                     ),
                     'yunit': '',
@@ -3840,28 +3841,43 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         pdd['T2'] = {}
         pdd['T2_err'] = {}
         pdd['phase_contrast'] = {}
+        pdd['phase_contrast_stderr'] = {}
         nr_lengths = len(self.metadata['flux_lengths'])
         nr_amps = len(self.metadata['amplitudes'])
 
-        guess_pars_dict_default ={qb: dict(amplitude=dict(value=0.5),
-                                       decay=dict(value=1e-6),
-                                       ) for qb in self.qb_names}
+        guess_pars_dict_default = {
+            qb: dict(amplitude=dict(value=0.5, vary=True),
+                     decay=dict(value=1e-6, vary=True),
+                     # FIXME vary=True seems to prevent convergence
+                     n=dict(value=2, vary=False, min=1, max=2),
+                     ) for qb in self.qb_names}
 
         gaussian_decay_func = \
-            lambda x, amplitude, decay, n=2: amplitude * np.exp(-(x / decay) ** n)
+            lambda x, amplitude, decay, n: amplitude * np.exp(-(x / decay) ** n)
 
         for qb in self.qb_names:
             pdd['phase_contrast'][qb] = {}
+            pdd['phase_contrast_stderr'][qb] = {}
+            pdd['mask'][qb] = [True]*len(self.metadata['amplitudes'])
             exp_mod = self.get_param_value('exp_fit_mod',
                                            lmfit.Model(gaussian_decay_func))
             guess_pars_dict = self.get_param_value("guess_pars_dict",
                                                    guess_pars_dict_default)[qb]
             for i in range(nr_amps):
-                pdd['phase_contrast'][qb][f'amp_{i}'] = np.array([self.fit_res[
-                                                        f'cos_fit_{qb}_{i}_{j}'
-                                                    ].best_values['amplitude']
-                                                    for j in
-                                                    range(nr_lengths)])
+                pdd['phase_contrast'][qb][f'amp_{i}'] = np.array(
+                    [self.fit_res[f'cos_fit_{qb}_{i}_{j}'].best_values[
+                         'amplitude'] for j in range(nr_lengths)])
+                pdd['phase_contrast_stderr'][qb][f'amp_{i}'] = np.array(
+                    [self.fit_res[f'cos_fit_{qb}_{i}_{j}'].params[
+                         'amplitude'].stderr for j in range(nr_lengths)])
+                for key in ['phase_contrast', 'phase_contrast_stderr']:
+                    if None in pdd[key][qb][f'amp_{i}']:
+                        log.warning(f"None values in {key} cos fit for "
+                                    f"amplitude {i}! Skipping.")
+                        pdd['mask'][qb][i] = False
+                        continue  # No need to check all keys in that case
+
+
                 for par, params in guess_pars_dict.items():
                     exp_mod.set_param_hint(par, **params)
                 guess_pars = exp_mod.make_params()
@@ -3870,124 +3886,146 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'fit_fn': exp_mod.func,
                     'guess_pars': guess_pars,
                     'fit_xvals': {'x': self.get_param_value('flux_lengths')},
-                    'fit_yvals': {'data': np.array([self.fit_res[
-                                                        f'cos_fit_{qb}_{i}_{j}'
-                                                    ].best_values['amplitude']
-                                                    for j in
-                                                    range(nr_lengths)])}}
+                    'fit_yvals': {
+                        'data': pdd['phase_contrast'][qb][f'amp_{i}']},
+                }
 
 
             self.run_fitting()
 
             pdd['T2'][qb] = np.array([
-                abs(self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay'])
+                self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay']
+                if f'exp_fit_{qb}_{i}' in self.fit_res else None
                 for i in range(len(self.metadata['amplitudes']))])
             pdd['T2_err'][qb] = np.array([
-                abs(self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr)
+                self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr
+                if f'exp_fit_{qb}_{i}' in self.fit_res else None
                 for i in range(len(self.metadata['amplitudes']))])
 
-            pdd['mask'][qb] = []
             for i in range(len(self.metadata['amplitudes'])):
                 try:
-                    if self.fit_res[f'exp_fit_{qb}_{i}']\
-                                            .params['decay'].stderr >= 1e-5:
-                        pdd['mask'][qb].append(False)
-                    else:
-                        pdd['mask'][qb].append(True)
+                    if (pdd['T2_err'][qb][i] is None
+                            or pdd['T2_err'][qb][i] >= 1e-5):
+                        pdd['mask'][qb][i] = False
                 except TypeError:
-                    pdd['mask'][qb][i].append(False)
+                    pdd['mask'][qb][i] = False
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
         rdd = self.raw_data_dict
+        colormap = self.get_param_value('colormap', mpl.cm.viridis)
+        freqs = self.get_param_value('frequencies')
+        delays = self.get_param_value('flux_lengths')
 
         for qb in self.qb_names:
             mask = pdd['mask'][qb]
-            label = f'T2_fit_{qb}'
-            xvals = self.metadata['amplitudes'][mask] if \
-                self.metadata['frequencies'] is None else \
-                self.metadata['frequencies'][mask]
-            xlabel = r'Flux pulse amplitude' if \
-                self.metadata['frequencies'] is None else \
-                r'Derived qubit frequency'
-            self.plot_dicts[label] = {
-                'plotfn': self.plot_line,
-                'linestyle': '-',
-                'xvals': xvals,
-                'yvals': pdd['T2'][qb][mask],
-                'yerr': pdd['T2_err'][qb][mask],
-                'xlabel': xlabel,
-                'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
-                'ylabel': r'T2',
-                'yunit': 's',
-                'color': 'blue',
-            }
 
-            # Plot all fits in single figure
-            if not self.get_param_value('all_fits', True):
-                continue
-
-            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
                 color = colormap(i/(len(self.metadata['amplitudes'])-1))
-                label = f'exp_fit_{qb}_{i}'
-                freqs = self.get_param_value('frequencies')
-                fitid = self.metadata['amplitudes'][i] if freqs is None else \
-                        self.get_param_value('frequencies')[i]
+                fitid = self.get_param_value('amplitudes')[i] if\
+                    freqs is None else self.get_param_value('frequencies')[i]
+
+                if self.get_param_value('all_fits', False):
+                    label = f'cos_fit_{qb}_{i}'
+                    # Raw data plot for pulse amplitude i, as a function of
+                    # phase, coloured by pulse length
+                    self.plot_dicts[label + '_data'] = {
+                        'ax_id': label,
+                        'plotfn': self.plot_line,
+                        'xvals': [self.metadata['phases']]*len(delays),
+                        'linestyle': '',
+                        'yvals': pdd['data_reshaped_no_cp'][qb][i],
+                        'color': [colormap(j/(len(delays)-1)) for j
+                                  in range(len(delays))],
+                        'xlabel': r'Phase',
+                        'xunit': '°',
+                        'ylabel': r'Excited state population',
+                        }
+                    # Corresponding cos fit
+                    for j in range(len(delays)):  # FIXME no loop would be nice
+                        self.plot_dicts[label + f"_{j}"] = {
+                            'ax_id': label,
+                            'plotfn': self.plot_fit,
+                            'color': colormap(j/(len(delays)-1)),
+                            'fit_res': self.fit_res[label + f"_{j}"],
+                            }
+                    # Same raw data, as a 2D plot
+                    self.plot_dicts[label + '_data_2D'] = {
+                        # 'ax_id': f'T2_fits_{qb}_phases',
+                        'plotfn': self.plot_colorxy,
+                        'yvals': self.metadata['phases'],
+                        'xvals': self.metadata['flux_lengths'],
+                        'zvals': pdd['data_reshaped_no_cp'][qb][i].T,
+                        'zrange': [0, 1],
+                        'xlabel': 'Flux pulse length',
+                        'xunit': 's',
+                        'ylabel': 'Phase',
+                        'yunit': '°',
+                        'plotcbar': True,
+                        'clabel': f"Excited state population (%)",
+                    }
+
+                if mask[i]:
+                    # Contrast (amplitude) from the cos fits, as a function of
+                    # pulse length, coloured by pulse amplitude
+                    label = f'exp_fit_{qb}_{i}'
+                    self.plot_dicts[label + 'data'] = {
+                        'ax_id': f'T2_fits_{qb}',
+                        'plotfn': self.plot_line,
+                        "xvals": delays,
+                        "yvals": pdd['phase_contrast'][qb][f'amp_{i}'],
+                        "yerr": pdd['phase_contrast_stderr'][qb][f'amp_{i}'],
+                        "marker": "o",
+                        'plot_init': self.options_dict.get('plot_init', False),
+                        'color': color,
+                        'setlabel': f'freq={fitid:.4f}' if freqs
+                            else f'amp={fitid:.4f}',
+                        'do_legend': False,
+                        'legend_bbox_to_anchor': (1, 1),
+                        'legend_pos': 'upper left',
+                        'linestyle': "none",
+                    }
+                    # Corresponding exponential fit
+                    self.plot_dicts[label] = {
+                        'title': rdd['measurementstring'] +
+                                '\n' + rdd['timestamp'],
+                        'ax_id': f'T2_fits_{qb}',
+                        'xlabel': r'Flux pulse length',
+                        'xunit': 's',
+                        'ylabel': r'Excited state population',
+                        'plotfn': self.plot_fit,
+                        'fit_res': self.fit_res[label],
+                        'plot_init': self.get_param_value('plot_init', False),
+                        'color': color,
+                        'setlabel': f'freq={fitid:.4f}' if freqs
+                                            else f'amp={fitid:.4f}',
+                        'do_legend': False,
+                        'legend_bbox_to_anchor': (1, 1),
+                        'legend_pos': 'upper left',
+                        }
+
+            if np.sum(mask):
+                label = f'T2_fit_{qb}'
+                xvals = self.metadata['amplitudes'][mask] if \
+                    self.metadata['frequencies'] is None else \
+                    self.metadata['frequencies'][mask]
+                xlabel = r'Flux pulse amplitude' if \
+                    self.metadata['frequencies'] is None else \
+                    r'Derived qubit ge frequency'
+                # Final T2(freq or amp) plot
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
                             '\n' + rdd['timestamp'],
-                    'ax_id': f'T2_fits_{qb}',
-                    'xlabel': r'Flux pulse length',
-                    'xunit': 's',
-                    'ylabel': r'Excited state population',
-                    'plotfn': self.plot_fit,
-                    'fit_res': self.fit_res[label],
-                    'plot_init': self.get_param_value('plot_init', False),
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                                        else f'amp={fitid:.4f}',
-                    'do_legend': False,
-                    'legend_bbox_to_anchor': (1, 1),
-                    'legend_pos': 'upper left',
-                    }
-                delays = self.get_param_value('flux_lengths')
-                phase_contrasts = np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
-                                            ].best_values['amplitude']
-                                            for j in
-                                            range(len(delays))])
-                phase_contrasts_stderr = \
-                    np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
-                              ].params['amplitude'].stderr
-                              for j in
-                              range(len(delays))])
-                self.plot_dicts[label + 'data'] = {
-                    'ax_id': f'T2_fits_{qb}',
                     'plotfn': self.plot_line,
-                    "xvals": delays,
-                    "yvals": phase_contrasts,
-                    "yerr": phase_contrasts_stderr,
-                    "marker": "o",
-                    'plot_init': self.options_dict.get('plot_init', False),
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                    else f'amp={fitid:.4f}',
-                    'do_legend': False,
-                    'legend_bbox_to_anchor': (1, 1),
-                    'legend_pos': 'upper left',
-                    'linestyle': "none",
-                }
-
-                label = f'phases_{qb}_ampl{i}'
-                self.plot_dicts[label] = {
-                    'ax_id': f'T2_fits_{qb}_phases',
-                    'plotfn': self.plot_line,
-                    'xvals': self.metadata['phases'],
-                    'linestyle': '',
-                    'yvals': pdd['data_reshaped_no_cp'][qb][i,:],
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                                        else f'amp={fitid:.4f}',
+                    'linestyle': '-',
+                    'xvals': xvals,
+                    'yvals': pdd['T2'][qb][mask],
+                    'yerr': pdd['T2_err'][qb][mask],
+                    'xlabel': xlabel,
+                    'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
+                    'ylabel': r'T2',
+                    'yunit': 's',
+                    'color': 'tab:green',
                 }
 
 
