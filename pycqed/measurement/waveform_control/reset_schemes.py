@@ -11,14 +11,30 @@ from qcodes.utils import validators
 
 class ResetScheme(InstrumentModule):
     """
-    Basic control and execution of the Active Reset scheme.
+    Provides basic control and execution of the Active Reset scheme.
+
+    This class enables flexible configuration of Active Reset schemes. It allows
+    users to define timings, priorities, and buffers for the reset process.
+    Parameters can be inherited from parent operations or customized directly.
     """
-    # By default the reset scheme takes default values from the parent
-    # operation declared in the qubit.
+
+    # By default the reset scheme uses default values from the parent
+    # operation declared in the qubit. This is realized via deepcopy
+    # and marking parameters with a DEFAULT_VALUE.
     DEFAULT_VALUE = "from parent"
 
     def __init__(self, parent, name, operations=(),
                  ref_instrument=None, sweep_params=None, **kwargs):
+        """Initializes a ResetScheme instance.
+
+        Args:
+          parent: The parent instrument or operation.
+          name: The name of the ResetScheme instance.
+          operations: A tuple of operations to be included in the reset scheme.
+          ref_instrument: An optional reference instrument (if different from parent).
+          sweep_params: Parameters for sweeping.
+          **kwargs: Additional keyword arguments.
+        """
         super().__init__(parent, name, **kwargs)
 
         self.add_parameter('repetitions', label='repetitions',
@@ -41,7 +57,7 @@ class ResetScheme(InstrumentModule):
                            vals=validators.Numbers(),
                            parameter_class=ManualParameter)
 
-        # FIXME: better name?
+# FIXME: better name?
         self.add_parameter('repetition_buffer_start', label='repetition_buffer_start',
                            unit="s", initial_value=0,
                            vals=validators.Numbers(),
@@ -74,12 +90,22 @@ class ResetScheme(InstrumentModule):
         for operation in operations:
             self.add_operation(operation)
 
-        # create a repetition counter so that _init_block() knows about
+        # Create a repetition counter so that _init_block() knows about
         # the repetition at run time
         self._rep = 0
 
 
     def add_operation(self, operation_name, init_values=None):
+        """
+        Adds an operation to the ResetScheme.
+
+        Args:
+            operation_name: The name of the operation to add.
+            init_values: Optional dictionary of initial values for operation parameters.
+
+        Raises:
+            ValueError: If the operation is unknown to the reference instrument.
+        """
         if operation_name not in self.instr_ref.operations():
             raise ValueError(f'Operation name {operation_name} unknown to '
                              f'reference instrument {self.instr_ref.name}.'
@@ -108,15 +134,39 @@ class ResetScheme(InstrumentModule):
                                parameter_class=ManualParameter)
 
     def _get_operations(self):
+        """Returns a list of available operations.
+
+        Returns:
+            A list of operations.
+        """
         return self._operations
 
     def reset_block(self, name=None, sweep_params=None, **block_kwargs):
+        """
+        Constructs the reset block with repetitions and buffer intervals.
+
+        This function assembles the reset block, incorporating repetitions and associated 
+        buffer intervals. For each repetition, the `_reset_block` method is called to 
+        generate the core reset instructions. 
+
+        Args:
+            name: Optional name for the reset block. If not provided, the short name 
+                  of the `ResetScheme` instance is used.
+            sweep_params: Optional parameters for sweeping.
+            **block_kwargs: Additional keyword arguments to be passed to the 
+                            `Block` constructor.
+
+        Returns:
+            block_mod.Block: The constructed reset block object.
+        """
         if name is None:
             name = self.short_name
+
         init = block_mod.Block(block_name=name, pulse_list=[])
-        self._rep = 0 # set repetition counter to 0
+        self._rep = 0 # Reset internal repetition counter
+
+        # Build blocks with buffers for repetitions
         for i in range(self.repetitions()):
-            # build block with buffers for repetition i
             init_i = self._reset_block(name + f'_{i}', sweep_params,
                                        **block_kwargs).build(
                 block_delay=self.repetition_buffer_start(),
@@ -124,23 +174,40 @@ class ResetScheme(InstrumentModule):
             init.extend(init_i)
             self._rep += 1
 
-        # add buffers for the total init block
-        bs = {"pulse_delay": self.buffer_start()}
-        be = {"pulse_delay": self.buffer_end()}
-        be.update(self.block_end())
-        bs.update(self.block_start())
-        init.block_start.update(bs)
-        init.block_end.update(be)
+        # Add buffers for the total init block
+        block_start = {"pulse_delay": self.buffer_start()}
+        block_end = {"pulse_delay": self.buffer_end()}
+        block_end.update(self.block_end())
+        block_start.update(self.block_start())
+        init.block_start.update(block_start)
+        init.block_end.update(block_end)
         return init
 
+# FIXME: a private method with the same name as the one above?
+# this happens a few more times...
+# FIXME: sweep_params is not accessed, why is it here?
     def _reset_block(self, name, sweep_params, **kwargs):
         return block_mod.Block(name, [], **kwargs)
 
-    # FIXME: this is a duplicate of the one in qubit_object; find where
-    #   we can put in hierarchy such that we can access it without dupplication
+# FIXME: this is a duplicate of the one in qubit_object; find where
+# we can put in hierarchy such that we can access it without dupplication
     def get_operation_dict(self, operation_dict=None):
+        """
+        Generates an operation dictionary for the ResetScheme.
+
+        This function creates a dictionary of operations, combining parameters from the reference 
+        instrument with initialization-specific parameters defined in the ResetScheme. This
+        dictionary is used to construct the instructions for the reset process.
+
+        Args:
+            operation_dict: An optional existing dictionary to update. If None, a new dictionary is created.
+
+        Returns:
+            dict: A dictionary containing operations with their associated parameters.
+        """
         if operation_dict is None:
             operation_dict = {}
+
         init_specific_params = self.get_init_specific_params()
         ref_instr_op_dict = self.instr_ref.get_operation_dict()
 
@@ -153,8 +220,24 @@ class ResetScheme(InstrumentModule):
         return operation_dict
 
     def _get_operation_dict(self, operation_dict=None):
+        """
+        Constructs an operation dictionary for the available operations of the ResetScheme.
+
+        This function generates a dictionary mapping operation codes to their corresponding
+        arguments and parameter values. The parameter values are retrieved from the ResetScheme's 
+        settings.
+
+        Args:
+            operation_dict: An optional existing operation dictionary to update. If None,
+                            a new dictionary is created.
+
+        Returns:
+            dict: A dictionary containing operation codes as keys and dictionaries of 
+                argument-parameter mappings as values.
+        """
         if operation_dict is None:
             operation_dict = {}
+
         for op_name, op in self.operations().items():
             op_code = self.get_opcode(op_name)
             operation_dict[op_code] = {}
@@ -164,6 +247,20 @@ class ResetScheme(InstrumentModule):
         return operation_dict
 
     def get_init_specific_params(self, operations=None):
+        """
+        Retrieves initialization-specific parameters for a set of operations.
+
+        This function extracts parameters that have values deviating from the default settings 
+        ('from parent') for a specified set of operations within the ResetScheme. 
+
+        Args:
+            operations:  A list or iterable of operation names. If None, all available 
+                        operations within the ResetScheme are used.
+
+        Returns:
+            dict: A deep copy of a dictionary containing initialization-specific 
+                parameters, organized by operation name.
+        """
         if operations is None:
             operations = self.operations().keys()
         params = {}
@@ -174,14 +271,34 @@ class ResetScheme(InstrumentModule):
         return deepcopy(params)
 
     def get_opcode(self, operation, instr=None):
+        """
+        Constructs a unique operation code (opcode).
+
+        This function creates an operation code that combines the operation name, the 
+        ResetScheme's short name, and the reference instrument's name.
+
+        Args:
+        operation: The name of the operation.
+        instr: The reference instrument (optional). If None, defaults to `self.instr_ref`.
+
+        Returns:
+            str: The formatted operation code.
+        """
         if instr is None:
             instr = self.instr_ref
         return operation + f"_{self.short_name} {instr.name}"
 
     def get_analysis_instructions(self):
-        # instructions such that the analysis knows how to process the data
-        # likely to change when analysis is refactored /enhanced to be able
-        # to handle more complex reset types (e.g. combinations etc)
+        """
+        Provides instructions for analyzing reset data (currently a placeholder).
+
+        This function returns basic instructions for data analysis. In the future, it will 
+        likely be expanded to accommodate more complex reset schemes.
+
+        Returns:
+            dict: A dictionary containing analysis instructions, currently specifying
+                the preparation type as 'wait'.
+        """
         return dict(preparation_type='wait')
 
 
