@@ -1256,17 +1256,15 @@ def get_reset_reps_from_data_dict(data_dict):
     reset_reps = 0
     metadata = data_dict.get('exp_metadata', {})
 
-    # new active reset
+    # Convert new active reset to legacy format
     if "reset_params" in metadata:
         prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
             metadata["reset_params"], default_value={}
         )
-        if "active" in prep_params.get("preparation_type", "wait"):
-            reset_reps = prep_params.get("reset_reps", 3)
-    # legacy reset/preparation
-    elif "preparation_params" in metadata:  
-        if "active" in metadata["preparation_params"].get("preparation_type", "wait"):
-            reset_reps = metadata["preparation_params"].get("reset_reps", 3)
+
+    # Extract reset_reps
+    if "active" in prep_params.get("preparation_type", "wait"):
+        reset_reps = prep_params.get("reset_reps", 3)
 
     return reset_reps
 
