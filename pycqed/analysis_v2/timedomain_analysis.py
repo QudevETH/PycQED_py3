@@ -8428,6 +8428,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                    dim2_sweep_indx=dim2_sp_idx,
                                    train_new_classifier=self.get_param_value(
                                        "retrain_classifier", True),
+                                   means=list(qb_means.values()),
                                    **self.options_dict.get("classif_kw", dict()))
                 # order "unique" states to have in usual order "gef" etc.
                 state_labels_ordered = self._order_state_labels(
@@ -8756,7 +8757,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         return slopes
 
     def _classify(self, X, prep_state, method, qb_name, dim2_sweep_indx=None,
-                  train_new_classifier=True, **kw):
+                  train_new_classifier=True, means=None, **kw):
         """
 
         Args:
@@ -8768,6 +8769,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             be used.
             train_new_classifier: Whether to fit a new classifier or to use the
             one specified in instrument_settings. Only implemented for gmm.
+            means: 2D array for the initialisation of the GMM means
         Returns:
 
         """
@@ -8798,14 +8800,6 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 # give same weight to each class by default
                 weights_init = kw.pop("weights_init",
                                       np.ones(n_qb_states)/n_qb_states)
-                if dim2_sweep_indx is None:
-                    means = [mu for _, mu in
-                             self.proc_data_dict['analysis_params']
-                             ['means'][qb_name].items()]
-                else:
-                    means = [mu for _, mu in
-                             self.proc_data_dict['analysis_params']
-                             ['means'][qb_name][dim2_sweep_indx].items()]
 
                 # calculate delta of means and set tol and cov based on this
                 delta_means = np.array([[np.linalg.norm(mu_i - mu_j) for mu_i in means]
