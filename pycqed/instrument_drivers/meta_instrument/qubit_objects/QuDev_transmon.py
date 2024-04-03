@@ -3,6 +3,7 @@ log = logging.getLogger(__name__)
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
+import pycqed.measurement.waveform_control.pulse as bpl
 from copy import deepcopy
 from collections import OrderedDict
 
@@ -11,6 +12,7 @@ from qcodes.instrument.parameter import (
 from qcodes.utils import validators as vals
 from pycqed.instrument_drivers import instrument
 
+from pycqed.measurement.waveform_control import reset_schemes as reset
 from pycqed.analysis_v2.readout_analysis import Singleshot_Readout_Analysis_Qutrit
 from pycqed.measurement import detector_functions as det
 from pycqed.measurement import awg_sweep_functions as awg_swf
@@ -2679,7 +2681,6 @@ class QuDev_transmon(MeasurementObject):
             submodule and instance names it was called on.
         """
 
-        from pycqed.measurement.waveform_control import reset_schemes as reset
         msg = "{} submodule already in {}.reset.submodules. " \
               "Submodule won't be created again. "
 
@@ -2735,7 +2736,6 @@ class QuDev_transmon(MeasurementObject):
         Returns:
             None
         """
-        import pycqed.measurement.waveform_control.pulse as bpl
 
         tn = '' if transition_name == 'ge' else f'_{transition_name}'
         op_name = f"{op_name}{tn}"
