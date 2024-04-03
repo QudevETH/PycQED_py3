@@ -575,12 +575,12 @@ class BaseDataAnalysis(object):
             elif reset_params == "parametric_flux":
                 return dict(preparation_type="wait")
             else:
-                log.warning(f"Reset parameters : '{reset_params}'"
-                            f"unknown for legacy analysis code. Analysis will"
-                            f"assume that the analysis can be performed "
-                            f"with the default behavior i.e. "
-                            f"preparation_type='wait' in the legacy code.")
+                # Any other '{reset_params}' is likely legacy.
+                # Assume that the analysis can be performed
+                # with the default behavior i.e.,
+                # preparation_type='wait' in the legacy code.
                 return dict(preparation_type="wait")
+
         # in most QE based measurements the stored reset params is a dict which
         # stores instructions for the analysis.
         elif isinstance(reset_params, dict):
