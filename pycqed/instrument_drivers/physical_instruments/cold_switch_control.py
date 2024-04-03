@@ -109,6 +109,12 @@ class ColdSwitchController(Instrument):
             initial_value=18e-3,
             parameter_class=ManualParameter,
         )
+        self.add_parameter(
+            "failsafe_duration",
+            vals=vals.Ints(min_value=1, max_value=100),
+            initial_value=1,
+            parameter_class=ManualParameter,
+        )
 
     def close(self):
         self.port.close()
@@ -243,7 +249,8 @@ class ColdSwitchController(Instrument):
         self._set_states(states_H, states_L)
 
     def _cold_switch_turn_off(self, channel_number, switch_idx,
-                              failsafe_duration=1):
+                              failsafe_duration=None):
+        failsafe_duration = failsafe_duration or self.failsafe_duration()
         self.power_supply_channel.output(1)
         time.sleep(1.0)
 
@@ -260,7 +267,8 @@ class ColdSwitchController(Instrument):
         self.power_supply_channel.output(0)
 
     def _cold_switch_turn_on(self, channel_number, switch_idx,
-                             failsafe_duration=1):
+                             failsafe_duration=None):
+        failsafe_duration = failsafe_duration or self.failsafe_duration()
         self.power_supply_channel.output(1)
         time.sleep(1.0)
 
