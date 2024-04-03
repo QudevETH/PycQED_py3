@@ -303,9 +303,23 @@ class ResetScheme(InstrumentModule):
 
 
 class Preselection(ResetScheme):
+    """
+    Implements a preselection-based ResetScheme with optional flux compensation.
+
+    This class provides a ResetScheme tailored for preselection, enabling the configuration 
+    of parameters as well as conditional modification of the readout (RO) pulse to 
+    include flux compensation.
+    """
     DEFAULT_INSTANCE_NAME = "preselection"
 
     def __init__(self, parent, **kwargs):
+        """
+        Initializes a Preselection instance.
+
+        Args:
+            parent: The parent instrument or operation.
+            **kwargs: Additional keyword arguments passed to the parent 'ResetScheme'.
+        """
 
         super().__init__(parent, name="preselection", operations=('RO', "FP"),
                          **kwargs)
@@ -316,6 +330,20 @@ class Preselection(ResetScheme):
                            parameter_class=ManualParameter)
 
     def _reset_block(self, name, sweep_params, **kwargs):
+        """
+        Constructs a reset block with a preselection readout (RO) pulse.
+
+        Optionally includes a flux compensation pulse (FP) if `compensate_ro_flux` is True. 
+        Handles potential parameter conflicts and provides informative comments.
+
+        Args:
+            name: Name for the reset block.
+            sweep_params: Optional parameters for sweeping.
+            **kwargs: Additional keyword arguments for constructing the block.
+
+        Returns:
+            block_mod.Block: The constructed reset block object.
+        """
         op_dict = self.instr_ref.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
@@ -368,6 +396,12 @@ class Preselection(ResetScheme):
                                **kwargs)
 
     def get_analysis_instructions(self):
+        """
+        Provides instructions for analyzing preselection reset data.
+
+        Returns a dictionary containing the preparation type ('preselection'). 
+        Includes a note that enhancements for more complex reset types are possible.
+        """
         # instructions such that the analysis knows how to process the data
         # likely to change when analysis is refactored / enhanced to be able
         # to handle more complex reset types (e.g. combinations etc).
@@ -415,18 +449,18 @@ class FeedbackReset(ResetScheme):
                            get_parser=self._validate_ro_feedback_delay)
 
     def get_operation_dict(self, operation_dict=None):
-       """
-       Generates an operation dictionary, including an "I" (identity) operation.
-
-       Inherits the operation dictionary from the parent `ResetScheme` class and 
-       adds an "I" operation (with zero amplitude) derived from the "X180" operation.
-
-       Args:
-           operation_dict: Optional existing dictionary to update.
-
-       Returns:
-           dict: The updated operation dictionary.
-       """
+        """
+        Generates an operation dictionary, including an "I" (identity) operation.
+ 
+        Inherits the operation dictionary from the parent `ResetScheme` class and 
+        adds an "I" operation (with zero amplitude) derived from the "X180" operation.
+ 
+        Args:
+            operation_dict: Optional existing dictionary to update.
+ 
+        Returns:
+            dict: The updated operation dictionary.
+        """
         operation_dict = super().get_operation_dict()
 
         operation_dict[self.get_opcode("I")] = \
@@ -532,9 +566,27 @@ class FeedbackReset(ResetScheme):
                     )
 
 class ParametricFluxReset(ResetScheme):
+    """
+    Implements a ResetScheme using parametric flux modulation (PFM) operations.
+
+    This class dynamically determines available PFM operations from the parent instrument 
+    and configures a ResetScheme to utilize them.  
+    """
     DEFAULT_INSTANCE_NAME = "parametric_flux"
 
     def __init__(self, parent, operations=None, **kwargs):
+        """
+        Initializes a ParametricFluxReset instance.
+
+        Args:
+            parent: The parent instrument or operation.
+            operations: Optional list of specific PFM operations to use. If None,
+                        automatically extracts PFM operations from the parent instrument.
+            **kwargs: Additional keyword arguments passed to the parent 'ResetScheme'.
+
+        Raises:
+            ValueError: If no PFM operations are found in the parent instrument.
+        """
         if operations is None:
             all_ops = list(parent.root_instrument.operations())
             # find all operations which include PFM (such that, if defined,
@@ -549,6 +601,18 @@ class ParametricFluxReset(ResetScheme):
                          operations=operations, **kwargs)
 
     def _reset_block(self, name, sweep_params, **kwargs):
+        """
+        Creates a block containing copies of all configured PFM operations 
+        retrieved from  the operation dictionary.
+
+        Args:
+            name: Name for the reset block.
+            sweep_params: Optional parameters for sweeping.
+            **kwargs: Additional keyword arguments for constructing the block.
+
+        Returns:
+            block_mod.Block: The constructed reset block object.
+        """
         op_dict = self.get_operation_dict()
 
         reset_pulses = [deepcopy(op_dict[self.get_opcode(op)])
