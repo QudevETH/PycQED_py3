@@ -126,7 +126,7 @@ def T2_freq_sweep_seq(amplitudes,
 
     flux_pulse = deepcopy(operation_dict[cz_pulse_name])
 
-    if (flux_lengths, n_pulses) == (None, None):
+    if flux_lengths is None and n_pulses is None:
         raise ValueError('Expected either flux_lengths or n_pulses but neither'
                          ' got provided.')
     elif flux_lengths is not None and n_pulses is not None:

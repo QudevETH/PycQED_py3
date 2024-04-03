@@ -68,7 +68,7 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
             the qubit at the midpoint by using the preliminary Hamiltonian
             model.
         9) SetTemporaryValuesFluxPulseReadout (set_tmp_values_flux_pulse_ro_ge):
-            sets temporary bias voltage for flux-pulse-assisted readout.
+            sets temporary bias voltage fdeor flux-pulse-assisted readout.
         10) FindFrequency (find_frequency_ge_<i>): see corresponding routine.
 
     Afterwards, the final model is determined:

@@ -190,9 +190,19 @@ class MockDAQServer(zibase.MockDAQServer):
         elif re.match(r'/(\w+)/scopes/(\d+)/enable', path):
             self.nodes[path]['timestamp'] = time.time()
 
-    def get(self, path, flat=None, flags=None, **kw):
+    def get(self, path, flat=None, flags=None, settingsonly=True,
+            excludevectors=False, **kw):
+        # FIXME: settingsonly and excludevectors are currently only taken into
+        #  account if the wildcard '*' is contained in the path. This behavior
+        #  might be different from the behavior of the original DAQ server.
         if path not in self.nodes:
-            paths = [p for p in self.nodes if fnmatch.fnmatch(p, path)]
+            paths = [p for prefix in ['', '/'] for p, v in self.nodes.items()
+                     if fnmatch.fnmatch(p, prefix + path)
+                     and ((not settingsonly)
+                          or 'Setting' in v.get('Properties', ''))
+                     and ((not excludevectors)
+                          or v.get('type') != 'ZIVectorData')
+                     ]
             if not len(paths):
                 raise zibase.ziRuntimeError(
                     "Unknown node '" + path +

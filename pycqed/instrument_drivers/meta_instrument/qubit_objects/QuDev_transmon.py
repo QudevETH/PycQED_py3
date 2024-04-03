@@ -10,17 +10,12 @@ from qcodes.instrument.parameter import (
     ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals
 
-from pycqed.analysis_v2.readout_analysis import Singleshot_Readout_Analysis_Qutrit
 from pycqed.measurement import detector_functions as det
 from pycqed.measurement import awg_sweep_functions as awg_swf
-from pycqed.measurement import awg_sweep_functions_multi_qubit as awg_swf2
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
-from pycqed.analysis_v3.processing_pipeline import ProcessingPipeline
 from pycqed.measurement.pulse_sequences import single_qubit_tek_seq_elts as sq
 from pycqed.measurement.pulse_sequences import fluxing_sequences as fsqs
-from pycqed.analysis_v3 import pipeline_analysis as pla
 from pycqed.analysis import measurement_analysis as ma
 from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.utilities.general import add_suffix_to_dict_keys
@@ -29,9 +24,7 @@ from pycqed.utilities.math import vp_to_dbm, dbm_to_vp
 from pycqed.measurement import optimization as opti
 from pycqed.measurement import mc_parameter_wrapper
 import pycqed.analysis_v2.spectroscopy_analysis as sa
-from pycqed.utilities import math
 import pycqed.analysis.fitting_models as fit_mods
-import os
 import \
     pycqed.measurement.waveform_control.fluxpulse_predistortion as fl_predist
 from pycqed.instrument_drivers.meta_instrument.MeasurementObject import \
@@ -54,6 +47,14 @@ class QuDev_transmon(MeasurementObject):
         compensation_pulse_delay=100e-9,
         compensation_pulse_gaussian_filter_sigma=0,
     )
+
+    DEFAULT_GE_LO_CALIBRATION_PARAMS = dict(
+        mode='fixed',  # or 'freq_dependent'
+        freqs=[],
+        I_offsets=[],
+        Q_offsets=[],
+    )
+
     _acq_weights_type_aliases = {
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
@@ -432,15 +433,9 @@ class QuDev_transmon(MeasurementObject):
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
                             initial_value=DEFAULT_PREP_PARAMS, vals=vals.Dict())
 
-        DEFAULT_GE_LO_CALIBRATION_PARAMS = dict(
-            mode='fixed', # or 'freq_dependent'
-            freqs=[],
-            I_offsets=[],
-            Q_offsets=[],
-        )
         self.add_parameter('ge_lo_leakage_cal',
                            parameter_class=ManualParameter,
-                           initial_value=DEFAULT_GE_LO_CALIBRATION_PARAMS,
+                           initial_value=self.DEFAULT_GE_LO_CALIBRATION_PARAMS,
                            vals=vals.Dict())
 
         # switch parameters
@@ -1533,6 +1528,8 @@ class QuDev_transmon(MeasurementObject):
         mixer. Uses the Nelder-Mead optimization algorithm and the scope_fft_det
         detector function.
 
+        FIXME: not tested after the changes in MC in !330
+
         Args:
             update:
                 Boolean flag, whether to update the qubit parameters with the
@@ -1626,6 +1623,8 @@ class QuDev_transmon(MeasurementObject):
                                         plot=True):
         """
         Calibrate readout upconversion mixer local oscillator leakage
+
+        FIXME: not tested after the changes in MC in !330
 
         Args:
             other_qb:
@@ -1851,6 +1850,8 @@ class QuDev_transmon(MeasurementObject):
         Measures the averaged signal of a square-pulse at the other sideband
         frequency. Uses the Nelder-Mead optimization algorithm and the
         int_avg_det_spec detector function.
+
+        FIXME: not tested after the changes in MC in !330
 
         Args:
             update:
@@ -2399,7 +2400,8 @@ class QuDev_transmon(MeasurementObject):
                               freqs=None, amplitudes=None, phases=[0,120,240],
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
-                              exp_metadata=None):
+                              exp_metadata=None, operation_dict=None,
+                              vfc_kwargs=None):
         """
         Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
@@ -2442,28 +2444,23 @@ class QuDev_transmon(MeasurementObject):
             label:
             n_cal_points_per_state:
             exp_metadata:
+            vfc_kwargs: Additional arguments for self.calculate_flux_voltage
 
         Returns:
 
         """
-        fit_paras = deepcopy(self.fit_ge_freq_from_flux_pulse_amp())
+        if operation_dict is None:
+            operation_dict = self.get_operation_dict()
         if freqs is not None:
-            amplitudes = fit_mods.Qubit_freq_to_dac(freqs, **fit_paras)
-
+            vfc_kwargs = vfc_kwargs or {}
+            amplitudes = self.calculate_flux_voltage(
+                frequency=freqs,
+                **vfc_kwargs,
+            )
         amplitudes = np.array(amplitudes)
 
         if cz_pulse_name is None:
             cz_pulse_name = 'FP ' + self.name
-
-        if np.any((amplitudes > abs(fit_paras['dac_sweet_spot']))):
-            amplitudes -= fit_paras['V_per_phi0']
-        elif np.any((amplitudes < -abs(fit_paras['dac_sweet_spot']))):
-            amplitudes += fit_paras['V_per_phi0']
-
-        if np.any((amplitudes > abs(fit_paras['V_per_phi0']) / 2)):
-            amplitudes -= fit_paras['V_per_phi0']
-        elif np.any((amplitudes < -abs(fit_paras['V_per_phi0']) / 2)):
-            amplitudes += fit_paras['V_per_phi0']
 
         if np.any(np.isnan(amplitudes)):
             raise ValueError('Specified frequencies resulted in nan amplitude. '
@@ -2477,7 +2474,6 @@ class QuDev_transmon(MeasurementObject):
         MC = self.instr_mc.get_instr()
         self.prepare(drive='timedomain')
 
-        amplitudes = np.array(amplitudes)
         if flux_lengths is not None:
             flux_lengths = np.array(flux_lengths)
         phases = np.array(phases)
@@ -2494,7 +2490,10 @@ class QuDev_transmon(MeasurementObject):
             fsqs.T2_freq_sweep_seq(
                 amplitudes=amplitudes, qb_name=self.name,
                 n_pulses=n_pulses,
-                operation_dict=self.get_operation_dict(),
+                # FIXME this is a hack until this measurement is refactored
+                #  to a QuantumExperiment, allowing to pass operations not in
+                #  the qubit object, e.g. two-qubit gates
+                operation_dict=operation_dict,
                 flux_lengths=flux_lengths, phases = phases,
                 cz_pulse_name=cz_pulse_name, upload=False, cal_points=cp)
         MC.set_sweep_function(awg_swf.SegmentHardSweep(
@@ -2508,7 +2507,7 @@ class QuDev_transmon(MeasurementObject):
         # easily access them
         if flux_lengths is None and n_pulses is not None:
             flux_lengths = np.array(n_pulses) * \
-                           self.get_operation_dict()[cz_pulse_name]['pulse_length']
+                           operation_dict[cz_pulse_name]['pulse_length']
         exp_metadata.update({'amplitudes': amplitudes,
                              'frequencies': freqs,
                              'phases': phases,

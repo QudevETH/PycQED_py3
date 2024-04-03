@@ -1,10 +1,11 @@
 import numpy as np
 import traceback
-from copy import deepcopy
+from copy import copy, deepcopy
 import random
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
 from pycqed.measurement.randomized_benchmarking import \
     randomized_benchmarking as rb
+from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.randomized_benchmarking.two_qubit_clifford_group as tqc
 import logging
 log = logging.getLogger(__name__)
@@ -70,9 +71,12 @@ class RandomCircuitBenchmarkingMixin:
         kw_for_sweep_points based on the sweep_type attribute.
         """
         self.kw_for_sweep_points = deepcopy(self.kw_for_sweep_points)
-        self.kw_for_sweep_points[
-            f'nr_{self.randomizations_name},{self.seq_lengths_name}'][
-            'dimension'] = self.sweep_type[self.randomizations_name]
+        key = f'nr_{self.randomizations_name},{self.seq_lengths_name}'
+        if f'{key},cphase,gate_modifs' in self.kw_for_sweep_points:
+            # TwoQubitXEB case
+            key = f'{key},cphase,gate_modifs'
+        self.kw_for_sweep_points[key]['dimension'] = \
+            self.sweep_type[self.randomizations_name]
         self.kw_for_sweep_points[self.seq_lengths_name]['dimension'] = \
             self.sweep_type[self.seq_lengths_name]
 
@@ -97,8 +101,12 @@ class RandomCircuitBenchmarkingMixin:
         """
         global_seq_lengths = kw.get(self.seq_lengths_name)
         nr_rand = f'nr_{self.randomizations_name}'
-        self.identical_pulses = kw.get(nr_rand) is not None and all([
-            task.get(nr_rand) is None for task in task_list])
+        nr_rand_not_in_tasks = all(
+            [task.get(nr_rand) is None for task in task_list])
+        cphase_not_in_taks = all(
+            [task.get('cphase') is None for task in task_list])
+        self.identical_pulses = kw.get(nr_rand) is not None and \
+                                nr_rand_not_in_tasks and cphase_not_in_taks
         # Check if we can apply identical pulses on all tasks:
         # can only do this if they have identical cliffords array.
         if self.identical_pulses and global_seq_lengths is None:
@@ -387,7 +395,9 @@ class SingleQubitRandomizedBenchmarking(RandomizedBenchmarking):
         rb_block_list = [self.block_from_ops(
             f"rb_{task['qb']}", [f"{p} {task['qb']}" for p in
                                  pulse_op_codes_list[0 if self.identical_pulses
-                                 else i]])
+                                 else i]],
+            pulse_modifs=task.get('pulse_modifs', None),
+        )
             for i, task in enumerate(self.preprocessed_task_list)]
 
         return self.simultaneous_blocks(f'sim_rb_{sp1d_idx}{sp1d_idx}',
@@ -506,6 +516,7 @@ class TwoQubitRandomizedBenchmarking(RandomizedBenchmarking):
                         seq_blocks.append(self.block_from_ops(
                             f'blk{k}_{j}_cz',
                             f'{kw.get("cz_pulse_name", "CZ")} {qb_1} {qb_2}',
+                            pulse_modifs=task.get('pulse_modifs', None),
                             ))
                     else:
                         qb_name = qb_1 if '0' in pulse_tuple[1] else qb_2
@@ -704,14 +715,16 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
     Class for running the two-qubit cross-entropy benchmarking experiment on
     several pairs of qubits in parallel.
     Implementation as in https://www.nature.com/articles/s41567-018-0124-x.
+
     """
     default_experiment_name = 'TwoQubitXEB'
     kw_for_sweep_points = {
-        'nr_seqs,cycles': dict(
+        'nr_seqs,cycles,cphase,gate_modifs': dict(
             param_name='gateschoice', unit='',
             label='cycles gates', dimension=1,
             values_func='paulis_gen_func')}
     task_mobj_keys = ['qb_1', 'qb_2']
+    kw_for_task_keys = ['cphase']
 
     def __init__(self, task_list, sweep_points=None, qubits=None,
                  nr_seqs=None, cycles=None, **kw):
@@ -729,20 +742,35 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         Args:
             nr_seqs (int): the number of times to apply a random
                 iteration of a sequence consisting of nr_cycles cycles.
-                If nr_seqs is specified and it does not exist in the task_list,
-                THEN ALL TASKS WILL RECEIVE THE SAME PULSES provided they have
-                the same cycles array.
             cycles (list/array): integers specifying the number of
                 random cycles to apply in a sequence.
             See docstring of base class for remaining parameters.
 
         Keyword args:
-            See docstring of base class
+            cphase (float; default: None): value of the C-phase gate angle
+                in degrees.
+                Allowed values:
+                    float: angle of the CZ gates (deg)
+                    None: a standard CZ gate (180 deg) is done (see
+                    NZTransitionControlledPulse)
+                    'randomized': each CZ gate will be run with a different
+                    random angle
+            See docstring of base class for further parameters.
 
         Assumptions:
          - assumes there is one task for CZ gate.
+         - if cphase is different for each task, the XEB sequences will be
+         randomized between tasks even if nr_seqs is specified globally.
         """
         try:
+            # add cphase to kw if not already there such that it will be found
+            # by generate_kw_sweep_points and will be added to the tasks
+            # (the parameter is specified in kw_for_task_keys). Having cphase
+            # in kw ensures that it will be passed to paulis_gen_func when
+            # generate_kw_sweep_points is called, and hence that the
+            # sweep_points are created correctly.
+            if kw.get('cphase', None) is None:
+                kw['cphase'] = ''
 
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
@@ -752,8 +780,7 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
             self.exception = x
             traceback.print_exc()
 
-    @staticmethod
-    def paulis_gen_func(nr_seqs, cycles):
+    def paulis_gen_func(self, nr_seqs, cycles, cphase='', gate_modifs=None):
         """
         Creates the list of random gates to be applied in each sequence of the
         experiment.
@@ -763,47 +790,66 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                 length
             cycles (list/array): integers specifying the number of cycles of
                 random gates to apply in a sequence
+            cphase (float): value of the C-phase gate angle in degrees
+            gate_modifs (dict): contains additional keyword arguments used to
+                generate the gate list
 
         Returns:
              list of strings with op codes
         """
-        def gen_random(cycles):
-            s_gates = ["X90 ", "Y90 ", "Z45 "]
+
+        if gate_modifs is None:
+            gate_modifs = {}
+        append_gates = gate_modifs.get('append_gates', [])
+        n_gates = gate_modifs.get('n_gates', 1)
+        # E.g. to set every second gate to a CZ180
+        # This is a string so it stays readable in the experiment metadata
+        cphases_modifier = eval(
+            gate_modifs.get('cphases_modifier', 'lambda cphases: cphases'))
+
+        list_all_seqs = []
+        for _ in range(nr_seqs):
+            s_gates = ["X90", "Y90", "Z45"]
             lis = []
             for length in cycles:
-                i = 0
-                gates = []
-                gates.append(s_gates[1] + "qb_1")
-                sim_str = ' ' if 'Z' in s_gates[1][0:3] else 's '
-                gates.append(s_gates[1][0:3] + sim_str + "qb_2")
-                gates.append(s_gates[2] + "qb_1")
-                sim_str = ' ' if 'Z' in s_gates[2][0:3] else 's '
-                gates.append(s_gates[2][0:3] + sim_str + "qb_2")
-                gates.append("CZ " + "qb_1 qb_2")
+                cphases = np.random.uniform(0, 1, length) * 360 \
+                    if cphase == 'randomized' else np.repeat([cphase], length)
+                cphases = cphases_modifier(cphases)
+                gates = [
+                    s_gates[1] + " qb_1",
+                    s_gates[1] + "s qb_2",
+                    s_gates[2] + " qb_1",
+                    s_gates[2] + "s qb_2",
+                ]
+                last_1qb_gates = [s_gates[2], s_gates[2]]
+                if cphases[0] != 'nogate':
+                    gates += [f"CZ{cphases[0]} qb_1 qb_2"]*n_gates
+                gates += append_gates
                 if length > 0:
-                    while i < (length - 1):
-                        last_1_gate1 = gates[-3][0:4]
+                    for i in range(1, length):
+                        new_1qb_gates = []
+                        # Choose a gate different from the last one on that qb
+                        for lg in last_1qb_gates:
+                            choices = copy(s_gates)
+                            choices.remove(lg)
+                            ng = random.choice(choices)
+                            new_1qb_gates.append(ng)
 
-                        choice1 = []
-                        for gate in s_gates:
-                            choice1.append(gate)
-                        choice1.remove(last_1_gate1)
-                        gate1 = random.choice(choice1)
-                        gates.append(gate1 + 'qb_1')
+                        gates.append(new_1qb_gates[0] + " qb_1")
+                        # Virtual Z should not be flagged as simultaneous, such
+                        # that e.g. for ['X90 qb_1', 'Z45 qb_1', 'CZ qb_1 qb_2']
+                        # the CZ is correctly referenced to the end of the
+                        # last gate, which is the longer X90
+                        simultaneous = '' if 'Z' in new_1qb_gates[1] else 's'
+                        gates.append(new_1qb_gates[1] + simultaneous + " qb_2")
+                        last_1qb_gates = new_1qb_gates
 
-                        last_1_gate2 = gates[-3][0:3] + ' '
-                        choice2 = []
-                        for gate in s_gates:
-                            choice2.append(gate)
-                        choice2.remove(last_1_gate2)
-                        gate2 = random.choice(choice2)
-                        sim_str = ' ' if 'Z' in gate2[:3] else 's '
-                        gates.append(gate2[:3] + sim_str + 'qb_2')
-                        gates.append("CZ " + 'qb_1 qb_2')
-                        i += 1
+                        if cphases[i] != 'nogate':
+                            gates += [f"CZ{cphases[i]} qb_1 qb_2"]*n_gates
+                        gates += append_gates
                 lis.append(gates)
-            return lis
-        return [gen_random(cycles) for _ in range(nr_seqs)]
+            list_all_seqs.append(lis)
+        return list_all_seqs
 
     def xeb_block(self, sp1d_idx, sp2d_idx, **kw):
         """
@@ -829,11 +875,15 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                 'values', self.sweep_type['seqs'], 'gateschoice')[seq_idx][nrcyc_idx]
             l = [gate_qb for gate_qb in gates_qb_info]
             sub_list = []
-            for ope in l:
-                if len(ope) < 11:
-                    op = ope[0:-4] + task[ope[-4::]]
+            for op in l:
+                op_split = op.split()
+                if len(op_split) == 2:
+                    # single qubit gate
+                    op = ' '.join([op_split[0], task[op_split[1]]])
                 else:
-                    op = 'CZ ' + task[ope[3:7]] + ' ' +  task[ope[8::]]
+                    # C-phase gate
+                    op = ' '.join([op_split[0], task[op_split[1]],
+                                   task[op_split[2]]])
                 sub_list.append(op)
             pulse_op_codes_list += [sub_list]
 
@@ -847,3 +897,68 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
         return self.simultaneous_blocks(f'sim_rb_{sp1d_idx}{sp1d_idx}',
                                         rb_block_list, block_align='end',
                                         destroy=self.fast_mode)
+
+
+class TwoQubitXEBMultiCphase(MultiTaskingExperiment):
+    """
+    Runs multiple interleaved TwoQubitXEB
+
+    Runs multiple TwoQubitXEB, each for a different value of the 'cphase'
+    parameter, while interleaving their sequences.
+    From inner to outer loop, a measurement proceeds as follows:
+    TwoQubitXEB (for comparison): [cycles (hard sweep), seeds]
+    TwoQubitXEBMultiCphase: [cycles (hard sweep), cphases, seeds]
+
+    Note that this effectively 3-D sweep is implemented in a non-standard way,
+    by instantiating several TwoQubitXEB and then interleaving their sequences.
+    This in turn requires hacks to deal with sweep points, indicated as FIXMEs.
+    """
+
+    default_experiment_name = 'TwoQubitXEBMultiCphase'
+    kw_for_task_keys = ('cphases')
+    task_mobj_keys = ['qb_1', 'qb_2']
+
+    def __init__(self, task_list, sweep_points=None, qubits=None,
+                 nr_seqs=None, cycles=None, cphases=None, **kw):
+
+        try:
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points, cphases=cphases,
+                             nr_seqs=nr_seqs, cycles=cycles, **kw)
+            self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            self.xeb_measurements = []
+            self.measure = kw.pop('measure', True)
+            nr_cphases = len(self.preprocessed_task_list[0]['cphases'])
+            for i in range(nr_cphases):
+                tl = deepcopy(task_list)
+                for task in tl:
+                    assert len(task['cphases']) == nr_cphases,\
+                        "Number of cphases inconsistent between tasks!"
+                    task['cphase'] = task['cphases'][i]
+                    if 'full_sweep_points' in task:
+                        # Allows to reuse a task list from a previous
+                        # measurement, by taking sweep points number i
+                        task['sweep_points'] = task['full_sweep_points'][i]
+                self.xeb_measurements += [
+                    TwoQubitXEB(tl, sweep_points, qubits, nr_seqs=nr_seqs,
+                                cycles=cycles, measure=False, **kw)]
+            for i, task in enumerate(self.task_list):
+                # FIXME hack: Storing sweep points as a list, to make them
+                #  available to the analysis. Cannot use 'sweep_points' key,
+                #  as this would confuse MC (e.g. extracting units), as well
+                #  as the super init above in case of reloading the task list.
+                task['full_sweep_points'] = \
+                    [xebm.preprocessed_task_list[i]['sweep_points']
+                     for xebm in self.xeb_measurements]
+
+            # interleave sequences
+            self.sequences, self.mc_points = \
+                self.xeb_measurements[0].sequences[0].interleave_sequences(
+                    [xeb.sequences for xeb in self.xeb_measurements])
+            # FIXME hack: fill in with dummy sweep points, see FIXME above
+            self.sweep_points = self.xeb_measurements[0].sweep_points
+
+            self.autorun(**kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()

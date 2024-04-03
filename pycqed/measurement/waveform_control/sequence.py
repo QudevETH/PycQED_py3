@@ -77,7 +77,8 @@ class Sequence:
     def generate_waveforms_sequences(self, awgs=None,
                                      get_channel_hashes=False,
                                      resolve_segments=None,
-                                     trigger_groups=None):
+                                     trigger_groups=None,
+                                     awg_sequences=None):
         """
         Calculates and returns 
             * waveforms: a dictionary of waveforms used in the sequence,
@@ -95,6 +96,10 @@ class Sequence:
             sequence still need to be resolved. If not provided,
             self.is_resolved is checked to determine whether segments
             need to be resolved.
+        :param awg_sequences: (dict, optional) Sequences, as previously
+            returned by this method. Can be used for caching in case this
+            method is called multiple times. If provided, it is assumed that
+            this dict is complete (no error handling in case keys are missing).
         :return: a tuple of waveforms, sequences as described above if
             get_channel_hashes==False. Otherwise, a tuple channel_hashes,
             sequences.
@@ -158,8 +163,11 @@ class Sequence:
                         sequences[awg][uelname].setdefault(cw, {})
                         for ch in seg.get_element_channels(elname,
                                                            trigger_group=group):
-                            h = seg.calculate_hash(elname, cw, ch)
                             chid = self.pulsar.get(f'{ch}_id')
+                            if awg_sequences:
+                                h = awg_sequences[awg][uelname][cw][chid]
+                            else:
+                                h = seg.calculate_hash(elname, cw, ch)
                             sequences[awg][uelname][cw][chid] = h
                             if get_channel_hashes:
                                 if ch not in channel_hashes:
