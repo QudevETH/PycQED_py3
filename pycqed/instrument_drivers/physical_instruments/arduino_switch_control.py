@@ -35,6 +35,8 @@ class ArduinoSwitchControl(Instrument):
             - An integer N. Groups without a given label will be
               labelled with 'I1', 'I2',... for input groups and
               'O1','O2',... for output groups
+        - As a list of strings where the strings are the labels of the
+          connectors, e.g. ['I1', 'I7']
 
     The Qcodes parameters representing switching individual switches follow
     the naming convention 'switch_X_mode' where 'X' is the label of the
@@ -620,6 +622,8 @@ class ArduinoSwitchControl(Instrument):
                 - list of the tuples above, to create groups. The group label
                   and the connector number are separated with a dot.
                   e. g. [(A,2),(B,3)] results in A.1, A.2, B.1, B.2, B.3
+                - list of strings: label of the connectors as a list of strings
+                  e.g. ['I1', 'I2', 'I7']
             connector_type (str): Has to be 'input' or 'output'.
             default_label: Label that is used as a default.
             in_group (bool): Whether this method is called to for an
@@ -632,6 +636,12 @@ class ArduinoSwitchControl(Instrument):
             - list of connector labels
 
         """
+        def get_connectors_dict(labels, connector_type, group):
+            return OrderedDict([
+                (label, ArduinoSwitchControlConnector(
+                    label, 'box', connector_type, group=group
+                )) for label in labels])
+
         if isinstance(connectors, int):
             if connectors < 0:
                 raise ValueError("Number of connectors 'connectors' must"
@@ -644,10 +654,7 @@ class ArduinoSwitchControl(Instrument):
                 group = None
             labels = [label_string + str(n) for n in range(1, connectors + 1)]
 
-            connectors_dict = OrderedDict([
-                (label, ArduinoSwitchControlConnector(
-                    label, 'box', connector_type, group=group
-                )) for label in labels])
+            connectors_dict = get_connectors_dict(labels, connector_type, group)
             return connectors_dict, [default_label], labels
         else:
             try:
@@ -664,6 +671,11 @@ class ArduinoSwitchControl(Instrument):
                     in_group=in_group,
                 )
                 return connectors_dict, [connectors[0]], labels
+            elif all(isinstance(label, str) for label in connectors):
+                labels = connectors
+                connectors_dict = get_connectors_dict(
+                    labels, connector_type, None)
+                return connectors_dict, [], labels
             else:
                 connectors_dict = OrderedDict()
                 groups = []
