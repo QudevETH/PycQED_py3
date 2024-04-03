@@ -37,14 +37,10 @@ def get_prep_params(data_dict, **params):
         the 'preparation_params' key is also not found.
     """
 
-    # Extract prep params
-    metadata = data_dict.get('exp_metadata', {})
-
-    # New reset format
-    if 'reset_params' in metadata:
+    # New reset format or legacy?
+    if 'reset_params' in data_dict.get('exp_metadata', {}):
         prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
             hlp_mod.get_param('reset_params', data_dict, **params))
-    # Legacy reset format
     else:
         prep_params = hlp_mod.get_param('preparation_params', data_dict, **params)
 
