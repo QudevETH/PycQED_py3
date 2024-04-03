@@ -376,12 +376,26 @@ class Preselection(ResetScheme):
 
 
 class FeedbackReset(ResetScheme):
+    """
+    Provides feedback-based Active Reset scheme implementation.
+
+    This class inherits from `ResetScheme` and extends it to enable Active Reset 
+    controlled by feedback from readout measurements. It supports configuration of 
+    codeword-state mappings and feedback delays.
+    """
+
     # Calculate the length of a ge pulse, assumed the same for all qubits
     state_ops = dict(g=["I"], e=["X180"], f=["X180_ef", "X180"])
     DEFAULT_INSTANCE_NAME = "feedback"
 
     def __init__(self, parent, **kwargs):
+        """
+        Initializes a FeedbackReset instance.
 
+        Args:
+            parent: The parent instrument or operation.
+            **kwargs: Additional keyword arguments passed to the parent 'ResetScheme'.
+        """
         super().__init__(parent, name=self.DEFAULT_INSTANCE_NAME,
                          operations=('RO', 'X180', 'X180_ef'), **kwargs)
 
@@ -401,6 +415,18 @@ class FeedbackReset(ResetScheme):
                            get_parser=self._validate_ro_feedback_delay)
 
     def get_operation_dict(self, operation_dict=None):
+       """
+       Generates an operation dictionary, including an "I" (identity) operation.
+
+       Inherits the operation dictionary from the parent `ResetScheme` class and 
+       adds an "I" operation (with zero amplitude) derived from the "X180" operation.
+
+       Args:
+           operation_dict: Optional existing dictionary to update.
+
+       Returns:
+           dict: The updated operation dictionary.
+       """
         operation_dict = super().get_operation_dict()
 
         operation_dict[self.get_opcode("I")] = \
@@ -409,6 +435,18 @@ class FeedbackReset(ResetScheme):
         return operation_dict
 
     def _reset_block(self, name, sweep_params, **kwargs):
+        """
+        Generates a block containing a readout (RO) pulse followed by feedback pulses 
+        determined by the `codeword_state_map`.
+
+        Args:
+            name: Name for the reset block.
+            sweep_params: Optional parameters for sweeping.
+            **kwargs: Additional keyword arguments for constructing the block.
+
+        Returns:
+            block_mod.Block: The constructed reset block object.
+        """
         op_dict = self.get_operation_dict()
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
@@ -436,6 +474,17 @@ class FeedbackReset(ResetScheme):
         return block_mod.Block(name, reset_pulses, copy_pulses=False, **kwargs)
 
     def _validate_ro_feedback_delay(self, ro_feedback_delay):
+        """
+        Ensures that the `ro_feedback_delay` is sufficient to accommodate acquisition
+        length and feedback latency.
+
+        Args:
+            ro_feedback_delay: The delay value to validate.
+
+        Raises:
+            ValueError: If the delay is too short.
+        """
+
         # FIXME: assume reference instrument has acq_length,
         #  and acquisition instrument ?
         minimum_delay = self.instr_ref.acq_length() + \
@@ -449,6 +498,15 @@ class FeedbackReset(ResetScheme):
         return ro_feedback_delay
 
     def _validate_codeword_state_map(self, codeword_state_map):
+        """
+        Ensures that the `codeword_state_map` contains an even number of codewords.
+
+        Args:
+            codeword_state_map: The map to validate.
+
+        Raises:
+            ValueError: If the map contains an odd number of codewords.
+        """
         if len(codeword_state_map) % 2 != 0:
             msg = f"codeword_state_map must have even number of codewords" \
                   f" but {len(codeword_state_map)} codewords were provided."
@@ -457,6 +515,13 @@ class FeedbackReset(ResetScheme):
         return codeword_state_map
 
     def get_analysis_instructions(self):
+        """
+        Provides instructions for analyzing feedback reset data.
+ 
+        Returns a dictionary containing analysis instructions, including preparation type,
+        feedback delay, and the number of repetitions.
+        """
+
         # instructions such that the analysis knows how to process the data
         # likely to change when analysis is refactored / enhanced to be able
         # to handle more complex reset types (e.g. combinations etc).
