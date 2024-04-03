@@ -8351,7 +8351,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         qb_dict = {qbn: [None]*n_sweep_pts_dim2 for qbn in self.qb_names}
 
         # create placeholders for analysis data
-        pdd['data'] = {'X': deepcopy(qb_dict), 'prep_states': deepcopy(qb_dict)}
+        pdd['data'] = {'X': deepcopy(qb_dict),
+                       'prep_states': deepcopy(qb_dict),
+                       'pred_states': deepcopy(qb_dict)}
         pdd['n_dim_2_sweep_points'] = n_sweep_pts_dim2
         pdd['avg_fidelities'] = deepcopy(qb_dict)
         pdd['best_fidelity'] = {}
@@ -8370,7 +8372,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         # create placeholders for analysis with preselection
         if self.preselection:
             pdd['data_masked'] = {'X': deepcopy(qb_dict),
-                                  'prep_states': deepcopy(qb_dict)}
+                                  'prep_states': deepcopy(qb_dict),
+                                  'pred_states': deepcopy(qb_dict)}
             pdd['avg_fidelities_masked'] = deepcopy(qb_dict)
             pdd_ap['state_prob_mtx_masked'] = deepcopy(qb_dict)
             pdd_ap['n_shots_masked'] = deepcopy(qb_dict)
@@ -8378,6 +8381,24 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
 
         for qbn, qb_shots in shots_per_qb.items():
             # iteration over 2nd sweep dim
+
+            # assign every state the qb is prepared in a unique integer
+            masks = {state: np.array(self.cp.get_states(qbn)[qbn]) == state
+                     for state in self.states_info[qbn]}
+            measured_states = [state for state in self.states_info[qbn]
+                               if sum(masks[state]) > 0]
+            state_integer = 0
+            for state in measured_states:
+                self.states_info[qbn][state]["int"] = state_integer
+                state_integer += 1
+
+            # note that if some states are repeated, they are assigned the
+            # same label
+            qb_states_integer_repr = \
+                [self.states_info[qbn][s]["int"]
+                 for s in self.cp.get_states(qbn)[qbn]]
+            prep_states = np.tile(qb_states_integer_repr, n_shots)
+
             for dim2_sp_idx in range(n_sweep_pts_dim2):
                 # create mapping to integer following ordering in cal_points.
                 # Notes:
@@ -8392,31 +8413,11 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                 # The number of different states can be different for each
                 # qubit and therefore the mapping should also be done per qubit
 
-                qb_means = dict()
-
-                for state in self.states_info[qbn]:
-                    mask = np.array(self.cp.get_states(qbn)[qbn]) == state
-                    if sum(mask) == 0:  # state is not being used
-                        continue
-                    qb_means[state] = np.mean(
-                        shots_per_qb[qbn][dim2_sp_idx, np.tile(mask, n_shots)],
-                        axis=0)
-
-                state_integer = 0
-                for state in qb_means.keys():
-                    self.states_info[qbn][state]["int"] = state_integer
-                    state_integer += 1
-
-                # note that if some states are repeated, they are assigned the
-                # same label
-                qb_states_integer_repr = \
-                    [self.states_info[qbn][s]["int"]
-                     for s in self.cp.get_states(qbn)[qbn]]
-                prep_states = np.tile(qb_states_integer_repr, n_shots)
-
-                pdd_ap['means'][qbn][dim2_sp_idx] = deepcopy(qb_means)
-                pdd['data']['X'][qbn][dim2_sp_idx] = deepcopy(qb_shots[dim2_sp_idx])
-                pdd['data']['prep_states'][qbn][dim2_sp_idx] = prep_states
+                qb_means = {state:
+                    np.mean(shots_per_qb[qbn][dim2_sp_idx,
+                    np.tile(masks[state], n_shots)], axis=0)
+                    for state in measured_states
+                }
 
                 assert np.ndim(qb_shots) == 3, \
                     f"Data must be a 3D array. Received shape " \
@@ -8432,17 +8433,26 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                    **self.options_dict.get("classif_kw", dict()))
                 # order "unique" states to have in usual order "gef" etc.
                 state_labels_ordered = self._order_state_labels(
-                    list(qb_means.keys()))
+                    list(measured_states))
                 # translate to corresponding integers
                 state_labels_ordered_int = [self.states_info[qbn][s]['int'] for s in
                                             state_labels_ordered]
                 fm = self.fidelity_matrix(prep_states, pred_states,
                                           labels=state_labels_ordered_int)
-                pdd['avg_fidelities'][qbn][dim2_sp_idx] = np.trace(fm) / float(np.sum(fm))
 
-                # save fidelity matrix and classifier
+                # save processed data
+                pdd_ap['means'][qbn][dim2_sp_idx] = deepcopy(qb_means)
+                pdd['data']['X'][qbn][dim2_sp_idx] = \
+                    deepcopy(qb_shots[dim2_sp_idx])
+                pdd['data']['prep_states'][qbn][dim2_sp_idx] = \
+                    deepcopy(prep_states)
+                pdd['data']['pred_states'][qbn][dim2_sp_idx] = \
+                    deepcopy(pred_states)
+                pdd['avg_fidelities'][qbn][dim2_sp_idx] = \
+                    np.trace(fm) / float(np.sum(fm))
                 pdd_ap['state_prob_mtx'][qbn][dim2_sp_idx] = fm
                 pdd_ap['classifier_params'][qbn][dim2_sp_idx] = clf_params
+
                 if 'means_' in clf_params:
                     pdd_ap['snr'][qbn][dim2_sp_idx] = \
                         self._extract_snr(clf, state_labels_ordered)
@@ -8450,6 +8460,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         self._extract_slopes(clf, state_labels_ordered)
 
                 self.clf_[qbn][dim2_sp_idx] = clf
+
                 if self.preselection:
                     # redo with classification 1st of preselection and masking
                     pred_presel = self.clf_[qbn][dim2_sp_idx].predict(
@@ -8480,8 +8491,12 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         deepcopy(qb_shots_masked)
                     pdd['data_masked']['prep_states'][qbn][dim2_sp_idx] = \
                         deepcopy(prep_states_masked)
-                    pdd_ap['state_prob_mtx_masked'][qbn][dim2_sp_idx] = fm_masked
-                    pdd_ap['n_shots_masked'][qbn][dim2_sp_idx] = qb_shots_masked.shape[0]
+                    pdd['data_masked']['pred_states'][qbn][dim2_sp_idx] = \
+                        deepcopy(pred_states)
+                    pdd_ap['state_prob_mtx_masked'][qbn][dim2_sp_idx] = \
+                        fm_masked
+                    pdd_ap['n_shots_masked'][qbn][dim2_sp_idx] = \
+                        qb_shots_masked.shape[0]
 
                     presel_frac = np.array([np.sum(prep_states_masked == s) /
                                             (np.sum(prep_states == s))
