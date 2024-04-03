@@ -613,18 +613,18 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         a = tda.MultiQutrit_Singleshot_Readout_Analysis(**analysis_kwargs)
         for qb in qubits:
             classifier_params = a.proc_data_dict[
-                'analysis_params']['classifier_params'][qb.name]
+                'analysis_params']['classifier_params'][qb.name][0]
             if update:
                 qb.acq_classifier_params().update(classifier_params)
                 if 'state_prob_mtx_masked' in a.proc_data_dict[
                         'analysis_params']:
                     qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
-                        'state_prob_mtx_masked'][qb.name])
+                        'state_prob_mtx_masked'][qb.name][0])
                 else:
                     log.warning('Measurement was not run with preselection. '
                                 'state_prob_matx updated with non-masked one.')
                     qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
-                        'state_prob_mtx'][qb.name])
+                        'state_prob_mtx'][qb.name][0])
         return a
 
 
