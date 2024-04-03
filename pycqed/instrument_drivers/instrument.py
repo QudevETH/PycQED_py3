@@ -81,6 +81,8 @@ class InstrumentModule(QcodesInstrumentModule):
     def get_idn(self):
         """Get the Instrument Module's ID and Name.
 
+        See QCoDeS docs for more details.
+
         Returns:
             dict: A dictionary with two keys: 'driver' and 'name'.
                 The values are the name of the driver and the name of the instrument (set during initialization).

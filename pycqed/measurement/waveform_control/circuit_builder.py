@@ -191,7 +191,7 @@ class CircuitBuilder:
 
     def get_reset_params(self, qb_names="all"):
         """
-        Gets a copy of preparation parameters (used for active reset,
+        Gets a copy of reset parameters (used for active reset,
         preselection) for qb_names.
         Args:
             qb_names (list): list of qubit names for which the
@@ -1264,6 +1264,9 @@ class CircuitBuilder:
         #  hack because mux_readout() was modified to also sometimes be RO + reset
         #  but maybe a cleaner solution would be to have a separate block for the
         #  end reset after the readout?
+        # FIXME: add an explaining comment why the space in 'RO ' is necessary to
+        # avoid matching other op_codes. Which other op_codes starting with 'RO' are there?
+
         all_ro_op_codes = [p['op_code'] for p in ro.pulses if "op_code" in p
                            and (p['op_code'].startswith('RO ') # space after RO required to avoid matching the wrong OP code
                                 or p['op_code'].startswith('Acq'))]
