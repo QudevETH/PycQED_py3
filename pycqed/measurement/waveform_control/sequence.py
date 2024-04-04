@@ -150,7 +150,13 @@ class Sequence:
                 # Take element metadata from the resolved segments.
                 element_metadata = seg.element_metadata
                 elnames = seg.elements_on_awg.get(group, [])
-                for elname in elnames:
+                # Determine when each element starts in the current group
+                el_start_times = {
+                    elname: seg.element_start_length(elname, group)[0]
+                    for elname in elnames}
+                # Loop through elements in the order of their start time
+                for i in np.argsort(list(el_start_times.values())):
+                    elname = elnames[i]
                     # uelname = element name unique within the AWG
                     # If elements are shared between trigger groups of an AWG,
                     # this ensures that the following logic correctly orders
