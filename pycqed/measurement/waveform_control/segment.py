@@ -1133,7 +1133,7 @@ class Segment:
 
         return pulses
 
-    def gen_elements_on_awg(self, return_sorted=False):
+    def gen_elements_on_awg(self, return_sorted=True):
         """
         Updates the self.elements_on_AWG dictionary
         """
@@ -1469,7 +1469,7 @@ class Segment:
             elements by adding them to self.overlapping_elements
         """
 
-        self.gen_elements_on_awg()
+        self.gen_elements_on_awg(return_sorted=False)
         overlapping_elements = []
 
         for group in self.elements_on_awg:
@@ -1541,7 +1541,7 @@ class Segment:
         one another. At the end the code combines all elements of each
         list into a new element.
         """
-        self.gen_elements_on_awg()
+        self.gen_elements_on_awg(return_sorted=False)
         overlapping_elements = self._test_overlap(track_and_ignore=True)
 
         if len(overlapping_elements) == 0:
@@ -1607,7 +1607,7 @@ class Segment:
         # add new element
         self.elements[combined_el_name] = new_pulse_list
         # update new elements_on_awg
-        self.gen_elements_on_awg()
+        self.gen_elements_on_awg(return_sorted=False)
 
         # update element_start_end
         for group in self.pulsar.trigger_groups:

@@ -248,7 +248,7 @@ class Sequence:
             seq_groups.append(set())
             for seg in seq.segments.values():
                 seg.resolve_segment()
-                seg.gen_elements_on_awg()
+                seg.gen_elements_on_awg(return_sorted=False)
             seq_groups[i] |= set(
                 [group for group in seg.elements_on_awg
                  if seq.pulsar.get_awg_from_trigger_group(group) in awgs])
