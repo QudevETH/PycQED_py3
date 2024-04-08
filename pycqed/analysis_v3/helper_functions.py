@@ -1,6 +1,6 @@
 import logging
 log = logging.getLogger(__name__)
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Union
 
 import re
 import os
@@ -1781,8 +1781,8 @@ def translate_reset_to_prep_params(
     # and in legacy legacy setups the parameters are stored as string
     elif isinstance(reset_parameters, str):
 
-        if reset_param_str in RESET_PARAM_MAPPING:
-            return RESET_PARAM_MAPPING[reset_param_str]
+        if reset_parameters in RESET_PARAM_MAPPING:
+            return RESET_PARAM_MAPPING[reset_parameters]
         else:
             # Any other '{reset_params}' is likely legacy.
             # Assume that the analysis can be performed
