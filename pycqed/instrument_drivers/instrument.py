@@ -72,12 +72,14 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
             return ins
 
 
+# FIXME: Is this class really needed?
 class InstrumentModule(QcodesInstrumentModule):
     """
-    Required as standard interface for QCoDeS instrument modules.
+    Custom extension of QcodesInstrumentModule for ResetScheme.
 
-    See QCoDeS docs for more details.
+    See QCoDeS docs & reset_schemes.py for more details.
     """
+
     def get_idn(self):
         """Get the Instrument Module's ID and Name.
 
