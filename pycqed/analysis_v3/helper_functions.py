@@ -1701,7 +1701,7 @@ def read_from_hdf(data_dict, hdf_group, split_char='.', raise_exceptions=False):
 
 
 # FIXME: Implement the support of multiple steps / analysis_instructions
-# FIXME: This is duplicated twice now (also in v2/base_analysis.py)
+# FIXME: This is duplicated work(also in v2/base_analysis.py)
 def translate_reset_to_prep_params(
     reset_parameters: Union[str, dict],
     qbn: Optional[str] = None,
