@@ -1,12 +1,13 @@
 import logging
 log = logging.getLogger(__name__)
+from typing import Dict, Any
+
 import re
 import os
 import h5py
 import traceback
 import itertools
 import numpy as np
-import pycqed.analysis_v2.base_analysis as ba
 from numpy import array  # Needed for eval. Do not remove.
 from copy import deepcopy
 from collections import OrderedDict
@@ -1254,17 +1255,9 @@ def get_reset_reps_from_data_dict(data_dict):
             if not explicitly specified in the data dictionary.
     """
     reset_reps = 0
-    metadata = data_dict.get('exp_metadata', {})
-
-    # Convert new active reset to legacy format
-    if "reset_params" in metadata:
-        prep_params = ba.BaseDataAnalysis.translate_reset_to_prep_params(
-            metadata["reset_params"], default_value={}
-        )
 
     # Extract reset_reps
-    if "active" in prep_params.get("preparation_type", "wait"):
-        reset_reps = prep_params.get("reset_reps", 3)
+    reset_reps = get_preparation_parameters(data_dict).get("reset_reps", 3)
 
     return reset_reps
 
