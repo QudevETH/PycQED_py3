@@ -2700,6 +2700,28 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'zrange': self.get_param_value('zrange', None),
                         'title': title,
                         'clabel': data_axis_label}
+                    if self.get_param_value('stacked_twod',
+                                            default_value=False):
+                        color_map = mpl.cm.get_cmap('viridis', len(yvals))
+                        for i, (yv, sp) in enumerate(zip(yvals, ssp)):
+                            self.plot_dicts[f'{plot_dict_name}_{pn}_stack_{i}']\
+                                = {
+                                'plotfn': self.plot_line,
+                                'fig_id': fig_name + '_' + pn + "_stack",
+                                'xvals': xvals,
+                                'yvals': yv,
+                                'xlabel': xlabel,
+                                'xunit': xunit,
+                                'ylabel': data_axis_label,
+                                'yscale': self.get_param_value(
+                                    'yscale_stack', 'linear'),
+                                'setlabel': f'{sp:2.3f} {yunit}',  # how do
+                                # we round values?
+                                'do_legend': True,
+                                'legend_bbox_to_anchor': (1, 0.5),
+                                'legend_pos': 'center left',
+                                'line_kws': {'color': color_map.colors[i]},
+                                'title': title}
 
         if prep_1d_plot:
             if len(yvals.shape) > 1 and yvals.shape[0] == 1:
