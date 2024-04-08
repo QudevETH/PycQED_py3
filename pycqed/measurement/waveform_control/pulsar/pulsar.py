@@ -1151,8 +1151,12 @@ class Pulsar(Instrument):
             awgs: List of AWGs names, or ``"all"``
         """
 
-        # This ensures that a new timer is created every time when starting
-        # a measurement (must be set back to None in self.stop)
+        # This and the line in self.stop ensure that a new timer is created
+        # when starting every new measurement. At the end of the measurement
+        # this timer will get stored as a child of the Sequence timer (current
+        # behaviour). Note: 2D sweeps with multiple uploads will create
+        # multiple timers, each new timer becoming a child of the
+        # corresponding Sequence.
         if self.timer is None:
             self.timer = Timer(self.name)
             sequence.timer.children.update({self.name: self.timer})
