@@ -2739,14 +2739,13 @@ class QuDev_transmon(MeasurementObject):
 
         tn = '' if transition_name == 'ge' else f'_{transition_name}'
         op_name = f"{op_name}{tn}"
-
-        # find pulse module
         parameter_prefix = f'{parameter_prefix}{tn}'
         self.add_operation(op_name)
 
-        # get default pulse params for the pulse type
+        # Get default pulse params for the pulse type
         pulse_func = bpl.get_pulse_class(pulse_type)
         params = pulse_func.pulse_params()
+
         for param, init_val in params.items():
             self.add_pulse_parameter(
                 op_name, parameter_prefix + '_' + param, param,
