@@ -2709,7 +2709,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         # [0,1] in a linear mapping
                         normalize = lambda y: (y-np.min(ssp))/(np.max(
                             ssp)-np.min(ssp))
-                        # normalize converts [np.min(ssp), np.max(ssp)] ->
+                        # normalize_log converts [np.min(ssp), np.max(ssp)] ->
                         # [0,1] in a logarithmic mapping
                         normalize_log = lambda y: \
                                 np.log(1 + 9 * normalize(y)) / np.log(10)
