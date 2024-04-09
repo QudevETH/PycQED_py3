@@ -7,6 +7,9 @@ from collections import OrderedDict
 import qcodes as qc
 from pycqed.instrument_drivers.instrument import Instrument
 
+import logging
+log = logging.getLogger(__name__)
+
 
 class ArduinoSwitchControl(Instrument):
     """Class for the RT switch box that uses an Arduino
@@ -428,6 +431,7 @@ class ArduinoSwitchControl(Instrument):
             # handle output during setup
             setup_string = self.serial.readline().decode()
             if not setup_string.startswith('RT switch box'):  # setup
+                raise
                 # invalid init string
                 print(f"Invalid init string: {setup_string}.")
             else:
