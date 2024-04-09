@@ -431,7 +431,7 @@ class ArduinoSwitchControl(Instrument):
             if not setup_string.startswith('RT switch box'):  # setup
                 raise
                 # invalid init string
-                print(f"Invalid init string: {setup_string}.")
+                log.warning(f'Invalid init string: {setup_string}.')
             else:
                 self.setup_dict = dict(
                     [[s2.strip() for s2 in s1.split(':')] for s1 in
@@ -439,8 +439,8 @@ class ArduinoSwitchControl(Instrument):
                 if not ('IO expander status' in self.setup_dict and
                         self.setup_dict['IO expander status'] ==
                         '1'*self.NUM_IO):
-                    print(f'\nSetup failed for IO-Expander '
-                          f'{self.setup_dict["IO expander status"]}.')
+                    log.warning(f'\nSetup failed for IO-Expander '
+                                f'{self.setup_dict["IO expander status"]}.')
 
         # save found serial. Serial might be closed, might have to be opened
         # manually.
