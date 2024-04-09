@@ -2702,7 +2702,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'clabel': data_axis_label}
                     if self.get_param_value('stacked_twod',
                                             default_value=False):
-                        color_map = mpl.cm.get_cmap('viridis', len(yvals))
+                        color_map = mpl.colormaps['viridis']
+                        # normalization functions for the color of the
+                        # curves.
+                        # normalize converts [np.min(ssp), np.max(ssp)] ->
+                        # [0,1] in a linear mapping
+                        normalize = lambda y: (y-np.min(ssp))/(np.max(
+                            ssp)-np.min(ssp))
+                        # normalize converts [np.min(ssp), np.max(ssp)] ->
+                        # [0,1] in a logarithmic mapping
+                        normalize_log = lambda y: \
+                                np.log(1 + 9 * normalize(y)) / np.log(10)
                         for i, (yv, sp) in enumerate(zip(yvals, ssp)):
                             self.plot_dicts[f'{plot_dict_name}_{pn}_stack_{i}']\
                                 = {
@@ -2713,14 +2723,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                 'xlabel': xlabel,
                                 'xunit': xunit,
                                 'ylabel': data_axis_label,
-                                'yscale': self.get_param_value(
-                                    'yscale_stack', 'linear'),
-                                'setlabel': f'{sp:2.3f} {yunit}',  # how do
-                                # we round values?
+                                'yscale': 'log' if
+                                    self.get_param_value('logzscale', False)
+                                    else 'linear',
+                                'setlabel': f'{sp:2.1e} {yunit}',
                                 'do_legend': True,
                                 'legend_bbox_to_anchor': (1, 0.5),
                                 'legend_pos': 'center left',
-                                'line_kws': {'color': color_map.colors[i]},
+                                'line_kws': {
+                                    'color': color_map(normalize_log(sp)) if
+                                    self.get_param_value('logyscale', False)
+                                    else color_map(normalize(sp))},
                                 'title': title}
 
         if prep_1d_plot:
