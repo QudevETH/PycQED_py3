@@ -2700,7 +2700,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'zrange': self.get_param_value('zrange', None),
                         'title': title,
                         'clabel': data_axis_label}
-                    if self.get_param_value('stacked_twod',
+                    if self.get_param_value('plot_TwoD_as_curves',
                                             default_value=False):
                         color_map = mpl.colormaps['viridis']
                         # normalization functions for the color of the
@@ -2714,10 +2714,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         normalize_log = lambda y: \
                                 np.log(1 + 9 * normalize(y)) / np.log(10)
                         for i, (yv, sp) in enumerate(zip(yvals, ssp)):
-                            self.plot_dicts[f'{plot_dict_name}_{pn}_stack_{i}']\
+                            self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
                                 = {
                                 'plotfn': self.plot_line,
-                                'fig_id': fig_name + '_' + pn + "_stack",
+                                'fig_id': fig_name + '_' + pn + "_curves",
                                 'xvals': xvals,
                                 'yvals': yv,
                                 'xlabel': xlabel,
