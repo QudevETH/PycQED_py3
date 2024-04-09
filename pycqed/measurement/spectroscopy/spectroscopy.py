@@ -1242,10 +1242,14 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
         freqs: See :class:`ResonatorSpectroscopy' for details.
 
     Updates:
-        qb.ro_freq: To the value maximizing the distance in the IQ plane between
-            the first two states in task["states"]. If you want to make your RO
-            more dicriminating between e & f you should pass states
-            ["e", "f", ...] instead of e.g. ["g", "e", "f"].
+        qb.ro_freq: To the value maximizing the distance in the IQ plane
+            between the states in task["states"] according to the
+            distance_metric kwarg of the run_update method (which defaults
+            to "sum"). If you want to make your RO more discriminating
+            between e & f you should either pass states ["e", "f"] instead
+            of e.g. ["g", "e", "f"] or set the distance_metric to "e-f" for
+            states ["g", "e", "f"].
+
     """
     default_experiment_name = 'MultiStateResonatorSpectroscopy'
     kw_for_sweep_points = dict(
