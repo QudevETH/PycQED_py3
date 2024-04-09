@@ -127,7 +127,8 @@ def extract_data_hdf(data_dict=None, timestamps=None,
 
         # extract the data array and add it as data_dict['measured_data'].
         data_dict = add_measured_data_hdf(
-            data_dict, folder, append_data, replace_data)
+            data_dict, folder, append_data, replace_data,
+            meas_data_dtype = params.get('meas_data_dtype'))
 
         # extract exp_metadata separately, then call
         # combine_metadata_list, then extract all other parameters.

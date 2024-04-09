@@ -38,6 +38,8 @@ class ArduinoSwitchControl(Instrument):
             - An integer N. Groups without a given label will be
               labelled with 'I1', 'I2',... for input groups and
               'O1','O2',... for output groups
+        - As a list of strings where the strings are the labels of the
+          connectors, e.g. ['I1', 'I7']
 
     The Qcodes parameters representing switching individual switches follow
     the naming convention 'switch_X_mode' where 'X' is the label of the
@@ -230,21 +232,17 @@ class ArduinoSwitchControl(Instrument):
         # Inputs and outputs
         # ------------------
         inputs = config['inputs']
-        self.inputs, self.input_groups = self._create_connectors(
+        self.inputs, self.input_groups, _ = self._create_connectors(
             inputs,
             default_label='I',
-            return_groups=True,
             connector_type='input',
-            return_labels=False
         )
 
         outputs = config['outputs']
-        self.outputs, self.output_groups = self._create_connectors(
+        self.outputs, self.output_groups, _ = self._create_connectors(
             outputs,
             default_label='O',
-            return_groups=True,
             connector_type='output',
-            return_labels=False
         )
 
         self._num_inputs = len(self.inputs)
@@ -618,8 +616,7 @@ class ArduinoSwitchControl(Instrument):
             self.routes[route.input.label][route.output.label].append(route)
 
     def _create_connectors(self, connectors, connector_type, default_label='C',
-                           return_groups=False, in_group=False,
-                           return_labels=False):
+                           in_group=False):
         """Creates connectors from the configuration (see class documentation)
 
         Args:
@@ -632,22 +629,26 @@ class ArduinoSwitchControl(Instrument):
                 - list of the tuples above, to create groups. The group label
                   and the connector number are separated with a dot.
                   e. g. [(A,2),(B,3)] results in A.1, A.2, B.1, B.2, B.3
+                - list of strings: label of the connectors as a list of strings
+                  e.g. ['I1', 'I2', 'I7']
             connector_type (str): Has to be 'input' or 'output'.
             default_label: Label that is used as a default.
-            return_groups (bool): Whether the labels of the groups should be
-                                  returned as well.
             in_group (bool): Whether this method is called to for an
                              individual group. Needed to handle the recursion
                              of the method.
-            return_labels: Whether the labels of the connectors should be
-                           returned a swell.
 
         Returns:
-            OrderedDict: Dictionary with the connectors.
-                if return_groups, the group labels also get returned
-                if return_labels, the connector labels also get returned
+            - OrderedDict: Dictionary with the connectors.
+            - list of group labels
+            - list of connector labels
 
         """
+        def get_connectors_dict(labels, connector_type, group):
+            return OrderedDict([
+                (label, ArduinoSwitchControlConnector(
+                    label, 'box', connector_type, group=group
+                )) for label in labels])
+
         if isinstance(connectors, int):
             if connectors < 0:
                 raise ValueError("Number of connectors 'connectors' must"
@@ -660,18 +661,8 @@ class ArduinoSwitchControl(Instrument):
                 group = None
             labels = [label_string + str(n) for n in range(1, connectors + 1)]
 
-            connectors_dict = OrderedDict([
-                (label, ArduinoSwitchControlConnector(
-                    label, 'box', connector_type, group=group
-                )) for label in labels])
-            if return_groups and return_labels:
-                return connectors_dict, [default_label], labels
-            elif return_groups:
-                return connectors_dict, [default_label]
-            elif return_labels:
-                return connectors_dict, labels
-            else:
-                return connectors_dict
+            connectors_dict = get_connectors_dict(labels, connector_type, group)
+            return connectors_dict, [default_label], labels
         else:
             try:
                 connectors = list(connectors)
@@ -680,22 +671,18 @@ class ArduinoSwitchControl(Instrument):
                                 "Check documentation.")
             if (len(connectors) == 2 and isinstance(connectors[0], str)
                     and isinstance(connectors[1], int)):
-                connectors_dict, labels = self._create_connectors(
+                connectors_dict, _, labels = self._create_connectors(
                     connectors[1],
                     connector_type=connector_type,
                     default_label=connectors[0],
-                    return_groups=False,
                     in_group=in_group,
-                    return_labels=True
                 )
-                if return_groups and return_labels:
-                    return connectors_dict, [connectors[0]], labels
-                elif return_groups:
-                    return connectors_dict, [connectors[0]]
-                elif return_labels:
-                    return connectors_dict, labels
-                else:
-                    return connectors_dict
+                return connectors_dict, [connectors[0]], labels
+            elif all(isinstance(label, str) for label in connectors):
+                labels = connectors
+                connectors_dict = get_connectors_dict(
+                    labels, connector_type, None)
+                return connectors_dict, [], labels
             else:
                 connectors_dict = OrderedDict()
                 groups = []
@@ -706,21 +693,13 @@ class ArduinoSwitchControl(Instrument):
                     else:
                         group = (group[0], group[1])
                     groups.append(group[0])
-                    con_dict, labs = self._create_connectors(
+                    con_dict, _, labs = self._create_connectors(
                         group, connector_type=connector_type,
-                        return_groups=False, in_group=True,
-                        return_labels=True
+                        in_group=True,
                     )
                     connectors_dict.update(con_dict)
                     labels += labs
-                if return_groups and return_labels:
-                    return connectors_dict, groups, labels
-                elif return_groups:
-                    return connectors_dict, groups
-                elif return_labels:
-                    return connectors_dict, labels
-                else:
-                    return connectors_dict
+                return connectors_dict, groups, labels
 
     def _process_connections(self, connections):
         """Creates the connections and finds the routes.
