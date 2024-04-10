@@ -1,6 +1,7 @@
 # from pycqed.analysis_v3 import helper_functions as hlp_mod
 import logging
 import numpy as np
+import h5py
 
 from pycqed.instrument_drivers.mock_qcodes_interface import Station, \
     ParameterNotFoundError
@@ -482,3 +483,28 @@ def get_station_from_file(timestamp=None, folder=None, filepath=None,
     return get_loader_from_file(timestamp=timestamp, folder=folder,
                                 filepath=filepath, file_id=file_id) \
         .get_station(param_path=param_path)
+
+
+def convert_settings_to_hdf(timestamp: str):
+    """
+    Write the instrument settings into the preexisting hdf-file from any
+    settings file supported by the settings manager in the same folder with
+    the provided timestamp.
+
+    Args:
+        timestamp(str): Common timestamp of the settings file and
+        the hdf-file in which the settings should be written to.
+    """
+    from pycqed.analysis import analysis_toolbox as a_tools
+    from pycqed.utilities.general import dict_to_ordered_tuples
+    from pycqed.measurement.measurement_control import MeasurementControl
+    station = get_station_from_file(timestamp)
+    with h5py.File(a_tools.measurement_filename(a_tools.get_folder(timestamp)),
+                   'a') as hdf_file:
+        set_grp = hdf_file.create_group('Instrument settings')
+        inslist = dict_to_ordered_tuples(station.components)
+        for (iname, inst) in inslist:
+            instrument_grp = set_grp.create_group(iname)
+            MeasurementControl.store_snapshot_parameters(
+                inst.snapshot(reduced=False),
+                instrument_grp, inst)
