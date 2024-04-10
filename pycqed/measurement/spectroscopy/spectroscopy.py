@@ -1237,6 +1237,8 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     Arguments:
         states (list[str], optional): List of strings specifying the initial
             states to be measured. Defaults to `["g", "e"]`.
+        distance_metric (str): Metric which calculates the optimal ro_freq,
+            see docstring of self.run_update().
 
     Compatible task dict keys:
         freqs: See :class:`ResonatorSpectroscopy' for details.
@@ -1244,11 +1246,8 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     Updates:
         qb.ro_freq: To the value maximizing the distance in the IQ plane
             between the states in task["states"] according to the
-            distance_metric kwarg of the run_update method (which defaults
-            to "sum"). If you want to make your RO more discriminating
-            between e & f you should either pass states ["e", "f"] instead
-            of e.g. ["g", "e", "f"] or set the distance_metric to "e-f" for
-            states ["g", "e", "f"].
+            distance_metric kwarg which gets forwarded to the
+            run_update method.
 
     """
     default_experiment_name = 'MultiStateResonatorSpectroscopy'
