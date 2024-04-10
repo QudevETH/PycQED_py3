@@ -2109,9 +2109,10 @@ class MeasurementControl(Instrument):
                     for (iname, ins) in inslist:
                         instrument_grp = set_grp.create_group(iname)
                         inst_snapshot = ins.snapshot()
-                        self.store_snapshot_parameters(inst_snapshot,
-                                                       entry_point=instrument_grp,
-                                                       instrument=ins)
+                        MeasurementControl.store_snapshot_parameters(
+                            inst_snapshot,
+                            entry_point=instrument_grp,
+                            instrument=ins)
                 numpy.set_printoptions(**opt)
             import numpy
             import sys
@@ -2164,8 +2165,8 @@ class MeasurementControl(Instrument):
                             timestamp=self.last_timestamp())
             dumper.dump(mode=mode)
 
-
-    def store_snapshot_parameters(self, inst_snapshot, entry_point,
+    @staticmethod
+    def store_snapshot_parameters(inst_snapshot, entry_point,
                                   instrument):
         """
         Save the values of keys in the "parameters" entry of inst_snapshot.
@@ -2205,7 +2206,7 @@ class MeasurementControl(Instrument):
                     # that are in the snapshot_whitelist
                     continue
                 submod_grp = entry_point.create_group(key)
-                self.store_snapshot_parameters(
+                MeasurementControl.store_snapshot_parameters(
                     submod_snapshot, entry_point=submod_grp, instrument=subins)
 
         if 'parameters' in inst_snapshot:
