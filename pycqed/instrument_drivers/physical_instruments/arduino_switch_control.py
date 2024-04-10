@@ -429,7 +429,6 @@ class ArduinoSwitchControl(Instrument):
             # handle output during setup
             setup_string = self.serial.readline().decode()
             if not setup_string.startswith('RT switch box'):  # setup
-                raise
                 # invalid init string
                 log.warning(f'Invalid init string: {setup_string}.')
             else:
