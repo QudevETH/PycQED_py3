@@ -1237,8 +1237,11 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     Arguments:
         states (list[str], optional): List of strings specifying the initial
             states to be measured. Defaults to `["g", "e"]`.
-        distance_metric (str): Metric which calculates the optimal ro_freq,
-            see docstring of self.run_update().
+        **kw: passed on to the super init. From there, they get passed,
+            among others, to run_update, which interprets the following in
+            this child class:
+                - distance_metric (str): Metric which calculates the optimal
+                    ro_freq, see docstring of self.run_update().
 
     Compatible task dict keys:
         freqs: See :class:`ResonatorSpectroscopy' for details.
