@@ -734,7 +734,7 @@ class MeasurementControl(Instrument):
         '''
         if self.print_debug:
             print("####### measurement_function")
-        if np.size(x) == 1:
+        if np.isscalar(x):
             x = [x]
         # The len()==1 condition is a consistency check because batch_mode
         # is currently only implemented for the case of a single sweep
