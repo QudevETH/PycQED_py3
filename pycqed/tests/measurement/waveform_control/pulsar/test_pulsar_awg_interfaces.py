@@ -13,22 +13,27 @@ from pycqed.measurement.waveform_control.pulsar.hdawg8_pulsar import HDAWG8Pulsa
 from pycqed.measurement.waveform_control.pulsar.shfqa_pulsar import SHFQAPulsar
 from pycqed.measurement.waveform_control.pulsar.uhfqc_pulsar import UHFQCPulsar
 
-from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
-    VirtualAWG5014
-from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
-    .ZI_HDAWG_qudev import ZI_HDAWG_qudev
+from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import VirtualAWG5014
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_HDAWG_qudev import (
+    ZI_HDAWG_qudev,
+)
 from pycqed.instrument_drivers.acquisition_devices.uhfqa import UHFQA
+
 # from pycqed.instrument_drivers.acquisition_devices.shfqa import \
 #     SHFQA
 
 
-registered_interfaces:List[Type[PulsarAWGInterface]] = [
-    AWG5014Pulsar, HDAWG8Pulsar, SHFQAPulsar, UHFQCPulsar
+registered_interfaces: List[Type[PulsarAWGInterface]] = [
+    AWG5014Pulsar,
+    HDAWG8Pulsar,
+    SHFQAPulsar,
+    UHFQCPulsar,
 ]
 
 
-def assert_has_parameters(tester:TestCase, instrument:Instrument,
-                          parameters:List[str]):
+def assert_has_parameters(
+    tester: TestCase, instrument: Instrument, parameters: List[str]
+):
 
     for p in parameters:
         tester.assertIn(p, instrument.parameters)
@@ -44,19 +49,22 @@ class TestPulsarAWGInterface(TestCase):
         id = random.randint(1, 1000000)
         self.pulsar = Pulsar(f"pulsar_{id}")
 
-        self.awg5014 = VirtualAWG5014(f"awg5014_{id}", timeout=20,
-                                      address='TCPIP0::192.168.1.4')
+        self.awg5014 = VirtualAWG5014(
+            f"awg5014_{id}", timeout=20, address="TCPIP0::192.168.1.4"
+        )
 
-        self.hdawg = ZI_HDAWG_qudev(f"hdawg_{id}", device="dev8000",
-                                    interface="1GbE", server="emulator")
+        self.hdawg = ZI_HDAWG_qudev(
+            f"hdawg_{id}", device="dev8000", interface="1GbE", server="emulator"
+        )
 
         # TODO: SHFQ currently has no virtual driver, so we do not unit test it.
         # self.shfqa = SHFQA(name=f"shfqa_{id}", serial="dev12000", host="localhost")
 
-        self.uhfqc = UHFQA(f"uhfqc_{id}", device='dev2000',
-                           interface='1GbE', server="emulator")
+        self.uhfqc = UHFQA(
+            f"uhfqc_{id}", device="dev2000", interface="1GbE", server="emulator"
+        )
 
-        self.awgs:List[Tuple[Instrument, Type[PulsarAWGInterface]]] = [
+        self.awgs: List[Tuple[Instrument, Type[PulsarAWGInterface]]] = [
             (self.awg5014, AWG5014Pulsar),
             (self.hdawg, HDAWG8Pulsar),
             # (self.shfqa, SHFQAPulsar),
@@ -121,8 +129,10 @@ class TestPulsarAWGInterface(TestCase):
 
                 for ch_type, suffix in [("analog", ""), ("marker", "m")]:
 
-                    if awg_interface.__class__ in [UHFQCPulsar, SHFQAPulsar] \
-                       and ch_type == "marker":
+                    if (
+                        awg_interface.__class__ in [UHFQCPulsar, SHFQAPulsar]
+                        and ch_type == "marker"
+                    ):
                         # These classes do not use marker channels
                         continue
 
@@ -170,17 +180,19 @@ class TestPulsarAWGInterface(TestCase):
                 awg_interface = self.pulsar.awg_interfaces[awg.name]
 
                 # Generate sequence
-                pulses = [{
-                    "name": f"pulse",
-                    "pulse_type": "SquarePulse",
-                    "pulse_delay": 0,
-                    "ref_pulse": "previous_pulse",
-                    "ref_point": "end",
-                    "length": 5e-8,
-                    "amplitude": 0.05,
-                    "channels": [f"{awg.name}_ch1"],
-                    "channel": f"{awg.name}_ch1",
-                }]
+                pulses = [
+                    {
+                        "name": f"pulse",
+                        "pulse_type": "SquarePulse",
+                        "pulse_delay": 0,
+                        "ref_pulse": "previous_pulse",
+                        "ref_point": "end",
+                        "length": 5e-8,
+                        "amplitude": 0.05,
+                        "channels": [f"{awg.name}_ch1"],
+                        "channel": f"{awg.name}_ch1",
+                    }
+                ]
                 segment = Segment("segment", pulses)
                 sequence = Sequence("sequence", segments=[segment])
                 waveforms, awg_sequences = sequence.generate_waveforms_sequences()
@@ -230,17 +242,19 @@ class TestPulsarAWGInterface(TestCase):
                 awg_interface = self.pulsar.awg_interfaces[awg.name]
 
                 # Generate sequence
-                pulses = [{
-                    "name": f"pulse",
-                    "pulse_type": "SquarePulse",
-                    "pulse_delay": 0,
-                    "ref_pulse": "previous_pulse",
-                    "ref_point": "end",
-                    "length": 5e-8,
-                    "amplitude": 0.05,
-                    "channels": [f"{awg.name}_ch1"],
-                    "channel": f"{awg.name}_ch1",
-                }]
+                pulses = [
+                    {
+                        "name": f"pulse",
+                        "pulse_type": "SquarePulse",
+                        "pulse_delay": 0,
+                        "ref_pulse": "previous_pulse",
+                        "ref_point": "end",
+                        "length": 5e-8,
+                        "amplitude": 0.05,
+                        "channels": [f"{awg.name}_ch1"],
+                        "channel": f"{awg.name}_ch1",
+                    }
+                ]
                 segment = Segment("segment", pulses)
                 sequence = Sequence("sequence", segments=[segment])
                 waveforms, awg_sequences = sequence.generate_waveforms_sequences()

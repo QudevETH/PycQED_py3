@@ -6,10 +6,7 @@ from pycqed.instrument_drivers.physical_instruments.E8527D import Agilent_E8527D
 class TestAgilentE8527D(unittest.TestCase):
     """Tests for the custom ``Agilent_E8527D`` driver."""
 
-    PARAMETERS_TO_TEST = [
-        "frequency", "phase", "power", "status", "pulsemod_state"
-    ]
-
+    PARAMETERS_TO_TEST = ["frequency", "phase", "power", "status", "pulsemod_state"]
 
     @classmethod
     def setUpClass(cls):
@@ -17,7 +14,7 @@ class TestAgilentE8527D(unittest.TestCase):
             name="test_agilent_e8527d",
             address="GPIB0::7::INSTR",
             step_attenuator=True,
-            virtual=True
+            virtual=True,
         )
 
     @classmethod
@@ -59,19 +56,14 @@ class TestAgilentE8527D(unittest.TestCase):
             with self.subTest(parameter):
 
                 # Test getting initial value
-                self.assertNotEqual(
-                    self.instrument.parameters[parameter].get(), 
-                    None
-                )
+                self.assertNotEqual(self.instrument.parameters[parameter].get(), None)
 
                 # Test setting a value
-                self.instrument.parameters[parameter].set(
-                    valid_values[parameter]
-                )
+                self.instrument.parameters[parameter].set(valid_values[parameter])
                 self.assertAlmostEqual(
                     self.instrument.parameters[parameter].get(),
                     valid_values[parameter],
-                    places=4
+                    places=4,
                 )
 
     def test_snapshot(self):

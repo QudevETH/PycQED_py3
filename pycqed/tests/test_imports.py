@@ -1,6 +1,5 @@
 """Test checking that all modules in the package can be imported."""
 
-
 import unittest
 from importlib import import_module
 from pkgutil import iter_modules
@@ -10,7 +9,7 @@ from typing import List
 import pycqed
 
 
-def get_modules_recursive(path:str, prefix:str="") -> List[str]:
+def get_modules_recursive(path: str, prefix: str = "") -> List[str]:
     """Find the list of all submodules inside a base module.
 
     Arguments:
@@ -29,8 +28,7 @@ def get_modules_recursive(path:str, prefix:str="") -> List[str]:
 
         if mod.ispkg:
             modules += get_modules_recursive(
-                path=os.path.join(path, mod.name),
-                prefix=f"{prefix}{mod.name}."
+                path=os.path.join(path, mod.name), prefix=f"{prefix}{mod.name}."
             )
 
     return modules
@@ -50,8 +48,7 @@ class TestModuleImports(unittest.TestCase):
     def setUpClass(cls):
 
         all_modules = get_modules_recursive(
-            path=pycqed.__path__[0],
-            prefix=f"{pycqed.__name__}."
+            path=pycqed.__path__[0], prefix=f"{pycqed.__name__}."
         )
 
         # The modules listed here will be skipped during the test

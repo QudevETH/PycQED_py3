@@ -21,6 +21,12 @@ cache:
     - .cache/pip
     - .cache/apt
 
+pytest:
+  stage: test
+  script:
+    - pip install '.[test]'
+    - pytest --cov=pycqed pycqed/tests
+
 # This is necessary to be able to copy the doc via SSH
 # FIXME: This part will move to Docker in Jul.2024
 before_script:

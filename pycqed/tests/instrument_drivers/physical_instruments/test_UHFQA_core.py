@@ -5,11 +5,13 @@ import numpy as np
 
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.UHFQA_core as UHF
 
+
 class Test_UHFQA_core(unittest.TestCase):
     @classmethod
     def setup_class(cls):
-        cls.uhf = UHF.UHFQA_core(name='MOCK_UHF', server='emulator',
-                            device='dev2109', interface='1GbE')
+        cls.uhf = UHF.UHFQA_core(
+            name="MOCK_UHF", server="emulator", device="dev2109", interface="1GbE"
+        )
 
         cls.uhf.reset_waveforms_zeros()
 
@@ -18,7 +20,7 @@ class Test_UHFQA_core(unittest.TestCase):
         cls.uhf.close()
 
     def test_instantiation(self):
-        self.assertEqual(Test_UHFQA_core.uhf.devname, 'dev2109')
+        self.assertEqual(Test_UHFQA_core.uhf.devname, "dev2109")
 
     def test_assure_ext_clock(self):
         self.uhf.assure_ext_clock()
@@ -29,84 +31,86 @@ class Test_UHFQA_core(unittest.TestCase):
 
     def test_load_default_settings(self):
         self.uhf.load_default_settings()
-        self.assertEqual(self.uhf.download_crosstalk_matrix().tolist(), np.eye(10).tolist())
+        self.assertEqual(
+            self.uhf.download_crosstalk_matrix().tolist(), np.eye(10).tolist()
+        )
 
     def test_print_overview(self):
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
             self.uhf.print_overview()
         f.seek(0)
-        self.assertIn('Crosstalk overview', f.read())
+        self.assertIn("Crosstalk overview", f.read())
 
     def test_print_correlation_overview(self):
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
             self.uhf.print_correlation_overview()
         f.seek(0)
-        self.assertIn('Correlations overview', f.read())
+        self.assertIn("Correlations overview", f.read())
 
     def test_print_deskew_overview(self):
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
             self.uhf.print_deskew_overview()
         f.seek(0)
-        self.assertIn('Deskew overview', f.read())
+        self.assertIn("Deskew overview", f.read())
 
     def test_print_crosstalk_overview(self):
-      f = io.StringIO()
-      with contextlib.redirect_stdout(f):
-          self.uhf.print_crosstalk_overview()
-      f.seek(0)
-      self.assertIn('Crosstalk overview', f.read())
+        f = io.StringIO()
+        with contextlib.redirect_stdout(f):
+            self.uhf.print_crosstalk_overview()
+        f.seek(0)
+        self.assertIn("Crosstalk overview", f.read())
 
     def test_print_integration_overview(self):
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
             self.uhf.print_integration_overview()
         f.seek(0)
-        self.assertIn('Integration overview', f.read())
+        self.assertIn("Integration overview", f.read())
 
     def test_print_rotations_overview(self):
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
             self.uhf.print_rotations_overview()
         f.seek(0)
-        self.assertIn('Rotations overview', f.read())
+        self.assertIn("Rotations overview", f.read())
 
     def test_print_thresholds_overview(self):
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
             self.uhf.print_thresholds_overview()
         f.seek(0)
-        self.assertIn('Thresholds overview', f.read())
+        self.assertIn("Thresholds overview", f.read())
 
     def test_print_user_regs_overview(self):
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
             self.uhf.print_user_regs_overview()
         f.seek(0)
-        self.assertIn('User registers overview', f.read())
+        self.assertIn("User registers overview", f.read())
 
     def test_minimum_holdoff(self):
         # Test without averaging
         self.uhf.qas_0_integration_length(128)
         self.uhf.qas_0_result_averages(1)
         self.uhf.qas_0_delay(0)
-        assert self.uhf.minimum_holdoff() == 800/1.8e9
+        assert self.uhf.minimum_holdoff() == 800 / 1.8e9
         self.uhf.qas_0_delay(896)
-        assert self.uhf.minimum_holdoff() == (896+16)/1.8e9
+        assert self.uhf.minimum_holdoff() == (896 + 16) / 1.8e9
         self.uhf.qas_0_integration_length(2048)
-        assert self.uhf.minimum_holdoff() == (2048)/1.8e9
+        assert self.uhf.minimum_holdoff() == (2048) / 1.8e9
 
         # Test with averaging
         self.uhf.qas_0_result_averages(16)
         self.uhf.qas_0_delay(0)
         self.uhf.qas_0_integration_length(128)
-        assert self.uhf.minimum_holdoff() == 2560/1.8e9
+        assert self.uhf.minimum_holdoff() == 2560 / 1.8e9
         self.uhf.qas_0_delay(896)
-        assert self.uhf.minimum_holdoff() == 2560/1.8e9
+        assert self.uhf.minimum_holdoff() == 2560 / 1.8e9
         self.uhf.qas_0_integration_length(4096)
-        assert self.uhf.minimum_holdoff() == 4096/1.8e9
+        assert self.uhf.minimum_holdoff() == 4096 / 1.8e9
 
     def test_crosstalk_matrix(self):
         mat = np.random.random((10, 10))
@@ -123,11 +127,11 @@ class Test_UHFQA_core(unittest.TestCase):
 
     def test_reset_acquisition_params(self):
         for i in range(16):
-            self.uhf.set(f'awgs_0_userregs_{i}', i)
+            self.uhf.set(f"awgs_0_userregs_{i}", i)
 
         self.uhf.reset_acquisition_params()
-        values = [self.uhf.get(f'awgs_0_userregs_{i}') for i in range(16)]
-        assert values == [0]*16
+        values = [self.uhf.get(f"awgs_0_userregs_{i}") for i in range(16)]
+        assert values == [0] * 16
 
     def test_correlation_settings(self):
         self.uhf.qas_0_correlations_5_enable(1)
@@ -157,10 +161,10 @@ class Test_UHFQA_core(unittest.TestCase):
         assert self.uhf.qas_0_thresholds_5_correlation_source() == 0
 
     def test_reset_rotation_params(self):
-        self.uhf.qas_0_rotations_3(1-1j)
-        assert self.uhf.qas_0_rotations_3() == (1-1j)
+        self.uhf.qas_0_rotations_3(1 - 1j)
+        assert self.uhf.qas_0_rotations_3() == (1 - 1j)
         self.uhf.reset_rotation_params()
-        assert self.uhf.qas_0_rotations_3() == (1+1j)
+        assert self.uhf.qas_0_rotations_3() == (1 + 1j)
 
     def test_start(self):
         self.uhf.start()

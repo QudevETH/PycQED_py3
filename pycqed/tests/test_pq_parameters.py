@@ -13,7 +13,7 @@ class Test_Custom_Validators(TestCase):
             nan_val.validate(5)
 
         with self.assertRaises(ValueError):
-            nan_val.validate('5')
+            nan_val.validate("5")
 
         # This should not raise a value error
         nan_val.validate(np.nan)
@@ -27,7 +27,7 @@ class Test_Custom_Validators(TestCase):
         multi_val = MultiType(nan_val, numbers_val)
 
         with self.assertRaises(ValueError):
-            multi_val.validate('5')
+            multi_val.validate("5")
 
         # This should not raise a value error
         multi_val.validate(np.nan)

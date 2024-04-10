@@ -1,7 +1,10 @@
 import unittest
 
-from pycqed.instrument_drivers.physical_instruments.rohde_schwarz_nge100 \
-    import NGE102B, NGE103B, NGE100Channel
+from pycqed.instrument_drivers.physical_instruments.rohde_schwarz_nge100 import (
+    NGE102B,
+    NGE103B,
+    NGE100Channel,
+)
 
 
 class TestNGE102B(unittest.TestCase):
@@ -9,11 +12,9 @@ class TestNGE102B(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.instrument = NGE102B(
-            "test_nge_102", "TCPIP::192.1.2.3::INS", virtual=True
-        )
+        cls.instrument = NGE102B("test_nge_102", "TCPIP::192.1.2.3::INS", virtual=True)
         # shortcut for instrument.ch1
-        cls.ch1:NGE100Channel = cls.instrument.ch1
+        cls.ch1: NGE100Channel = cls.instrument.ch1
 
     @classmethod
     def tearDownClass(cls):
@@ -34,11 +35,14 @@ class TestNGE102B(unittest.TestCase):
             with self.subTest(f):
                 self.assertTrue(hasattr(self.instrument, f))
 
-
     def test_channel_parameters_exist(self):
         parameters = [
-            "voltage", "current_limit", "output", "measured_voltage",
-            "measured_current", "measured_power",
+            "voltage",
+            "current_limit",
+            "output",
+            "measured_voltage",
+            "measured_current",
+            "measured_power",
         ]
 
         for p in parameters:
@@ -52,7 +56,7 @@ class TestNGE102B(unittest.TestCase):
         # Test upper bound (32)
         with self.assertRaises(ValueError):
             self.ch1.voltage.set(33)
-    
+
     def test_current_limit_validation(self):
         # Test lower bound (0)
         with self.assertRaises(ValueError):
@@ -77,7 +81,7 @@ class TestNGE102B(unittest.TestCase):
         self.assertEqual(self.ch1.measured_voltage(), 10)
         self.ch1.simulated_output_current.set(1.5)
         self.assertEqual(self.ch1.measured_current(), 1.5)
-        
+
         # Test power
         self.assertEqual(self.ch1.measured_power(), 10 * 1.5)
 
@@ -94,9 +98,7 @@ class TestNGE103B(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.instrument = NGE103B(
-            "test_nge_103", "TCPIP::192.1.2.3::INS", virtual=True
-        )
+        cls.instrument = NGE103B("test_nge_103", "TCPIP::192.1.2.3::INS", virtual=True)
 
     @classmethod
     def tearDownClass(cls):

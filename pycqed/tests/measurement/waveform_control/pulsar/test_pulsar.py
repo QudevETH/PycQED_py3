@@ -7,8 +7,7 @@ from pycqed.measurement.waveform_control.pulsar import Pulsar
 from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.measurement.waveform_control.segment import Segment
 
-from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import \
-    VirtualAWG5014
+from pycqed.instrument_drivers.virtual_instruments.virtual_awg5014 import VirtualAWG5014
 
 
 class TestPulsar(TestCase):
@@ -59,17 +58,19 @@ class TestPulsar(TestCase):
         Each AWG interface are tested in ``test_pulsar_awg_interfaces.py``.
         """
 
-        pulses = [{
-            "name": f"pulse",
-            "pulse_type": "SquarePulse",
-            "pulse_delay": 0,
-            "ref_pulse": "previous_pulse",
-            "ref_point": "end",
-            "length": 5e-8,
-            "amplitude": 0.05,
-            "channels": [f"{self.awg.name}_ch1"],
-            "channel": f"{self.awg.name}_ch1",
-        }]
+        pulses = [
+            {
+                "name": f"pulse",
+                "pulse_type": "SquarePulse",
+                "pulse_delay": 0,
+                "ref_pulse": "previous_pulse",
+                "ref_point": "end",
+                "length": 5e-8,
+                "amplitude": 0.05,
+                "channels": [f"{self.awg.name}_ch1"],
+                "channel": f"{self.awg.name}_ch1",
+            }
+        ]
 
         segment = Segment("segment", pulses)
         sequence = Sequence("sequence", segments=[segment])
@@ -99,12 +100,12 @@ class TestPulsar(TestCase):
         self.assertFalse(self.pulsar.check_for_other_pulsar())
 
         # Test case where check file does not exist yet
-        open_raise_file_not_found= mock_open(Mock(side_effect=FileNotFoundError))
+        open_raise_file_not_found = mock_open(Mock(side_effect=FileNotFoundError))
         with patch("builtins.open", new_callable=open_raise_file_not_found):
             self.assertTrue(self.pulsar.check_for_other_pulsar())
 
     def test_active_awgs(self):
-        
+
         # Create pulsar with a few AWGs
         pulsar = Pulsar("pulsar_test_active_awgs")
         awgs = set()
@@ -119,8 +120,7 @@ class TestPulsar(TestCase):
         # Disable an AWG and check it is not returned falsely
         pulsar.awg_test_active_awgs_0_active(False)
         self.assertSetEqual(
-            pulsar.active_awgs(), 
-            {"awg_test_active_awgs_1", "awg_test_active_awgs_2"}
+            pulsar.active_awgs(), {"awg_test_active_awgs_1", "awg_test_active_awgs_2"}
         )
 
         # Disable all AWGs and check set is empty
