@@ -25,7 +25,7 @@ pytest:
   stage: test
   script:
     - pip install '.[test]'
-    - pytest --cov=pycqed pycqed/tests
+    - pytest --cov=pycqed -m "not hardware" pycqed/tests
 
 # This is necessary to be able to copy the doc via SSH
 # FIXME: This part will move to Docker in Jul.2024
