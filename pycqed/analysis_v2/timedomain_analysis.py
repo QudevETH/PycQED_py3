@@ -2700,6 +2700,51 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'zrange': self.get_param_value('zrange', None),
                         'title': title,
                         'clabel': data_axis_label}
+                    # If kwarg 'plot_TwoD_as_curves' in the options_dict of
+                    # the experiment is set to True, it plots the rows of
+                    # the 2D plot as multiple curves in one plot with the
+                    # z-value of the 2D-plot as the y-value of
+                    # the curve-plot.
+                    if self.get_param_value('plot_TwoD_as_curves',
+                                            default_value=False):
+                        color_map = mpl.colormaps['viridis']
+                        # normalization functions for the color of the
+                        # curves.
+                        # normalize converts [np.min(ssp), np.max(ssp)] ->
+                        # [0,1] in a linear mapping
+                        normalize = lambda y: (y-np.min(ssp))/(np.max(
+                            ssp)-np.min(ssp))
+                        # normalize_log converts [np.min(ssp), np.max(ssp)] ->
+                        # [0,1] in a logarithmic mapping
+                        normalize_log = lambda y: \
+                                np.log(1 + 9 * normalize(y)) / np.log(10)
+                        # z values of the 2D plot (yvals variable, list of
+                        # lists) are the y values (yv) of the curve plot.
+                        # y values of the 2D plot (ssp variable, list) are the
+                        # labels of the curves and define the color of
+                        # the curves.
+                        for i, (yv, sp) in enumerate(zip(yvals, ssp)):
+                            self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
+                                = {
+                                'plotfn': self.plot_line,
+                                'fig_id': fig_name + '_' + pn + "_curves",
+                                'xvals': xvals,
+                                'yvals': yv,
+                                'xlabel': xlabel,
+                                'xunit': xunit,
+                                'ylabel': data_axis_label,
+                                'yscale': 'log' if
+                                    self.get_param_value('logzscale', False)
+                                    else 'linear',
+                                'setlabel': f'{sp:2.1e} {yunit}',
+                                'do_legend': True,
+                                'legend_bbox_to_anchor': (1, 0.5),
+                                'legend_pos': 'center left',
+                                'line_kws': {
+                                    'color': color_map(normalize_log(sp)) if
+                                    self.get_param_value('logyscale', False)
+                                    else color_map(normalize(sp))},
+                                'title': title}
 
         if prep_1d_plot:
             if len(yvals.shape) > 1 and yvals.shape[0] == 1:
