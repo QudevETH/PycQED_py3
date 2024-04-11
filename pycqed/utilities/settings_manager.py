@@ -487,20 +487,31 @@ def get_station_from_file(timestamp=None, folder=None, filepath=None,
 
 def convert_settings_to_hdf(timestamp: str):
     """
-    Write the instrument settings into the preexisting hdf-file from any
-    settings file supported by the settings manager in the same folder with
-    the provided timestamp.
+    Write the instrument settings into the preexisting hdf-file with the
+    same timestamp from any settings file supported by the settings manager.
+    If the hdf-file does not exist, it creates a hdf-file with the same
+    filename as the settings file.
 
     Args:
-        timestamp(str): Common timestamp of the settings file and
-        the hdf-file in which the settings should be written to.
+        timestamp(str): Timestamp of the settings file.
     """
     from pycqed.analysis import analysis_toolbox as a_tools
     from pycqed.utilities.general import dict_to_ordered_tuples
     from pycqed.measurement.measurement_control import MeasurementControl
+    from pycqed.utilities.io import base_io
+
     station = get_station_from_file(timestamp)
-    with h5py.File(a_tools.measurement_filename(a_tools.get_folder(timestamp)),
-                   'a') as hdf_file:
+    fn = a_tools.measurement_filename(a_tools.get_folder(timestamp))
+    # if hdf-file does not exist, the filename of the settings file is copied
+    if fn is None:
+        file_format = Loader.get_file_format(timestamp=timestamp)
+        ext = base_io.file_extensions[file_format]
+        # a_tools expects extension without a dot (e.g. 'hdf'),
+        # the extension dict in base_io stores it with a dot (e.g. '.hdf')
+        fn = a_tools.measurement_filename(a_tools.get_folder(timestamp),
+                                          ext=ext[1:])
+        fn = fn[:-len(ext)] + '.hdf'
+    with h5py.File(fn, 'a') as hdf_file:
         set_grp = hdf_file.create_group('Instrument settings')
         inslist = dict_to_ordered_tuples(station.components)
         for (iname, inst) in inslist:
