@@ -2700,6 +2700,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'zrange': self.get_param_value('zrange', None),
                         'title': title,
                         'clabel': data_axis_label}
+                    # If kwarg 'plot_TwoD_as_curves' in the options_dict of
+                    # the experiment is set to True, it plots the rows of
+                    # the 2D plot as multiple curves in one plot with the
+                    # z-value of the 2D-plot as the y-value of
+                    # the curve-plot.
                     if self.get_param_value('plot_TwoD_as_curves',
                                             default_value=False):
                         color_map = mpl.colormaps['viridis']
@@ -2713,6 +2718,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         # [0,1] in a logarithmic mapping
                         normalize_log = lambda y: \
                                 np.log(1 + 9 * normalize(y)) / np.log(10)
+                        # z values of the 2D plot (yvals variable, list of
+                        # lists) are the y values (yv) of the curve plot.
+                        # y values of the 2D plot (ssp variable, list) are the
+                        # labels of the curves and define the color of
+                        # the curves.
                         for i, (yv, sp) in enumerate(zip(yvals, ssp)):
                             self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
                                 = {
