@@ -1,18 +1,24 @@
-import unittest
+import pytest
 import pycqed as pq
 import os
 import numpy as np
 from pycqed.analysis import measurement_analysis as ma
 
 
-class Test_TwoDAnalysis(unittest.TestCase):
+@pytest.fixture(scope="class")
+def test_datadir(request):
+    request.cls.datadir = os.path.join(pq.__path__[0], "tests", "test_data")
+    ma.a_tools.datadir = request.cls.datadir
+
+
+class TestTwoDAnalysis:
 
     @classmethod
-    def setUpClass(self):
-        self.datadir = os.path.join(pq.__path__[0], "tests", "test_data")
-        ma.a_tools.datadir = self.datadir
+    def setup_class(cls):
+        cls.datadir = os.path.join(pq.__path__[0], "tests", "test_data")
+        ma.a_tools.datadir = cls.datadir
 
-    def test_incomplete_twoD(self):
+    def test_incomplete_twoD(self, test_datadir):
         a = ma.TwoD_Analysis(timestamp="20180222_135055")
 
         extracted_vals = a.measured_values[0][4]
@@ -73,6 +79,6 @@ class Test_TwoDAnalysis(unittest.TestCase):
                 9.51000000e-07,
             ]
         )
-        np.testing.assert_array_almost_equal(a.sweep_points, exp_sweep_points)
 
+        np.testing.assert_array_almost_equal(a.sweep_points, exp_sweep_points)
         np.testing.assert_array_almost_equal(a.sweep_points_2D, np.arange(5.0))
