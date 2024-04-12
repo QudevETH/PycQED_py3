@@ -1977,68 +1977,65 @@ class LeakageAmplification(Chevron):
             sweep dimension.
         sweep_range_dict (dict): Dictionary of the form
     """
-    def __init__(self, dev, gate_list, sweep_param_1D, sweep_param_2D,
-                 sweep_range_dict, unit_dict, labels_dict,
-                 cz_pulse_name, num_cz_gates=16, cphase=None,
-                 task_list=None,
-                 *args, **kw):
 
-        if cz_pulse_name is None:  # TODO already happens in cb
-            cz_pulse_name = 'CZ'
-        else:
-            self.cz_pulse_name = cz_pulse_name
-        self.default_experiment_name = f'Leakage_amplification_{sweep_param_2D}'
+    kw_for_task_keys = ['num_cz_gates', 'cphase']
+    default_experiment_name = f'Leakage_amplification'
 
-        if task_list is None:  # TODO allow sp? Logic for building + modifying?
-            task_list = []
-            op_code = cz_pulse_name + ('' if cphase is None else str(cphase))
-            for (qbh, qbl) in gate_list:
-                sp = []
-                for p in [sweep_param_1D, sweep_param_2D]:
-                    # The gate sequence consists of num_cz_gates gates.
-                    # This creates the following pulse_off sweep points for
-                    # each gate (note that pulse_off=0 means the gate is
-                    # applied, while pulse_off=1 means that it is not applied):
-                    #       0 | 1 1 1     1      1 0
-                    #       1 | 1 1 1     1      0 0
-                    #       2 | 1 1 1     1      0 0
-                    #      ...|
-                    # gate  i | 1 1 1   i+j<n    0 0
-                    #      ...|
-                    #      n-2| 1 1 0     0      0 0
-                    #      n-1| 1 0 0     0      0 0
-                    #         ------------------------
-                    #           0 1 2 ... j ... n-1 n
-                    #              sweep points
-                    # While the above example uses sweep points equal to
-                    # [0, 1, ... n], they can be any array of int [j1, j2...].
-                    # The total number of gates (indexed by i) is fixed
-                    if p == 'num_cz_gates':
-                        sp.append({
-                            f'attr=pulse_off, op_code={op_code}, occurrence={i}': {
-                                'values': np.array([i+j<num_cz_gates
-                                                for j in sweep_range_dict[p]]),
-                                'unit': '',
-                                'label': 'Number of CZ gates'}
-                            for i in range(num_cz_gates)
-                        })
-                    else:
-                        sp.append({
-                            p: {
-                                'values': sweep_range_dict[p],
-                                'unit': unit_dict.get(p, ''),
-                                'label': labels_dict.get(p, '')
-                            }
-                        })
-                task_list.append(
-                    dict(qbc=qbh, qbt=qbl,
-                         sweep_points=SweepPoints(sp),
-                         num_cz_gates=num_cz_gates,
-                         cz_pulse_name=op_code,
-                         )
-                )
-
-        super().__init__(*args, dev=dev, task_list=task_list, **kw)
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
+        task = super().preprocess_task(task, global_sweep_points,
+                                       sweep_points, **kw)
+        cz_pulse_name = task.get('cz_pulse_name', 'CZ')
+        if (cphase := task.get('cphase')) is not None:
+            cz_pulse_name = cz_pulse_name + str(cphase)
+            task['cz_pulse_name'] = cz_pulse_name
+        sp = task['sweep_points']
+        for dim, p in enumerate(sp.get_parameters()):
+            # The gate sequence consists of num_cz_gates gates.
+            # The following code creates the following pulse_off sweep points
+            # for each gate (note that pulse_off=0 means the gate is
+            # applied, while pulse_off=1 means that it is not applied):
+            #       0 | 1 1 1     1      1 0
+            #       1 | 1 1 1     1      0 0
+            #       2 | 1 1 1     1      0 0
+            #      ...|
+            # gate  i | 1 1 1   i+j<n    0 0
+            #      ...|
+            #      n-2| 1 1 0     0      0 0
+            #      n-1| 1 0 0     0      0 0
+            #         ------------------------
+            #           0 1 2 ... j ... n-1 n
+            #              sweep points
+            # While the above example uses sweep points equal to
+            # [0, 1, ... n], they can be any array of int [j1, j2...].
+            # The total number of gates (indexed by i) is fixed.
+            if p == 'num_cz_gates':
+                num_cz_gates_list = sp[p] if sp[p]\
+                    else range(task['num_cz_gates']+1)
+                # Update task
+                sp.remove_sweep_parameter(p)
+                for i in range(task['num_cz_gates']):
+                    # The following line finds the corresponding op_code,
+                    # taking into account possible modifications in
+                    # cz_pulse_name, see higher in this method.
+                    op_code = f"{cz_pulse_name} {task['qbc']} {task['qbt']}"
+                    # Note that, contrary to normal processed tasks,
+                    # these sweep points do not have a prefix. However the
+                    # op_code does uniquely identify them with the qubit names.
+                    sp.add_sweep_parameter(
+                        param_name=f'attr=pulse_off, op_code={op_code}, '
+                                   f'occurrence={i}',
+                        values=np.array([i+j<task['num_cz_gates']
+                                         for j in num_cz_gates_list]),
+                        unit='',
+                        label='Number of CZ gates',
+                        dimension=dim,
+                    )
+                # Update sweep points as well
+                prefix = task['prefix']
+                global_sweep_points.remove_sweep_parameter(prefix + p)
+                global_sweep_points[dim].update(sp[dim])
+        return task
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         if analysis_kwargs is None:
