@@ -595,6 +595,13 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 f'Acquisition length {self._acq_length} corresponds to '
                 f'{n_samples} samples, which is not a multiple of the '
                 f'granularity {self.acq_length_granularity}.')
+        # Maximum acquisition shots according to YS
+        if self._acq_n_results > 2 ** 19:
+            raise ValueError(
+                f'Acquisition device {self.name} ({self.devname}): '
+                f'{self._acq_n_results} > 524288 not supported by the SHF. '
+                f'Please reduce the compression_seg_lim, the number of 1D '
+                f'sweep points, or the nr_shots.')
 
 
     def acquisition_set_weights(self, channels, **kw):
