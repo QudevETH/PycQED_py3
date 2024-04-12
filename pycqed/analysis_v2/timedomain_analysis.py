@@ -11894,14 +11894,15 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             for i, l in enumerate(labels):
                 if 'pulse_off' in l:
                     labels[i] = 'num_cz_gates'
-                    coords[i] = range(n + 1)
+                    coords[i] = sp['num_cz_gates']
                     nice_labels[i] = 'Number of CZ gates'
+            cz_pulse_name = task.get('cz_pulse_name',
+                                     self.metadata['cz_pulse_name'])
             title = kw.get('title', (
                 f"{ts} Leakage ampl. {qbn}{task['qbt']}\n"
                 f"{sp_dims[0]} seg. * {sp_dims[2]} hard seq. * "
                 f"{int(np.ceil(sp_dims[1] / sp_dims[2]))} soft seq.\n"
-                f"{n} {task['cz_pulse_name']} gates, "
-                f"{acq_averages} avg."
+                f"{n} {cz_pulse_name} gates, {acq_averages} avg."
             ))
             plot_params = self.get_default_plot_params(set_pars=False)
             plotsize = plot_params['figure.figsize']

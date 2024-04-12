@@ -1981,8 +1981,10 @@ class LeakageAmplification(Chevron):
     kw_for_task_keys = ['num_cz_gates', 'cphase']
     default_experiment_name = f'Leakage_amplification'
 
+
     def preprocess_task(self, task, global_sweep_points, sweep_points=None,
                         **kw):
+        unprocessed_task = task
         task = super().preprocess_task(task, global_sweep_points,
                                        sweep_points, **kw)
         cz_pulse_name = task.get('cz_pulse_name', 'CZ')
@@ -2010,11 +2012,22 @@ class LeakageAmplification(Chevron):
             # [0, 1, ... n], they can be any array of int [j1, j2...].
             # The total number of gates (indexed by i) is fixed.
             if p == 'num_cz_gates':
-                num_cz_gates_list = sp[p] if sp[p]\
-                    else range(task['num_cz_gates']+1)
-                # Update task
+                num_cz_gates_list = sp[p] if sp[p] is not None\
+                    else range(task[p]+1)
+                # Update original task for the analysis (convenience to allow
+                # passing None above)
+                unprocessed_sp = unprocessed_task['sweep_points']
+                unprocessed_sp.remove_sweep_parameter(p)
+                unprocessed_sp.add_sweep_parameter(
+                    param_name=p,
+                    values=list(num_cz_gates_list),
+                    unit='',
+                    label='Number of CZ gates',
+                    dimension=dim,
+                )
+                # Update processed task
                 sp.remove_sweep_parameter(p)
-                for i in range(task['num_cz_gates']):
+                for i in range(task[p]):
                     # The following line finds the corresponding op_code,
                     # taking into account possible modifications in
                     # cz_pulse_name, see higher in this method.
@@ -2031,9 +2044,13 @@ class LeakageAmplification(Chevron):
                         label='Number of CZ gates',
                         dimension=dim,
                     )
-                # Update sweep points as well
+                # Update sweep points accordingly
                 prefix = task['prefix']
                 global_sweep_points.remove_sweep_parameter(prefix + p)
+                global_sweep_points.add_sweep_parameter(
+                    param_name=prefix + p,
+                    values=num_cz_gates_list,
+                )
                 global_sweep_points[dim].update(sp[dim])
         return task
 
