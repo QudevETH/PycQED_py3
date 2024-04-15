@@ -45,7 +45,7 @@ dependencies = [
 
 [project.optional-dependencies]
 docs = ["myst-parser", "sphinx", "sphinx-rtd-theme"]
-test = ["pytest", "pytest-cov"]
+test = ["pytest", "pytest-cov", "pycycle"]
 linting = ["pylint"]
 # The following libraries are updating slowly
 # or not at all.
@@ -85,4 +85,10 @@ pycqed = [
     # FIXME: When building packages, which will happen most likely on GitHub,
     #        it makes sense to add a warning and some more docs.
     "utilities/WARNING.png",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "hardware",
 ]

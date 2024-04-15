@@ -19,5 +19,6 @@ def pqsc():
     pqsc.close()
 
 
+@pytest.mark.hardware
 def test_instantiation(pqsc):
     assert pqsc.devname == "dev0000"
