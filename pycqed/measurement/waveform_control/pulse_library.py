@@ -1310,6 +1310,109 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         return hashlist
 
 
+class GaussFilteredCosIQPulseTwoStep(pulse.Pulse):
+    """
+    Two-step Gaussian-filtered cosine IQ pulse.
+
+    The pulse accepts the usual arguments of GaussFilteredCosIQPulse, but
+    has a few extra parameters that allow you to apply a higher amplitude
+    for the start of the pulse to ring up a readout resonator faster.
+
+    amplitude_initial : float
+        Amplitude (in V) of the first part of the pulse.
+    pulse_length_initial : float
+        Duration (in ns) of the first part of the pulse.
+    """
+    def __init__(self,
+                 I_channel,
+                 Q_channel,
+                 element_name,
+                 name='Gaussian filtered two-step cosine IQ pulse',
+                 **kw):
+        super().__init__(name, element_name, **kw)
+
+        self.I_channel = I_channel
+        self.Q_channel = Q_channel
+        self.channels = [self.I_channel]
+        if self.Q_channel is not None:
+            self.channels += [self.Q_channel]
+
+        self.phase_lock = kw.pop('phase_lock', False)
+        self.length = self.pulse_length + self.buffer_length_start + \
+                      self.buffer_length_end
+
+    @classmethod
+    def pulse_params(cls):
+        """
+        Returns a dictionary of pulse parameters and initial values. These
+        parameters are set upon calling the super().__init__ method.
+        """
+        params = {
+            'pulse_type': 'GaussFilteredCosIQPulseTwoStep',
+            'I_channel': None,
+            'Q_channel': None,
+            'amplitude': 0,
+            'amplitude_initial': 0,
+            'pulse_length': 0,
+            'pulse_length_initial': 0,
+            'mod_frequency': 0,
+            'phase': 0,
+            'buffer_length_start': 10e-9,
+            'buffer_length_end': 10e-9,
+            'alpha': 1,
+            'phi_skew': 0,
+            'gaussian_filter_sigma': 0,
+        }
+        return params
+
+    def chan_wf(self, chan, tvals, **kw):
+        tstart = self.algorithm_time() + self.buffer_length_start
+        tend = tstart + self.pulse_length
+        if self.gaussian_filter_sigma == 0:
+            wave = np.ones_like(tvals) * self.amplitude
+            wave *= (tvals >= tstart)
+            wave *= (tvals < tend)
+        else:
+            scaling = 1 / np.sqrt(2) / self.gaussian_filter_sigma
+            wave = 0.5 * (sp.special.erf(
+                (tvals - tstart) * scaling) - sp.special.erf(
+                (tvals - tend) * scaling)) * self.amplitude
+        # Apply the initial pulse amplitude for the initial duration
+        for idx, t_val in enumerate(tvals):
+            if (t_val - tstart) < self.pulse_length_initial:
+                wave[idx] *= self.amplitude_initial / self.amplitude
+        I_mod, Q_mod = apply_modulation(
+            wave,
+            np.zeros_like(wave),
+            tvals,
+            mod_frequency=self.mod_frequency,
+            phase=self.phase,
+            phi_skew=self.phi_skew,
+            alpha=self.alpha,
+            tval_phaseref=0 if self.phase_lock else self.algorithm_time())
+        if chan == self.I_channel:
+            return I_mod
+        if chan == self.Q_channel:
+            return Q_mod
+
+    def hashables(self, tstart, channel):
+        hashlist = self.common_hashables(tstart, channel)
+        if channel not in self.channels or self.pulse_off:
+            return hashlist
+        hashlist += [
+            channel == self.I_channel, self.amplitude, self.amplitude_initial,
+        ]
+        hashlist += [self.mod_frequency, self.gaussian_filter_sigma]
+        hashlist += [
+            self.buffer_length_start, self.buffer_length_end, self.pulse_length,
+            self.pulse_length_initial,
+        ]
+        phase = self.phase
+        phase += 360 * self.phase_lock * self.mod_frequency \
+                 * self.algorithm_time()
+        hashlist += [self.alpha, self.phi_skew, phase]
+        return hashlist
+
 
 class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
     def __init__(self,
