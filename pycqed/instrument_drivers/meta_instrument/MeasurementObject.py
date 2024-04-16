@@ -177,6 +177,7 @@ class MeasurementObject(Instrument):
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+
         self.add_pulse_parameter('RO', 'ro_length', 'pulse_length',
                                  initial_value=2e-6, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_delay', 'pulse_delay',
@@ -211,6 +212,21 @@ class MeasurementObject(Instrument):
         self.add_pulse_parameter(
             'RO', 'ro_trigger_pars', 'trigger_pars',
             vals=vals.MultiType(vals.Enum(None), vals.Dict()))
+        # Values needed for two-step readout
+        self.add_pulse_parameter(
+            operation_name='RO',
+            parameter_name='ro_amp_initial',
+            argument_name='amplitude_initial',
+            initial_value=0.001,
+            vals=vals.MultiType(vals.Numbers(), vals.Lists()),
+        )
+        self.add_pulse_parameter(
+            operation_name='RO',
+            parameter_name='ro_length_initial',
+            argument_name='pulse_length_initial',
+            initial_value=10e-9,
+            vals=vals.Numbers(),
+        )
 
         # switch parameters
         DEFAULT_SWITCH_MODES = OrderedDict({'default': {}})
