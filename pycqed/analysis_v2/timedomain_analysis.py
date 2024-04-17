@@ -10379,13 +10379,36 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
     def process_data(self):
         super().process_data()
 
+        assert len(self.qb_names) == 1, \
+            "Analysis only works for single qubit measurements."
+
         hsp = self.raw_data_dict['hard_sweep_points']
         ssp = self.raw_data_dict['soft_sweep_points']
+        self.raw_sweep_points = (hsp, ssp)
         mdata = self.raw_data_dict['measured_data']
 
         sideband_I, sideband_Q = list(mdata.values())
 
-        if len(hsp) * len(ssp) == len(sideband_I.flatten()):
+        if not self.raw_data_dict['sweep_parameter_names'] == ['None', 'None']:
+            # If the experiment was conducted with the QuantumExperiment
+            # MixerSkewness, the swept parameters alpha and phase must be
+            # extracted from the sweep points dict.
+            # Values in self.raw_data_dict['hard_sweep_points'] and
+            # self.raw_data_dict['soft_sweep_points'] are the indices for
+            # the sweep points in the QE-framework.
+            alpha = self.proc_data_dict['sweep_points_dict'][self.qb_names[0]][
+                'sweep_points']
+            phase = self.proc_data_dict['sweep_points_2D_dict'][
+                self.qb_names[0]][f'{self.qb_names[0]}_phi_skew']
+            self.raw_sweep_points = (alpha, phase)
+            self.proc_data_dict['sweeppoints_are_grid'] = True
+            alpha, phase = np.meshgrid(alpha, phase)
+            alpha = alpha.flatten()
+            phase = phase.flatten()
+            sideband_I = sideband_I.T.flatten()
+            sideband_Q = sideband_Q.T.flatten()
+        elif len(hsp) * len(ssp) == len(sideband_I.flatten()):
+            # Old experiment method inside QuDev_transmon object was used.
             # sweep points are aligned on grid
 
             # The arrays hsp and ssp define the edges of a grid of measured
@@ -10476,8 +10499,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 
             # Here we use the raw sweep points as they have the correct format
             # for the plotting function plot_colorxy
-            alpha_raw = self.raw_data_dict['hard_sweep_points']
-            phi_raw = self.raw_data_dict['soft_sweep_points']
+            alpha_raw = self.raw_sweep_points[0]
+            phi_raw = self.raw_sweep_points[1]
             mdata = self.raw_data_dict['measured_data']
 
             sideband_I, sideband_Q = list(mdata.values())
