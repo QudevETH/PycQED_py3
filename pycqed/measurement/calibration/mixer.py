@@ -59,7 +59,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             try:
                 for qb_obj in self.get_qubits()[0]:
                     tmp_vals += [
-                        # read out at the drive leakage frequency
+                        # read out at the drive sideband frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() - 2 *
                                  qb_obj.ge_mod_freq()),
                         # resets ro_mod_freq after it gets changed in
