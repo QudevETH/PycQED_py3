@@ -403,20 +403,24 @@ class BaseDataAnalysis(object):
 
         FIXME: Merge this function or some of it functionality to our hdf5_io
                or any upcoming i/o module.
+        FIXME: File permissions and existence covered in hdf5_io?
 
         Args:
             file_path: The path to the file to write to.
             analysis_group: The data group to write.
         """
+        MAX_WRITE_ATTEMPTS = 12 # corresponds to one minute
+        cur_write_attempt = 0
         file_written = False
-        while not file_written:
+
+        while not file_written and cur_write_attempt <= MAX_WRITE_ATTEMPTS:
             try:
+                cur_write_attempt += 1
                 with h5py.File(file_path, 'a') as data_file:
                     hdf5_io.write_dict_to_hdf5(
                         {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
                         entry_point=analysis_group
                     )
-                file_written = True
             except IOError as e:
                 log.warning(
                     f"IO error occurred. Unable to write the file {file_path}. Error: {e}"
@@ -433,15 +437,24 @@ class BaseDataAnalysis(object):
             except Exception as e:
                 log.warning(f"Unexpected error occurred. Error: {e}")
             else:
+                file_written = True
                 log.info(f"Data successfully written to the file {file_path}.")
             finally:
-                sleep_duration = 5
-                log.warning(
-                    f"Unable to open the HDF5 file {file_path} for writing. "
-                    "Make sure to close the HDF Viewer if it is open. "
-                    f"Trying again in {sleep_duration} s."
-                )
-                time.sleep(sleep_duration)
+                if not file_written:
+                    sleep_duration = 5
+                    log.warning(
+                        f"Unable to open the HDF5 file {file_path} for writing.\n"
+                        "Make sure to close the HDF Viewer if it is open.\n"
+                        f"Trying again in {sleep_duration} sec. \n"
+                        f"Attempt: {cur_write_attempt} / {MAX_WRITE_ATTEMPTS}"
+                    )
+                    time.sleep(sleep_duration)
+
+                    if cur_write_attempt == MAX_WRITE_ATTEMPTS:
+                        log.warning(
+                            "Reached the maximum number of write attempts."
+                        )
+
         return file_written
 
     def check_plotting_delegation(self):
