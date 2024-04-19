@@ -271,10 +271,17 @@ class MixerCarrier(twoqbcal.CalibBuilder):
 
     def __init__(self, task_list, sweep_points=None, **kw):
         try:
+            df_name = kw.pop('df_name', 'int_avg_det_spec')
+            df_kwargs = kw.pop('df_kwargs', {})
+            df_kwargs['live_plot_transform_type'] = \
+            df_kwargs.get("live_plot_transform_type", 'mag_phase')
             # calibration points not needed for mixer calibration
-            kw['cal_states'] = ''
+            cal_states = kw.pop('cal_states', [])
+
+            self.segment_kwargs = kw.pop('segment_kwargs', dict())
             super().__init__(task_list, sweep_points=sweep_points,
-                             **kw)
+                             df_name=df_name, cal_states=cal_states,
+                             df_kwargs=df_kwargs, **kw)
             # resets initialized sweep functions (hard and soft sweep). Will
             # be populated in self.generate_sweep_functions()
             self.switch = 'calib'
