@@ -91,6 +91,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                             qb_obj, trigger_sep, force_ro_mod_freq)
                 except Exception as x:
                     log.warning('No qubit objects found.')
+                self.update_operation_dict()
                 self.sequences, self.mc_points = self.parallel_sweep(
                     self.preprocessed_task_list, self.sweep_block,
                     block_align=['center', 'end', 'center'],
@@ -159,7 +160,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             acq_length = 250e-9
             log.warning('Qubit object not found. Acquisition length is set '
                         f'to default value {acq_length}.')
-        dp = self.block_from_pulse_dicts([dict(
+        dp_block = self.block_from_pulse_dicts([dict(
                     pulse_type='GaussFilteredCosIQPulse',
                     pulse_length=acq_length,
                     ref_point='start',
@@ -175,11 +176,13 @@ class MixerSkewness(twoqbcal.CalibBuilder):
         for k in list(sweep_points[0].keys()) + list(
                 sweep_points.get_sweep_dimension(1, default={}).keys()):
             if '=' not in k:  # '=' indicates a pulse modifier sweep point
-                for p in dp.pulses:
+                for p in dp_block.pulses:
                     p[k] = ParametricValue(k)
+        acq_block = self.block_from_ops('Acq', f'Acq {qb}')
+        block = self.simultaneous_blocks('mixer_calib', [dp_block, acq_block])
 
         # return all generated blocks (parallel_sweep will arrange them)
-        return [dp]
+        return [block]
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
@@ -318,6 +321,7 @@ class MixerCarrier(twoqbcal.CalibBuilder):
             self.generate_sweep_functions()
 
             with temporary_value(*tmp_vals):
+                self.update_operation_dict()
                 self.sequences, self.mc_points = self.parallel_sweep(
                     self.preprocessed_task_list, self.sweep_block,
                     block_align=['center', 'end', 'center'], **kw)
@@ -375,7 +379,7 @@ class MixerCarrier(twoqbcal.CalibBuilder):
             acq_length = 250e-9
             log.warning('Qubit object not found. Acquisition length is set '
                         f'to default value {acq_length}.')
-        dp = self.block_from_pulse_dicts([dict(
+        dp_block = self.block_from_pulse_dicts([dict(
                     pulse_type='GaussFilteredCosIQPulse',
                     pulse_length=acq_length,
                     ref_point='start',
@@ -390,12 +394,14 @@ class MixerCarrier(twoqbcal.CalibBuilder):
         # (e.g. "amplitude", "length", etc.)
         for sweep_dict in sweep_points:
             for param_name in sweep_dict:
-                for pulse_dict in dp.pulses:
+                for pulse_dict in dp_block.pulses:
                     if param_name in pulse_dict:
                         pulse_dict[param_name] = ParametricValue(param_name)
 
+        acq_block = self.block_from_ops('Acq', f'Acq {qb}')
+        block = self.simultaneous_blocks('mixer_calib', [dp_block, acq_block])
         # return all generated blocks (parallel_sweep will arrange them)
-        return [dp]
+        return [block]
 
     def get_offset_swfs(self, qb_obj):
         """
