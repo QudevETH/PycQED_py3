@@ -1309,7 +1309,7 @@ class Pulsar(Instrument):
                      f'{time.time() - t0}')
             waveforms, _ = sequence.generate_waveforms_sequences(
                 awgs_to_program + awgs_with_channels_to_upload,
-                resolve_segments=False)
+                resolve_segments=False, awg_sequences=awg_sequences)
             log.debug(f'End of waveform generation sequence {sequence.name} '
                      f'{time.time() - t0}')
             # Check for which channels the sequence structure, or some element
