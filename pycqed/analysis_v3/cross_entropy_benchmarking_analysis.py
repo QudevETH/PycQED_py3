@@ -7,6 +7,7 @@ import lmfit
 import datetime
 import traceback
 import qutip as qt
+import qutip_qip.operations as qip
 import numpy as np
 import scipy as sp
 from copy import copy, deepcopy
@@ -177,7 +178,7 @@ def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots,
     :param nr_cycles (int): number of XEB cycles in circuit
     :param nr_seq (int): number of random samplings of the circuit
     :param rots (list of lists): of the form
-        [[qt.operations.rotation(qt.sigmaz(), z_angle).full()
+        [[qip.rotation(qt.sigmaz(), z_angle).full()
          for z_angle in z_angles[i]] for i in range(nr_seq)]
     :param init_state: length 2 numpy array for initial rotation
     :return: ideal populations
@@ -503,7 +504,7 @@ def get_z_rotations(nr_cycles, nr_seq, z_angles=None, seed=None,
         rots_cycle = [''] * nr_cycles
         rots_cycle_qt = [''] * nr_cycles
         for j, a in enumerate(z_angles[i]):
-            z_rot = qt.operations.rotation(qt.sigmaz(), a)
+            z_rot = qip.rotation(qt.sigmaz(), a)
             rots_cycle[j] = z_rot.full()
             if qutip_type:
                 rots_cycle_qt[j] = z_rot
@@ -558,7 +559,7 @@ sqrtYqt_2qbs = qt.tensor(sqrtYqt, sqrtYqt)
 Tqt_2qbs = qt.tensor(Tqt, Tqt)
 sqrtX_2qbs, sqrtY_2qbs = sqrtXqt_2qbs.full(), sqrtYqt_2qbs.full()
 T_2qbs = Tqt_2qbs.full()
-czqt = qt.operations.cphase(np.pi)
+czqt = qip.cphase(np.pi)
 cz = czqt.full()
 
 gg_qt, ge_qt, eg_qt, ee_qt = [qt.states.basis(4, i).full() for i in range(4)]
