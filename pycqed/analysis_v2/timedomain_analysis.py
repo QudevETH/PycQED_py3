@@ -5745,7 +5745,7 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 old_qb_freq = 0  # FIXME: explain why
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'old_qb_freq'] = old_qb_freq
-            legacy_sign = 1 if self.metadata.get('right_handed_basis')\
+            legacy_sign = 1 if self.get_param_value('right_handed_basis')\
                 else -1  # -1 for old measurements with left-handed basis
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq'] = old_qb_freq + legacy_sign * (
@@ -7328,7 +7328,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                     # estimation_window == None and odd nr of trunc lengths
                     if getattr(self, 'delta_tau', 0) is not None:
                         # -1 for old measurements with left-handed basis
-                        legacy_sign = 1 if self.metadata.get(
+                        legacy_sign = 1 if self.get_param_value(
                             'right_handed_basis') else -1
                         phase_diffs = legacy_sign*(phases[1::2] - phases[0::2])
                         phase_diffs %= (2*np.pi)
@@ -7726,7 +7726,7 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
                 delta_tau = delta_tau[m]
                 phases = self.proc_data_dict['analysis_params_dict'][
                     f'phases_{qbn}']
-                legacy_sign = 1 if self.metadata.get('right_handed_basis')\
+                legacy_sign = 1 if self.get_param_value('right_handed_basis')\
                     else -1  # -1 for old measurements with left-handed basis
                 delta_phases_vals = legacy_sign * np.diff(phases['val'])[m]
                 delta_phases_vals = (delta_phases_vals + np.pi) % (
