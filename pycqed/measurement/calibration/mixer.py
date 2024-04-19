@@ -460,8 +460,8 @@ class MixerCarrier(twoqbcal.CalibBuilder):
         analysis_params_dict = self.analysis.proc_data_dict[
             'analysis_params_dict']
 
-        _offset_i = analysis_params_dict['alpha']
-        _offset_q = analysis_params_dict['phase']
+        _offset_i = analysis_params_dict['V_I']
+        _offset_q = analysis_params_dict['V_Q']
 
         update = True
         if (_offset_i < offsets_i.min() or _offset_i > offsets_i.max()):
