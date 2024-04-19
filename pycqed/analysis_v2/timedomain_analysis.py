@@ -10106,7 +10106,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         #   P (dBm) = 20 * log10(V_RMS) - 10 * log10(50 Ohms * 1 mW)
         LO_dBm = 20*np.log10(V_RMS) - 10 * np.log10(50 * 1e-3)
 
-        if not self.raw_data_dict['sweep_parameter_names'] == ['None', 'None']:
+        if self.raw_data_dict['sweep_parameter_names'] == \
+               ['0. dim multi sweep', '1. dim multi sweep']:
             # If the experiment was conducted with the QuantumExperiment
             # MixerCarrier, the swept parameters offset_q and offset_i must be
             # extracted from the sweep points dict.
