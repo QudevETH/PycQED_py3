@@ -10106,7 +10106,31 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         #   P (dBm) = 20 * log10(V_RMS) - 10 * log10(50 Ohms * 1 mW)
         LO_dBm = 20*np.log10(V_RMS) - 10 * np.log10(50 * 1e-3)
 
-        if len(hsp) * len(ssp) == len(LO_dBm.flatten()):
+        if not self.raw_data_dict['sweep_parameter_names'] == ['None', 'None']:
+            # If the experiment was conducted with the QuantumExperiment
+            # MixerCarrier, the swept parameters offset_q and offset_i must be
+            # extracted from the sweep points dict.
+            # Values in self.raw_data_dict['hard_sweep_points'] and
+            # self.raw_data_dict['soft_sweep_points'] are the indices for
+            # the sweep points in the QE-framework.
+            offset_i = self.proc_data_dict['sweep_points_dict'][
+                self.qb_names[0]]['sweep_points']
+            offset_q = self.proc_data_dict['sweep_points_2D_dict'][
+                self.qb_names[0]][f'{self.qb_names[0]}_offset_q']
+            # The arrays hsp and ssp define the edges of a grid of measured
+            # points. We reshape the arrays such that each data point
+            # LO_dBm[i] corresponds to the sweep point VI[i], VQ[i]
+            self.proc_data_dict['sweeppoints_are_grid'] = True
+            # save raw format of data for plotting with plot_colorxy
+            self.proc_data_dict['V_I_raw_format'] = offset_i
+            self.proc_data_dict['V_Q_raw_format'] = offset_q
+            self.proc_data_dict['LO_leakage_raw_format'] = LO_dBm.T
+
+            VI, VQ = np.meshgrid(offset_i, offset_q)
+            VI = VI.flatten()
+            VQ = VQ.flatten()
+            LO_dBm = LO_dBm.T.flatten()
+        elif len(hsp) * len(ssp) == len(LO_dBm.flatten()):
             # sweep points are aligned on grid
 
             # The arrays hsp and ssp define the edges of a grid of measured 
