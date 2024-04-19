@@ -51,7 +51,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             kw['cal_states'] = ''
             super().__init__(task_list, sweep_points=sweep_points,
                              **kw)
-
+            self.switch = 'calib'
             trigger_sep = kw.get('trigger_sep', default_trigger_sep)
             force_ro_mod_freq = kw.get('force_ro_mod_freq', False)
 
@@ -86,7 +86,6 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                         # avoid beating patterns
                         self.commensurability_lo_trigger(
                             qb_obj, trigger_sep, force_ro_mod_freq)
-                        qb_obj.prepare(drive='timedomain', switch='calib')
                 except Exception as x:
                     log.warning('No qubit objects found.')
                 self.sequences, self.mc_points = self.parallel_sweep(
