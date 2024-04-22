@@ -7313,9 +7313,18 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 amps_errs = np.nan_to_num(amps_errs)
                 # amps_errs.dtype = amps.dtype
                 if qbn in self.ramsey_qbnames:
-                    # phase_diffs
-                    phases = np.array([fr.best_values['phase'] for fr in
+                    # Extracting the phases:
+                    # the data were fitted using cos(phase+phase_offset), where
+                    # * phase (named t in the model) are the phase sweep points
+                    # * phase_offset (phase in the model) is a fitted offset
+                    # Here we want to know the phase at which the cosine is
+                    # maximum, which is phase = -phase_offset
+                    phases = -np.array([fr.best_values['phase'] for fr in
                                        fit_res_objs])
+                    # -1 for old measurements with left-handed basis
+                    legacy_sign = 1 if self.get_param_value(
+                        'right_handed_basis') else -1
+                    phases = legacy_sign*phases
                     phases_errs = np.array([fr.params['phase'].stderr for fr in
                                             fit_res_objs], dtype=np.float64)
                     phases_errs = np.nan_to_num(phases_errs)
@@ -7327,10 +7336,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                     # this can be false for Cryoscope with
                     # estimation_window == None and odd nr of trunc lengths
                     if getattr(self, 'delta_tau', 0) is not None:
-                        # -1 for old measurements with left-handed basis
-                        legacy_sign = 1 if self.get_param_value(
-                            'right_handed_basis') else -1
-                        phase_diffs = legacy_sign*(phases[1::2] - phases[0::2])
+                        phase_diffs = phases[0::2] - phases[1::2]
                         phase_diffs %= (2*np.pi)
                         phase_diffs_stderrs = np.sqrt(
                             np.array(phases_errs[0::2]**2 +

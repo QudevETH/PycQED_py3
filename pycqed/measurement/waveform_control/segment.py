@@ -1675,7 +1675,10 @@ class Segment:
                 basis_phases[basis] = basis_phases.get(basis, 0) + rotation
 
             if pulse.basis is not None:
-                pulse.pulse_obj.phase = pulse.original_phase - \
+                # total_phase = original_phase + basis_rotation
+                # (+ sign: the pulse follows the rotating frame set by
+                # basis_rotation)
+                pulse.pulse_obj.phase = pulse.original_phase + \
                                         basis_phases.get(pulse.basis, 0)
 
             # Avoid creating repetitive waveforms due to small rounding errors
