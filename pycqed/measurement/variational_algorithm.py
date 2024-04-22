@@ -7,6 +7,7 @@ from pycqed.measurement import awg_sweep_functions as awg_swf
 import pycqed.analysis_v3.processing_pipeline as pp_mod
 import pycqed.analysis_v3.helper_functions as hlp_mod
 # ana_v3.reload_anav3()
+from pycqed.analysis_v2 import timedomain_analysis as tda
 
 log = logging.getLogger(__name__)
 
@@ -21,9 +22,19 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     default_experiment_name = 'VariationalAlgorithm'
 
-    def __init__(self, optimize=True, optimizer=None, **kw):
-        super().__init__(**kw)
+    def __init__(self, optimize=True, optimizer=None, classified=False, df_name='int_log_det', sweep_points=None, **kw):
+        super().__init__(
+            classified=classified, df_name=df_name,
+            sequence_kwargs=dict(sweep_points=sweep_points), **kw
+        )
         self.set_block_and_params()
+        self.exp_metadata.update({
+            'predict_proba': True,
+            'rotate': False,
+            'thresholding': True,
+            'meas_obj_sweep_points_map': self.sweep_points.get_meas_obj_sweep_points_map(
+                [qb.name for qb in self.meas_objs]),
+        })
 
         if optimize:
             if None in [optimizer]:
@@ -39,15 +50,17 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             self.force_2D_sweep = False  # TODO is this needed?
             self.mc_points = [[0]]
             self.sequences = [[None]]
-            self._set_MC()
+            self._set_MC()  # FIXME needed?
             # TODO check usage and possibly modify
             self.MC.set_adaptive_function_parameters(dict(
                 adaptive_function=self.optimizer,
                 data_processing_function=self._data_processing_function,
             ))
         else:
-            pass
-            # TODO pass sweep_points to normal super init
+            if sweep_points is None:
+                raise ValueError('No sweep points')
+            self.sequences, self.mc_points = self.sweep_n_dim(
+                sweep_points, body_block=self.block, **kw)
 
         self.autorun()
 
@@ -73,9 +86,9 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         # FIXME this won't exist when running a separate analysis offline
         classifier_params = {mobj.name: mobj.acq_classifier_params()
                              for mobj in meas_objs}
-        # FIXME using these as a hack for now
-        classifier_params = hlp_mod.get_clf_params_from_hdf_file(
-            '20230209_014813', [mobj.name for mobj in meas_objs])
+        # # FIXME using these as a hack for now
+        # classifier_params = hlp_mod.get_clf_params_from_hdf_file(
+        #     '20240415_182839', [mobj.name for mobj in meas_objs])
         # Could do readout correction here:
         # state_prob_mtxs = qb.acq_state_prob_mtx() ...
 
@@ -125,6 +138,11 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         # FIXME: this means that the logic in QuantumExperiment._prepare_sequences
         #  cannot be used here
         pass
+
+    def run_analysis(self, analysis_class=None, analysis_kwargs=None, **kw):
+        if analysis_class is None:
+            analysis_class = tda.MultiQubit_TimeDomain_Analysis
+        return super().run_analysis(analysis_class=analysis_class, analysis_kwargs=analysis_kwargs, **kw)
 
 
 class QCNNExperiment(VariationalAlgorithm):
