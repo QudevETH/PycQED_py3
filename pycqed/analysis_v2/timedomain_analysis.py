@@ -2901,6 +2901,22 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         return list(all_qubits)
 
 
+class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
+    def process_data(self):
+        super().process_data()
+
+        self.proc_data_dict['projected_data_dict']['cost_function'] = {
+            'value': # TODO
+        }
+
+    # def prepare_plots(self):
+    #     super().prepare_plots()
+    #     self.prepare_cost_function_plots()
+    #
+    # def prepare_cost_function_plots(self):
+
+
+
 class MultiQubit_HistogramAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         self.default_options['rotation'] = False

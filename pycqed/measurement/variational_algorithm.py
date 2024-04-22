@@ -76,6 +76,9 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             destroy=True,
         )
 
+    def classical_postprocessing(self, data, classical_params):
+        # TODO
+
     # @staticmethod  # FIXME?
     def _data_processing_function(self, vals,
                                   dset=None  # TODO remove
