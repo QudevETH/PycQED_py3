@@ -10099,8 +10099,15 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.qb_names[0]]).values())[0]
         mdata = self.raw_data_dict['measured_data']
 
+        det_metadata = self.metadata.get("Detector Metadata", None)
+        if 'detectors' in det_metadata:
+            # conversion from V_I, V_Q -> Magn.
+            magnitude = np.sqrt(
+                list(mdata.values())[0]**2 + list(mdata.values())[1]**2)
+        else:
+            magnitude = list(mdata.values())[0]
         # Conversion from V_peak -> V_RMS
-        V_RMS = list(mdata.values())[0]/np.sqrt(2)
+        V_RMS = magnitude/np.sqrt(2)
         # Conversion to P (dBm):
         #   P = V_RMS^2 / 50 Ohms
         #   P (dBm) = 10 * log10(P / 1 mW)
