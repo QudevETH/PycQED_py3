@@ -7333,9 +7333,9 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                         'val': phases, 'stderr': phases_errs}
 
                     # compute phase diffs
-                    # this can be false for Cryoscope with
-                    # estimation_window == None and odd nr of trunc lengths
                     if getattr(self, 'delta_tau', 0) is not None:
+                        # this can be false for Cryoscope with
+                        # estimation_window == None and odd nr of trunc lengths
                         phase_diffs = phases[0::2] - phases[1::2]
                         phase_diffs %= (2*np.pi)
                         phase_diffs_stderrs = np.sqrt(
