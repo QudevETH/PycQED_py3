@@ -667,7 +667,7 @@ def translate(info, dd):
         gate_name = 'CPHASE'
         angle = 180 if info[0][2:]=='' else float(info[0][2:])
         # -1 for old measurements with left-handed basis
-        legacy_sign = 1 if dd['exp_metadata']['right_handed_basis'] else -1
+        legacy_sign = 1 if dd['exp_metadata'].get('right_handed_basis') else -1
         angle = legacy_sign*angle*np.pi/180
     if int(info[1][3]) == 1:
         qubit = 0
