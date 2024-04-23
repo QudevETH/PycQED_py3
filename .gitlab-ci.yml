@@ -47,10 +47,10 @@ before_script:
 # Measure code quality (ab)using mypy
 codequality:
   script:
-  - pip install mypy mypy-gitlab-code-quality
-  - mypy program.py --no-error-summary > pycqed-mypy.txt || true  # "|| true" is used for preventing job fail when mypy find errors
-  - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json
-artifacts:
-  when: always
-  reports:
-    codequality: pycqed-codequality.json
+    - pip install mypy mypy-gitlab-code-quality
+    - mypy program.py --no-error-summary > pycqed-mypy.txt || true  # "|| true" is used for preventing job fail when mypy find errors
+    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json 
+  artifacts:
+    when: always
+    reports:
+      codequality: pycqed-codequality.json
