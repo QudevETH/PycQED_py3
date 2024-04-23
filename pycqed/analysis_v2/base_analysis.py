@@ -2379,11 +2379,11 @@ class BaseDataAnalysis(object):
         try:
             return self.get_instrument_setting(
                 f'{awg}.clock_freq')
-        except (ParameterNotFoundError, KeyError):
+        except ParameterNotFoundError:
             try:
                 return self.get_instrument_setting(
                     f'{awg}.system_clocks_sampleclock_freq')
-            except (ParameterNotFoundError, KeyError):
+            except ParameterNotFoundError:
                 model = self.get_instrument_setting(f'{awg}.IDN').get(
                     'model', None)
         if model == 'HDAWG8':
