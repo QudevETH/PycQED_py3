@@ -12,6 +12,7 @@ from pycqed.utilities import timer as tm_mod
 from sklearn.mixture import GaussianMixture as GM
 from sklearn.tree import DecisionTreeClassifier as DTC
 
+from pycqed.measurement.variational_algorithm import VariationalAlgorithm as va
 from pycqed.analysis import fitting_models as fit_mods
 from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.analysis_v2.base_analysis as ba
@@ -2905,15 +2906,37 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     def process_data(self):
         super().process_data()
 
-        self.proc_data_dict['projected_data_dict']['cost_function'] = {
-            'value': # TODO
-        }
 
-    # def prepare_plots(self):
-    #     super().prepare_plots()
-    #     self.prepare_cost_function_plots()
-    #
-    # def prepare_cost_function_plots(self):
+        if self.get_param_value('optimize'):
+            pass
+            # TODO get shape and do reshaping
+            # TODO add values to projected_data_dict so they get plotted
+        else:
+            # FIXME: replacing the values of a qubit is a hack, we should
+            #  instead create a new entry
+            sweep_points_len = len(self.proc_data_dict['sweep_points_dict'][
+                'qb2']['sweep_points'])
+            single_shot_len = len(self.proc_data_dict[
+                'single_shots_per_qb_thresholded']['qb2']) // sweep_points_len
+            single_shots_thresholded = self.proc_data_dict[
+            # reshape the flattened data array
+                'single_shots_per_qb_thresholded']['qb2'].reshape((
+                single_shot_len, sweep_points_len, -1))
+            # dummy classical parameters
+            classical_params = np.array([-1, 0, 1])
+            cnn_output = va.classical_postprocessing(
+                single_shots_thresholded, classical_params)
+            cpp_output = va.cost_function(cnn_output)
+            self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
+                'value': cpp_output,
+            }
+
+    def prepare_plots(self):
+        super().prepare_plots()
+        self.prepare_cost_function_plots()
+
+    def prepare_cost_function_plots(self):
+        pass
 
 
 

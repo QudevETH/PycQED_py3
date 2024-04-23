@@ -34,6 +34,9 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             'thresholding': True,
             'meas_obj_sweep_points_map': self.sweep_points.get_meas_obj_sweep_points_map(
                 [qb.name for qb in self.meas_objs]),
+            'data_to_fit': {},  # FIXME understand why this is needed
+            'training_settings': optimizer.training_settings,
+            'optimize': optimize,
         })
 
         if optimize:
@@ -65,7 +68,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         self.autorun()
 
     def set_block_and_params(self):
-
         self.params = [f"angle_{qb.name}" for qb in self.qubits]
         self.block = self.simultaneous_blocks(
             block_name='single_qb_gates',
@@ -76,8 +78,25 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             destroy=True,
         )
 
-    def classical_postprocessing(self, data, classical_params):
-        # TODO
+    @staticmethod
+    def classical_postprocessing(data, classical_params):
+        # deals with data that is reshaped
+        # FIXME: gets (circular) imported in tda, should this be elsewhere?
+        # FIXME; take the dimension of (qubits, states) into account
+        # dummy classical neural network
+        print(f"data = {data.shape}")
+        cnn_output = []
+        for single_shot_col in data:
+            cnn_output.append(np.dot(single_shot_col,
+                                     classical_params).reshape(-1))
+        return np.array(cnn_output)
+
+    @staticmethod
+    def cost_function(cnn_output):
+        label = np.zeros(cnn_output.shape[-1])
+        output = np.mean(np.square(cnn_output - label), axis=0)
+        print(output.shape)
+        return output
 
     # @staticmethod  # FIXME?
     def _data_processing_function(self, vals,
