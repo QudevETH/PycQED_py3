@@ -389,8 +389,8 @@ class CircuitBuilder:
                         # Update the op_split info in the ParametricValue,
                         # such that it matches the operation decomposition
                         cphase.op_split[0] = 'Z'
-                    # CZ_x = diag(1,1,1,e^-i*x)  # pycqed sign convention
-                    #  = e^(i*x/4)*Z1(-x/2)*Z0(-x/2)*H1*CZ*H1*Z1(x/2)*H1*CZ*H1
+                    # CZ_x = diag(1,1,1,e^i*x)  # pycqed sign convention
+                    #  = e^(i*x/4)*Z1(x/2)*Z0(x/2)*H1*CZ*H1*Z1(-x/2)*H1*CZ*H1
                     # and replacing each Hadamard H = i*Y*Z(pi) and
                     # discarding the global phase gives the decomposition:
                     decomposed_op = [
@@ -399,7 +399,6 @@ class CircuitBuilder:
                         f'Z180 {qb_dec[0]}',
                         f'Y90 {qb_dec[0]}',
                         f'Z0 {qb_dec[0]}',  # phase set below
-                        f'Z180 {qb_dec[0]}',
                         f'Y90 {qb_dec[0]}',
                         device_op,
                         f'Z180 {qb_dec[0]}',
@@ -411,9 +410,9 @@ class CircuitBuilder:
                         self.copy_op(self.operation_dict[do])
                         for do in decomposed_op
                     ]
-                    p[4]['basis_rotation'] = {qb_dec[0]: cphase/2}
-                    p[10]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
-                    p[11]['basis_rotation'] = {qb_dec[1]: -cphase/2}
+                    p[4]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
+                    p[10]['basis_rotation'] = {qb_dec[0]: cphase/2+180}
+                    p[11]['basis_rotation'] = {qb_dec[1]: cphase/2}
                 else:
                     p = [self.copy_op(self.operation_dict[device_op])]
                     if cphase is not None:
