@@ -622,7 +622,7 @@ class MeasurementObject(Instrument):
         If {op}_fixed_lo_freq is not None for the operation {op},
         {op}_mod_freq will be updated to {op}_freq' - {op}_fixed_lo_freq.
         The method can be called with kw (see below) as a set_cmd when a
-        relevant paramter changes, or without kw as a sanity check, in which
+        relevant parameter changes, or without kw as a sanity check, in which
         case it shows a warning when updating an IF.
 
         Special behavior if {op} is 'acq':
@@ -659,6 +659,8 @@ class MeasurementObject(Instrument):
         else:
             ops = [operation]
 
+        # ro_freq may be a list due to polychromatic readout
+        # Thus mod_freq may also be a list
         for op in ops:
             fixed_lo = get_param(f'{op}{fixed_lo_suffix}')
             if fixed_lo is None:
@@ -668,16 +670,19 @@ class MeasurementObject(Instrument):
             else:
                 freq = get_param(f'{op}_freq')
                 old_mod_freq = get_param(f'{op}_mod_freq')
-                if np.ndim(old_mod_freq):
-                    raise NotImplementedError(
-                        f'{op}: Fixed LO freq in combination with '
-                        f'multichromatic mod freq is not implemented.')
+                # if np.ndim(old_mod_freq):
+                #     raise NotImplementedError(
+                #         f'{op}: Fixed LO freq in combination with '
+                #         f'polychromatic mod freq is not implemented.')
                 if freq is None:  # freq not yet set
                     mod_freq = old_mod_freq  # no need to update the mod freq
                 else:
                     lo_freq = self.get_closest_lo_freq(
-                        freq - old_mod_freq, fixed_lo, operation=op)
-                    mod_freq = get_param(f'{op}_freq') - lo_freq
+                        np.mean(freq) - np.mean(old_mod_freq),
+                        fixed_lo, operation=op)
+                    mod_freq = (
+                        np.asarray(get_param(f'{op}_freq')) - lo_freq
+                    ).tolist()
                 if operation is not None and f'{op}_mod_freq' in kw:
                     # called for IF change of single op: behave as set_parser
                     return mod_freq
