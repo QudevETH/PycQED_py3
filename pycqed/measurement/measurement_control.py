@@ -836,7 +836,7 @@ class MeasurementControl(Instrument):
             vals = np.ones((1, len(self.detector_function.value_names)))*np.nan
         else:
             # FIXME: add an explaining comment why the transpose is needed
-            vals = self.detector_function.acquire_data_point().T
+            vals = np.array(self.detector_function.acquire_data_point()).T
         if self.print_debug:
             print(f"vals = {vals.shape}")
 
