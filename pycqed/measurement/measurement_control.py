@@ -871,6 +871,7 @@ class MeasurementControl(Instrument):
             assert np.all(new_data == new_data_oldversion)
             if self.print_debug:
                 log.warning('new_data_oldversion is ok')
+        # FIXME: maybe update column_names by setting a swf name
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
@@ -2509,7 +2510,8 @@ class MeasurementControl(Instrument):
             if self.detector_function.detector_control == 'soft':
                 # FIXME: this is an inconsistency that should not be there.
                 xlen = np.shape(new_data)[1]
-                log.warning('Deleted branch in MC: check that percdone works!')
+                if self.print_debug:
+                    log.warning('Deleted branch in MC: check that percdone works!')
             if True:
                 # in case of an N-D Hard detector dataset
                 xlen = np.shape(new_data)[0]
