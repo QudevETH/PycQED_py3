@@ -847,6 +847,8 @@ class MeasurementControl(Instrument):
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
         if True:
+            if self.mode == 'adaptive' and self.indexed_sweep:
+                x = self.iteration
             # Because x is allowed to be a list of tuples (batch sampling), we
             # need to reshape and reformat x and vals accordingly before we can
             # save them to the dset.
@@ -2672,6 +2674,7 @@ class MeasurementControl(Instrument):
         # x_scale is expected to be an array or list.
         self.x_scale = self.af_pars.pop('x_scale', None)
         self.par_idx = self.af_pars.pop('par_idx', 0)
+        self.indexed_sweep = self.af_pars.pop('indexed_sweep', False)
         # Determines if the optimization will minimize or maximize
         self.minimize_optimization = self.af_pars.pop('minimize', True)
         self.f_termination = self.af_pars.pop('f_termination', None)
