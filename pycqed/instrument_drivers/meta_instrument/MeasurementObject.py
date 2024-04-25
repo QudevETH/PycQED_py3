@@ -419,15 +419,21 @@ class MeasurementObject(Instrument):
             acq_freq = self.ro_freq()
         if (acq_mod_freq := self.acq_mod_freq()) is None:
             if self.instr_acq_lo() is None:
-                acq_mod_freq = acq_freq - self.get_ro_lo_freq()
+                acq_mod_freq = (
+                        np.asarray(acq_freq) - self.get_ro_lo_freq()
+                ).tolist()
             else:
                 acq_mod_freq = self.ro_mod_freq()
-        elif self.instr_acq_lo() is None and np.abs(
-                (acq_freq - acq_mod_freq) - self.get_ro_lo_freq()) > 1e-3:
+        elif self.instr_acq_lo() is None and np.any(
+                np.abs(
+                    (np.asarray(acq_freq) - np.asarray(acq_mod_freq))
+                    - self.get_ro_lo_freq()
+                ) > 1e-3
+        ):
             log.warning(
                 f'{self.name}: Acq LO freq and RO LO freq do not match, '
                 f'but no Acq LO instrument is configured.')
-        return acq_mod_freq, acq_freq - acq_mod_freq
+        return acq_mod_freq, (np.asarray(acq_freq) - np.asarray(acq_mod_freq)).tolist()
 
     def set_readout_weights(self, weights_type=None, f_mod=None):
         """Set acquisition weights for this measurement object in the
@@ -503,9 +509,15 @@ class MeasurementObject(Instrument):
             operation_dict['RO ' + self.name])
         operation_dict['Acq ' + self.name]['amplitude'] = 0
 
+        # Polychromatic readout
         if np.ndim(self.ro_freq()) != 0:
-            delta_freqs = self.ro_freq() - np.mean(self.ro_freq())
-            mods = [self.ro_mod_freq() + d for d in delta_freqs]
+            # Case where ro_mod_freq is a list due to ro_fixed_lo_freq
+            if np.ndim(self.ro_mod_freq()) > 0:
+                mods = self.ro_mod_freq()
+            # Single ro_mod_freq (no fixed_lo_freq)
+            else:
+                delta_freqs = self.ro_freq() - np.mean(self.ro_freq())
+                mods = [self.ro_mod_freq() + d for d in delta_freqs]
             operation_dict['RO ' + self.name]['mod_frequency'] = mods
 
         for code, op in operation_dict.items():
