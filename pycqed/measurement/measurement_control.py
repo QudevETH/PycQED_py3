@@ -755,12 +755,12 @@ class MeasurementControl(Instrument):
                 # `BlockSoftHardSweep` for details.
                 x = np.atleast_2d(x)
                 self.timer.checkpoint(
-                    "MeasurementControl.measure_soft_adaptive"
-                    ".adaptive_function.swf.set_parameter.start")
+                    "MeasurementControl.measurement_function.set_parameter"
+                    ".start")
                 sweep_function.set_parameter(x)
                 self.timer.checkpoint(
-                    "MeasurementControl.measure_soft_adaptive"
-                    ".adaptive_function.swf.set_parameter.end")
+                    "MeasurementControl.measurement_function.set_parameter"
+                    ".end")
                 # Detector functions assume to receive the sweep points
                 # tiled, according to the number in acq_data_len_scaling.
                 # Example SSRO: acq_data_len_scaling equals the number of
