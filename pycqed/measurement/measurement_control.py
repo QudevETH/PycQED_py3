@@ -2094,27 +2094,24 @@ class MeasurementControl(Instrument):
             if not hasattr(self, 'station'):
                 log.warning('No station object specified, could not save '
                             'instrument settings')
-            import numpy
-            import sys
             if data_object is None:
                 data_object = self.data_object
-            with numpy.printoptions(threshold=sys.maxsize):
-                # checks if data object is closed and opens it if necessary in ,
-                # a context manager, such that it is closed after save method.
-                if not data_object.__bool__():
-                    with h5d.Data(name=self.get_measurement_name(),
-                      datadir=self.datadir(),
-                      timestamp=self.last_timestamp(),
-                                           auto_increase=False) as data_object:
-                        MeasurementControl._save_station_in_hdf(data_object,
-                                                                self.station)
-                else:
-                    # hdf file was already opened and does not need to be
-                    # closed at the end, because save_instrument_settings was
-                    # called inside a context manager and may be used
-                    # after calling save_instrument_settings (e.g. MC.run())
+            # checks if data object is closed and opens it if necessary in ,
+            # a context manager, such that it is closed after save method.
+            if not data_object.__bool__():
+                with h5d.Data(name=self.get_measurement_name(),
+                  datadir=self.datadir(),
+                  timestamp=self.last_timestamp(),
+                                       auto_increase=False) as data_object:
                     MeasurementControl._save_station_in_hdf(data_object,
                                                             self.station)
+            else:
+                # hdf file was already opened and does not need to be
+                # closed at the end, because save_instrument_settings was
+                # called inside a context manager and may be used
+                # after calling save_instrument_settings (e.g. MC.run())
+                MeasurementControl._save_station_in_hdf(data_object,
+                                                        self.station)
 
         else:
             if self.settings_file_format() == 'msgpack':
@@ -2154,18 +2151,21 @@ class MeasurementControl(Instrument):
             data_object (h5py.File): opened HDF5 data file
             station (Station): QCodes or mock_qcodes_interface station object
         '''
+        import numpy
+        import sys
         set_grp = data_object.create_group('Instrument settings')
         inslist = dict_to_ordered_tuples(station.components)
-        for (iname, ins) in inslist:
-            instrument_grp = set_grp.create_group(iname)
-            if snapshot_kwargs is None:
-                inst_snapshot = ins.snapshot()
-            else:
-                inst_snapshot = ins.snapshot(*snapshot_kwargs)
-            MeasurementControl.store_snapshot_parameters(
-                inst_snapshot,
-                entry_point=instrument_grp,
-                instrument=ins)
+        with numpy.printoptions(threshold=sys.maxsize):
+            for (iname, ins) in inslist:
+                instrument_grp = set_grp.create_group(iname)
+                if snapshot_kwargs is None:
+                    inst_snapshot = ins.snapshot()
+                else:
+                    inst_snapshot = ins.snapshot(*snapshot_kwargs)
+                MeasurementControl.store_snapshot_parameters(
+                    inst_snapshot,
+                    entry_point=instrument_grp,
+                    instrument=ins)
 
     @staticmethod
     def store_snapshot_parameters(inst_snapshot, entry_point,
