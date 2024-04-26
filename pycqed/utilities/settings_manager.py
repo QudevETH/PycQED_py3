@@ -513,10 +513,4 @@ def convert_settings_to_hdf(timestamp: str):
                                           ext=ext[1:])
         fn = fn[:-len(ext)] + '.hdf'
     with h5py.File(fn, 'a') as hdf_file:
-        set_grp = hdf_file.create_group('Instrument settings')
-        inslist = dict_to_ordered_tuples(station.components)
-        for (iname, inst) in inslist:
-            instrument_grp = set_grp.create_group(iname)
-            MeasurementControl.store_snapshot_parameters(
-                inst.snapshot(reduced=False),
-                instrument_grp, inst)
+        MeasurementControl._save_station_in_hdf(hdf_file, station)

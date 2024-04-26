@@ -2091,33 +2091,11 @@ class MeasurementControl(Instrument):
         '''
 
         if self.settings_file_format() == 'hdf5':
-            def save_settings_in_hdf(data_object):
-                if not hasattr(self, 'station'):
-                    log.warning('No station object specified, could not save '
-                                'instrument settings')
-                else:
-                    # # This saves the snapshot of the entire setup
-                    # snap_grp = data_object.create_group('Snapshot')
-                    # snap = self.station.snapshot()
-                    # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
-
-                    # Below is old style saving of snapshot, exists for the sake of
-                    # preserving deprecated functionality. Here only the values
-                    # of the parameters are saved.
-                    set_grp = data_object.create_group('Instrument settings')
-                    inslist = dict_to_ordered_tuples(self.station.components)
-                    for (iname, ins) in inslist:
-                        instrument_grp = set_grp.create_group(iname)
-                        inst_snapshot = ins.snapshot()
-                        MeasurementControl.store_snapshot_parameters(
-                            inst_snapshot,
-                            entry_point=instrument_grp,
-                            instrument=ins)
-                numpy.set_printoptions(**opt)
+            if not hasattr(self, 'station'):
+                log.warning('No station object specified, could not save '
+                            'instrument settings')
             import numpy
             import sys
-            opt = numpy.get_printoptions()
-            numpy.set_printoptions(threshold=sys.maxsize)
             if data_object is None:
                 data_object = self.data_object
             with numpy.printoptions(threshold=sys.maxsize):
@@ -2167,6 +2145,27 @@ class MeasurementControl(Instrument):
                             compression=self.settings_file_compression(),
                             timestamp=self.last_timestamp())
             dumper.dump(mode=mode)
+
+    @staticmethod
+    def _save_station_in_hdf(data_object, station, snapshot_kwargs=None):
+        '''
+        Writes snapshot of station in HDF5-data object.
+        Args:
+            data_object (h5py.File): opened HDF5 data file
+            station (Station): QCodes or mock_qcodes_interface station object
+        '''
+        set_grp = data_object.create_group('Instrument settings')
+        inslist = dict_to_ordered_tuples(station.components)
+        for (iname, ins) in inslist:
+            instrument_grp = set_grp.create_group(iname)
+            if snapshot_kwargs is None:
+                inst_snapshot = ins.snapshot()
+            else:
+                inst_snapshot = ins.snapshot(*snapshot_kwargs)
+            MeasurementControl.store_snapshot_parameters(
+                inst_snapshot,
+                entry_point=instrument_grp,
+                instrument=ins)
 
     @staticmethod
     def store_snapshot_parameters(inst_snapshot, entry_point,
