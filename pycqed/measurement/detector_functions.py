@@ -1014,8 +1014,6 @@ class MultiPollDetector(PollDetector):
                 MeasurementControl
         """
         super().prepare()
-        if self.detector_control == 'hard' and sweep_points is None:
-            raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
             d.prepare(sweep_points)
         self.progress_scaling = [
@@ -1482,6 +1480,7 @@ class IntegratingAveragingPollDetector(PollDetector):
         # Determine the number of sweep points and set them
         if sweep_points is None or self.single_int_avg:
             # this case will be used when it is a soft detector
+            assert self.detector_control == 'soft'
             # Note: single_int_avg overrides chunk_size
             # single_int_avg = True is equivalent to chunk_size = 1
             self.nr_sweep_points = self.values_per_point
