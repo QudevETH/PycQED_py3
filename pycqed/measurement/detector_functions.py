@@ -1762,7 +1762,8 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
     Detector used for integrated single-shot acquisition.
     """
 
-    def __init__(self, acq_dev, nr_shots: int = 4094, **kw):
+    def __init__(self, acq_dev, nr_shots: int = 4094,
+                 single_int_log: bool = False, **kw):
         """
         Init of the IntegratingSingleShotPollDetector.
         See the IntegratingAveragingPollDetector for the full dostring of the
@@ -1771,6 +1772,7 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         Args:
             acq_dev (instrument): data acquisition device
             nr_shots (int)     : number of acquisition shots
+            single_int_log (bool): if True makes this a soft detector
 
         Keyword args:
             passed to the init of the parent class. In addition,
@@ -1783,8 +1785,16 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         self.name = '{}_integration_logging_det'.format(self.data_type)
         self.nr_shots = nr_shots
         self.acq_data_len_scaling = self.nr_shots  # to be used in MC
+        self.single_int_log = single_int_log
         # Disable MC live plotting by default for SSRO acquisition
         self.live_plot_allowed = kw.get('live_plot_allowed', False)
+
+    def prepare(self, sweep_points=None):
+        if self.single_int_log:
+            # If soft detector (meaning each acq. is triggered in software):
+            # the number of values to be acquired is the number of shots
+            sweep_points = [0] * self.acq_data_len_scaling
+        super().prepare(sweep_points)
 
 
 class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
