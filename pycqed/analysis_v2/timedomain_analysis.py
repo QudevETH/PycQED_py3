@@ -1922,6 +1922,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             elif np.ndim(shots_per_qb[qbn]) == 1:
                 shots_per_qb[qbn] = np.expand_dims(shots_per_qb[qbn],
                                                    axis=-1)
+            else:  # TODO if sweep_control[0] if soft
+                n_vn = shots_per_qb[qbn].shape[-1]
+                n_shots = self.get_param_value(
+                    "nr_shots", self._extract_param_from_det("nr_shots"))
+                shots_per_qb[qbn] = shots_per_qb[qbn].reshape((-1, n_shots,
+                                                               n_vn))
+                shots_per_qb[qbn] = np.swapaxes(shots_per_qb[qbn], 0, 1)
+                shots_per_qb[qbn] = shots_per_qb[qbn].reshape((-1, n_vn))
 
         return shots_per_qb
 
@@ -2185,6 +2193,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
+            # Note: shots has been re-ordered in _get_single_shots_per_qb,
+            # compared to the raw data from the measurement
             for ro in range(n_readouts*n_seqs):
                 shots_single_ro = shots[ro::n_readouts*n_seqs]
                 presel_mask_single_ro = preselection_masks[qbn][ro::n_readouts*n_seqs]
