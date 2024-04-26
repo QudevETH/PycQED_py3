@@ -871,7 +871,6 @@ class MeasurementControl(Instrument):
             (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
             axis=-1
         )
-        # FIXME: maybe update column_names by setting a swf name
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
