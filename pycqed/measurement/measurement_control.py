@@ -648,6 +648,7 @@ class MeasurementControl(Instrument):
             # progress reports during get_detector_function.values.
             self.detector_function.progress_callback = (
                 lambda x, n=n_acquired: self.print_progress(x + n))
+            # Transpose because detectors return [num_points, len(value_names)]
             this_new_data = np.array(self.detector_function.get_values()).T
             if self.print_debug:
                 print(f"this_new_data = {this_new_data.shape}")
@@ -838,11 +839,14 @@ class MeasurementControl(Instrument):
         datasetshape = self.dset.shape
         # self.iteration = datasetshape[0] + 1
 
+        # vals.shape = [num_points, len(value_names)]
         if filter_out:
             vals = np.ones((1, len(self.detector_function.value_names)))*np.nan
         else:
-            # FIXME: add an explaining comment why the transpose is needed
-            vals = np.array(self.detector_function.acquire_data_point()).T
+            # Transpose because detectors return [num_points, len(value_names)]
+            # TODO confirm that all det.acquire_data_point can be deleted,
+            #  see comment in Multi_Detector.acquire_data_point
+            vals = np.array(self.detector_function.get_values()).T
         if self.print_debug:
             print(f"vals = {vals.shape}")
 
@@ -860,8 +864,9 @@ class MeasurementControl(Instrument):
             # save them to the dset.
             x = np.atleast_2d(x) # to unify format of x
             vals = vals.reshape((-1, len(self.detector_function.value_names)))
-            # the following np.concatenate ensures that the measured values are
-            # concatenated with the correct parameters in x.  TODO explain
+            # Concatenates the sweep points x with the data vals,
+            # by prepending x as columns. If vals has more rows than x,
+            # x is repeated vertically.
             new_data = np.concatenate(
                 (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
                 axis=-1

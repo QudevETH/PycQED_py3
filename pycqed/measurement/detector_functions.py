@@ -737,7 +737,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         the nr_sweep_points attribute of the detector functions.
 
         Returns:
-            raw data: dict of the form {acq_dev.name: raw data array}
+            raw data: dict of the form {acq_dev.name: raw_data_array}
+                where raw_data_array.shape = [number acquisition_nodes, points]
         """
         if self.AWG is not None:
             self.timer.checkpoint("PollDetector.poll_data.AWG_restart.start")
