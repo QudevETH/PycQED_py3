@@ -2255,6 +2255,8 @@ class MeasurementControl(Instrument):
         et[:, 0] = np.array(time.localtime(self.endtime))
 
         set_grp.attrs['mode'] = self.mode
+        set_grp.attrs['sweep_control'] = [
+            s.sweep_control for s in getattr(self, 'sweep_functions', [])]
         set_grp.attrs['measurement_name'] = self.measurement_name
         set_grp.attrs['live_plot_enabled'] = self._live_plot_enabled()
         sha1_id, diff = self.get_git_info()
