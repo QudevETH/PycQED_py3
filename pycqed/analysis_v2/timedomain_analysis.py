@@ -9887,21 +9887,6 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                     f'via the options_dict).')
             setattr(self, param, val)
 
-    def _extract_param_from_det(self, param, default=None):
-        det_metadata = self.metadata.get("Detector Metadata", None)
-        val = None
-        if det_metadata is not None:
-            # multi detector function: look for child "detectors"
-            # assumes at least 1 child and that all children have the same
-            # number of averages
-            val = det_metadata.get(param, None)
-            if val is None:
-                det = list(det_metadata.get('detectors', {}).values())[0]
-                val = det.get(param, None)
-        if val is None:
-            val = default
-        return val
-
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
                               count_nan_measurements=False):
         """
