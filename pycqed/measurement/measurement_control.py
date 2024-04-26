@@ -545,7 +545,13 @@ class MeasurementControl(Instrument):
     def measure_soft_static(self):
         for j in range(self.soft_avg()):
             self.soft_iteration = j
-            for i, sweep_point in enumerate(self.sweep_points):
+            sp = self.sweep_points
+            if self.detector_function.detector_control == 'hard':
+                # sp have been tiled for points*shots, but for a soft sweep
+                # with hard detector here we sweep over the points, se we only
+                # want to acquire shots for a single point here
+                sp = sp[0:len(sp) // self.acq_data_len_scaling]
+            for i, sweep_point in enumerate(sp):
                 self.measurement_function(sweep_point, index=i)
 
     @Timer()
