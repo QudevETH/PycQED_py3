@@ -474,8 +474,9 @@ class MeasurementControl(Instrument):
             sweep_function.prepare()
         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
 
-        if (self.sweep_functions[0].sweep_control == 'soft' and
-                self.detector_function.detector_control == 'soft'):
+        if self.sweep_functions[0].sweep_control == 'soft':
+            # Note that we allow the combination of soft sweep and hard
+            # detector (e.g., SSRO in soft sweep)
             self.detector_function.prepare()
             self.get_measurement_preparetime()
             self.measure_soft_static()
@@ -522,8 +523,7 @@ class MeasurementControl(Instrument):
                     self.detector_function.prepare(sweep_points=sp)
                     self.measure_hard(filtered_sweep)
         else:
-            raise Exception('Sweep and Detector functions not '
-                            + 'of the same type. \nAborting measurement')
+            raise Exception('Hard sweep with soft detector not allowed.')
 
         self.check_keyboard_interrupt()
         self.update_instrument_monitor()
