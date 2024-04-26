@@ -2120,20 +2120,23 @@ class MeasurementControl(Instrument):
             numpy.set_printoptions(threshold=sys.maxsize)
             if data_object is None:
                 data_object = self.data_object
-            # checks if data object is closed and opens it if necessary in ,
-            # a context manager, such that it is closed after save method.
-            if not data_object.__bool__():
-                with h5d.Data(name=self.get_measurement_name(),
-                  datadir=self.datadir(),
-                  timestamp=self.last_timestamp(),
-                                       auto_increase=False) as data_object:
-                    save_settings_in_hdf(data_object)
-            else:
-                # hdf file was already opened and does not need to be
-                # closed at the end, because save_instrument_settings was
-                # called inside a context manager and may be used
-                # after calling save_instrument_settings (e.g. MC.run())
-                save_settings_in_hdf(data_object)
+            with numpy.printoptions(threshold=sys.maxsize):
+                # checks if data object is closed and opens it if necessary in ,
+                # a context manager, such that it is closed after save method.
+                if not data_object.__bool__():
+                    with h5d.Data(name=self.get_measurement_name(),
+                      datadir=self.datadir(),
+                      timestamp=self.last_timestamp(),
+                                           auto_increase=False) as data_object:
+                        MeasurementControl._save_station_in_hdf(data_object,
+                                                                self.station)
+                else:
+                    # hdf file was already opened and does not need to be
+                    # closed at the end, because save_instrument_settings was
+                    # called inside a context manager and may be used
+                    # after calling save_instrument_settings (e.g. MC.run())
+                    MeasurementControl._save_station_in_hdf(data_object,
+                                                            self.station)
 
         else:
             if self.settings_file_format() == 'msgpack':
