@@ -423,7 +423,13 @@ class MeasurementControl(Instrument):
                 # automatic retry is triggered) or raised.
                 exception = e
                 log.error(traceback.format_exc())
-            result = self.dset[()]
+            try:
+                result = self.dset[()]
+            except Exception:
+                # If we cannot get the data set here, we set it to None
+                # to inform self.finish that no data is available for
+                # persistent traces of the live plotting.
+                result = None
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
             # FIXME: Nathan 2020.12.03.
@@ -434,8 +440,9 @@ class MeasurementControl(Instrument):
             #  we're sure that experiment that are not based on Qexp still have some timers
             #  saved.
             self.save_timers(self.data_object)
-            return_dict = self.create_experiment_result_dict()
-            if exception is not None:  # exception occurred in above try-block
+            if exception is None:  # no exception occurred in above try-block
+                return_dict = self.create_experiment_result_dict()
+            else:
                 if previous_attempts + 1 < self.max_attempts():
                     # Maximum number of attempts not reached. Log to logger
                     # and to slack, and retry.
@@ -947,7 +954,7 @@ class MeasurementControl(Instrument):
         '''
         # this data can be plotted by enabling persist_mode
         n = len(self.sweep_par_names)
-        if self._live_plot_enabled():
+        if self._live_plot_enabled() and result is not None:
             self._persist_dat = np.concatenate([
                 result[:, :n],
                 self.detector_function.live_plot_transform(result[:, n:])
