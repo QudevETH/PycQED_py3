@@ -856,32 +856,21 @@ class MeasurementControl(Instrument):
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        if True:
-            if self.mode == 'adaptive' and self.indexed_sweep:
-                x = self.iteration
-            # Because x is allowed to be a list of tuples (batch sampling), we
-            # need to reshape and reformat x and vals accordingly before we can
-            # save them to the dset.
-            x = np.atleast_2d(x) # to unify format of x
-            vals = vals.reshape((-1, len(self.detector_function.value_names)))
-            # Concatenates the sweep points x with the data vals,
-            # by prepending x as columns. If vals has more rows than x,
-            # x is repeated vertically.
-            new_data = np.concatenate(
-                (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
-                axis=-1
-            )
-        if not batch_mode:
-            # FIXME: this np.append flattens both arrays and appends them,
-            #  meaning that, for a single point with two I and Q values,
-            #  vals.shape = (2,1), and for a 2D sweep x.shape = (2,), we get
-            #  new_data.shape = (1, 4) (one row in the hdf file). This is why
-            #  for a single point (no batch mode) the above .T was not needed.
-            # TODO remove these lines after testing
-            new_data_oldversion = np.append(x, vals.T)
-            assert np.all(new_data == new_data_oldversion)
-            if self.print_debug:
-                log.warning('new_data_oldversion is ok')
+        if self.mode == 'adaptive' and self.indexed_sweep:
+            # TODO make condition generic
+            x = self.iteration
+        # Because x is allowed to be a list of tuples (batch sampling), we
+        # need to reshape and reformat x and vals accordingly before we can
+        # save them to the dset.
+        x = np.atleast_2d(x) # to unify format of x
+        vals = vals.reshape((-1, len(self.detector_function.value_names)))
+        # Concatenates the sweep points x with the data vals,
+        # by prepending x as columns. If vals has more rows than x,
+        # x is repeated vertically.
+        new_data = np.concatenate(
+            (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
+            axis=-1
+        )
         # FIXME: maybe update column_names by setting a swf name
 
         old_vals = self.dset[start_idx:stop_idx, :]
