@@ -7732,9 +7732,7 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
                 delta_tau = delta_tau[m]
                 phases = self.proc_data_dict['analysis_params_dict'][
                     f'phases_{qbn}']
-                legacy_sign = 1 if self.get_param_value('right_handed_basis')\
-                    else -1  # -1 for old measurements with left-handed basis
-                delta_phases_vals = legacy_sign * np.diff(phases['val'])[m]
+                delta_phases_vals = -np.diff(phases['val'])[m]
                 delta_phases_vals = (delta_phases_vals + np.pi) % (
                             2 * np.pi) - np.pi
                 delta_phases_errs = (np.sqrt(
