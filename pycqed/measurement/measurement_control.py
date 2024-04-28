@@ -78,8 +78,6 @@ class MeasurementControl(Instrument):
                  live_plot_enabled: bool=True, verbose: bool=True):
         super().__init__(name=name)
 
-        self.print_debug = True
-
         self.add_parameter('datadir',
                            initial_value=datadir,
                            vals=vals.Strings(),
@@ -642,8 +640,6 @@ class MeasurementControl(Instrument):
             ones will be skipped (False). Default: None, in which case all
             acquisition elements will be played.
         """
-        if self.print_debug:
-            print("####### measure_hard")
         n_acquired = 0
         for i_rep in range(self.soft_repetitions()):
             # Tell the detector_function to call print_progress for intermediate
@@ -652,8 +648,6 @@ class MeasurementControl(Instrument):
                 lambda x, n=n_acquired: self.print_progress(x + n))
             # Transpose because detectors return [num_points, len(value_names)]
             this_new_data = np.array(self.detector_function.get_values()).T
-            if self.print_debug:
-                print(f"this_new_data = {this_new_data.shape}")
             n_acquired += this_new_data.shape[0]
             new_data = this_new_data if i_rep == 0 else np.concatenate(
                 [new_data, this_new_data])
@@ -741,8 +735,6 @@ class MeasurementControl(Instrument):
 
         FIXME: not tested for len(self.sweep_functions) > 2
         '''
-        if self.print_debug:
-            print("####### measurement_function")
         if np.isscalar(x):
             x = [x]
         # The len()==1 condition is a consistency check because batch_mode
@@ -775,9 +767,6 @@ class MeasurementControl(Instrument):
                 # Example SSRO: acq_data_len_scaling equals the number of
                 # shots and prepare will get a sweep point for each shot of
                 # each segment, see IntegratingAveragingPollDetector.prepare.
-                if self.print_debug:
-                    print(f"batch_mode: x.shape = {x.shape}")
-                    print(f"MC.acq_data_len_scaling = {self.acq_data_len_scaling}")
                 self.detector_function.prepare(
                     np.tile(x, [self.acq_data_len_scaling, 1]))
                 break
@@ -849,9 +838,6 @@ class MeasurementControl(Instrument):
             # TODO confirm that all det.acquire_data_point can be deleted,
             #  see comment in Multi_Detector.acquire_data_point
             vals = np.array(self.detector_function.get_values()).T
-        if self.print_debug:
-            print(f"vals = {vals.shape}")
-
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
@@ -2362,9 +2348,6 @@ class MeasurementControl(Instrument):
         else:
             percdone = (self.total_nr_acquired_values + current_acq) / (
                 np.shape(self.get_sweep_points())[0] * self.soft_avg()) * 100
-            if self.print_debug:
-                print(f"self.total_nr_acquired_values = {self.total_nr_acquired_values}")
-                print(f"percdone = {percdone}")
         try:
             now = time.time()
             if percdone != np.nan and percdone != self._last_percdone_value:
@@ -2513,8 +2496,7 @@ class MeasurementControl(Instrument):
             if self.detector_function.detector_control == 'soft':
                 # FIXME: this is an inconsistency that should not be there.
                 xlen = np.shape(new_data)[1]
-                if self.print_debug:
-                    log.warning('Deleted branch in MC: check that percdone works!')
+                log.warning('Deleted branch in MC: check that percdone works!')
             if True:
                 # in case of an N-D Hard detector dataset
                 xlen = np.shape(new_data)[0]
