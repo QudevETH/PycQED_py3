@@ -11889,6 +11889,288 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
 
 
+class LeakageAmplificationAnalysis(ChevronAnalysis):
+
+    def __init__(self, do_fitting=False, options_dict=None, *args, **kwargs):
+        if options_dict is None:
+            options_dict = {}
+        options_dict.setdefault('plot_raw_data', False)
+        options_dict.setdefault('plot_proj_data', False)
+        super().__init__(do_fitting=do_fitting, options_dict=options_dict,
+                         *args, **kwargs)
+
+    def prepare_plots(self):
+        super().prepare_plots()
+        self.plot_leakage_amp()
+
+    def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05,
+                         xtransform=None, draw_lower_lines=True,
+                         pop_scale_right=None, pop_scale_left=None,
+                         pop_unit_right=None, pop_unit_left=None,
+                         pop_label_right=None, pop_label_left=None,
+                         gate_yticks=None, gate_yticks_prec=2, **kw):
+        """
+        Plots leakage amplification results (2D map, and 1D with maximum line)
+
+        Args:
+            cmap_lim: z range limit for the 2D data plot. These should be
+                chosen such that the rescaled data fit in the lower plot.
+                Default (None): chooses a small margin around the data.
+            cmap_margin (float): Margin for z range, relative to cmap_lim
+            xtransform (function): Optional x-axis transformation
+            draw_lower_lines (bool): In the projected data panel (bottom),
+                whether to draw lines to connect each row of data below the
+                maximum (line instead of scatter)
+            pop_scale_right (float): Scaling factor for right axis
+            pop_scale_left (float): Scaling factor for left axis
+            pop_unit_right (str): Unit for right axis
+            pop_unit_left (str): Unit for left axis
+            pop_label_right (str): Right axis label (overrides pop_unit_right)
+            pop_label_left (str): Left axis label (overrides pop_unit_left)
+            gate_yticks (list): Set explicit values for the left yticks. If
+                None (default), they are set to match the (automatic)
+                locations of the right panel ticks.
+            gate_yticks_prec (int): Precision (digits) of the left tick labels
+            **kw (dict): Additional formatting arguments, currently 'title',
+                'cmap'.
+
+        Note: all data are handled in terms of total leakage for n gates. The y
+        label of the bottom plot shows the leakage for 1 gate.
+        The colorbar has the same limits as the ylim of the bottom panel
+        (before rescaling), such that the colorbar can serve as a second y axis.
+        """
+
+        _default_units = (1e-2, '%')
+        if pop_scale_right is None:
+            pop_scale_right, pop_unit_right = _default_units
+        if pop_scale_left is None:
+            pop_scale_left, pop_unit_left = _default_units
+
+        y_err_f = lambda pop, n: np.sqrt(pop * (1-pop) / n)
+
+        ts = self.timestamps[0]
+
+        for task in self.metadata['task_list']:
+            qbn = task['qbc']
+            pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
+                [:, :-3]
+            sp = SweepPoints(task['sweep_points'])
+            sp_dims = sp.length() + [self.metadata['compression_factor']]
+            acq_averages = self.get_instrument_setting(f'{qbn}.acq_averages')
+            n = task['num_cz_gates']
+
+            # Re-organise data to keep the delay as vertical axis
+            label_orthogonal = 'buffer_length_start'
+            label_orthogonal = list(task['sweep_points'][0])[0]
+            if sp.find_parameter(label_orthogonal) == 0:
+                pop = pop.T
+                sp[0], sp[1] = sp[1], sp[0]
+            labels = [list(sp[i])[0] for i in range(len(sp))]
+            coords = [sp[l] for l in labels]
+            if xtransform:
+                coords[0] = xtransform(coords[0])
+
+            # Process labels
+            nice_labels = [
+                list(sp.get_sweep_params_description(l)) + [l] for l in labels
+            ]
+            nice_labels = [
+                [l[2] if l[2] else l[3],  # param description or just param name
+                 f' ({l[1]})' if len(l[1]) else '']
+                for l in nice_labels
+            ]
+            # Adapt axis scaling/units
+            for i in range(len(labels)):
+                if nice_labels[i][1] == ' (s)':
+                    nice_labels[i][1] = ' (ns)'
+                    coords[i] = coords[i] * 1e9
+            nice_labels = [
+                label + unit
+                for label, unit in nice_labels
+            ]
+            for i, l in enumerate(labels):
+                if 'pulse_off' in l:
+                    labels[i] = 'num_cz_gates'
+                    coords[i] = sp['num_cz_gates']
+                    nice_labels[i] = 'Number of CZ gates'
+            cz_pulse_name = task.get('cz_pulse_name',
+                                     self.metadata['cz_pulse_name'])
+            title = kw.get('title', (
+                f"{ts} Leakage ampl. {qbn}{task['qbt']}\n"
+                f"{sp_dims[0]} seg. * {sp_dims[2]} hard seq. * "
+                f"{int(np.ceil(sp_dims[1] / sp_dims[2]))} soft seq.\n"
+                f"{n} {cz_pulse_name} gates, {acq_averages} avg."
+            ))
+            plot_params = self.get_default_plot_params(set_pars=False)
+            plotsize = plot_params['figure.figsize']
+            figname = f'leakage_amplification_{qbn}'
+
+            cmap = plt.colormaps.get_cmap(kw.get('cmap'))
+            if cmap_lim is None:
+                _cmap_lim = [pop.min(), pop.max()]
+                height = _cmap_lim[1]-_cmap_lim[0]
+                _cmap_lim = np.array([_cmap_lim[0]-cmap_margin*height,
+                                      _cmap_lim[1]+cmap_margin*height])
+            else:
+                _cmap_lim = np.array(cmap_lim)
+            norm = mpl.colors.Normalize(vmin=_cmap_lim[0], vmax=_cmap_lim[1])
+
+            x = coords[0]
+            y_max = np.max(pop, axis=0)
+            x_scatter = np.array([x]*len(pop)).flatten()
+            y_scatter = np.array(pop).flatten()
+            y_err = y_err_f(y_max, acq_averages)
+
+            # Create the figure + disable the top right axis
+            self.plot_dicts[figname + "_emptyaxis"] = {
+                'fig_id': figname,
+                'plotfn': None,
+                'ax_id': 1,
+                'plotsize': (plotsize[1], plotsize[0]),
+                'gridspec_kw': {'width_ratios': [10, 1], 'wspace': 0,
+                                'hspace': 0.1},
+                'numplotsx': 2,
+                'numplotsy': 2,
+                'sharex': 'col',
+                'sharey': False,
+                'set_axis_off': True,
+            }
+
+            # Plot 2D data
+            self.plot_dicts[figname + "_2D"] = {
+                'fig_id': figname,
+                'ax_id': 0,
+                'plotfn': self.plot_colorxy,
+                'xvals': coords[0],
+                'yvals': coords[1],
+                'zvals': pop/pop_scale_right,
+                'zrange': _cmap_lim/pop_scale_right,
+                'xlabel': '',
+                'xunit': '',
+                'xlabels_rotation': 0,
+                'ylabel': nice_labels[1],
+                'yunit': '',
+                'cmap': kw.get('cmap'),
+                'title': title,
+                'plotcbar': True,
+                'clabel': pop_label_right if pop_label_right else
+                          f"Total leakage, $P_N$ ({pop_unit_right})",
+                'cax_id': 3,
+            }
+
+            self.plot_dicts[figname + f"_1D_scatter"] = {
+                'fig_id': figname,
+                'ax_id': 2,
+                'plotfn': self.plot_line,
+                'xvals': x_scatter,
+                'yvals': y_scatter/pop_scale_right,
+                'alpha': 0.3,
+                'yrange': _cmap_lim/pop_scale_right,
+                'color': cmap(norm(y_scatter)),
+                'scatter': True,
+                'line_kws': {'zorder': 1},
+                'xlabel': nice_labels[0],
+                'ylabel': pop_label_left if pop_label_left else
+                          f"Leakage, $P_1$ ({pop_unit_left})",
+            }
+            if gate_yticks is not None:
+                # Set explicit values for the left yticks, and compute their
+                # locations (corresponding to the scale of the colorbar axis)
+
+                # Conversion from 1-gate to n-gate leakage, to assign the
+                # locations of requested gate_yticks (1-gate leakage) to match
+                # the right axis (n-gate leakage)
+                if (f_1ton := kw.get('f_1ton')) is None:
+                    f_1ton = lambda p, n: np.sin(
+                        np.arcsin(np.sqrt(np.abs(p))) * n) ** 2
+                # Returns True on 1-gate leakage values for which f_1ton is
+                # injective (first period of the sin). Used to check if
+                # requested gate_yticks can be in 1-to-1 mapping with right
+                # ticks (n-gate leakage).
+                if (f_1ton_valid := kw.get('f_1ton_valid')) is None:
+                    f_1ton_valid = lambda p, n: np.abs(np.arcsin(np.sqrt(
+                        np.abs(p))) * n) <= np.pi / 2
+
+                self.plot_dicts[figname + f"_1D_scatter"].update({
+                    'ytick_loc': f_1ton(gate_yticks, n)/pop_scale_right,
+                    'ytick_labels': [f'{p/pop_scale_left:.{gate_yticks_prec}g}'
+                                     for p in gate_yticks],
+                })
+                if not np.all(f_1ton_valid(gate_yticks, n)):
+                    log.warning("The required single-gate leakage y axis "
+                                "ticks are bigger than the range of the main "
+                                "period for n-gate leakage. This means that "
+                                "the ticks will oscillate on the y axis.")
+            else:
+                # Fall back to using the existing yticks (as on the colorbar
+                # right axis), and format their labels
+
+                if (f_nto1 := kw.get('f_nto1')) is None:
+                    # Conversion from n-gate to 1-gate leakage, to determine
+                    # which 1-gate leakage values correspond to the n-gate
+                    # leakage ticks of the right axis
+                    f_nto1 = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(
+                        p))) / n) ** 2
+
+                def formatter(p_n, _):
+                    p_1 = f_nto1(p_n*pop_scale_right, n)/pop_scale_left
+                    return f'{p_1:.{gate_yticks_prec}g}'
+                self.plot_dicts[figname + f"_1D_scatter"].update({
+                    'set_major_formatter': {'yaxis': formatter},
+                })
+
+            key = figname + f"_1D_line"
+            if draw_lower_lines:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 2,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([x]*len(pop)),
+                    'yvals': pop/pop_scale_right,
+                    'alpha': 0.1,
+                    'line_kws': {'zorder': 0},
+                    'color': 'k',
+                }
+            else:
+                # If this method got called previously with draw_lower_lines,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            self.plot_dicts[figname + f"_1D_line_max"] = {
+                'fig_id': figname,
+                'ax_id': 2,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_right,
+                'yerr': y_err/pop_scale_right,
+                'alpha': 1,
+                'line_kws': {'zorder': 0},
+                'color': 'k',
+            }
+            self.plot_dicts[figname + f"_1D_scatter_max"] = {
+                'fig_id': figname,
+                'ax_id': 2,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_right,
+                'alpha': 1,
+                'color': cmap(norm(y_max)),
+                'scatter': True,
+                'line_kws': {'zorder': 1},
+            }
+
+            id_opt = np.argmin(y_max)
+            self.leakage_ymax = {
+                'x': coords[0],
+                'x_label': labels[0],
+                'y': y_max,
+                'yerr': y_err,
+            }
+            if labels[0] != 'num_cz_gates':
+                # opt only makes sense for an actual sweep point
+                self.leakage_ymax['x_opt'] = sp[labels[0]][id_opt]
+
+
 class SingleRowChevronAnalysis(ChevronAnalysis):
     """Analysis for 1-dimensional Chevron QuantumExperiment
 
@@ -12014,3 +12296,4 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             'colors': 'gray',
         }
         return best_val
+

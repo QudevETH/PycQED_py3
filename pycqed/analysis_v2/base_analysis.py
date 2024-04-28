@@ -1318,6 +1318,23 @@ class BaseDataAnalysis(object):
                 if isinstance(i := pdict.get(ak + '_id'), int):
                     pdict[ak] = self.axs[pdict['fig_id']].flatten()[i]
 
+        # Allows to hide a subplot (to create complex fig layouts by leaving
+        # out some axes blank)
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            if pdict.get('set_axis_off'):
+                ax = self.axs[pdict['fig_id']].flatten()[pdict['ax_id']]
+                ax.set_axis_off()
+
+        # Allows to set axis formatters (e.g. for nonlinear axes scalings)
+        # Example use: fmt = {'yaxis': Formatter}
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            if fmt := pdict.get('set_major_formatter'):
+                ax = self.axs[pdict['fig_id']].flatten()[pdict['ax_id']]
+                for ax_name, formatter in fmt.items():
+                    getattr(ax, ax_name).set_major_formatter(formatter)
+
     def _plot(self, key_list, transparent_background=False):
         """
         Creates the figures specified by key_list.
@@ -1329,7 +1346,11 @@ class BaseDataAnalysis(object):
             pdict = self.plot_dicts[key]
             plot_touching = pdict.get('touching', False)
 
-            if type(pdict['plotfn']) is str:
+            if 'plotfn' not in pdict:
+                raise ValueError(f"No 'plotfn' set in plot_dicts['{key}']!")
+            elif pdict['plotfn'] is None:
+                continue  # Do not plot anything if the plotfn is None
+            elif type(pdict['plotfn']) is str:
                 plotfn = getattr(self, pdict['plotfn'])
             else:
                 plotfn = pdict['plotfn']
@@ -1626,6 +1647,8 @@ class BaseDataAnalysis(object):
                 plot_linekws['yerr'] = plot_linekws.get('yerr', yerr)
             if xerr is not None:
                 plot_linekws['xerr'] = plot_linekws.get('xerr', xerr)
+        if pdict.get('scatter'):
+            pdict['func'] = 'scatter'
 
         pdict['line_kws'] = plot_linekws
         plot_xvals = pdict['xvals']
@@ -1647,8 +1670,10 @@ class BaseDataAnalysis(object):
         plot_xscale = pdict.get('xscale', None)
         plot_grid = pdict.get('grid', None)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
-        if pdict.get('color', False):
-            plot_linekws['color'] = pdict.get('color')
+        # Ensures that 'color' can be passed both ways (and that it does not
+        # collide with plot_linekws).
+        plot_color = pdict.get('color', plot_linekws.pop('color') if
+                               'color' in plot_linekws else None)
 
         plot_linekws['alpha'] = pdict.get('alpha', 1)
         # plot_multiple = pdict.get('multiple', False)
@@ -1677,11 +1702,20 @@ class BaseDataAnalysis(object):
         if plot_multiple:
             p_out = []
             len_color_cycle = pdict.get('len_color_cycle', len(plot_yvals))
-            # Default gives max contrast
-            cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
-            colors = get_color_list(len_color_cycle, cmap)
-            if cmap == 'tab10':
-                len_color_cycle = min(10, len_color_cycle)
+            if plot_color is None:  # Default
+                # Default gives max contrast
+                cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
+                if cmap == 'tab10':
+                    len_color_cycle = min(10, len_color_cycle)
+                plot_color = get_color_list(len_color_cycle, cmap)
+            else:
+                # Distinguish if plot_color is a single color (we need to first
+                # make a list out of it) or already a list of colors.
+                # FIXME: might be useful to have more complete checks to
+                #  distinguish e.g. an array of 3-4 numbers corresponding to
+                #  a single color
+                if isinstance(plot_color, str):
+                    plot_color = [plot_color]*len_color_cycle
 
             # plot_*vals is the list of *vals arrays
             pfunc = getattr(axs, pdict.get('func', 'plot'))
@@ -1689,8 +1723,7 @@ class BaseDataAnalysis(object):
                 p_out.append(pfunc(xvals, yvals,
                                    linestyle=plot_linestyle,
                                    marker=plot_marker,
-                                   color=plot_linekws.pop(
-                                       'color', colors[i % len_color_cycle]),
+                                   color=plot_color[i % len_color_cycle],
                                    label='%s%s' % (
                                        dataset_desc, dataset_label[i]),
                                    **plot_linekws))
@@ -1700,7 +1733,7 @@ class BaseDataAnalysis(object):
             p_out = pfunc(plot_xvals, plot_yvals,
                           linestyle=plot_linestyle, marker=plot_marker,
                           label='%s%s' % (dataset_desc, dataset_label),
-                          **plot_linekws)
+                          color=plot_color, **plot_linekws)
 
         if plot_xrange is None:
             pass  # Do not set xlim if xrange is None as the axs gets reused
@@ -1743,7 +1776,6 @@ class BaseDataAnalysis(object):
             axs.set_xscale(plot_xscale)
         if plot_grid:
             axs.grid(True)
-
         if plot_xtick_loc is not None:
             axs.xaxis.set_ticks(plot_xtick_loc)
         if plot_ytick_loc is not None:
