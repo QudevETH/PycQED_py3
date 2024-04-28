@@ -851,6 +851,7 @@ class MeasurementControl(Instrument):
         # need to reshape and reformat x and vals accordingly before we can
         # save them to the dset.
         x = np.atleast_2d(x) # to unify format of x
+        # TODO this should not be needed
         vals = vals.reshape((-1, len(self.detector_function.value_names)))
         # Concatenates the sweep points x with the data vals,
         # by prepending x as columns. If vals has more rows than x,
@@ -2496,6 +2497,7 @@ class MeasurementControl(Instrument):
             if self.detector_function.detector_control == 'soft':
                 # FIXME: this is an inconsistency that should not be there.
                 xlen = np.shape(new_data)[1]
+                # TODO confirm that this branch can be deleted
                 log.warning('Deleted branch in MC: check that percdone works!')
             if True:
                 # in case of an N-D Hard detector dataset
