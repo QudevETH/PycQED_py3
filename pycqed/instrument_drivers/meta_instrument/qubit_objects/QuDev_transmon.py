@@ -2400,7 +2400,8 @@ class QuDev_transmon(MeasurementObject):
                               freqs=None, amplitudes=None, phases=[0,120,240],
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
-                              exp_metadata=None):
+                              exp_metadata=None, operation_dict=None,
+                              vfc_kwargs=None):
         """
         Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
@@ -2443,28 +2444,23 @@ class QuDev_transmon(MeasurementObject):
             label:
             n_cal_points_per_state:
             exp_metadata:
+            vfc_kwargs: Additional arguments for self.calculate_flux_voltage
 
         Returns:
 
         """
-        fit_paras = deepcopy(self.fit_ge_freq_from_flux_pulse_amp())
+        if operation_dict is None:
+            operation_dict = self.get_operation_dict()
         if freqs is not None:
-            amplitudes = fit_mods.Qubit_freq_to_dac(freqs, **fit_paras)
-
+            vfc_kwargs = vfc_kwargs or {}
+            amplitudes = self.calculate_flux_voltage(
+                frequency=freqs,
+                **vfc_kwargs,
+            )
         amplitudes = np.array(amplitudes)
 
         if cz_pulse_name is None:
             cz_pulse_name = 'FP ' + self.name
-
-        if np.any((amplitudes > abs(fit_paras['dac_sweet_spot']))):
-            amplitudes -= fit_paras['V_per_phi0']
-        elif np.any((amplitudes < -abs(fit_paras['dac_sweet_spot']))):
-            amplitudes += fit_paras['V_per_phi0']
-
-        if np.any((amplitudes > abs(fit_paras['V_per_phi0']) / 2)):
-            amplitudes -= fit_paras['V_per_phi0']
-        elif np.any((amplitudes < -abs(fit_paras['V_per_phi0']) / 2)):
-            amplitudes += fit_paras['V_per_phi0']
 
         if np.any(np.isnan(amplitudes)):
             raise ValueError('Specified frequencies resulted in nan amplitude. '
@@ -2478,7 +2474,6 @@ class QuDev_transmon(MeasurementObject):
         MC = self.instr_mc.get_instr()
         self.prepare(drive='timedomain')
 
-        amplitudes = np.array(amplitudes)
         if flux_lengths is not None:
             flux_lengths = np.array(flux_lengths)
         phases = np.array(phases)
@@ -2495,7 +2490,10 @@ class QuDev_transmon(MeasurementObject):
             fsqs.T2_freq_sweep_seq(
                 amplitudes=amplitudes, qb_name=self.name,
                 n_pulses=n_pulses,
-                operation_dict=self.get_operation_dict(),
+                # FIXME this is a hack until this measurement is refactored
+                #  to a QuantumExperiment, allowing to pass operations not in
+                #  the qubit object, e.g. two-qubit gates
+                operation_dict=operation_dict,
                 flux_lengths=flux_lengths, phases = phases,
                 cz_pulse_name=cz_pulse_name, upload=False, cal_points=cp)
         MC.set_sweep_function(awg_swf.SegmentHardSweep(
@@ -2509,7 +2507,7 @@ class QuDev_transmon(MeasurementObject):
         # easily access them
         if flux_lengths is None and n_pulses is not None:
             flux_lengths = np.array(n_pulses) * \
-                           self.get_operation_dict()[cz_pulse_name]['pulse_length']
+                           operation_dict[cz_pulse_name]['pulse_length']
         exp_metadata.update({'amplitudes': amplitudes,
                              'frequencies': freqs,
                              'phases': phases,

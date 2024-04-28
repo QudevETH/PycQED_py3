@@ -159,10 +159,12 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
-        self.add_parameter('clean_interrupt',
-                           vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           initial_value=False)
+        self.add_parameter(
+            'clean_interrupt', docstring=
+            'Whether data that has already been received from acquisition '
+            'instruments should be stored in case of a KeyboardInterrupt.',
+            vals=vals.Bool(), parameter_class=ManualParameter,
+            initial_value=True)
         self.add_parameter('compress_dataset',
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
