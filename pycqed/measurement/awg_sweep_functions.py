@@ -101,9 +101,9 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         uploads it to hardware.
 
         Args:
-            vals (list[tuples]): List of tuples. Each tuple corresponds to one
-                complete set of ParametricValues, i.e,
-                `len(vals[i]) = len(self.params)`. TODO this is a np array
+            vals (array): Parameter values to be swept. Shape: [number of
+            different sets of parameters (= number of points to be
+            measured), number of parameters (= len(self.params))]
 
         `self.circuit_builder.sweep_n_dim` is used to convert vals into a hard
         sweep sequence which is subsequently uploaded to hardware.
