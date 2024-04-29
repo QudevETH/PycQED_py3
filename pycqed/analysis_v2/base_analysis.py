@@ -1336,6 +1336,8 @@ class BaseDataAnalysis(object):
         elif isinstance(self.axs[fig_id], np.ndarray):
             for axis in self.axs[fig_id]:
                 figure = axis.get_figure()
+                break
+
         if not isinstance(figure, Figure):
             raise ValueError(f"Could not find figure with id: {fig_id}")
 
