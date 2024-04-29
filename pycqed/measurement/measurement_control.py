@@ -382,7 +382,6 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
-            # TODO should this go into a method?
             self.exp_metadata['sweep_control'] = [
                 s.sweep_control for s in getattr(self, 'sweep_functions', [])]
             self.save_exp_metadata(self.exp_metadata)
@@ -555,8 +554,9 @@ class MeasurementControl(Instrument):
             sp = self.sweep_points
             if self.detector_function.detector_control == 'hard':
                 # sp have been tiled for points*shots, but for a soft sweep
-                # with hard detector here we sweep over the points, se we only
-                # want to acquire shots for a single point here
+                # with hard detector, we have to undo this because the soft
+                # sweep function needs each point only once even if
+                # multiple shots are returned by the hard detector.
                 sp = sp[0:len(sp) // self.acq_data_len_scaling]
             for i, sweep_point in enumerate(sp):
                 self.measurement_function(sweep_point, index=i)
@@ -653,7 +653,7 @@ class MeasurementControl(Instrument):
             # progress reports during get_detector_function.values.
             self.detector_function.progress_callback = (
                 lambda x, n=n_acquired: self.print_progress(x + n))
-            # Transpose because detectors return [num_points, len(value_names)]
+            # Transpose because detectors return [len(value_names), num_points]
             this_new_data = np.array(self.detector_function.get_values()).T
             n_acquired += this_new_data.shape[0]
             new_data = this_new_data if i_rep == 0 else np.concatenate(
