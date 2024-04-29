@@ -428,7 +428,6 @@ class BaseDataAnalysis(object):
         with open(filepath, "w") as f:
             f.write(job)
 
-
     @staticmethod
     def get_analysis_object_from_hdf5_file_path(data_file_path: str):
         """Reconstructs `BaseDataAnalysis` object from HDF5 file.
@@ -467,6 +466,15 @@ class BaseDataAnalysis(object):
                     f"in 'Analysis' group"
                 )
 
+        # FIXME: we should think about how to rewrite this in the future
+        #  in a way that avoids or reduces string processing. E.g., we
+        #  could have an initial string processing to convert all arguments
+        #  into a dictionary and then perform the modifications there
+        #  instead of by string replacements. Alternatively, one could also
+        #  think about a different way of saving jobs which would save the
+        #  arguments that are replaced here more explicit (not as a single
+        #  string) thus letting us avoid string manipulation all together.
+
         # Replace some analysis object parameters in job string to speed the
         # job up. We can change the parameters since the purpose of this
         # function is only to get the analysis object and not to actually
@@ -478,7 +486,6 @@ class BaseDataAnalysis(object):
         job = job.replace("'close_figs': True", "'close_figs': False")
 
         return analysis_daemon.AnalysisDaemon.execute_job(job)
-
 
     def _get_param_value(self, param_name, default_value=None, metadata_index=0):
         log.warning('Deprecation warning: please use new function '
