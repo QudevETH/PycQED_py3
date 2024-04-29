@@ -1301,8 +1301,8 @@ class BaseDataAnalysis(object):
             transparent_background (bool): if true, figures will have
                 transparent background.
             no_label (bool): whether figure should have a label.
-            fig_id (str): figure id. If passed, only specified figure will be
-                plotted.
+            fig_id (str): figure id from `self.plot_dicts`. If passed only
+                specified figure will be plotted.
         """
         self._prepare_for_plot(key_list, axs_dict, no_label)
         if presentation_mode is None:
@@ -1432,8 +1432,8 @@ class BaseDataAnalysis(object):
             key_list (list): list of keys in self.plot_dicts.
             transparent_background (bool): if true, figures will have
                 transparent background.
-            fig_id (str): figure id. If passed only specified figure will be
-                plotted.
+            fig_id (str): figure id from `self.plot_dicts`. If passed only
+                specified figure will be plotted.
 
         Raises:
             ValueError: in case the used plot function is not valid.
