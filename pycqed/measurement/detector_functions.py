@@ -1773,7 +1773,9 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         Args:
             acq_dev (instrument): data acquisition device
             nr_shots (int)     : number of acquisition shots
-            single_int_log (bool): if True makes this a soft detector
+            single_int_log (bool): set to True for a soft sweep (the
+                detector remains a hard detector because it returns several
+                values, the single shots)
 
         Keyword args:
             passed to the init of the parent class. In addition,
@@ -1792,7 +1794,7 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
 
     def prepare(self, sweep_points=None):
         if self.single_int_log:
-            # If soft detector (meaning each acq. is triggered in software):
+            # If soft sweep (meaning each acq. is triggered in software):
             # the number of values to be acquired is the number of shots
             sweep_points = [0] * self.acq_data_len_scaling
         super().prepare(sweep_points)
