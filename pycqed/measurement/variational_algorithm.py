@@ -32,23 +32,25 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             'predict_proba': True,
             'rotate': False,
             'thresholding': True,
-            'meas_obj_sweep_points_map': self.sweep_points.get_meas_obj_sweep_points_map(
-                [qb.name for qb in self.meas_objs]),
+            # 'meas_obj_sweep_points_map': self.sweep_points.get_meas_obj_sweep_points_map(
+            #     [qb.name for qb in self.meas_objs]),
             'data_to_fit': {},  # FIXME understand why this is needed
             'training_settings': optimizer.training_settings,
             'optimize': optimize,
+            'qb_names': self.qb_names,  # FIXME needed?
         })
 
         if optimize:
             if None in [optimizer]:
                 raise ValueError("Not all parameters provided")
             self.optimizer = optimizer  # TODO or pass kw and instantiate here?
-            self.sweep_functions = [
-                awg_swf.BlockSoftHardSweep(self,
-                                           self.params,
-                                           block=self.block,
-                                           sweep_kwargs=kw.get('sweep_kwargs', {}))
-            ]
+            self.sweep_functions = [awg_swf.BlockSoftHardSweep(
+                self,
+                self.params,
+                block=self.block,
+                parameter_name='Iteration',
+                sweep_kwargs=kw.get('sweep_kwargs', {})
+                )]
             self.mc_mode = 'adaptive'
             self.force_2D_sweep = False  # TODO is this needed?
             self.mc_points = [[0]]
@@ -63,6 +65,11 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         else:
             if sweep_points is None:
                 raise ValueError('No sweep points')
+            self.exp_metadata.update({
+                'meas_obj_sweep_points_map':
+                    self.sweep_points.get_meas_obj_sweep_points_map(
+                        [qb.name for qb in self.meas_objs]),
+            })
             self.sequences, self.mc_points = self.sweep_n_dim(
                 sweep_points, body_block=self.block, **kw)
 
@@ -80,23 +87,27 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         )
 
     @staticmethod
-    def classical_postprocessing(data, classical_params):
-        # deals with data that is reshaped
+    def classical_postprocessing(data, classical_params=1.0):
+        # deals with data that is reshaped, (qubits, single_shots, *batch)
         # FIXME: gets (circular) imported in tda, should this be elsewhere?
         # FIXME; take the dimension of (qubits, states) into account
-        # dummy classical neural network
-        print(f"data = {data.shape}")
-        cnn_output = []
-        for single_shot_col in data:
-            cnn_output.append(np.dot(single_shot_col,
-                                     classical_params).reshape(-1))
-        return np.array(cnn_output)
+        # FIXME: find a way to move below functions outside the method
+        def _single_shot_measurement_processor(single_shot_readout):
+            # any dimension change here involves cost_function in VQAOptimizer
+            return single_shot_readout
+
+        data = data * classical_params
+        data = np.array(
+            [[_single_shot_measurement_processor(single_shot_readout) for
+              single_shot_readout in qubit_data] for qubit_data in data]
+        )
+        return data
+
 
     @staticmethod
     def cost_function(cnn_output):
         label = np.zeros(cnn_output.shape[-1])
         output = np.mean(np.square(cnn_output - label), axis=0)
-        print(output.shape)
         return output
 
     # @staticmethod  # FIXME?
@@ -256,6 +267,8 @@ class VQAOptimizer:
         self._set_cost_function(cost_function)
         self.training_settings = training_settings
         self.measurement_function = None
+        # FIXME maybe this should not be called sweep_points
+        self.sweep_points = []
 
     def __call__(self, fun, **kw):
         self.measurement_function = fun
@@ -263,13 +276,16 @@ class VQAOptimizer:
                                          **self.optimizer_kw)
         # if self.optimizer_callback is not None:
         #     result = self.optimizer_callback(result)
-        return result
+        return {'opt_result': result, 'sweep_points': self.sweep_points}
 
     def _full_circuit(self, params):
+        self.sweep_points.append(params)
         all_params, batch_shape, targets = self.get_batch_params(params)
         data = self.measurement_function(all_params)
         data = np.reshape(data, [len(data), -1, *batch_shape])
         # shape = [len(mobj), n_shots, *data_shape]
+        # dummy classical postprocessing doing nothing
+        data = VariationalAlgorithm.classical_postprocessing(data)
         cost = self.cost_function(data, targets)
         # shape = [len(batch)]
         return cost
