@@ -180,7 +180,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
         # Set attributes for choosing plot to display.
         self._base_data_analysis: BaseDataAnalysis = base_data_analysis
         self._plot_iterator: BidirectionalIterator = BidirectionalIterator(
-            self._base_data_analysis.get_fig_ids().tolist())
+            self._base_data_analysis.get_fig_ids())
         self._experiment_iterator: ExperimentIterator = experiment_iterator
         self._experiment_iterator.set_pointer_to_timestamp(
             self._base_data_analysis.raw_data_dict.get('folder', '')
@@ -268,7 +268,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
             try:
                 self._base_data_analysis = self._experiment_iterator.next()
                 self._plot_iterator = BidirectionalIterator(
-                    self._base_data_analysis.get_fig_ids().tolist())
+                    self._base_data_analysis.get_fig_ids())
                 self.plot(self._plot_iterator.next())
             except StopIteration:
                 pass
@@ -285,7 +285,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
             try:
                 self._base_data_analysis = self._experiment_iterator.prev()
                 self._plot_iterator = BidirectionalIterator(
-                    self._base_data_analysis.get_fig_ids().tolist())
+                    self._base_data_analysis.get_fig_ids())
                 self.plot(self._plot_iterator.next())
             except StopIteration:
                 pass

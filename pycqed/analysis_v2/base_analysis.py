@@ -1498,17 +1498,17 @@ class BaseDataAnalysis(object):
         self.format_datetime_xaxes(key_list)
         self.add_to_plots(key_list=key_list)
 
-    def get_fig_ids(self) -> np.ndarray:
+    def get_fig_ids(self) -> list:
         """Gets unique figure ids from `self.plot_dicts`.
 
         Returns:
-            np.ndarray: array of unique figure ids.
+            list: list of unique figure ids.
         """
         fig_ids = []
         for name, item in self.plot_dicts.items():
             fig_ids.append(item['fig_id'])
 
-        return np.unique(fig_ids)
+        return np.unique(fig_ids).tolist()
 
     def add_to_plots(self, key_list=None):
         pass
