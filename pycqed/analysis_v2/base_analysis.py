@@ -1320,6 +1320,9 @@ class BaseDataAnalysis(object):
         Args:
             fig_id: figure id from `self.plot_dicts` to be plotted.
 
+        Raises:
+            ValueError: when axs with fig_id does not have a `Figure` object.
+
         Returns:
             tuple: with `Figure` and either `Axes` or `np.array` with
                 multiple `Axes`.
