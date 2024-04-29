@@ -141,14 +141,13 @@ def get_all_daystamps(data_folder: str) -> list:
     """
     day_directories = []
     subdirectories = os.listdir(data_folder)
-    if len(subdirectories) == 0:
-        log.warning('No data found in datadir')
-        return []
     for directory in subdirectories:
         try:
             day_directories.append(verify_daystamp(directory))
         except ValueError:
             pass
+    if len(day_directories) == 0:
+        log.warning('No data found in datadir')
     return day_directories
 
 
