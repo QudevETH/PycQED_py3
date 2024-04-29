@@ -25,9 +25,18 @@ class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
         """
         super().start()  # ZI_base_instrument.start() does not expect kwargs
 
+    def store_awg_source_string(self, awg_nr, awg_str):
+        """Save awg source string in a private attribute for debugging
+
+        Args:
+            awg_nr (int): index of the channel pair (0-indexed)
+            awg_str (str): source string to be stored
+        """
+        self._awg_source_strings[awg_nr] = awg_str
+
     def configure_awg_from_string(self, awg_nr: int, program_string: str,
                                   *args, **kwargs):
-        self._awg_source_strings[awg_nr] = program_string
+        self.store_awg_source_string(awg_nr, program_string)
         super().configure_awg_from_string(awg_nr, program_string,
                                           *args, **kwargs)
 
@@ -190,9 +199,19 @@ class MockDAQServer(zibase.MockDAQServer):
         elif re.match(r'/(\w+)/scopes/(\d+)/enable', path):
             self.nodes[path]['timestamp'] = time.time()
 
-    def get(self, path, flat=None, flags=None, **kw):
+    def get(self, path, flat=None, flags=None, settingsonly=True,
+            excludevectors=False, **kw):
+        # FIXME: settingsonly and excludevectors are currently only taken into
+        #  account if the wildcard '*' is contained in the path. This behavior
+        #  might be different from the behavior of the original DAQ server.
         if path not in self.nodes:
-            paths = [p for p in self.nodes if fnmatch.fnmatch(p, path)]
+            paths = [p for prefix in ['', '/'] for p, v in self.nodes.items()
+                     if fnmatch.fnmatch(p, prefix + path)
+                     and ((not settingsonly)
+                          or 'Setting' in v.get('Properties', ''))
+                     and ((not excludevectors)
+                          or v.get('type') != 'ZIVectorData')
+                     ]
             if not len(paths):
                 raise zibase.ziRuntimeError(
                     "Unknown node '" + path +

@@ -2700,6 +2700,51 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'zrange': self.get_param_value('zrange', None),
                         'title': title,
                         'clabel': data_axis_label}
+                    # If kwarg 'plot_TwoD_as_curves' in the options_dict of
+                    # the experiment is set to True, it plots the rows of
+                    # the 2D plot as multiple curves in one plot with the
+                    # z-value of the 2D-plot as the y-value of
+                    # the curve-plot.
+                    if self.get_param_value('plot_TwoD_as_curves',
+                                            default_value=False):
+                        color_map = mpl.colormaps['viridis']
+                        # normalization functions for the color of the
+                        # curves.
+                        # normalize converts [np.min(ssp), np.max(ssp)] ->
+                        # [0,1] in a linear mapping
+                        normalize = lambda y: (y-np.min(ssp))/(np.max(
+                            ssp)-np.min(ssp))
+                        # normalize_log converts [np.min(ssp), np.max(ssp)] ->
+                        # [0,1] in a logarithmic mapping
+                        normalize_log = lambda y: \
+                                np.log(1 + 9 * normalize(y)) / np.log(10)
+                        # z values of the 2D plot (yvals variable, list of
+                        # lists) are the y values (yv) of the curve plot.
+                        # y values of the 2D plot (ssp variable, list) are the
+                        # labels of the curves and define the color of
+                        # the curves.
+                        for i, (yv, sp) in enumerate(zip(yvals, ssp)):
+                            self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
+                                = {
+                                'plotfn': self.plot_line,
+                                'fig_id': fig_name + '_' + pn + "_curves",
+                                'xvals': xvals,
+                                'yvals': yv,
+                                'xlabel': xlabel,
+                                'xunit': xunit,
+                                'ylabel': data_axis_label,
+                                'yscale': 'log' if
+                                    self.get_param_value('logzscale', False)
+                                    else 'linear',
+                                'setlabel': f'{sp:2.1e} {yunit}',
+                                'do_legend': True,
+                                'legend_bbox_to_anchor': (1, 0.5),
+                                'legend_pos': 'center left',
+                                'line_kws': {
+                                    'color': color_map(normalize_log(sp)) if
+                                    self.get_param_value('logyscale', False)
+                                    else color_map(normalize(sp))},
+                                'title': title}
 
         if prep_1d_plot:
             if len(yvals.shape) > 1 and yvals.shape[0] == 1:
@@ -3699,7 +3744,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 suffix = '_amp' if p == 0 else '_freq'
                 mask = pdd['mask'][qb]
                 xlabel = r'Flux pulse amplitude' if p == 0 else \
-                    r'Derived qubit frequency'
+                    r'Derived qubit ge frequency'
 
                 if self.do_fitting:
                     # Plot T1 vs flux pulse amplitude
@@ -3746,7 +3791,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'yvals': 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask],
                     'xlabel': xlabel,
                     'xunit': 'V' if p == 0 else 'Hz',
-                    'ylabel': r'Pop. loss @ {:.0f} ns'.format(
+                    'ylabel': r'Pop. loss {} @ {:.0f} ns'.format(
+                        self.data_to_fit[qb],
                         self.lengths[qb][0]/1e-9
                     ),
                     'yunit': '',
@@ -3840,28 +3886,43 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         pdd['T2'] = {}
         pdd['T2_err'] = {}
         pdd['phase_contrast'] = {}
+        pdd['phase_contrast_stderr'] = {}
         nr_lengths = len(self.metadata['flux_lengths'])
         nr_amps = len(self.metadata['amplitudes'])
 
-        guess_pars_dict_default ={qb: dict(amplitude=dict(value=0.5),
-                                       decay=dict(value=1e-6),
-                                       ) for qb in self.qb_names}
+        guess_pars_dict_default = {
+            qb: dict(amplitude=dict(value=0.5, vary=True),
+                     decay=dict(value=1e-6, vary=True),
+                     # FIXME vary=True seems to prevent convergence
+                     n=dict(value=2, vary=False, min=1, max=2),
+                     ) for qb in self.qb_names}
 
         gaussian_decay_func = \
-            lambda x, amplitude, decay, n=2: amplitude * np.exp(-(x / decay) ** n)
+            lambda x, amplitude, decay, n: amplitude * np.exp(-(x / decay) ** n)
 
         for qb in self.qb_names:
             pdd['phase_contrast'][qb] = {}
+            pdd['phase_contrast_stderr'][qb] = {}
+            pdd['mask'][qb] = [True]*len(self.metadata['amplitudes'])
             exp_mod = self.get_param_value('exp_fit_mod',
                                            lmfit.Model(gaussian_decay_func))
             guess_pars_dict = self.get_param_value("guess_pars_dict",
                                                    guess_pars_dict_default)[qb]
             for i in range(nr_amps):
-                pdd['phase_contrast'][qb][f'amp_{i}'] = np.array([self.fit_res[
-                                                        f'cos_fit_{qb}_{i}_{j}'
-                                                    ].best_values['amplitude']
-                                                    for j in
-                                                    range(nr_lengths)])
+                pdd['phase_contrast'][qb][f'amp_{i}'] = np.array(
+                    [self.fit_res[f'cos_fit_{qb}_{i}_{j}'].best_values[
+                         'amplitude'] for j in range(nr_lengths)])
+                pdd['phase_contrast_stderr'][qb][f'amp_{i}'] = np.array(
+                    [self.fit_res[f'cos_fit_{qb}_{i}_{j}'].params[
+                         'amplitude'].stderr for j in range(nr_lengths)])
+                for key in ['phase_contrast', 'phase_contrast_stderr']:
+                    if None in pdd[key][qb][f'amp_{i}']:
+                        log.warning(f"None values in {key} cos fit for "
+                                    f"amplitude {i}! Skipping.")
+                        pdd['mask'][qb][i] = False
+                        continue  # No need to check all keys in that case
+
+
                 for par, params in guess_pars_dict.items():
                     exp_mod.set_param_hint(par, **params)
                 guess_pars = exp_mod.make_params()
@@ -3870,124 +3931,146 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'fit_fn': exp_mod.func,
                     'guess_pars': guess_pars,
                     'fit_xvals': {'x': self.get_param_value('flux_lengths')},
-                    'fit_yvals': {'data': np.array([self.fit_res[
-                                                        f'cos_fit_{qb}_{i}_{j}'
-                                                    ].best_values['amplitude']
-                                                    for j in
-                                                    range(nr_lengths)])}}
+                    'fit_yvals': {
+                        'data': pdd['phase_contrast'][qb][f'amp_{i}']},
+                }
 
 
             self.run_fitting()
 
             pdd['T2'][qb] = np.array([
-                abs(self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay'])
+                self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay']
+                if f'exp_fit_{qb}_{i}' in self.fit_res else None
                 for i in range(len(self.metadata['amplitudes']))])
             pdd['T2_err'][qb] = np.array([
-                abs(self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr)
+                self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr
+                if f'exp_fit_{qb}_{i}' in self.fit_res else None
                 for i in range(len(self.metadata['amplitudes']))])
 
-            pdd['mask'][qb] = []
             for i in range(len(self.metadata['amplitudes'])):
                 try:
-                    if self.fit_res[f'exp_fit_{qb}_{i}']\
-                                            .params['decay'].stderr >= 1e-5:
-                        pdd['mask'][qb].append(False)
-                    else:
-                        pdd['mask'][qb].append(True)
+                    if (pdd['T2_err'][qb][i] is None
+                            or pdd['T2_err'][qb][i] >= 1e-5):
+                        pdd['mask'][qb][i] = False
                 except TypeError:
-                    pdd['mask'][qb][i].append(False)
+                    pdd['mask'][qb][i] = False
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
         rdd = self.raw_data_dict
+        colormap = self.get_param_value('colormap', mpl.cm.viridis)
+        freqs = self.get_param_value('frequencies')
+        delays = self.get_param_value('flux_lengths')
 
         for qb in self.qb_names:
             mask = pdd['mask'][qb]
-            label = f'T2_fit_{qb}'
-            xvals = self.metadata['amplitudes'][mask] if \
-                self.metadata['frequencies'] is None else \
-                self.metadata['frequencies'][mask]
-            xlabel = r'Flux pulse amplitude' if \
-                self.metadata['frequencies'] is None else \
-                r'Derived qubit frequency'
-            self.plot_dicts[label] = {
-                'plotfn': self.plot_line,
-                'linestyle': '-',
-                'xvals': xvals,
-                'yvals': pdd['T2'][qb][mask],
-                'yerr': pdd['T2_err'][qb][mask],
-                'xlabel': xlabel,
-                'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
-                'ylabel': r'T2',
-                'yunit': 's',
-                'color': 'blue',
-            }
 
-            # Plot all fits in single figure
-            if not self.get_param_value('all_fits', True):
-                continue
-
-            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
                 color = colormap(i/(len(self.metadata['amplitudes'])-1))
-                label = f'exp_fit_{qb}_{i}'
-                freqs = self.get_param_value('frequencies')
-                fitid = self.metadata['amplitudes'][i] if freqs is None else \
-                        self.get_param_value('frequencies')[i]
+                fitid = self.get_param_value('amplitudes')[i] if\
+                    freqs is None else self.get_param_value('frequencies')[i]
+
+                if self.get_param_value('all_fits', False):
+                    label = f'cos_fit_{qb}_{i}'
+                    # Raw data plot for pulse amplitude i, as a function of
+                    # phase, coloured by pulse length
+                    self.plot_dicts[label + '_data'] = {
+                        'ax_id': label,
+                        'plotfn': self.plot_line,
+                        'xvals': [self.metadata['phases']]*len(delays),
+                        'linestyle': '',
+                        'yvals': pdd['data_reshaped_no_cp'][qb][i],
+                        'color': [colormap(j/(len(delays)-1)) for j
+                                  in range(len(delays))],
+                        'xlabel': r'Phase',
+                        'xunit': '°',
+                        'ylabel': r'Excited state population',
+                        }
+                    # Corresponding cos fit
+                    for j in range(len(delays)):  # FIXME no loop would be nice
+                        self.plot_dicts[label + f"_{j}"] = {
+                            'ax_id': label,
+                            'plotfn': self.plot_fit,
+                            'color': colormap(j/(len(delays)-1)),
+                            'fit_res': self.fit_res[label + f"_{j}"],
+                            }
+                    # Same raw data, as a 2D plot
+                    self.plot_dicts[label + '_data_2D'] = {
+                        # 'ax_id': f'T2_fits_{qb}_phases',
+                        'plotfn': self.plot_colorxy,
+                        'yvals': self.metadata['phases'],
+                        'xvals': self.metadata['flux_lengths'],
+                        'zvals': pdd['data_reshaped_no_cp'][qb][i].T,
+                        'zrange': [0, 1],
+                        'xlabel': 'Flux pulse length',
+                        'xunit': 's',
+                        'ylabel': 'Phase',
+                        'yunit': '°',
+                        'plotcbar': True,
+                        'clabel': f"Excited state population (%)",
+                    }
+
+                if mask[i]:
+                    # Contrast (amplitude) from the cos fits, as a function of
+                    # pulse length, coloured by pulse amplitude
+                    label = f'exp_fit_{qb}_{i}'
+                    self.plot_dicts[label + 'data'] = {
+                        'ax_id': f'T2_fits_{qb}',
+                        'plotfn': self.plot_line,
+                        "xvals": delays,
+                        "yvals": pdd['phase_contrast'][qb][f'amp_{i}'],
+                        "yerr": pdd['phase_contrast_stderr'][qb][f'amp_{i}'],
+                        "marker": "o",
+                        'plot_init': self.options_dict.get('plot_init', False),
+                        'color': color,
+                        'setlabel': f'freq={fitid:.4f}' if freqs
+                            else f'amp={fitid:.4f}',
+                        'do_legend': False,
+                        'legend_bbox_to_anchor': (1, 1),
+                        'legend_pos': 'upper left',
+                        'linestyle': "none",
+                    }
+                    # Corresponding exponential fit
+                    self.plot_dicts[label] = {
+                        'title': rdd['measurementstring'] +
+                                '\n' + rdd['timestamp'],
+                        'ax_id': f'T2_fits_{qb}',
+                        'xlabel': r'Flux pulse length',
+                        'xunit': 's',
+                        'ylabel': r'Excited state population',
+                        'plotfn': self.plot_fit,
+                        'fit_res': self.fit_res[label],
+                        'plot_init': self.get_param_value('plot_init', False),
+                        'color': color,
+                        'setlabel': f'freq={fitid:.4f}' if freqs
+                                            else f'amp={fitid:.4f}',
+                        'do_legend': False,
+                        'legend_bbox_to_anchor': (1, 1),
+                        'legend_pos': 'upper left',
+                        }
+
+            if np.sum(mask):
+                label = f'T2_fit_{qb}'
+                xvals = self.metadata['amplitudes'][mask] if \
+                    self.metadata['frequencies'] is None else \
+                    self.metadata['frequencies'][mask]
+                xlabel = r'Flux pulse amplitude' if \
+                    self.metadata['frequencies'] is None else \
+                    r'Derived qubit ge frequency'
+                # Final T2(freq or amp) plot
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
                             '\n' + rdd['timestamp'],
-                    'ax_id': f'T2_fits_{qb}',
-                    'xlabel': r'Flux pulse length',
-                    'xunit': 's',
-                    'ylabel': r'Excited state population',
-                    'plotfn': self.plot_fit,
-                    'fit_res': self.fit_res[label],
-                    'plot_init': self.get_param_value('plot_init', False),
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                                        else f'amp={fitid:.4f}',
-                    'do_legend': False,
-                    'legend_bbox_to_anchor': (1, 1),
-                    'legend_pos': 'upper left',
-                    }
-                delays = self.get_param_value('flux_lengths')
-                phase_contrasts = np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
-                                            ].best_values['amplitude']
-                                            for j in
-                                            range(len(delays))])
-                phase_contrasts_stderr = \
-                    np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
-                              ].params['amplitude'].stderr
-                              for j in
-                              range(len(delays))])
-                self.plot_dicts[label + 'data'] = {
-                    'ax_id': f'T2_fits_{qb}',
                     'plotfn': self.plot_line,
-                    "xvals": delays,
-                    "yvals": phase_contrasts,
-                    "yerr": phase_contrasts_stderr,
-                    "marker": "o",
-                    'plot_init': self.options_dict.get('plot_init', False),
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                    else f'amp={fitid:.4f}',
-                    'do_legend': False,
-                    'legend_bbox_to_anchor': (1, 1),
-                    'legend_pos': 'upper left',
-                    'linestyle': "none",
-                }
-
-                label = f'phases_{qb}_ampl{i}'
-                self.plot_dicts[label] = {
-                    'ax_id': f'T2_fits_{qb}_phases',
-                    'plotfn': self.plot_line,
-                    'xvals': self.metadata['phases'],
-                    'linestyle': '',
-                    'yvals': pdd['data_reshaped_no_cp'][qb][i,:],
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                                        else f'amp={fitid:.4f}',
+                    'linestyle': '-',
+                    'xvals': xvals,
+                    'yvals': pdd['T2'][qb][mask],
+                    'yerr': pdd['T2_err'][qb][mask],
+                    'xlabel': xlabel,
+                    'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
+                    'ylabel': r'T2',
+                    'yunit': 's',
+                    'color': 'tab:green',
                 }
 
 
@@ -8526,8 +8609,17 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         data["prep_states"][:n_shots_to_plot],
                         **kwargs)
 
+                    # FIXME HACK
+                    # With Matplotlib 3.8.3, this plot ends up with an extra
+                    # blank axis as the first one which breaks the logic below
+                    # I did not hunt through the mess to find the root cause
+                    # of the change; instead, the lines of code below check if
+                    # this first blank axis was created, and, if so, deletes it
+                    if fig.get_axes()[0].get_xlabel() == "":
+                        fig.delaxes(fig.get_axes()[0])
                     # plot clf_boundaries
                     main_ax = fig.get_axes()[0]
+
                     self.plot_clf_boundaries(data['X'], self.clf_[qbn], ax=main_ax,
                                              cmap=tab_x)
                     # plot means and std dev
@@ -11784,6 +11876,288 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
 
 
+class LeakageAmplificationAnalysis(ChevronAnalysis):
+
+    def __init__(self, do_fitting=False, options_dict=None, *args, **kwargs):
+        if options_dict is None:
+            options_dict = {}
+        options_dict.setdefault('plot_raw_data', False)
+        options_dict.setdefault('plot_proj_data', False)
+        super().__init__(do_fitting=do_fitting, options_dict=options_dict,
+                         *args, **kwargs)
+
+    def prepare_plots(self):
+        super().prepare_plots()
+        self.plot_leakage_amp()
+
+    def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05,
+                         xtransform=None, draw_lower_lines=True,
+                         pop_scale_right=None, pop_scale_left=None,
+                         pop_unit_right=None, pop_unit_left=None,
+                         pop_label_right=None, pop_label_left=None,
+                         gate_yticks=None, gate_yticks_prec=2, **kw):
+        """
+        Plots leakage amplification results (2D map, and 1D with maximum line)
+
+        Args:
+            cmap_lim: z range limit for the 2D data plot. These should be
+                chosen such that the rescaled data fit in the lower plot.
+                Default (None): chooses a small margin around the data.
+            cmap_margin (float): Margin for z range, relative to cmap_lim
+            xtransform (function): Optional x-axis transformation
+            draw_lower_lines (bool): In the projected data panel (bottom),
+                whether to draw lines to connect each row of data below the
+                maximum (line instead of scatter)
+            pop_scale_right (float): Scaling factor for right axis
+            pop_scale_left (float): Scaling factor for left axis
+            pop_unit_right (str): Unit for right axis
+            pop_unit_left (str): Unit for left axis
+            pop_label_right (str): Right axis label (overrides pop_unit_right)
+            pop_label_left (str): Left axis label (overrides pop_unit_left)
+            gate_yticks (list): Set explicit values for the left yticks. If
+                None (default), they are set to match the (automatic)
+                locations of the right panel ticks.
+            gate_yticks_prec (int): Precision (digits) of the left tick labels
+            **kw (dict): Additional formatting arguments, currently 'title',
+                'cmap'.
+
+        Note: all data are handled in terms of total leakage for n gates. The y
+        label of the bottom plot shows the leakage for 1 gate.
+        The colorbar has the same limits as the ylim of the bottom panel
+        (before rescaling), such that the colorbar can serve as a second y axis.
+        """
+
+        _default_units = (1e-2, '%')
+        if pop_scale_right is None:
+            pop_scale_right, pop_unit_right = _default_units
+        if pop_scale_left is None:
+            pop_scale_left, pop_unit_left = _default_units
+
+        y_err_f = lambda pop, n: np.sqrt(pop * (1-pop) / n)
+
+        ts = self.timestamps[0]
+
+        for task in self.metadata['task_list']:
+            qbn = task['qbc']
+            pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
+                [:, :-3]
+            sp = SweepPoints(task['sweep_points'])
+            sp_dims = sp.length() + [self.metadata['compression_factor']]
+            acq_averages = self.get_instrument_setting(f'{qbn}.acq_averages')
+            n = task['num_cz_gates']
+
+            # Re-organise data to keep the delay as vertical axis
+            label_orthogonal = 'buffer_length_start'
+            label_orthogonal = list(task['sweep_points'][0])[0]
+            if sp.find_parameter(label_orthogonal) == 0:
+                pop = pop.T
+                sp[0], sp[1] = sp[1], sp[0]
+            labels = [list(sp[i])[0] for i in range(len(sp))]
+            coords = [sp[l] for l in labels]
+            if xtransform:
+                coords[0] = xtransform(coords[0])
+
+            # Process labels
+            nice_labels = [
+                list(sp.get_sweep_params_description(l)) + [l] for l in labels
+            ]
+            nice_labels = [
+                [l[2] if l[2] else l[3],  # param description or just param name
+                 f' ({l[1]})' if len(l[1]) else '']
+                for l in nice_labels
+            ]
+            # Adapt axis scaling/units
+            for i in range(len(labels)):
+                if nice_labels[i][1] == ' (s)':
+                    nice_labels[i][1] = ' (ns)'
+                    coords[i] = coords[i] * 1e9
+            nice_labels = [
+                label + unit
+                for label, unit in nice_labels
+            ]
+            for i, l in enumerate(labels):
+                if 'pulse_off' in l:
+                    labels[i] = 'num_cz_gates'
+                    coords[i] = sp['num_cz_gates']
+                    nice_labels[i] = 'Number of CZ gates'
+            cz_pulse_name = task.get('cz_pulse_name',
+                                     self.metadata['cz_pulse_name'])
+            title = kw.get('title', (
+                f"{ts} Leakage ampl. {qbn}{task['qbt']}\n"
+                f"{sp_dims[0]} seg. * {sp_dims[2]} hard seq. * "
+                f"{int(np.ceil(sp_dims[1] / sp_dims[2]))} soft seq.\n"
+                f"{n} {cz_pulse_name} gates, {acq_averages} avg."
+            ))
+            plot_params = self.get_default_plot_params(set_pars=False)
+            plotsize = plot_params['figure.figsize']
+            figname = f'leakage_amplification_{qbn}'
+
+            cmap = plt.colormaps.get_cmap(kw.get('cmap'))
+            if cmap_lim is None:
+                _cmap_lim = [pop.min(), pop.max()]
+                height = _cmap_lim[1]-_cmap_lim[0]
+                _cmap_lim = np.array([_cmap_lim[0]-cmap_margin*height,
+                                      _cmap_lim[1]+cmap_margin*height])
+            else:
+                _cmap_lim = np.array(cmap_lim)
+            norm = mpl.colors.Normalize(vmin=_cmap_lim[0], vmax=_cmap_lim[1])
+
+            x = coords[0]
+            y_max = np.max(pop, axis=0)
+            x_scatter = np.array([x]*len(pop)).flatten()
+            y_scatter = np.array(pop).flatten()
+            y_err = y_err_f(y_max, acq_averages)
+
+            # Create the figure + disable the top right axis
+            self.plot_dicts[figname + "_emptyaxis"] = {
+                'fig_id': figname,
+                'plotfn': None,
+                'ax_id': 1,
+                'plotsize': (plotsize[1], plotsize[0]),
+                'gridspec_kw': {'width_ratios': [10, 1], 'wspace': 0,
+                                'hspace': 0.1},
+                'numplotsx': 2,
+                'numplotsy': 2,
+                'sharex': 'col',
+                'sharey': False,
+                'set_axis_off': True,
+            }
+
+            # Plot 2D data
+            self.plot_dicts[figname + "_2D"] = {
+                'fig_id': figname,
+                'ax_id': 0,
+                'plotfn': self.plot_colorxy,
+                'xvals': coords[0],
+                'yvals': coords[1],
+                'zvals': pop/pop_scale_right,
+                'zrange': _cmap_lim/pop_scale_right,
+                'xlabel': '',
+                'xunit': '',
+                'xlabels_rotation': 0,
+                'ylabel': nice_labels[1],
+                'yunit': '',
+                'cmap': kw.get('cmap'),
+                'title': title,
+                'plotcbar': True,
+                'clabel': pop_label_right if pop_label_right else
+                          f"Total leakage, $P_N$ ({pop_unit_right})",
+                'cax_id': 3,
+            }
+
+            self.plot_dicts[figname + f"_1D_scatter"] = {
+                'fig_id': figname,
+                'ax_id': 2,
+                'plotfn': self.plot_line,
+                'xvals': x_scatter,
+                'yvals': y_scatter/pop_scale_right,
+                'alpha': 0.3,
+                'yrange': _cmap_lim/pop_scale_right,
+                'color': cmap(norm(y_scatter)),
+                'scatter': True,
+                'line_kws': {'zorder': 1},
+                'xlabel': nice_labels[0],
+                'ylabel': pop_label_left if pop_label_left else
+                          f"Leakage, $P_1$ ({pop_unit_left})",
+            }
+            if gate_yticks is not None:
+                # Set explicit values for the left yticks, and compute their
+                # locations (corresponding to the scale of the colorbar axis)
+
+                # Conversion from 1-gate to n-gate leakage, to assign the
+                # locations of requested gate_yticks (1-gate leakage) to match
+                # the right axis (n-gate leakage)
+                if (f_1ton := kw.get('f_1ton')) is None:
+                    f_1ton = lambda p, n: np.sin(
+                        np.arcsin(np.sqrt(np.abs(p))) * n) ** 2
+                # Returns True on 1-gate leakage values for which f_1ton is
+                # injective (first period of the sin). Used to check if
+                # requested gate_yticks can be in 1-to-1 mapping with right
+                # ticks (n-gate leakage).
+                if (f_1ton_valid := kw.get('f_1ton_valid')) is None:
+                    f_1ton_valid = lambda p, n: np.abs(np.arcsin(np.sqrt(
+                        np.abs(p))) * n) <= np.pi / 2
+
+                self.plot_dicts[figname + f"_1D_scatter"].update({
+                    'ytick_loc': f_1ton(gate_yticks, n)/pop_scale_right,
+                    'ytick_labels': [f'{p/pop_scale_left:.{gate_yticks_prec}g}'
+                                     for p in gate_yticks],
+                })
+                if not np.all(f_1ton_valid(gate_yticks, n)):
+                    log.warning("The required single-gate leakage y axis "
+                                "ticks are bigger than the range of the main "
+                                "period for n-gate leakage. This means that "
+                                "the ticks will oscillate on the y axis.")
+            else:
+                # Fall back to using the existing yticks (as on the colorbar
+                # right axis), and format their labels
+
+                if (f_nto1 := kw.get('f_nto1')) is None:
+                    # Conversion from n-gate to 1-gate leakage, to determine
+                    # which 1-gate leakage values correspond to the n-gate
+                    # leakage ticks of the right axis
+                    f_nto1 = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(
+                        p))) / n) ** 2
+
+                def formatter(p_n, _):
+                    p_1 = f_nto1(p_n*pop_scale_right, n)/pop_scale_left
+                    return f'{p_1:.{gate_yticks_prec}g}'
+                self.plot_dicts[figname + f"_1D_scatter"].update({
+                    'set_major_formatter': {'yaxis': formatter},
+                })
+
+            key = figname + f"_1D_line"
+            if draw_lower_lines:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 2,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([x]*len(pop)),
+                    'yvals': pop/pop_scale_right,
+                    'alpha': 0.1,
+                    'line_kws': {'zorder': 0},
+                    'color': 'k',
+                }
+            else:
+                # If this method got called previously with draw_lower_lines,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            self.plot_dicts[figname + f"_1D_line_max"] = {
+                'fig_id': figname,
+                'ax_id': 2,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_right,
+                'yerr': y_err/pop_scale_right,
+                'alpha': 1,
+                'line_kws': {'zorder': 0},
+                'color': 'k',
+            }
+            self.plot_dicts[figname + f"_1D_scatter_max"] = {
+                'fig_id': figname,
+                'ax_id': 2,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_right,
+                'alpha': 1,
+                'color': cmap(norm(y_max)),
+                'scatter': True,
+                'line_kws': {'zorder': 1},
+            }
+
+            id_opt = np.argmin(y_max)
+            self.leakage_ymax = {
+                'x': coords[0],
+                'x_label': labels[0],
+                'y': y_max,
+                'yerr': y_err,
+            }
+            if labels[0] != 'num_cz_gates':
+                # opt only makes sense for an actual sweep point
+                self.leakage_ymax['x_opt'] = sp[labels[0]][id_opt]
+
+
 class SingleRowChevronAnalysis(ChevronAnalysis):
     """Analysis for 1-dimensional Chevron QuantumExperiment
 
@@ -11909,3 +12283,4 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             'colors': 'gray',
         }
         return best_val
+

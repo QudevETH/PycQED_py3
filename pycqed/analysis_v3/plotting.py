@@ -1066,9 +1066,14 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 plotfn(pdict=pdict,
                        axs=axs[pdict['fig_id']].flatten()[
                            pdict['ax_id']])
-                axs[pdict['fig_id']].flatten()[
-                    pdict['ax_id']].figure.subplots_adjust(
-                    hspace=0.4, wspace=0.25)
+                # FIXME forcing subplots_adjust after the plotting in
+                #  plotfn (which possibly calls tight_layout()) is bad
+                #  design, but many analyses currently rely on this (e.g.
+                #  raw data plots) and should be cleaned if removing it
+                if pdict.get('force_subplots_adjust', True):
+                    axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=0.4, wspace=0.25)
 
         # most normal plot functions also work, it is required
         # that these accept an "ax" argument to plot on and
@@ -1083,9 +1088,14 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 plotfn(pdict=pdict,
                        axs=axs[pdict['fig_id']].flatten()[
                            pdict['ax_id']])
-                axs[pdict['fig_id']].flatten()[
-                    pdict['ax_id']].figure.subplots_adjust(
-                    hspace=0.4, wspace=0.25)
+                # FIXME forcing subplots_adjust after the plotting in
+                #  plotfn (which possibly calls tight_layout()) is bad
+                #  design, but many analyses currently rely on this (e.g.
+                #  raw data plots) and should be cleaned if removing it
+                if pdict.get('force_subplots_adjust', True):
+                    axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
+                        hspace=0.4, wspace=0.25)
         else:
             raise ValueError(
                 f'"{plotfn}" is not a valid plot function')
