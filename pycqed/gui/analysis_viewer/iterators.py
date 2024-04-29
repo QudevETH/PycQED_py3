@@ -148,7 +148,7 @@ class TimestampBidirectionalIterator(object):
         """
         analysis_toolbox.verify_daystamp(daystamp)
         self.timestamp_iterator = BidirectionalIterator(
-            analysis_toolbox.get_timestamps_by_daystamp(daystamp))
+            analysis_toolbox.get_folders_by_daystamp(daystamp))
 
     def set_pointer_to_timestamp(self, timestamp_folder: str):
         """Points the iterator to `timestamp_folder`.

@@ -284,7 +284,7 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
             return paths
 
 
-def get_timestamps_by_daystamp(daystamp: str) -> list:
+def get_folders_by_daystamp(daystamp: str) -> list:
     """Gets all experiment paths for a given `daystamp`.
 
     Args:
