@@ -2076,17 +2076,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.proc_data_dict['single_shots_per_qb'] = deepcopy(shots_per_qb)
 
         # determine number of shots
-        n_shots = self.get_param_value("n_shots")
-        if n_shots is None:
-            # FIXME: this extraction of number of shots won't work with soft repetitions.
-            # FIXME: refactor to use settings manager instead of raw_data_dict
-            n_shots_from_hdf = [
-                int(self.get_data_from_timestamp_list({
-                    f'sh': f"Instrument settings.{qbn}.acq_shots"})['sh']) for qbn in self.qb_names]
-            if len(np.unique(n_shots_from_hdf)) > 1:
-                log.warning("Number of shots extracted from hdf are not all the same:"
-                            "assuming n_shots=max(qb.acq_shots() for qb in qb_names)")
-            n_shots = np.max(n_shots_from_hdf)
+        n_shots = self.get_param_value(
+            "nr_shots", self._extract_param_from_det("nr_shots"))
 
         # determine number of readouts per sequence
         if self.get_param_value("TwoD", False):
