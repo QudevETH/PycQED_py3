@@ -854,12 +854,11 @@ class MeasurementControl(Instrument):
         self.dset.resize(new_datasetshape)
         if self.force_indexed_sweep:
             x = self.iteration
-        # Because x is allowed to be a list of tuples (batch sampling), we
-        # need to reshape and reformat x and vals accordingly before we can
-        # save them to the dset.
-        x = np.atleast_2d(x) # to unify format of x
-        # TODO this should not be needed
-        vals = vals.reshape((-1, len(self.detector_function.value_names)))
+        # Because x is allowed to be a list of tuples (batch sampling),
+        # and the detector function may return 1D values, we unify their
+        # format before we can save them to the dset.
+        x = np.atleast_2d(x)
+        vals = np.atleast_2d(vals)
         # Concatenates the sweep points x with the data vals,
         # by prepending x as columns. If vals has more rows than x,
         # x is repeated vertically.
