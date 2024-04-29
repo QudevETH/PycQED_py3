@@ -339,6 +339,8 @@ class MeasurementControl(Instrument):
         self.print_measurement_start_msg()
 
         self.mode = mode
+        # When storing the data, prepend indices instead of the full sweep pts
+        self.force_indexed_sweep = kw.get("force_indexed_sweep", False)
         # used in determining data writing indices (deprecated?)
         self.iteration = 0
 
@@ -701,6 +703,9 @@ class MeasurementControl(Instrument):
         ######################
         # DATA STORING BLOCK #
         ######################
+        if self.force_indexed_sweep:
+            raise NotImplementedError("force_indexed_sweep not yet "
+                                      "implemented for hard sweeps!")
         if sweep_len == len_new_data and self.mode == '1D':  # 1D sweep
             self.dset[:, 0] = self.get_sweep_points()
         else:
@@ -847,8 +852,7 @@ class MeasurementControl(Instrument):
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        if self.mode == 'adaptive' and self.indexed_sweep:
-            # TODO make condition generic
+        if self.force_indexed_sweep:
             x = self.iteration
         # Because x is allowed to be a list of tuples (batch sampling), we
         # need to reshape and reformat x and vals accordingly before we can
@@ -2664,7 +2668,6 @@ class MeasurementControl(Instrument):
         # x_scale is expected to be an array or list.
         self.x_scale = self.af_pars.pop('x_scale', None)
         self.par_idx = self.af_pars.pop('par_idx', 0)
-        self.indexed_sweep = self.af_pars.pop('indexed_sweep', False)
         # Determines if the optimization will minimize or maximize
         self.minimize_optimization = self.af_pars.pop('minimize', True)
         self.f_termination = self.af_pars.pop('f_termination', None)
