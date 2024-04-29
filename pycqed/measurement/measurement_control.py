@@ -294,7 +294,7 @@ class MeasurementControl(Instrument):
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
-            previous_attempts=0, **kw):
+            previous_attempts=0, store_sweep_indices=False, **kw):
         '''
         Core of the Measurement control.
 
@@ -321,6 +321,8 @@ class MeasurementControl(Instrument):
                     has already been tried. This is usually not passed by
                     the calling function, but only used by run() when it
                     calls itself recursively.
+            store_sweep_indices (bool): If True, when storing the data the
+                iteration indices are prepended instead of the sweep points.
         '''
 
         def try_finish():
@@ -340,7 +342,7 @@ class MeasurementControl(Instrument):
 
         self.mode = mode
         # When storing the data, prepend indices instead of the full sweep pts
-        self.force_indexed_sweep = kw.get("force_indexed_sweep", False)
+        self.store_sweep_indices = store_sweep_indices
         # used in determining data writing indices (deprecated?)
         self.iteration = 0
 
@@ -703,8 +705,8 @@ class MeasurementControl(Instrument):
         ######################
         # DATA STORING BLOCK #
         ######################
-        if self.force_indexed_sweep:
-            raise NotImplementedError("force_indexed_sweep not yet "
+        if self.store_sweep_indices:
+            raise NotImplementedError("store_sweep_indices not yet "
                                       "implemented for hard sweeps!")
         if sweep_len == len_new_data and self.mode == '1D':  # 1D sweep
             self.dset[:, 0] = self.get_sweep_points()
@@ -852,7 +854,7 @@ class MeasurementControl(Instrument):
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        if self.force_indexed_sweep:
+        if self.store_sweep_indices:
             x = self.iteration
         # Because x is allowed to be a list of tuples (batch sampling),
         # and the detector function may return 1D values, we unify their
