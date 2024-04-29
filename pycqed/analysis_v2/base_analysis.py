@@ -34,6 +34,7 @@ import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
 import logging
+import re
 log = logging.getLogger(__name__)
 
 class BaseDataAnalysis(object):
@@ -568,6 +569,16 @@ class BaseDataAnalysis(object):
                                 ' is not extracted from the file. '
                                 'An empty list will be returned.')
                     raw_data_dict_ts['measured_values'] = []
+                if 'optimization_sweep_points' in params_dict:
+                    sweep_points_str = data_file[
+                        'Optimization_result']['opt'].attrs['sweep_points']
+                    raw_data_dict_ts['optimization_sweep_points'] = \
+                        eval(sweep_points_str)
+                    # sweep_points_str = \
+                    #     re.findall(r"[-+]?\d*\.\d+|\d+",
+                    #                sweep_points_str)
+                    # raw_data_dict_ts['optimization_sweep_points'] = \
+                    #     np.array([float(sp) for sp in sweep_points_str])
 
                 # add hdf attributes and groups
                 for save_par, file_par in params_dict.items():

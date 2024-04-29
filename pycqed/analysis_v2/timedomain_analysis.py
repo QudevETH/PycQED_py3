@@ -2903,17 +2903,41 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
 
 class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
+
+    def extract_data(self):
+        if not hasattr(self, 'params_dict'):
+            self.params_dict = OrderedDict()
+        self.params_dict.update(
+            {'optimization_sweep_points': 'optimization_sweep_points'})
+        super().extract_data()
+
     def process_data(self):
         super().process_data()
 
-
+        # FIXME: replacing the values of a qubit is a hack, we should
+        #  instead create a new entry
         if self.get_param_value('optimize'):
-            pass
-            # TODO get shape and do reshaping
-            # TODO add values to projected_data_dict so they get plotted
-        else:
-            # FIXME: replacing the values of a qubit is a hack, we should
-            #  instead create a new entry
+            sweep_points_len = len(self.proc_data_dict['sweep_points_dict'][
+                                       'qb2']['sweep_points'])
+            # use real sweep points
+            self.proc_data_dict['sweep_points_dict'][
+                'qb2']['sweep_points'] = \
+                self.raw_data_dict['real_sweep_points']
+            # data order: normal sweep order
+            single_shot_len = len(self.proc_data_dict[
+                                      'single_shots_per_qb_thresholded'][
+                                      'qb2']) // sweep_points_len
+            single_shots_thresholded = self.proc_data_dict[
+                # reshape the flattened data array
+                'single_shots_per_qb_thresholded']['qb2'].reshape((
+                single_shot_len, sweep_points_len, -1))
+            cpp_output = va.classical_postprocessing(single_shots_thresholded)
+            # averaging happens in cost function
+            cost_func = va.cost_function_analysis(cpp_output)
+            self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
+                'cost func': cost_func,
+            }
+        else:  # TODO: not correct anymore
             sweep_points_len = len(self.proc_data_dict['sweep_points_dict'][
                 'qb2']['sweep_points'])
             single_shot_len = len(self.proc_data_dict[

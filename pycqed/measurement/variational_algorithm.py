@@ -89,26 +89,27 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     @staticmethod
     def classical_postprocessing(data, classical_params=1.0):
-        # deals with data that is reshaped, (qubits, single_shots, *batch)
+        # data shape (sweep_points_len, single_shot_len, -1)
         # FIXME: gets (circular) imported in tda, should this be elsewhere?
         # FIXME; take the dimension of (qubits, states) into account
         # FIXME: find a way to move below functions outside the method
-        def _single_shot_measurement_processor(single_shot_readout):
-            # any dimension change here involves cost_function in VQAOptimizer
-            return single_shot_readout
 
-        data = data * classical_params
+        def _single_shot_measurement_processor(single_shot_readout):
+            # one sweep point with single shots repetitions
+            return [single_shot_readout_unit[1] - single_shot_readout_unit[0]
+                    for single_shot_readout_unit in single_shot_readout]
+
+        data = data * classical_params  # place holder
         data = np.array(
-            [[_single_shot_measurement_processor(single_shot_readout) for
-              single_shot_readout in qubit_data] for qubit_data in data]
+            [_single_shot_measurement_processor(single_shot_readout) for
+              single_shot_readout in data]
         )
         return data
 
-
     @staticmethod
-    def cost_function(cnn_output):
-        label = np.zeros(cnn_output.shape[-1])
-        output = np.mean(np.square(cnn_output - label), axis=0)
+    def cost_function_analysis(cpp_output):
+        label = np.ones(cpp_output.shape[0])
+        output = np.mean(np.square(cpp_output.T - label), axis=1)
         return output
 
     # @staticmethod  # FIXME?
