@@ -52,7 +52,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 sweep_kwargs=kw.get('sweep_kwargs', {})
                 )]
             self.mc_mode = 'adaptive'
-            self.mc_force_indexed_sweep = True
+            self.mc_store_sweep_indices = True
             self.force_2D_sweep = False  # TODO is this needed?
             self.mc_points = [[0]]
             self.sequences = [[None]]
