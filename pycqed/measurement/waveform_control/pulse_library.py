@@ -1475,27 +1475,42 @@ class GaussFilteredCosIQPulsePolyChromatic(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
+            'multistep_param_pairs': None,
         }
         return params
 
     def chan_wf(self, chan, tvals, **kw):
+        """Compute the concrete numerical waveforms."""
+        if self.multistep_param_pairs is not None:
+            multistep_param_pairs = self.multistep_param_pairs
+        else:
+            multistep_param_pairs = []
         I_mods, Q_mods = np.zeros_like(tvals), np.zeros_like(tvals)
         for a, ph, f, phi, alpha in zip(self.amplitude, self.phase,
                                         self.mod_frequency, self.phi_skew,
                                         self.alpha):
+            tstart = self.algorithm_time() + self.buffer_length_start
+            tend = tstart + self.pulse_length
             if self.gaussian_filter_sigma == 0:
                 wave = np.ones_like(tvals) * a
-                wave *= (tvals >= self.algorithm_time() + self.buffer_length_start)
-                wave *= (tvals <
-                         self.algorithm_time() + self.buffer_length_start +
-                         self.pulse_length)
+                wave *= (tvals >= tstart)
+                wave *= (tvals < tend)
             else:
-                tstart = self.algorithm_time() + self.buffer_length_start
-                tend = tstart + self.pulse_length
                 scaling = 1 / np.sqrt(2) / self.gaussian_filter_sigma
                 wave = 0.5 * (sp.special.erf(
                     (tvals - tstart) * scaling) - sp.special.erf(
                     (tvals - tend) * scaling)) * a
+            # Apply the multistep amplitude scaling
+            # Each step is applied for its given duration starting from
+            # the beginning of the pulse
+            step_start_time = tstart
+            for param_pair in multistep_param_pairs:
+                amp_factor, step_duration = param_pair
+                step_end_time = step_start_time + step_duration
+                for idx, t_val in enumerate(tvals):
+                    if (t_val >= step_start_time) and (t_val < step_end_time):
+                        wave[idx] *= amp_factor
+                step_start_time += step_duration
             I_mod, Q_mod = apply_modulation(
                 wave,
                 np.zeros_like(wave),
@@ -1527,6 +1542,9 @@ class GaussFilteredCosIQPulsePolyChromatic(pulse.Pulse):
         hashlist += self.alpha
         hashlist += self.phi_skew
         hashlist += phase
+        if self.multistep_param_pairs is not None:
+            # So it is a list of tuples (which are immutable hence hashable)
+            hashlist += self.multistep_param_pairs
         return hashlist
 
 
