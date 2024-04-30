@@ -1433,7 +1433,9 @@ class GaussFilteredCosIQPulsePolyChromatic(pulse.Pulse):
 
         self.I_channel = I_channel
         self.Q_channel = Q_channel
-        self.channels = [self.I_channel, self.Q_channel]
+        self.channels = [self.I_channel]
+        if self.Q_channel is not None:
+            self.channels += [self.Q_channel]
 
         if np.ndim(self.mod_frequency) != 1:
             raise ValueError("A polychromatic pulse requires a list or 1D array "
@@ -1532,7 +1534,7 @@ class GaussFilteredCosIQPulsePolyChromatic(pulse.Pulse):
         if channel not in self.channels or self.pulse_off:
             return hashlist
         hashlist += [channel == self.I_channel]
-        if np.shape(self.amplitude) is not ():
+        if np.shape(self.amplitude) != ():
             hashlist += self.amplitude
         else:
             hashlist += list(self.amplitude)
@@ -1540,7 +1542,7 @@ class GaussFilteredCosIQPulsePolyChromatic(pulse.Pulse):
         hashlist += [self.gaussian_filter_sigma]
         hashlist += [self.buffer_length_start, self.buffer_length_end, self.pulse_length]
         # self.phase and self.mod_frequency must be lists for polychromatic readout
-        phase = [p + 360 * (not self.phase_lock) * f * self.algorithm_time() \
+        phase = [p + 360 * self.phase_lock * f * self.algorithm_time() \
                  for p, f in zip(self.phase, self.mod_frequency)]
         hashlist += self.alpha
         hashlist += self.phi_skew
