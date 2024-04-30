@@ -211,6 +211,20 @@ class MeasurementObject(Instrument):
         self.add_pulse_parameter(
             'RO', 'ro_trigger_pars', 'trigger_pars',
             vals=vals.MultiType(vals.Enum(None), vals.Dict()))
+        # Values needed for two-step readout
+        self.add_pulse_parameter(
+            operation_name='RO',
+            parameter_name='ro_multistep_param_pairs',
+            argument_name='multistep_param_pairs',
+            initial_value=None,
+            vals=vals.MultiType(vals.Enum(None), vals.Lists()),
+            docstring="List of tuples containing an amplitude scaling factor "
+            "and duration for which to apply this multiplier. Defaults to "
+            "None meaning that a constant amplitude is applied the entire "
+            "time. It is up to the user to provide meaningful values (there "
+            "is no warning if the total duration of the steps is longer "
+            "than the readout pulse itself)."
+        )
 
         # switch parameters
         DEFAULT_SWITCH_MODES = OrderedDict({'default': {}})
