@@ -8051,7 +8051,9 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                             + f'\nWeight Basis: {basis_labels}'
             plot_name = f"weights_{qbn}"
             xlabel = "Time, $t$"
-            modulation = np.exp(2j * np.pi * mod_freq * tbase)
+            # FIXME: generalize this
+            # For polychromatic readout, mod_freq may be a list
+            modulation = np.exp(2j * np.pi * np.mean(mod_freq) * tbase)
 
             for ax_id, (state, ttrace) in \
                 enumerate(ana_params["timetraces"][qbn].items()):

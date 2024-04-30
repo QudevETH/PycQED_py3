@@ -1532,7 +1532,10 @@ class GaussFilteredCosIQPulsePolyChromatic(pulse.Pulse):
         if channel not in self.channels or self.pulse_off:
             return hashlist
         hashlist += [channel == self.I_channel]
-        hashlist += list(self.amplitude)
+        if np.shape(self.amplitude) is not ():
+            hashlist += self.amplitude
+        else:
+            hashlist += list(self.amplitude)
         hashlist += self.mod_frequency
         hashlist += [self.gaussian_filter_sigma]
         hashlist += [self.buffer_length_start, self.buffer_length_end, self.pulse_length]

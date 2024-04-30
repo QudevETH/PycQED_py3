@@ -176,7 +176,8 @@ class MeasurementObject(Instrument):
                                      vals.Enum(None), vals.Strings()))
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
-                                 vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+                                 vals=vals.MultiType(vals.Numbers(), vals.Lists()),
+                                 docstring="Amplitude or list of amplitudes in V")
         self.add_pulse_parameter('RO', 'ro_length', 'pulse_length',
                                  initial_value=2e-6, vals=vals.Numbers())
         self.add_pulse_parameter('RO', 'ro_delay', 'pulse_delay',
@@ -185,7 +186,10 @@ class MeasurementObject(Instrument):
             'RO', 'ro_mod_freq', 'mod_frequency', initial_value=100e6,
             set_parser=lambda f, s=self: s.configure_mod_freqs('ro',
                                                                ro_mod_freq=f),
-            vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+            vals=vals.MultiType(vals.Numbers(), vals.Lists()),
+            docstring="Readout modulation frequency or list of frequencies in Hz. "
+            "Positive frequencies will be above the readout LO/center frequency."
+        )
         self.add_pulse_parameter('RO', 'ro_phase', 'phase',
                                  initial_value=0,
                                  vals=vals.MultiType(vals.Numbers(), vals.Lists()))
