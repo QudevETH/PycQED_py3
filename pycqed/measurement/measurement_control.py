@@ -647,6 +647,9 @@ class MeasurementControl(Instrument):
             ones will be skipped (False). Default: None, in which case all
             acquisition elements will be played.
         """
+        if self.store_sweep_indices:
+            raise NotImplementedError("store_sweep_indices not yet "
+                                      "implemented for hard sweeps!")
         n_acquired = 0
         for i_rep in range(self.soft_repetitions()):
             # Tell the detector_function to call print_progress for intermediate
@@ -705,9 +708,6 @@ class MeasurementControl(Instrument):
         ######################
         # DATA STORING BLOCK #
         ######################
-        if self.store_sweep_indices:
-            raise NotImplementedError("store_sweep_indices not yet "
-                                      "implemented for hard sweeps!")
         if sweep_len == len_new_data and self.mode == '1D':  # 1D sweep
             self.dset[:, 0] = self.get_sweep_points()
         else:
@@ -1917,8 +1917,11 @@ class MeasurementControl(Instrument):
         return kwargs
 
     def _get_nr_sweep_point_columns(self):
-        return np.sum([sweep_function.get_nr_parameters() \
-            for sweep_function in self.sweep_functions])
+        if self.store_sweep_indices:
+            return 1
+        else:
+            return np.sum([sweep_function.get_nr_parameters() \
+                for sweep_function in self.sweep_functions])
 
     def create_experimentaldata_dataset(self):
         data_group = self._get_experimentaldata_group()
