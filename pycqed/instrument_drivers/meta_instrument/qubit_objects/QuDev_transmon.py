@@ -65,7 +65,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
     }
     _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
                            'GaussFilteredCosIQPulseMultiChromatic',
-                           'GaussFilteredCosIQPulseTwoStep',
                            'GaussFilteredCosIQPulseWithFlux']
     _allowed_drive_modes = [None, 'continuous_spec',
                             'continuous_spec_modulated', 'pulsed_spec',
