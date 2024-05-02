@@ -902,10 +902,11 @@ class MeasurementControl(Instrument):
                     raise StopIteration()
             vals = np.multiply(-1, vals)
 
+        # Not sure about what is this
         # to check if vals is an array with multiple values
-        if hasattr(vals, '__iter__'):
-            if len(vals) > 1 and self.par_idx is not None:
-                vals = vals[self.par_idx]
+        # if hasattr(vals, '__iter__'):
+        #     if len(vals) > 1 and self.par_idx is not None:
+        #         vals = vals[self.par_idx]
 
         return vals
 

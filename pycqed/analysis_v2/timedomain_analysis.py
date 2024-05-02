@@ -2907,8 +2907,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         if not hasattr(self, 'params_dict'):
             self.params_dict = OrderedDict()
-        self.params_dict.update(
-            {'optimization_sweep_points': 'optimization_sweep_points'})
+        # FIXME: optimize = True, but get_param_value('optimize') = None
+        # if self.get_param_value('optimize'):
+        #     self.params_dict.update(
+        #         {'optimization_sweep_points': 'optimization_sweep_points'})
         super().extract_data()
 
     def process_data(self):
@@ -2919,40 +2921,33 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         if self.get_param_value('optimize'):
             sweep_points_len = len(self.proc_data_dict['sweep_points_dict'][
                                        'qb2']['sweep_points'])
+
             # use real sweep points
-            self.proc_data_dict['sweep_points_dict'][
-                'qb2']['sweep_points'] = \
-                self.raw_data_dict['real_sweep_points']
-            # data order: normal sweep order
-            single_shot_len = len(self.proc_data_dict[
-                                      'single_shots_per_qb_thresholded'][
-                                      'qb2']) // sweep_points_len
-            single_shots_thresholded = self.proc_data_dict[
-                # reshape the flattened data array
-                'single_shots_per_qb_thresholded']['qb2'].reshape((
-                single_shot_len, sweep_points_len, -1))
-            cpp_output = va.classical_postprocessing(single_shots_thresholded)
-            # averaging happens in cost function
-            cost_func = va.cost_function_analysis(cpp_output)
+            # self.proc_data_dict['sweep_points_dict'][
+            #     'qb2']['sweep_points'] = \
+            #     self.raw_data_dict['optimization_sweep_points']
+
+            cpp_output = va.classical_postprocessing(self.proc_data_dict[
+                    'single_shots_per_qb_thresholded'])
+            cost_func = np.reshape(
+                va.cost_function(cpp_output), (-1, sweep_points_len))
             self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
-                'cost func': cost_func,
+                'cost func': np.average(cost_func, axis=0),
             }
-        else:  # TODO: not correct anymore
-            sweep_points_len = len(self.proc_data_dict['sweep_points_dict'][
-                'qb2']['sweep_points'])
-            single_shot_len = len(self.proc_data_dict[
-                'single_shots_per_qb_thresholded']['qb2']) // sweep_points_len
-            single_shots_thresholded = self.proc_data_dict[
-            # reshape the flattened data array
-                'single_shots_per_qb_thresholded']['qb2'].reshape((
-                single_shot_len, sweep_points_len, -1))
-            # dummy classical parameters
-            classical_params = np.array([-1, 0, 1])
-            cnn_output = va.classical_postprocessing(
-                single_shots_thresholded, classical_params)
-            cpp_output = va.cost_function(cnn_output)
+        else:
+            # cpp_output shape: flattened 1D array
+            cpp_output = va.classical_postprocessing(self.proc_data_dict[
+                    'single_shots_per_qb_thresholded'])
+            cost_func = va.cost_function(cpp_output)
+            # reconstruct data structure (qb3_sweep, single_shots, qb2_sweep)
+            qb3_sweep = len(self.proc_data_dict['sweep_points_dict']['qb3'][
+                                'sweep_points'])
+            qb2_sweep = len(self.proc_data_dict['sweep_points_dict']['qb2'][
+                                'sweep_points'])
+            cost_func = \
+                np.reshape(cost_func, (qb3_sweep, -1, qb2_sweep))
             self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
-                'value': cpp_output,
+                'value': np.average(cost_func, axis=1)
             }
 
     def prepare_plots(self):

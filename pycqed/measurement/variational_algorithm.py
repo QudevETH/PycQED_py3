@@ -87,29 +87,48 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             destroy=True,
         )
 
+    # here data should be in the flattered shape
     @staticmethod
-    def classical_postprocessing(data, classical_params=1.0):
-        # data shape (sweep_points_len, single_shot_len, -1)
-        # FIXME: gets (circular) imported in tda, should this be elsewhere?
-        # FIXME; take the dimension of (qubits, states) into account
-        # FIXME: find a way to move below functions outside the method
+    def classical_postprocessing(single_shots_per_qb_thresholded,
+                                 classical_params=1.0):
+        # returns the sum of g state population
+        # data shape: dictionary of flattened single shot measurement
+        e_state_data = [single_shots_per_qb_thresholded[qbn][:, 1] for qbn
+                        in single_shots_per_qb_thresholded.keys()]
+        # return shape: (flattened_len,)
+        return np.average(e_state_data, axis=0)
 
-        def _single_shot_measurement_processor(single_shot_readout):
-            # one sweep point with single shots repetitions
-            return [single_shot_readout_unit[1] - single_shot_readout_unit[0]
-                    for single_shot_readout_unit in single_shot_readout]
+    @staticmethod
+    def cost_function(cpp_output):
+        label = np.ones(cpp_output.shape[0])
+        return np.square(cpp_output - label)
 
-        data = data * classical_params  # place holder
-        data = np.array(
-            [_single_shot_measurement_processor(single_shot_readout) for
-              single_shot_readout in data]
-        )
-        return data
+    @staticmethod
+    def classical_postprocessing_train(e_state_data, classical_params=1.0):
+        # returns the sum of e state population over qubits
+        # e_state_data shape: (qubits, single_shots)
+        # return shape: (flattened_len,)
+        return np.sum(e_state_data, axis=0)
 
     @staticmethod
     def cost_function_analysis(cpp_output):
-        label = np.ones(cpp_output.shape[0])
-        output = np.mean(np.square(cpp_output.T - label), axis=1)
+        label = np.ones(cpp_output.shape[1]) * 2
+        output = np.zeros((cpp_output.shape[0], cpp_output.shape[-1]))
+        for i in range(cpp_output.shape[0]):
+            for j in range(cpp_output.shape[-1]):
+                output[i, j] = np.mean(np.square(cpp_output[i, :, j] - label))
+        return output
+
+    @staticmethod
+    def cost_function_train(cpp_output):
+        label = np.ones(cpp_output.shape[0]) * 2
+        output = np.mean(np.square(cpp_output - label))
+        return output
+
+    @staticmethod
+    def cost_function_train_analysis(cpp_output):
+        label = np.ones(cpp_output.shape[-1]) * 2
+        output = np.mean(np.square(cpp_output - label), axis=1)
         return output
 
     # @staticmethod  # FIXME?
@@ -161,10 +180,13 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         }
         pp.run(data_dict, overwrite_data_dict=True)
 
-        data = np.array([pp.data_dict[mobj.name]['post_selected']
-                         for mobj in meas_objs])
+        data = {qb.name: np.vstack(
+            (pp.data_dict['qb2']['classify_gm']['pg'], pp.data_dict['qb2'][
+                'classify_gm']['pe'], pp.data_dict['qb2']['classify_gm'][
+                'pf'])
+        ).T for qb in meas_objs}
         # Shape at this point:
-        # [mobjs, shots, product of optimizer dims (trainable + fixed params)]
+        # {qb.name: flattened three state readout}
         return data
 
     def _prepare_sequences(self, sequences=None, sequence_function=None,
@@ -177,7 +199,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     def run_analysis(self, analysis_class=None, analysis_kwargs=None, **kw):
         if analysis_class is None:
-            analysis_class = tda.MultiQubit_TimeDomain_Analysis
+            analysis_class = tda.VariationalAlgorithmAnalysis
         return super().run_analysis(analysis_class=analysis_class, analysis_kwargs=analysis_kwargs, **kw)
 
 
@@ -273,6 +295,8 @@ class VQAOptimizer:
         self.sweep_points = []
 
     def __call__(self, fun, **kw):
+        # in MeasurementControl.measure_soft_adaptive:
+        # self.adaptive_function(self.optimization_function, **self.af_pars)
         self.measurement_function = fun
         result = self.optimizer_function(self._full_circuit,
                                          **self.optimizer_kw)
@@ -284,13 +308,11 @@ class VQAOptimizer:
         self.sweep_points.append(params)
         all_params, batch_shape, targets = self.get_batch_params(params)
         data = self.measurement_function(all_params)
-        data = np.reshape(data, [len(data), -1, *batch_shape])
         # shape = [len(mobj), n_shots, *data_shape]
-        # dummy classical postprocessing doing nothing
         data = VariationalAlgorithm.classical_postprocessing(data)
-        cost = self.cost_function(data, targets)
-        # shape = [len(batch)]
-        return cost
+        cost = self.cost_function(data)
+        # FIXME: consider batch size
+        return np.average(cost, axis=0)
 
     def get_batch_params(self, trainable_params_values):
         """
@@ -378,6 +400,8 @@ class VQAOptimizer:
     def _set_cost_function(self, cost_function):
         if callable(cost_function):
             self.cost_function = cost_function
+        elif cost_function == 'va_cost_function':
+            self.cost_function = VariationalAlgorithm.cost_function
         elif isinstance(cost_function, str):
             self.cost_function = getattr(self, cost_function)
         else:
