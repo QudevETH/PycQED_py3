@@ -497,7 +497,6 @@ def convert_settings_to_hdf(timestamp: str):
         timestamp(str): Timestamp of the settings file.
     """
     from pycqed.analysis import analysis_toolbox as a_tools
-    from pycqed.utilities.general import dict_to_ordered_tuples
     from pycqed.measurement.measurement_control import MeasurementControl
     from pycqed.utilities.io import base_io
 
