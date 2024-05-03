@@ -1,0 +1,8 @@
+{
+    "offset_i_min": -0.1,
+    "offset_i_max": 0.1,
+    "offset_i_pts": 10,
+    "offset_q_min": -0.1,
+    "offset_q_max": 0.1,
+    "offset_q_pts": 10
+}
