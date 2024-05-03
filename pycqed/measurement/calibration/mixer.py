@@ -31,7 +31,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
     The following kwargs are interpreted by this class:
         - amplitude (float): Amplitude of the calibration drive pulse. Default
         set to 0.1V.
-        - trigger_sep (float): Seperation time in s between trigger signals.
+        - trigger_sep (float): Separation time in s between trigger signals.
             Defaults to 5e-6 s.
         - force_ro_mod_freq (bool, optional): Whether to force the current
             ro_mod_freq setting even though it results in non
@@ -39,6 +39,12 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             Defaults to false.
         - prepend_zeros (int): temporary value for pulsar.prepend_zeros.
             Defaults to 0.
+        - qubit (str): Convenience wrapper: if task_list is None, a qubit
+            can be provided to for which a task list is generated in the init.
+            The values for the amplitude ratio and phase offset are either
+            provided by kwargs or taken from "self.default_experiment_values"
+        - alpha (list(float)): see qubit
+        - phi_skew (list(float)): see qubit
     """
     kw_for_sweep_points = {
         'alpha': dict(param_name='alpha', unit='',
@@ -127,7 +133,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
         Args:
             qb_obj (QuDev_transmon): Qubit object which is tested for
                 commensurability.
-            trigger_sep (float): Seperation time in s between trigger signals.
+            trigger_sep (float): Separation time in s between trigger signals.
             force_ro_mod_freq: Whether to force the current ro_mod_freq
                 setting even though it results in non commensurable LO
                 frequencies for the specified trigger_sep.
@@ -145,7 +151,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             log.warning('Difference of RO LO and drive LO frequency '
                         'resulting from the chosen modulation frequencies '
                         'is not an integer multiple of the trigger '
-                        'seperation.')
+                        'separation.')
             if not force_ro_mod_freq:
                 if qb_obj.ro_fixed_lo_freq() is not None:
                     log.warning(
@@ -272,6 +278,17 @@ class MixerCarrier(twoqbcal.CalibBuilder):
     different values of DC biases. The subsequent analysis fits an
     analytical model to the measured data and extracts the settings
     minimizing the LO leakage.
+
+    The following kwargs are interpreted by this class:
+        - trigger_sep (float): Separation time in s between trigger signals.
+            Defaults to 5e-6 s.
+        - qubit (str): Convenience wrapper: if task_list is None, a qubit
+            can be provided to for which a task list is generated in the init.
+            The values for the amplitude offsets are either
+            provided by kwargs "offset_i" and "offset_i" or taken from
+            "self.default_experiment_values['offset']"
+        - offset_i (list(float)): see qubit
+        - offset_q (list(float)): see qubit
     """
 
     kw_for_sweep_points = {
