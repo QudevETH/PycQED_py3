@@ -47,11 +47,24 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                       label='Phase Off.', dimension=1)
     }
     default_experiment_name = 'MixerSkewness'
+    default_experiment_values = dict(alpha=np.linspace(0.9, 1.1, 10),
+                                     phi_skew=np.linspace(-20, 20, 10))
 
-    def __init__(self, task_list, sweep_points=None, amplitude=0.1, **kw):
+    def __init__(self, task_list=None, sweep_points=None, amplitude=0.1, **kw):
         try:
             # calibration points not needed for mixer calibration
             kw['cal_states'] = ''
+            if task_list is None:
+                qubit = kw.get("qubit", None)
+                assert qubit, "Provide a task list or a qubit"
+                task_list = [dict(
+                    qb=qubit,
+                    alpha=kw.get('alpha',
+                                 self.default_experiment_values['alpha']),
+                    phi_skew=kw.get('phi_skew',
+                                    self.default_experiment_values[
+                                        'phi_skew']),
+                    amplitude=kw.get('amplitude', 0.1))]
             super().__init__(task_list, sweep_points=sweep_points,
                              **kw)
             self.switch = 'calib'
@@ -268,13 +281,25 @@ class MixerCarrier(twoqbcal.CalibBuilder):
                          label='Offset V_Q', dimension=1)
     }
     default_experiment_name = 'MixerCarrier'
+    default_experiment_values = dict(offset=np.linspace(-.1, .1, 10))
 
-    def __init__(self, task_list, sweep_points=None, **kw):
+    def __init__(self, task_list=None, sweep_points=None, **kw):
         try:
+            if task_list is None:
+                # convenience functionality, experiment can be conducted
+                # without a task list
+                qubit = kw.get("qubit", None)
+                assert qubit, "Provide a task list or a qubit"
+                task_list = [dict(
+                    qb=qubit,
+                    offset_i=kw.get('offset_i',
+                                    self.default_experiment_values['offset']),
+                    offset_q=kw.get('offset_q',
+                                    self.default_experiment_values['offset']))]
             df_name = kw.pop('df_name', 'int_avg_det_spec')
             df_kwargs = kw.pop('df_kwargs', {})
             df_kwargs['live_plot_transform_type'] = \
-            df_kwargs.get("live_plot_transform_type", 'mag_phase')
+                df_kwargs.get("live_plot_transform_type", 'mag_phase')
             # calibration points not needed for mixer calibration
             cal_states = kw.pop('cal_states', [])
 
