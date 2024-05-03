@@ -2652,11 +2652,13 @@ class QuDev_transmon(MeasurementObject):
         """
         return {self.name: self.get_channels(drive=drive, ro=ro, flux=flux)}
 
-    def add_reset_schemes(self, preselection=True,
-                          parametric_flux_reset=True,
-                          feedback_reset=True):
-        """
-        Adds reset schemes to the current instance.
+    def add_reset_schemes(
+        self,
+        preselection=True,
+        feedback_reset=True,
+        parametric_flux_reset=False
+    ):
+        """Adds reset schemes to the current instance.
 
         This function adds reset schemes to the current instance of an
         QuDev_transmon. It checks if each scheme is already present before
@@ -2669,10 +2671,12 @@ class QuDev_transmon(MeasurementObject):
         Args:
             preselection (bool, optional): If True, adds the Preselection
                 scheme. Default is True.
-            parametric_flux_reset (bool, optional): If True, adds the
-                ParametricFluxReset scheme. Default is True.
             feedback_reset (bool, optional): If True, adds the FeedbackReset
-            scheme. Default is True.
+                scheme. Default is True.
+            parametric_flux_reset (bool, optional): If True, adds the
+                ParametricFluxReset scheme. Default is True. Because of
+                some implementation dependencies (LRU) and insufficient
+                testing.
 
         Returns: None
 
@@ -2680,39 +2684,53 @@ class QuDev_transmon(MeasurementObject):
             self.reset.submodules. The error message will specify which
             submodule and instance names it was called on.
         """
+        msg = (
+            "{} submodule already in {}.reset.submodules. "
+            "Submodule won't be created again. "
+        )
 
-        msg = "{} submodule already in {}.reset.submodules. " \
-              "Submodule won't be created again. "
+        # Inform user
+        # FIXME: Add to logging framework _and_ print
+        print("Added the following reset schemes:")
+        print(f"-- preselection: {preselection}")
+        print(f"-- feedback_reset: {feedback_reset}")
+        print(f"-- parametric_flux_reset: {parametric_flux_reset}")
+
 
         if preselection:
             submodule_name = reset.Preselection.DEFAULT_INSTANCE_NAME
             if submodule_name in self.reset.submodules:
                 log.error(msg.format(submodule_name, self.name))
             else:
-                self.reset.add_submodule("preselection",
-                                         reset.Preselection(self.reset))
-        if parametric_flux_reset:
-            submodule_name = reset.ParametricFluxReset.DEFAULT_INSTANCE_NAME
-            if submodule_name in self.reset.submodules:
-                log.error(msg.format(submodule_name, self.name))
-            else:
-                self.reset.add_submodule(submodule_name,
-                                         reset.ParametricFluxReset(self.reset))
+                self.reset.add_submodule("preselection", reset.Preselection(self.reset))
+
         if feedback_reset:
             submodule_name = reset.FeedbackReset.DEFAULT_INSTANCE_NAME
             if submodule_name in self.reset.submodules:
                 log.error(msg.format(submodule_name, self.name))
             else:
-                self.reset.add_submodule(submodule_name,
-                                         reset.FeedbackReset(self.reset))
+                self.reset.add_submodule(
+                    submodule_name, reset.FeedbackReset(self.reset)
+                )
 
+        if parametric_flux_reset:
+            submodule_name = reset.ParametricFluxReset.DEFAULT_INSTANCE_NAME
+            if submodule_name in self.reset.submodules:
+                log.error(msg.format(submodule_name, self.name))
+            else:
+                self.reset.add_submodule(
+                    submodule_name, reset.ParametricFluxReset(self.reset)
+                )
+
+# FIXME: Is this needed with add_reset_schemes covering PFM?
     def add_parametric_flux_modulation(
-            self, op_name="PFM",
-            parameter_prefix='parametric_flux_modulation',
-            transition_name='ge',
-            pulse_type='BufferedCZPulse'):
-        """
-        Adds a parametric flux based reset operation to the qubit object.
+        self,
+        op_name="PFM",
+        parameter_prefix="parametric_flux_modulation",
+        transition_name="ge",
+        pulse_type="BufferedCZPulse",
+    ):
+        """Adds a parametric flux based reset operation to the qubit object.
 
         This method allows the user to add a parametric flux modulation
         operation to the qubit object, which can be used to perform a reset
