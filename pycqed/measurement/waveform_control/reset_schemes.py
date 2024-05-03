@@ -521,13 +521,20 @@ class FeedbackReset(ResetScheme):
 
         # FIXME: assume reference instrument has acq_length,
         #  and acquisition instrument ?
-        minimum_delay = self.instr_ref.acq_length() + \
-                        self.instr_ref.instr_acq.get_instr().feedback_latency()
-        if ro_feedback_delay < minimum_delay:
-            msg = f"ro_feedback_delay ({ro_feedback_delay}s) is shorter " \
-                  f"than minimum expected delay computed from acq_length and" \
-                  f" acq_instr.feedback_latency ({minimum_delay}s)"
-            raise ValueError(msg)
+
+        # FIXME: Not every instrument has feedback_latency()
+        if hasattr(self.instr_ref.get_instr(), 'feedback_latency'):
+            minimum_delay = self.instr_ref.acq_length() + \
+                            self.instr_ref.instr_acq.get_instr().feedback_latency()
+
+            if ro_feedback_delay < minimum_delay:
+                msg = f"ro_feedback_delay ({ro_feedback_delay}s) is shorter " \
+                    f"than minimum expected delay computed from acq_length and" \
+                    f" acq_instr.feedback_latency ({minimum_delay}s)"
+                raise ValueError(msg)
+        else:
+            log.warning(f"{self.instr_ref.get_instr()} has no function \
+            feedback_latency()")
 
         return ro_feedback_delay
 
