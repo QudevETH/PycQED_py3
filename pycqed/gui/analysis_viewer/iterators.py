@@ -164,9 +164,17 @@ class TimestampBidirectionalIterator(object):
         self.timestamp_iterator.reset()
         self.daystamp_iterator.reset()
         while True:
-            current = self.next()
+            current = self._next_timestamp()
             if timestamp_folder == current:
                 break
+
+    def _next_timestamp(self) -> str:
+        """Wrapper for next, ensuring that a timestamp is returned
+
+        This is to make set_pointer_to_timestamp work correctly in child
+        classes where an overridden next gives a different return value.
+        """
+        return TimestampBidirectionalIterator.next(self)
 
     def next(self) -> str:
         """Gets next element.
@@ -255,28 +263,6 @@ class ExperimentIterator(TimestampBidirectionalIterator):
     Raises:
         StopIteration: if iteration end is reached in either direction.
     """
-
-    def set_pointer_to_timestamp(self, timestamp_folder: str):
-        """Points iterator to `timestamp_folder`.
-
-        Args:
-            `timestamp_folder`: string which specifies full path to a folder
-                that holds the HDF5 file of the experiment. For example
-                'C:\\\\Users\\\\Username\\\\pycqed\\\\data\\\\20230511
-                \\\\141202_resonator_scan_qb1'. (Quadruple backslashes used
-                for sphinx documentation generation, actual values should use
-                single backslashes).
-        """
-        self.timestamp_iterator.reset()
-        self.daystamp_iterator.reset()
-        while True:
-            # The super() here is important, because the parent class deals
-            # with timestamps. On the other hand, the ExperimentIterator.next()
-            # returns a BaseAnalysis object and not a string. That's why this
-            # method is overloaded.
-            current = super().next()
-            if timestamp_folder == current:
-                break
 
     def next(self) -> base_analysis.BaseDataAnalysis:
         """Gets next element.
