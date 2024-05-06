@@ -2448,7 +2448,7 @@ class MeasurementControl(Instrument):
             if self.detector_function.detector_control == 'soft':
                 # FIXME: this is an inconsistency that should not be there.
                 xlen = np.shape(new_data)[1]
-            else:
+            if True:
                 # in case of an N-D Hard detector dataset
                 xlen = np.shape(new_data)[0]
 

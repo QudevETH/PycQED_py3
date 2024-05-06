@@ -981,6 +981,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         else:
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
+            log.warning('Non-random horrible transpose here!')
             self.proc_data_dict['projected_data_dict'] = OrderedDict()
 
             for qbn, data_dict in self.proc_data_dict[
@@ -988,7 +989,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 self.proc_data_dict['projected_data_dict'][qbn] = OrderedDict()
                 for state_prob in ['pg', 'pe', 'pf']:
                     self.proc_data_dict['projected_data_dict'][qbn].update(
-                        {state_prob: data for key, data in data_dict.items()
+                        {state_prob: data.T for key, data in data_dict.items()
                          if state_prob in key})
 
             # correct probabilities given calibration matrix
@@ -2944,11 +2945,13 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'sweep_points'])
             qb2_sweep = len(self.proc_data_dict['sweep_points_dict']['qb2'][
                                 'sweep_points'])
-            cost_func = \
-                np.reshape(cost_func, (qb3_sweep, -1, qb2_sweep))
-            self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
-                'value': np.average(cost_func, axis=1)
-            }
+            n_hard_sp, n_soft_sp = self.sp.length()
+            print(f"self.sp.length() = {self.sp.length()}")
+            # cost_func = np.reshape(cost_func, (qb3_sweep, -1, qb2_sweep))
+            cost_func = np.reshape(cost_func, (-1, n_hard_sp, n_soft_sp))
+            # self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
+            #     'cost_function': np.average(cost_func, axis=0)
+            # }
 
     def prepare_plots(self):
         super().prepare_plots()

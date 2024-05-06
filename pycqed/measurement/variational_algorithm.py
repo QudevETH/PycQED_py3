@@ -181,8 +181,8 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         pp.run(data_dict, overwrite_data_dict=True)
 
         data = {qb.name: np.vstack(
-            (pp.data_dict['qb2']['classify_gm']['pg'], pp.data_dict['qb2'][
-                'classify_gm']['pe'], pp.data_dict['qb2']['classify_gm'][
+            (pp.data_dict[qb.name]['classify_gm']['pg'], pp.data_dict[qb.name][
+                'classify_gm']['pe'], pp.data_dict[qb.name]['classify_gm'][
                 'pf'])
         ).T for qb in meas_objs}
         # Shape at this point:

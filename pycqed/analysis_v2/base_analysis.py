@@ -685,7 +685,7 @@ class BaseDataAnalysis(object):
             # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of 
             # entries in mc_points[0] and mc_points[1] makes up one measurement 
             # point.
-            tuple_measurement = False
+            tuple_measurement = False  # TODO check if can be deleted
             raw_data_dict['hard_sweep_points'] = np.unique(mc_points[0])
             if mc_points.shape[0] > 1:
                 TwoD = True
