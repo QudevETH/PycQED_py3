@@ -570,10 +570,18 @@ class BaseDataAnalysis(object):
                                 'An empty list will be returned.')
                     raw_data_dict_ts['measured_values'] = []
                 if 'optimization_sweep_points' in params_dict:
+                    array = np.array  # FIXME
                     sweep_points_str = data_file[
                         'Optimization_result']['opt'].attrs['sweep_points']
                     raw_data_dict_ts['optimization_sweep_points'] = \
-                        eval(sweep_points_str)
+                        np.concatenate(eval(sweep_points_str))
+                if 'cost_function_values' in params_dict:
+                    array = np.array  # FIXME
+                    cost_function_values = data_file[
+                        'Optimization_result']['opt'].attrs[
+                        'cost_function_values']
+                    raw_data_dict_ts['cost_function_values'] = \
+                        np.concatenate(eval(cost_function_values))
                     # sweep_points_str = \
                     #     re.findall(r"[-+]?\d*\.\d+|\d+",
                     #                sweep_points_str)

@@ -111,6 +111,8 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         self.sweep_points = sp_mod.SweepPoints([{
             p: (vals[:, i], '', p)
             for i, p in enumerate(self.params)}])
+        # print(f"self.sweep_points = {self.sweep_points}", vals)  # debug
+        # raise Exception('here: awg_sweep_functions')
         seqs, _ = self.circuit_builder.sweep_n_dim(
             sweep_points=self.sweep_points, body_block=self.block,
             body_block_func=self.block_func,

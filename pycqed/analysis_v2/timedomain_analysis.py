@@ -2909,32 +2909,46 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         if not hasattr(self, 'params_dict'):
             self.params_dict = OrderedDict()
         # FIXME: optimize = True, but get_param_value('optimize') = None
-        # if self.get_param_value('optimize'):
-        #     self.params_dict.update(
-        #         {'optimization_sweep_points': 'optimization_sweep_points'})
+        # assume always training, because self.get_param_value('optimize')
+        # is only available after extract_data()
+        self.params_dict.update(
+                {'optimization_sweep_points': 'optimization_sweep_points',
+                 'cost_function_values': 'cost_function_values'})
         super().extract_data()
 
     def process_data(self):
         super().process_data()
+        print('VariationalAlgorithmAnalysis used')
 
         # FIXME: replacing the values of a qubit is a hack, we should
         #  instead create a new entry
         if self.get_param_value('optimize'):
-            sweep_points_len = len(self.proc_data_dict['sweep_points_dict'][
-                                       'qb2']['sweep_points'])
-
+            # BaseAnalysis: self.raw_data_dict['optimization_sweep_points']
             # use real sweep points
             # self.proc_data_dict['sweep_points_dict'][
             #     'qb2']['sweep_points'] = \
             #     self.raw_data_dict['optimization_sweep_points']
-
-            cpp_output = va.classical_postprocessing(self.proc_data_dict[
-                    'single_shots_per_qb_thresholded'])
-            cost_func = np.reshape(
-                va.cost_function(cpp_output), (-1, sweep_points_len))
+            # sweep_points_len = len(self.proc_data_dict['sweep_points_dict'][
+            #                            'qb2']['sweep_points'])
+            # cpp_output = va.classical_postprocessing(self.proc_data_dict[
+            #         'single_shots_per_qb_thresholded'])
+            # cost_func = np.reshape(
+            #     va.cost_function(cpp_output), (-1, sweep_points_len))
+            cost_func = self.raw_data_dict['cost_function_values']
+            sweep_points = self.raw_data_dict['optimization_sweep_points']
+            # sweep_points = sweep_points.reshape((len(sweep_points), -1))
             self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
-                'cost func': np.average(cost_func, axis=0),
+                'cost func': np.reshape(cost_func, (-1)),
             }
+            for i in range(sweep_points.shape[1]):
+                self.proc_data_dict['projected_data_dict'][
+                    self.qb_names[0]].update(
+                    {f'train param {i}': sweep_points[:, i]}
+                )
+            for useless_qb in self.qb_names[1:]:
+                del self.proc_data_dict['projected_data_dict'][useless_qb]
+            self.proc_data_dict['sweep_points_dict'][
+                self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
         else:
             # cpp_output shape: flattened 1D array
             cpp_output = va.classical_postprocessing(self.proc_data_dict[
@@ -2954,11 +2968,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # }
 
     def prepare_plots(self):
-        super().prepare_plots()
+        # super().prepare_plots()
         self.prepare_cost_function_plots()
 
     def prepare_cost_function_plots(self):
-        pass
+        self.prepare_projected_data_plots()
 
 
 
