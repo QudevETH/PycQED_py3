@@ -981,13 +981,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         else:
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
-            log.warning('Non-random horrible transpose here!')
             self.proc_data_dict['projected_data_dict'] = OrderedDict()
 
             for qbn, data_dict in self.proc_data_dict[
                     'meas_results_per_qb'].items():
                 self.proc_data_dict['projected_data_dict'][qbn] = OrderedDict()
                 for state_prob in ['pg', 'pe', 'pf']:
+                    # Transpose: see FIXME of self.proc_data_dict
                     self.proc_data_dict['projected_data_dict'][qbn].update(
                         {state_prob: data.T for key, data in data_dict.items()
                          if state_prob in key})
