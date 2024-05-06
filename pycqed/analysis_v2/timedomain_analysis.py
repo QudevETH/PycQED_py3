@@ -8729,6 +8729,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                     self.proc_data_dict.get(pdd + suffix, {}).items():
                 prep_states = self.sp.get_values("initialize")
                 for j, (state, data) in enumerate(data_qbi.items()):
+                    data = data.T  # See FIXME of self.proc_data_dict
                     n_ro = data.shape[0] # infer number of readouts per sequence
                     projdd_per_prep_state[qbn][state] = dict()
                     for i, prep_state in enumerate(prep_states):
