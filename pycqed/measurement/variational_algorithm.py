@@ -104,18 +104,18 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     # here data should be in the flattened shape
     @staticmethod
-    def classical_postprocessing(single_shots_per_qb_thresholded,
-                                 classical_params=1.0):
+    def classical_postprocessing(single_shots_per_qb_thresholded):
         # returns the sum of g state population
         # data shape: dictionary of flattened single shot measurement
         e_state_data = [single_shots_per_qb_thresholded[qbn][:, 1] for qbn
                         in single_shots_per_qb_thresholded.keys()]
         # return shape: {qb: (flattened_len,)} -> (flattened_len,)
-        return np.average(e_state_data, axis=0)
+        # return value: averaged e state population
+        return np.average(e_state_data, axis=0)  # average over qubits
 
     @staticmethod
     def cost_function(cpp_output, targets):
-        # receive data shape: (n_shots, trainable params, fixed params)
+        # cpp_output: (n_shots, trainable params, fixed params)
         targets = np.array(targets)
         cost_func = np.average(
             np.array([
@@ -310,7 +310,9 @@ class VQAOptimizer:
     """
 
     def __init__(self, optimizer_function, optimizer_kw, cost_function,
-                 training_settings, ):
+                 training_settings, hybrid=False,
+                 classical_optimizer_function_name=None,
+                 classical_optimizer_kw=None):
         self._set_optimizer_function(optimizer_function, optimizer_kw)
         self._set_cost_function(cost_function)
         self.training_settings = training_settings
@@ -318,6 +320,10 @@ class VQAOptimizer:
         # FIXME maybe this should not be called sweep_points
         self.sweep_points = []
         self.cost_function_values = []
+        self.hybrid = hybrid
+        if self.hybrid:
+            self._set_classical_optimizer_function(
+                classical_optimizer_function_name, classical_optimizer_kw)
 
     def __call__(self, fun, **kw):
         # in MeasurementControl.measure_soft_adaptive:
@@ -334,21 +340,25 @@ class VQAOptimizer:
         all_params, batch_shape, targets = self.get_batch_params(params)
         # Below: optimization_function in measurement_control.py
         data = self.measurement_function(all_params)
-        hybrid = False
-        if hybrid:
-            data = [
+        if self.hybrid:
+            data = np.array([
                 data[key].reshape((-1, *batch_shape, 3)) for key in data.keys()
-            ]
-            # data shape: (n_qb, n_shots, trainable params, fixed params,
+            ])
+            # data shape: (n_qb, n_shots, n_trainable_params, n_fixed_params,
             # 3 states)
             costs = []
             for i in range(batch_shape[0]):
                 data_batch = data[:, :, i, :, :]
-                # data batch shape: (n_qb, n_shots, fixed params, 3 states)
-                cost, c_para = \
-                    self._classical_training(data_batch, batch_shape, targets)
-                costs.append(cost)
-            return costs
+                # data batch shape: (n_qb, n_shots, n_fixed_params, 3 states)
+                # cost is scalar
+                cost = \
+                    self._classical_training(data_batch, targets)
+                costs.append([cost])
+            # record training process
+            self.sweep_points.append(np.atleast_2d(params))  # Nelder-Mead, EGO
+            self.cost_function_values.append(np.array(costs))
+            # costs here is equivalent to cost below
+            return np.array(costs)
         else:
             cpp_output = VariationalAlgorithm.classical_postprocessing(data)
             cpp_output = cpp_output.reshape((-1, *batch_shape))
@@ -356,15 +366,33 @@ class VQAOptimizer:
             # batch_shape = (n_trainable, n_fixed)
             cost = self.cost_function(cpp_output, targets)
             # record training process
-            self.sweep_points.append(np.atleast_2d(params))  # Nelder-Mead / EGO
+            self.sweep_points.append(np.atleast_2d(params))  # Nelder-Mead, EGO
             self.cost_function_values.append(cost)
+            # cost: 2D list of values
+            # [[value_1], [value_2], ... [value_n_trainable]]
             return cost
 
-    def _classical_training(self, data_batch, batch_shape, targets):
+    def _classical_training(self, data_batch, targets):
         # optimize separately for each trainable parameter set
+        # return: cost (scalar)
+        data_batch_shape = data_batch.shape
         def to_optimize(c_para):
-            pass
-        return cost, c_para
+            # cpp_output: (n_shots, n_fixed_params)
+            # c_para: 1D array conforms the multi-qubit single-shot readout
+            c_para = np.array([1-c_para[0], c_para[0], 0, 0, 1, 0])  # FIXME
+            cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
+            for i in range(data_batch_shape[1]):
+                for j in range(data_batch_shape[2]):
+                    cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
+                        -1), c_para)
+            cost = np.average(np.array([
+                np.mean((row - targets) ** 2) for row in cpp_output
+            ]), axis=0)
+            return cost
+        result = self.classical_optimizer_function(to_optimize,
+                                                   **self.classical_optimizer_kw)
+        optimized_cost = result.fun
+        return optimized_cost
 
     def get_batch_params(self, trainable_params_values):
         """
@@ -414,6 +442,14 @@ class VQAOptimizer:
         # corresponds to the number of params, which are swept jointly.
         params_values = params_values.reshape(-1, params_values.shape[-1])
         return params_values, batch_shape, out_targets
+
+    def _set_classical_optimizer_function(self,
+                                          classical_optimizer_function_name,
+                                          classical_optimizer_kw):
+        assert classical_optimizer_function_name == 'scipy'  #  FIXME
+        from scipy.optimize import minimize
+        self.classical_optimizer_function = minimize
+        self.classical_optimizer_kw = classical_optimizer_kw
 
     def _set_optimizer_function(self, optimizer_function, optimizer_kw):
         self.optimizer_function = None
