@@ -523,7 +523,7 @@ class FeedbackReset(ResetScheme):
         #  and acquisition instrument ?
 
         # FIXME: Not every instrument has feedback_latency()
-        if hasattr(self.instr_ref.get_instr(), 'feedback_latency'):
+        if hasattr(self.instr_ref.inst_acq.get_instr(), 'feedback_latency'):
             minimum_delay = self.instr_ref.acq_length() + \
                             self.instr_ref.instr_acq.get_instr().feedback_latency()
 
