@@ -1957,3 +1957,85 @@ class Chevron(CalibBuilder):
             }
         })
         return d
+
+
+class LeakageAmplification(Chevron):
+    """
+    Leakage measurement for several successive CZ gates.
+
+    Measures the final population in the f level of the high-frequency
+    qubit, after num_cz_gates successive, identical gates.
+    Due to the coherent nature of the leakage, this typically creates
+    interference fringes. In order to reach constructive interferences,
+    one can sweep the delay (e.g. buffer) between pulses as one of the two
+    sweep dimensions.
+
+    Args:
+        sweep_param_1D (str): Name of a pulse attribute to sweep as first
+            sweep dimension.
+        sweep_param_2D (str): Name of a pulse attribute to sweep as second
+            sweep dimension.
+        sweep_range_dict (dict): Dictionary of the form
+    """
+
+    kw_for_task_keys = ['num_cz_gates', 'cphase']
+    default_experiment_name = f'Leakage_amplification'
+
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
+        task = super().preprocess_task(task, global_sweep_points,
+                                       sweep_points, **kw)
+        cz_pulse_name = task.get('cz_pulse_name', 'CZ')
+        if (cphase := task.get('cphase')) is not None:
+            cz_pulse_name = cz_pulse_name + str(cphase)
+            task['cz_pulse_name'] = cz_pulse_name
+        sp = task['sweep_points']
+        for dim, p in enumerate(sp.get_parameters()):
+            # The gate sequence consists of num_cz_gates gates.
+            # The following code creates the following pulse_off sweep points
+            # for each gate (note that pulse_off=0 means the gate is
+            # applied, while pulse_off=1 means that it is not applied):
+            #       0 | 1 1 1     1      1 0
+            #       1 | 1 1 1     1      0 0
+            #       2 | 1 1 1     1      0 0
+            #      ...|
+            # gate  i | 1 1 1   i+j<n    0 0
+            #      ...|
+            #      n-2| 1 1 0     0      0 0
+            #      n-1| 1 0 0     0      0 0
+            #         ------------------------
+            #           0 1 2 ... j ... n-1 n
+            #              sweep points
+            # While the above example uses sweep points equal to
+            # [0, 1, ... n], they can be any array of int [j1, j2...].
+            # The total number of gates (indexed by i) is fixed.
+            if p == 'num_cz_gates':
+                # Update processed task
+                for i in range(task[p]):
+                    # The following line finds the corresponding op_code,
+                    # taking into account possible modifications in
+                    # cz_pulse_name, see higher in this method.
+                    op_code = f"{cz_pulse_name} {task['qbc']} {task['qbt']}"
+                    # Note that, contrary to normal processed tasks,
+                    # these sweep points do not have a prefix. However the
+                    # op_code does uniquely identify them with the qubit names.
+                    sp.add_sweep_parameter(
+                        param_name=f'attr=pulse_off, op_code={op_code}, '
+                                   f'occurrence={i}',
+                        values=np.array([i+j<task['num_cz_gates']
+                                         for j in sp[p]]),
+                        unit='',
+                        label='Number of CZ gates',
+                        dimension=dim,
+                    )
+                # Update sweep points accordingly
+                global_sweep_points[dim].update(sp[dim])
+        return task
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.LeakageAmplificationAnalysis(
+            qb_names=self.meas_obj_names,
+            t_start=self.timestamp, **analysis_kwargs)
+        return self.analysis

@@ -701,6 +701,12 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                 self.channels += deepcopy(chs)
         else:
             self.channels = deepcopy(channels)
+        if len(self.channels) != len(set(self.channels)):
+            log.warning(
+                'Duplicate use of acquisition channel(s) detected. This can '
+                'happen when multiple measurement objects are configured to '
+                'use the same acq_I_channel/acq_Q_channel. Used channels '
+                f'for {self.acq_devs}: {self.channels}.')
         self.value_names = []
         self._channels_value_names_map = None
 
@@ -908,7 +914,7 @@ class MultiPollDetector(PollDetector):
         """
         def __init__(self, master_awg, awgs=()):
             self.master_awg = master_awg
-            self.awgs = list(set(awgs))
+            self.awgs = list(set([a for a in awgs if a is not None]))
 
         def start(self, **kw):
             for awg in self.awgs:

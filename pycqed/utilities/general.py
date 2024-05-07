@@ -157,7 +157,7 @@ def load_settings(instrument,
                   label: str='', folder: str=None,
                   timestamp: str=None, update=True,
                   load_settings_submodules=True, **kw):
-    '''
+    """
     Loads settings from an hdf5 file onto the instrument handed to the
     function. By default uses the last hdf5 file in the datadirectory.
     By giving a label or timestamp another file can be chosen as the
@@ -177,11 +177,17 @@ def load_settings(instrument,
         load_settings_submodules (bool): whether or not the parameters of
             submodules of `instrument` (and their child submodules recursively)
             should be loaded. Defaults to True.
+            If set to True, all parameters of all submodules are loaded,
+            independently of the kwarg params_to_set.
 
     Kwargs:
         params_to_set (list)    : list of strings referring to the parameters
-            that should be set for the instrument
-    '''
+            that should be loaded for the instrument. If not provided, all
+            parameters are loaded.
+            Note that loading parameters from submodules is not affected by
+            this kwarg. Either all or no parameters of submodules are loaded,
+            depending on the value of load_settings_submodules.
+    """
     from pycqed.utilities import settings_manager as setman
 
     def _load_settings(instrument, ins_loaded, params_to_set=None,
