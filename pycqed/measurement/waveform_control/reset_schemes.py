@@ -521,12 +521,10 @@ class FeedbackReset(ResetScheme):
         Raises:
             ValueError: If the delay is too short.
         """
-
-        # FIXME: assume reference instrument has acq_length,
-        #  and acquisition instrument ?
-
-        # FIXME: Not every instrument has feedback_latency()
-        if hasattr(self.instr_ref.inst_acq.get_instr(), 'feedback_latency'):
+        # FIXME: Assume reference instrument has acq_length,
+        # and acquisition instrument ? Further, not every instrument has feedback_latency()
+        # For now this ensures backwards compatibility in pycqed and qcodes
+        try:
             minimum_delay = self.instr_ref.acq_length() + \
                             self.instr_ref.instr_acq.get_instr().feedback_latency()
 
@@ -535,9 +533,10 @@ class FeedbackReset(ResetScheme):
                     f"than minimum expected delay computed from acq_length and" \
                     f" acq_instr.feedback_latency ({minimum_delay}s)"
                 raise ValueError(msg)
-        else:
-            log.warning(f"{self.instr_ref.get_instr()} has no function \
-            feedback_latency()")
+
+        except AttributeError as e:
+            msg = f"Error calculating minimum delay: {e}. Check instrument configuration."
+            log.warning(msg)  # inform user that we have no clue about the delay
 
         return ro_feedback_delay
 
