@@ -476,7 +476,7 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
         t (float): Time value.
         amp (float): Amplitude.
         gamma (float): Damping coefficient.
-        kappa (float): Coupling coefficient. 
+        kappa (float): Coupling coefficient.
         mu_a (float): Coefficient of the oscillation term.
         mu_b (float): Baseline offset.
         t0 (float): Initial time.
@@ -486,7 +486,7 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
 
     Returns:
         float: The calculated damped oscillation value at time 't'.
-  
+
     Function used for fitting model, that fits the following equation:
 
     Dr. Paul Magnard PhD Thesis, 2021 - equation 5.3 :
@@ -502,13 +502,20 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
                 and      g = c1*amp + c3*amp^3 + c5*amp^5
     """
 
-    g = c1 * amp + c3 * amp ** 3 + c5 * amp ** 5
+    g = c1 * amp + c3 * amp**3 + c5 * amp**5
 
     tau = t - t0
-    rabi = np.sqrt((- g ** 2 + (kappa - gamma) ** 2 / 4) * (1 + 0j))
-    return mu_b + mu_a \
-           * np.exp(-(kappa + gamma) * tau / 2) \
-           * np.abs(np.cosh(rabi * tau / 2) + np.sinh(rabi * tau / 2) * (kappa - gamma) / (2 * rabi)) ** 2
+    rabi = np.sqrt((-(g**2) + (kappa - gamma) ** 2 / 4) * (1 + 0j))
+    return (
+        mu_b
+        + mu_a
+        * np.exp(-(kappa + gamma) * tau / 2)
+        * np.abs(
+            np.cosh(rabi * tau / 2)
+            + np.sinh(rabi * tau / 2) * (kappa - gamma) / (2 * rabi)
+        )
+        ** 2
+    )
 
 
 def damped_oscillation_guess(model, t, data, **kw):
@@ -529,20 +536,21 @@ def damped_oscillation_guess(model, t, data, **kw):
 
     params = model.make_params()
 
-    params.add('mu_a', value=1, min=0.9, max=1.1)
-    params.add('mu_b', value=0, min=0, max=0.1)
-    params.add('t0', value=0, min=-0.1, max=0.1)
-    params.add('kappa', value=0.4e8, min=0, max=1e11)
-    params.add('gamma', value=0.5e7, min=0, max=1e11)
-    params.add('c1', value=3e8)
-    params.add('c3', value=0)
-    params.add('c5', value=0)
+    params.add("mu_a", value=1, min=0.9, max=1.1)
+    params.add("mu_b", value=0, min=0, max=0.1)
+    params.add("t0", value=0, min=-0.1, max=0.1)
+    params.add("kappa", value=0.4e8, min=0, max=1e11)
+    params.add("gamma", value=0.5e7, min=0, max=1e11)
+    params.add("c1", value=3e8)
+    params.add("c3", value=0)
+    params.add("c5", value=0)
 
     return params
 
+
 def tanh_fit(t, m, n, a, b):
     """Function used for fitting model.
-    
+
     It fits the following equation:
         a * (np.tanh(m * t + n) + 1)
     """

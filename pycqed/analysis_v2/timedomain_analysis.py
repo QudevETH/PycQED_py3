@@ -469,15 +469,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if 'w' in value_names[0]:
                     # FIXME: avoid dependency ana_v2 - ana_v3
                     self.channel_map = hlp_mod.get_qb_channel_map_from_file(
-                        self.qb_names, value_names=value_names,
-                        file_path=self.raw_data_dict['folder'])
+                        self.qb_names,
+                        value_names=value_names,
+                        file_path=self.raw_data_dict["folder"],
+                    )
                 else:
                     self.channel_map = {}
                     for qbn in self.qb_names:
                         self.channel_map[qbn] = value_names
 
         if len(self.channel_map) == 0:
-            raise ValueError('No qubit RO channels have been found.')
+            raise ValueError("No qubit RO channels have been found.")
 
     def get_sweep_points(self):
         """
@@ -486,7 +488,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         Creates self.sp
         """
-        self.sp = self.get_param_value('sweep_points')
+        self.sp = self.get_param_value("sweep_points")
         if self.sp is not None:
             self.sp = SweepPoints(self.sp)
 
@@ -529,11 +531,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 is ignored).
         """
         # Looks for instance of CalibrationPoints (or its repr)
-        cal_points = self.get_param_value('cal_points')
-        last_ge_pulses = self.get_param_value('last_ge_pulses',
-                                              default_value=False)
-        if hasattr(last_ge_pulses, '__iter__') and \
-                len(last_ge_pulses) != len(self.qb_names):
+        cal_points = self.get_param_value("cal_points")
+        last_ge_pulses = self.get_param_value("last_ge_pulses", default_value=False)
+        if hasattr(last_ge_pulses, "__iter__") and len(last_ge_pulses) != len(
+            self.qb_names
+        ):
             last_ge_pulses = len(self.qb_names) * list(last_ge_pulses)
 
         # default value for cal_states_rotations

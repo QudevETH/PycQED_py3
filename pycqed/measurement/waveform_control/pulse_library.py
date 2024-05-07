@@ -1,13 +1,14 @@
-"""
-Library containing various pulse shapes.
+"""Library containing various pulse shapes.
 """
 
+import logging
 import sys
+
 import numpy as np
 import scipy as sp
-from pycqed.measurement.waveform_control import pulse
-import logging
 from scipy.interpolate import interp1d
+
+from pycqed.measurement.waveform_control import pulse
 
 log = logging.getLogger(__name__)
 
@@ -17,32 +18,12 @@ pulse.pulse_libraries.add(sys.modules[__name__])
 class SSB_DRAG_pulse(pulse.Pulse):
     """In-phase Gaussian pulse with derivative quadrature and SSB modulation.
 
-    Modulation and mixer predistortion added with `apply_modulation` function.
+    Attributes:
+        I_channel: In-phase output channel name.
+        Q_channel: Quadrature output channel name.
+        phaselock: The phase reference time is the start of the algorithm if
+        True and the middle of the pulse otherwise. Defaults to True.
 
-    Args:
-        name (str): Name of the pulse, used for referencing to other pulses in a
-            sequence. Typically generated automatically by the `Segment` class.
-        element_name (str): Name of the element the pulse should be played in.
-        I_channel (str): In-phase output channel name.
-        Q_channel (str): Quadrature output channel name.
-        codeword (int or 'no_codeword'): The codeword that the pulse belongs in.
-            Defaults to 'no_codeword'.
-        amplitude (float): Pulse amplitude in Volts. Defaults to 0.1 V.
-        sigma (float): Pulse width standard deviation in seconds. Defaults to
-            250 ns.
-        nr_sigma (float): Pulse clipping length in units of pulse sigma. Total
-            pulse length will be `nr_sigma*sigma`. Defaults to 4.
-        motzoi (float): Amplitude of the derivative quadrature in units of
-            pulse sigma. Defautls to 0.
-        mod_frequency (float): Pulse modulation frequency in Hz. Defaults to
-            1 MHz.
-        phase (float): Pulse modulation phase in degrees. Defaults to 0.
-        phaselock (bool): The phase reference time is the start of the algorithm
-            if True and the middle of the pulse otherwise. Defaults to True.
-        alpha (float): Ratio of the I_channel and Q_channel output. Defaults to
-            1.
-        phi_skew (float): Phase offset between I_channel and Q_channel, in
-            addition to the nominal 90 degrees. Defaults to 0.
     """
 
     SUPPORT_INTERNAL_MOD = True
@@ -50,6 +31,35 @@ class SSB_DRAG_pulse(pulse.Pulse):
 
     def __init__(self, element_name, I_channel, Q_channel,
                  name='SSB Drag pulse', **kw):
+        """In-phase Gaussian pulse with derivative quadrature and SSB modulation.
+
+        Modulation and mixer predistortion added with `apply_modulation` function.
+
+        Args:
+            name (str): Name of the pulse, used for referencing to other pulses in a
+                sequence. Typically generated automatically by the `Segment` class.
+            element_name (str): Name of the element the pulse should be played in.
+            I_channel (str): In-phase output channel name.
+            Q_channel (str): Quadrature output channel name.
+            codeword (int or 'no_codeword'): The codeword that the pulse belongs in.
+                Defaults to 'no_codeword'.
+            amplitude (float): Pulse amplitude in Volts. Defaults to 0.1 V.
+            sigma (float): Pulse width standard deviation in seconds. Defaults to
+                250 ns.
+            nr_sigma (float): Pulse clipping length in units of pulse sigma. Total
+                pulse length will be `nr_sigma*sigma`. Defaults to 4.
+            motzoi (float): Amplitude of the derivative quadrature in units of
+                pulse sigma. Defautls to 0.
+            mod_frequency (float): Pulse modulation frequency in Hz. Defaults to
+                1 MHz.
+            phase (float): Pulse modulation phase in degrees. Defaults to 0.
+            phaselock (bool): The phase reference time is the start of the algorithm
+                if True and the middle of the pulse otherwise. Defaults to True.
+            alpha (float): Ratio of the I_channel and Q_channel output. Defaults to
+                1.
+            phi_skew (float): Phase offset between I_channel and Q_channel, in
+                addition to the nominal 90 degrees. Defaults to 0.
+        """
         super().__init__(name, element_name, **kw)
 
         self.I_channel = I_channel
@@ -59,8 +69,7 @@ class SSB_DRAG_pulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These
+        """Returns a dictionary of pulse parameters and initial values. These
         parameters are set upon calling the super().__init__ method.
         """
         params = {
@@ -128,14 +137,27 @@ class SSB_DRAG_pulse(pulse.Pulse):
 
 
 class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
-    """
-    SSB second-order DRAG pulse with quadrature scaling factor and
+    """SSB second-order DRAG pulse with quadrature scaling factor and
     frequency detuning.
+
+    When cancellation_frequency_offset is not None, this class applies
+    correction factors to the amplitude and env_mod_frequency in order to
+    decouple the effects of the three parameters amplitude, env_mod_frequency
+    and cancellation_frequency_offset. These correction factors work in the
+    limit abs(env_mod_freq) << 1/tg << cancellation_frequency_offset and ensure
+    that:
+
+        - the maximum spectral power of the pulse is at the env_mod_frequency
+        independent of the value for amplitude or
+        cancellation_frequency_offset;
+
+        - the spectral power of the pulse at 0 is not changed by changing
+        env_mod_frequency or cancellation_frequency_offset.
 
     FIXME: A future version of this this class should be adapted to allow
     crosstalk cancellation
 
-    Args:
+    Attributes:
         See parent class for docstring.
         Additional parameter recognised by this class:
             cancellation_frequency_offset (float; default=None):
@@ -148,18 +170,6 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
                 modulation frequency of the pulse envelope, introducing a
                 detuning from mod_frequency
 
-        When cancellation_frequency_offset is not None, this class applies
-        correction factors to the amplitude and env_mod_frequency in order to
-        decouple the effects of the three parameters amplitude,
-        env_mod_frequency and cancellation_frequency_offset.
-        These correction factors work in the limit
-        abs(env_mod_freq) << 1/tg << cancellation_frequency_offset
-        and ensure that:
-            - the maximum spectral power of the pulse is at the
-        env_mod_frequency independent of the value for amplitude or
-        cancellation_frequency_offset;
-            - the spectral power of the pulse at 0 is not changed by changing
-        env_mod_frequency or cancellation_frequency_offset.
     """
 
     @classmethod
@@ -234,14 +244,13 @@ class SSB_DRAG_pulse_cos(SSB_DRAG_pulse):
 
 
 class SSB_DRAG_pulse_with_cancellation(SSB_DRAG_pulse):
-    """
-    SSB Drag pulse with copies with scaled amp. and offset phase on extra
+    """SSB Drag pulse with copies with scaled amp. and offset phase on extra
     channels intended for interferometrically cancelling on-device crosstalk.
 
     FIXME: This class should be generalized to allow crosstalk cancellation
     for different drive pulse shapes (e.g., SSB_DRAG_pulse_cos).
 
-    Args:
+    Attributes:
         name (str): Name of the pulse, used for referencing to other pulses in a
             sequence. Typically generated automatically by the `Segment` class.
         element_name (str): Name of the element the pulse should be played in.
@@ -346,13 +355,12 @@ class SSB_DRAG_pulse_with_cancellation(SSB_DRAG_pulse):
 
 
 class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
-    """
-    The base class for different Gaussian-filtered piecewise constant pulses.
+    """The base class for different Gaussian-filtered piecewise constant pulses.
 
     To avoid clipping of the Gaussian-filtered rising and falling edges, the
     pulse should start and end with zero-amplitude buffer segments.
 
-    Args:
+    Attributes:
         name (str): The name of the pulse, used for referencing to other pulses
             in a sequence. Typically generated automatically by the `Segment`
             class.
@@ -371,8 +379,7 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
     """
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These
+        """Returns a dictionary of pulse parameters and initial values. These
         parameters are set upon calling the super().__init__ method.
         """
         params = {
@@ -443,8 +450,7 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
 
 
 class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
-    """
-    A zero-area pulse shape that allows to control the accumulated phase when
+    """A zero-area pulse shape that allows to control the accumulated phase when
     transitioning from the first pulse half to the second pulse half, by having
     an additional, low-amplitude segment between the two main pulse halves.
 
@@ -539,7 +545,6 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         Returns:
             Dict of control parameters names and values
         """
-
         # Currently cphase_calib_dict = {'param': [values...] ...} including
         # 'cphase', all with the same number of points.
         # Could be extended to instead hold tuples of (cphase_vals,
@@ -700,8 +705,7 @@ class BufferedSquarePulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These
+        """Returns a dictionary of pulse parameters and initial values. These
         parameters are set upon calling the
         super().__init__ method.
         """
@@ -766,8 +770,7 @@ class BufferedCZPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -851,8 +854,7 @@ class NZBufferedCZPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -982,8 +984,7 @@ class BufferedNZFLIPPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -1091,8 +1092,7 @@ class BufferedFLIPPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -1172,8 +1172,7 @@ class NZMartinisGellarPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -1250,8 +1249,7 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -1344,8 +1342,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params_super = super().pulse_params()
@@ -1432,8 +1429,7 @@ class GaussFilteredCosIQPulseMultiChromatic(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -1511,8 +1507,7 @@ class VirtualPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -1543,8 +1538,7 @@ class SquarePulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -1576,8 +1570,7 @@ class CosPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
+        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
         super().__init__ method.
         """
         params = {
@@ -1605,8 +1598,7 @@ class CosPulse(pulse.Pulse):
 
 
 class f0g1Pulse(pulse.Pulse):
-    """
-    definition of the symmetric shaped f0g1 Pulse
+    """definition of the symmetric shaped f0g1 Pulse
     """
     def __init__(self,
                  I_channel,
@@ -1667,7 +1659,6 @@ class f0g1Pulse(pulse.Pulse):
             tRise (float): when the pulse starts after the ramp up
             tFall (float): when the pulse ends before the ramp down
         """
-
         if not timeReverse:
             tRise = -photonTrunc * 2 / gamma1
             tFall = tRise + photonTrunc * pulseTrunc * \
@@ -1724,7 +1715,6 @@ class f0g1Pulse(pulse.Pulse):
             (float): value of the first formula of
                 pag. 43 - Dr. Paul Magnard PhD Thesis, 2021
         """
-
         # we define two variables that will help us in the definitions
         gamma = gamma1 + gamma2
 
@@ -1788,8 +1778,7 @@ class f0g1Pulse(pulse.Pulse):
 
     def joinJunctions(self, gTilde_vs_t, tRise, tFall, junctionTrunc,
                       junctionSigma, junctionType, t):
-        """
-        This function creates a 'ramp up' and a 'rump down' for the pulse
+        """This function creates a 'ramp up' and a 'rump down' for the pulse
         outside of the interval given by 'tStart' and 'tFall'.
 
         The returned shape will have 3 parts:
@@ -1837,7 +1826,6 @@ class f0g1Pulse(pulse.Pulse):
         Retruns:
             An array of values: the final pulse shape
         """
-
         # raise an error if type_junction is one of the three allowed
         junctionTypes_allowed = ['gaussian', 'tanh', 'ramp']
         if junctionType not in junctionTypes_allowed:
@@ -1891,9 +1879,7 @@ class f0g1Pulse(pulse.Pulse):
                            junctionTrunc, junctionSigma, junctionType="ramp",
                            timeReverse=False, lowerFreqPhoton=False,
                            driveDetScale=0):
-
-        """
-        Get the complex amplitude and frequency of the f0g1 pulse, pulse
+        """Get the complex amplitude and frequency of the f0g1 pulse, pulse
         tailored to emit a photon with shape:
                      ________________________________________________
                     /
@@ -1905,7 +1891,7 @@ class f0g1Pulse(pulse.Pulse):
           * ——————————————————————————————————
              e^(-gamma1*t/2) + e^(gamma2*t/2)
 
-        args:
+        Args:
             t (np.array): array of time values. It should start at 'tStart'
                 and end at 'tStop'; These two values are calculated with the
                 'relevantTimeValues' function
@@ -1949,7 +1935,6 @@ class f0g1Pulse(pulse.Pulse):
                 frequency of the pulse
 
         """
-
         # if t, acStark_coefs and gTilde_to_amplitude_coefs are not numpy
         # arrays we create them as so
         t = np.array(t)
@@ -2028,8 +2013,7 @@ class f0g1Pulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """
-        Returns a dictionary of pulse parameters and initial values. These
+        """Returns a dictionary of pulse parameters and initial values. These
         parameters are set upon calling the super().__init__ method.
         """
         params = {
@@ -2063,8 +2047,7 @@ class f0g1Pulse(pulse.Pulse):
 
 
     def chan_wf(self, chan, tvals):
-        """
-        given the channel and an array of times (tvals) it returns the
+        """Given the channel and an array of times (tvals) it returns the
         amplitudes of the pulse for this channel
         """
         # center the time, let it start and finish at the correct values to get
@@ -2108,10 +2091,8 @@ class f0g1Pulse(pulse.Pulse):
             return Q_mod
 
     def hashables(self, tstart, channel):
+        """It returns a hash list to identify the pulse
         """
-        it returns a hash list to identify the pulse
-        """
-
         hashlist = self.common_hashables(tstart, channel)
         if channel not in self.channels or self.pulse_off:
             return hashlist
@@ -2133,8 +2114,7 @@ class f0g1Pulse(pulse.Pulse):
 
 def apply_modulation(ienv, qenv, tvals, mod_frequency,
                      phase=0., phi_skew=0., alpha=1., tval_phaseref=0.):
-    """
-    Applies single sideband modulation, requires tvals to make sure the
+    """Applies single sideband modulation, requires tvals to make sure the
     phases are correct.
 
     If alpha >= 1.0: The modulation and predistortion is calculated as
