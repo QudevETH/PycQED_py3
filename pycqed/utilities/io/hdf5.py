@@ -454,7 +454,7 @@ class HDF5Loader(Loader):
                             # path to the instrument
                             inst_path = path_to_param.split('.')
 
-                        except ParameterNotFoundError:
+                        except KeyError:
                             # Exception is not raised here to not break the
                             # flow of loading the station. It is raised when
                             # user tries to get access to the parameter
