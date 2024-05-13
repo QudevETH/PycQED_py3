@@ -569,24 +569,6 @@ class BaseDataAnalysis(object):
                                 ' is not extracted from the file. '
                                 'An empty list will be returned.')
                     raw_data_dict_ts['measured_values'] = []
-                if 'optimization_sweep_points' in params_dict:
-                    array = np.array  # FIXME
-                    sweep_points_str = data_file[
-                        'Optimization_result']['opt'].attrs['sweep_points']
-                    raw_data_dict_ts['optimization_sweep_points'] = \
-                        np.concatenate(eval(sweep_points_str))
-                if 'cost_function_values' in params_dict:
-                    array = np.array  # FIXME
-                    cost_function_values = data_file[
-                        'Optimization_result']['opt'].attrs[
-                        'cost_function_values']
-                    raw_data_dict_ts['cost_function_values'] = \
-                        np.concatenate(eval(cost_function_values))
-                    # sweep_points_str = \
-                    #     re.findall(r"[-+]?\d*\.\d+|\d+",
-                    #                sweep_points_str)
-                    # raw_data_dict_ts['optimization_sweep_points'] = \
-                    #     np.array([float(sp) for sp in sweep_points_str])
 
                 # add hdf attributes and groups
                 for save_par, file_par in params_dict.items():
@@ -619,7 +601,7 @@ class BaseDataAnalysis(object):
                     else:
                         raw_data_dict_ts[save_par] = \
                             hdf5_io.read_from_hdf5(file_par, data_file)
-                a_tools.close_files([data_file])
+
                 # add settings
                 raw_data_dict_ts.update(
                     self.get_instrument_settings(
@@ -629,6 +611,44 @@ class BaseDataAnalysis(object):
                     if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
+
+                # add training data
+                try:
+                    if raw_data_dict_ts['exp_metadata']['optimize']:
+                        array = np.array  # FIXME
+                        # extract sweep points
+                        sweep_points_str = data_file[
+                            'Optimization_result']['opt'].attrs['sweep_points']
+                        raw_data_dict_ts['optimization_sweep_points'] = \
+                            np.concatenate(eval(sweep_points_str))
+                        # extract cost function values
+                        cost_function_values = data_file[
+                            'Optimization_result']['opt'].attrs[
+                            'cost_function_values']
+                        raw_data_dict_ts['cost_function_values'] = \
+                            np.concatenate(eval(cost_function_values))
+                        # FIXME: why update params_dict
+                        self.params_dict.update({
+                            'optimization_sweep_points':
+                                'optimization_sweep_points',
+                            'cost_function_values': 'cost_function_values'
+                        })
+                        # extract classical params result
+                        if raw_data_dict_ts['exp_metadata']['hybrid']:
+                            classical_params_result = data_file[
+                                'Optimization_result']['opt'].attrs[
+                                'classical_params_result']
+                            raw_data_dict_ts['classical_params_result'] = \
+                                np.array(eval(classical_params_result))
+                            # FIXME: why update params_dict
+                            self.params_dict.update({
+                                'classical_params_result':
+                                    'classical_params_result',
+                            })
+                except:
+                    pass
+
+                a_tools.close_files([data_file])
                 raw_data_dict.append(raw_data_dict_ts)
 
             except Exception as e:

@@ -2906,14 +2906,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
-        if not hasattr(self, 'params_dict'):
-            self.params_dict = OrderedDict()
-        # FIXME: optimize = True, but get_param_value('optimize') = None
+        # if not hasattr(self, 'params_dict'):
+        #     self.params_dict = OrderedDict()
         # assume always training, because self.get_param_value('optimize')
         # is only available after extract_data()
-        self.params_dict.update(
-                {'optimization_sweep_points': 'optimization_sweep_points',
-                 'cost_function_values': 'cost_function_values'})
+        # self.params_dict.update(
+        #         {'optimization_sweep_points': 'optimization_sweep_points',
+        #          'cost_function_values': 'cost_function_values',
+        #          'classical_params_result': 'classical_params_result',
+        #          })
         super().extract_data()
 
     def process_data(self):
@@ -2945,6 +2946,13 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     self.qb_names[0]].update(
                     {f'train param {i}': sweep_points[:, i]}
                 )
+
+            # logical branch for hybrid training
+            if self.get_param_value('hybrid'):
+                self.proc_data_dict['projected_data_dict'][self.qb_names[0]].update(
+                        {'classical_params_result': self.raw_data_dict[
+                            'classical_params_result']})
+
             for useless_qb in self.qb_names[1:]:
                 del self.proc_data_dict['projected_data_dict'][useless_qb]
             self.proc_data_dict['sweep_points_dict'][

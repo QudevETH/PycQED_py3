@@ -63,6 +63,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 data_processing_function=self._data_processing_function,
                 indexed_sweep=True,
             ))
+            self.exp_metadata.update({'hybrid': self.optimizer.hybrid})
         else:
             if sweep_points is None:
                 raise ValueError('No sweep points')
@@ -126,34 +127,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         )
         # (trainable parameter number in one batch,) or scalar
         return cost_func.reshape((-1, 1))  # 2D: for EGO function format
-
-    # @staticmethod
-    # def classical_postprocessing_train(e_state_data, classical_params=1.0):
-    #     # returns the sum of e state population over qubits
-    #     # e_state_data shape: (qubits, single_shots)
-    #     # return shape: (flattened_len,)
-    #     return np.sum(e_state_data, axis=0)
-    #
-    # @staticmethod
-    # def cost_function_analysis(cpp_output):
-    #     label = np.ones(cpp_output.shape[1]) * 2
-    #     output = np.zeros((cpp_output.shape[0], cpp_output.shape[-1]))
-    #     for i in range(cpp_output.shape[0]):
-    #         for j in range(cpp_output.shape[-1]):
-    #             output[i, j] = np.mean(np.square(cpp_output[i, :, j] - label))
-    #     return output
-    #
-    # @staticmethod
-    # def cost_function_train(cpp_output):
-    #     label = np.ones(cpp_output.shape[0]) * 2
-    #     output = np.mean(np.square(cpp_output - label))
-    #     return output
-    #
-    # @staticmethod
-    # def cost_function_train_analysis(cpp_output):
-    #     label = np.ones(cpp_output.shape[-1]) * 2
-    #     output = np.mean(np.square(cpp_output - label), axis=1)
-    #     return output
 
     # @staticmethod  # FIXME?
     def _data_processing_function(self, vals,
@@ -321,9 +294,11 @@ class VQAOptimizer:
         self.sweep_points = []
         self.cost_function_values = []
         self.hybrid = hybrid
+        self.classical_params_result = []  # FIXME: remove it when not hybrid
         if self.hybrid:
             self._set_classical_optimizer_function(
                 classical_optimizer_function_name, classical_optimizer_kw)
+            self.classical_params_list = []
 
     def __call__(self, fun, **kw):
         # in MeasurementControl.measure_soft_adaptive:
@@ -331,10 +306,18 @@ class VQAOptimizer:
         self.measurement_function = fun
         result = self.optimizer_function(self._full_circuit,
                                          **self.optimizer_kw)
+        print(f"result = {result}")
         # if self.optimizer_callback is not None:
         #     result = self.optimizer_callback(result)
-        return {'opt_result': result, 'sweep_points': self.sweep_points,
-                'cost_function_values': self.cost_function_values}
+        result_dict = {'opt_result': result, 'sweep_points': self.sweep_points,
+                'cost_function_values': self.cost_function_values,
+                }
+        if self.hybrid:
+            result_dict.update({
+                'classical_params_list': self.classical_params_list,
+                'classical_params_result': self.classical_params_result,
+            })
+        return result_dict
 
     def _full_circuit(self, params):
         all_params, batch_shape, targets = self.get_batch_params(params)
@@ -347,13 +330,16 @@ class VQAOptimizer:
             # data shape: (n_qb, n_shots, n_trainable_params, n_fixed_params,
             # 3 states)
             costs = []
+            classical_params = []
             for i in range(batch_shape[0]):
                 data_batch = data[:, :, i, :, :]
                 # data batch shape: (n_qb, n_shots, n_fixed_params, 3 states)
                 # cost is scalar
-                cost = \
+                cost, classical_params, classical_param = \
                     self._classical_training(data_batch, targets)
                 costs.append([cost])
+                self.classical_params_list.append(np.array(classical_params))
+                self.classical_params_result.append(np.array(classical_param))
             # record training process
             self.sweep_points.append(np.atleast_2d(params))  # Nelder-Mead, EGO
             self.cost_function_values.append(np.array(costs))
@@ -368,6 +354,7 @@ class VQAOptimizer:
             # record training process
             self.sweep_points.append(np.atleast_2d(params))  # Nelder-Mead, EGO
             self.cost_function_values.append(cost)
+            # self.classical_params_result.append(cost)
             # cost: 2D list of values
             # [[value_1], [value_2], ... [value_n_trainable]]
             return cost
@@ -376,23 +363,26 @@ class VQAOptimizer:
         # optimize separately for each trainable parameter set
         # return: cost (scalar)
         data_batch_shape = data_batch.shape
+        classical_params = []
         def to_optimize(c_para):
-            # cpp_output: (n_shots, n_fixed_params)
-            # c_para: 1D array conforms the multi-qubit single-shot readout
-            c_para = np.array([1-c_para[0], c_para[0], 0, 0, 1, 0])  # FIXME
+            # c_para_vector: 1D array conforms the multi-qubit single-shot
+            # readout
+            c_para_vector = np.array([1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
             cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
             for i in range(data_batch_shape[1]):
                 for j in range(data_batch_shape[2]):
                     cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
-                        -1), c_para)
+                        -1), c_para_vector)
             cost = np.average(np.array([
                 np.mean((row - targets) ** 2) for row in cpp_output
             ]), axis=0)
+            classical_params.append(c_para[0])
             return cost
         result = self.classical_optimizer_function(to_optimize,
                                                    **self.classical_optimizer_kw)
         optimized_cost = result.fun
-        return optimized_cost
+        classical_param = result.x
+        return optimized_cost, classical_params, classical_param
 
     def get_batch_params(self, trainable_params_values):
         """
