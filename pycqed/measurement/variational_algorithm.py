@@ -200,6 +200,44 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         return super().run_analysis(analysis_class=analysis_class, analysis_kwargs=analysis_kwargs, **kw)
 
 
+class VariationalAlgorithmCZ(VariationalAlgorithm):
+    """Experiment to train a variational quantum algorithm.
+
+    The blocks are hard coded at the moment because this was the easiest way to implement parallel
+    single-qubit gates during the state preparation. Next step would be to generalize to arbitrary
+    parameterized quantum circuits. TODO
+    """
+
+    default_experiment_name = 'VariationalAlgorithmCZ'
+
+    def set_block_and_params(self):
+        self.params = [f"prep_{qb.name}" for qb in self.qubits]
+        self.params += ['theta']
+        state_prep_block = self.simultaneous_blocks(
+            block_name=f'state_prep',
+            blocks=[self.block_from_anything(
+                f"Y:prep_{qb.name} {qb.name}", f"prep_{qb.name}")
+                for qb in self.qubits],
+            block_align='middle',
+            set_end_after_all_pulses=True,
+            destroy=True,
+        )
+        # in combination the cz block is a controlled-Y180 gate
+        cz_gate_block = self.block_from_ops(
+            block_name=f'cz_gate',
+            operations=[
+                f'X90 {self.qubits[1].name}',
+                f'CZ:theta {self.qubits[0].name} {self.qubits[1].name}',
+                f'X270 {self.qubits[1].name}',
+            ],
+        )
+        self.block = self.sequential_blocks('VQACZ',
+                                            [state_prep_block,
+                                             cz_gate_block],
+                                            set_end_after_all_pulses=True,
+                                            destroy=True)
+
+
 class QCNNExperiment(VariationalAlgorithm):
     """QuantumExperiment to perform training of the 3qb spin chain QCNN for quantum phase recognition.
     """
