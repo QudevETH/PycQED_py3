@@ -1547,7 +1547,7 @@ class Segment:
         if len(overlapping_elements) == 0:
             return
 
-        def disjoint_graphs(edges):
+        def find_connected_components(edges):
             """
             Merges overlapping_elements into lists of sets.
             """
@@ -1580,7 +1580,7 @@ class Segment:
             sets = [set(s) for s in sets]
             return sets
 
-        joint_overlapping_elements = disjoint_graphs(overlapping_elements)
+        joint_overlapping_elements = find_connected_components(overlapping_elements)
 
         for i in range(len(joint_overlapping_elements)):
             self._combine_elements(joint_overlapping_elements[i],
