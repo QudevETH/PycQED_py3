@@ -422,6 +422,224 @@ class QuDev_transmon(MeasurementObject):
                                self.DEFAULT_FLUX_DISTORTION),
                            vals=vals.Dict())
 
+        # f0g1 pulse parameters
+        op_name = "f0g1"
+        self.add_operation(op_name)
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_pulse_type",
+            "pulse_type",
+            initial_value="f0g1Pulse",
+            vals=vals.Enum("f0g1Pulse"),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_I_channel",
+            "I_channel",
+            initial_value=None,
+            vals=vals.Strings(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_Q_channel",
+            "Q_channel",
+            initial_value=None,
+            vals=vals.MultiType(vals.Enum(None), vals.Strings()),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_AcStark_IFCoefs",
+            "AcStark_IFCoefs",
+            initial_value=np.array([0, 0, 0]),
+            vals=vals.Arrays(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_AcStark_IFCoefs_error",
+            "AcStark_IFCoefs_error",
+            initial_value=np.array([0, 0, 0]),
+            vals=vals.Arrays(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_RabiRate_Coefs",
+            "RabiRate_Coefs",
+            initial_value=np.array([0, 0, 0]),
+            vals=vals.Arrays(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_RabiRate_Coefs_error",
+            "RabiRate_Coefs_error",
+            initial_value=np.array([0, 0, 0]),
+            vals=vals.Arrays(),
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_kappa", "kappa", initial_value=0.4e8, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_kappa_error",
+            "kappa_error",
+            initial_value=0,
+            vals=vals.Numbers(),
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_gamma1", "gamma1", initial_value=0.5e7, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_gamma2", "gamma2", initial_value=0.5e7, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_delta", "delta", initial_value=0, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_a", "a", initial_value=1, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_photonTrunc",
+            "photonTrunc",
+            initial_value=1.8,
+            vals=vals.Numbers(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_pulseTrunc",
+            "pulseTrunc",
+            initial_value=0,
+            vals=vals.Numbers(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_junctionTrunc",
+            "junctionTrunc",
+            initial_value=2,
+            vals=vals.Numbers(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_junctionSigma",
+            "junctionSigma",
+            initial_value=1.5e-9,
+            vals=vals.Numbers(),
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_frequency", "frequency", initial_value=0, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_phase", "phase", initial_value=0, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_alpha", "alpha", initial_value=1, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_phi_skew", "phi_skew", initial_value=0, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_timeReverse",
+            "timeReverse",
+            initial_value=False,
+            vals=vals.Bool(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_lowerFreqPhoton",
+            "lowerFreqPhoton",
+            initial_value=False,
+            vals=vals.Bool(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_driveDetScale",
+            "driveDetScale",
+            initial_value=0,
+            vals=vals.Numbers(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_junctionType",
+            "junctionType",
+            initial_value="ramp",
+            vals=vals.Strings(),
+        )
+        self.add_pulse_parameter(
+            op_name, "f0g1_delay", "delay", initial_value=0, vals=vals.Numbers()
+        )
+        self.add_pulse_parameter(
+            op_name,
+            "f0g1_delay_error",
+            "delay_error",
+            initial_value=0,
+            vals=vals.Numbers(),
+        )
+
+        # flattop_f0g1 pulse for Ac Stark and Rabi Rate calibrations
+        op_name = "flattop_f0g1"
+        self.add_operation(op_name)
+        self.add_pulse_parameter(
+            op_name,
+            op_name + "_pulse_type",
+            "pulse_type",
+            initial_value="GaussFilteredCosIQPulse",
+            vals=vals.Enum("GaussFilteredCosIQPulse"),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            op_name + "_amplitude",
+            "amplitude",
+            vals=vals.Numbers(),
+            initial_value=0.5,
+        )
+        self.add_pulse_parameter(
+            op_name,
+            op_name + "_pulse_length",
+            "pulse_length",
+            initial_value=100e-9,
+            vals=vals.Numbers(),
+        )
+        self.add_pulse_parameter(
+            op_name,
+            op_name + "_sigma",
+            "sigma",
+            vals=vals.Numbers(),
+            initial_value=2e-9,
+        )
+        self.add_pulse_parameter(
+            op_name,
+            op_name + "_buffer_length_start",
+            "buffer_length_start",
+            vals=vals.Numbers(),
+            initial_value=20e-9,
+        )
+        self.add_pulse_parameter(
+            op_name,
+            op_name + "_buffer_length_end",
+            "buffer_length_end",
+            vals=vals.Numbers(),
+            initial_value=20e-9,
+        )
+        self.add_pulse_parameter(
+            op_name,
+            op_name + "_mod_frequency",
+            "mod_frequency",
+            vals=vals.Numbers(),
+            initial_value=100e6,
+        )
+        self.add_pulse_parameter(
+            op_name, op_name + "_phase", "phase", vals=vals.Numbers(), initial_value=0
+        )
+        self.add_pulse_parameter(
+            op_name, op_name + "_alpha", "alpha", vals=vals.Numbers(), initial_value=1
+        )
+        self.add_pulse_parameter(
+            op_name,
+            op_name + "_phi_skew",
+            "phi_skew",
+            vals=vals.Numbers(),
+            initial_value=0,
+        )
 
         # Pulse preparation parameters
         DEFAULT_PREP_PARAMS = dict(preparation_type='wait',
@@ -468,6 +686,80 @@ class QuDev_transmon(MeasurementObject):
                       'parameters will be temporarily set to the respective '
                       'values provided in the dict.'
         )
+
+        # f0g1_reset pulse for unconditional all-microwave reset
+        # The operation is spirit is identical to f0g1_flattop with own params
+        op_name = 'f0g1_reset_pulse'
+        self.add_operation(op_name)
+        self.add_pulse_parameter(op_name, op_name + '_pulse_type', 'pulse_type',
+                                 initial_value='GaussFilteredCosIQPulse',
+                                 vals=vals.Enum('GaussFilteredCosIQPulse'))
+        self.add_pulse_parameter(op_name, op_name + '_amplitude', 'amplitude',
+                                 vals=vals.Numbers(), initial_value=0.5)
+        self.add_pulse_parameter(op_name, op_name + '_pulse_length', 'pulse_length',
+                                 initial_value=100e-9, vals=vals.Numbers())
+        self.add_pulse_parameter(op_name, op_name + '_gaussian_filter_sigma', 'gaussian_filter_sigma',
+                                 vals=vals.Numbers(), initial_value=5e-9)
+        self.add_pulse_parameter(op_name, op_name + '_buffer_length_start', 'buffer_length_start',
+                                 vals=vals.Numbers(), initial_value=20e-9)
+        self.add_pulse_parameter(op_name, op_name + '_buffer_length_end', 'buffer_length_end',
+                                 vals=vals.Numbers(), initial_value=20e-9)
+        self.add_pulse_parameter(op_name, op_name + '_mod_frequency', 'mod_frequency',
+                                 vals=vals.Numbers(), initial_value=100e6)
+        self.add_pulse_parameter(op_name, op_name + '_phase', 'phase',
+                                 vals=vals.Numbers(), initial_value=0)
+        self.add_pulse_parameter(op_name, op_name + '_alpha', 'alpha',
+                                 vals=vals.Numbers(), initial_value=1)
+        self.add_pulse_parameter(op_name, op_name + '_phi_skew', 'phi_skew',
+                                 vals=vals.Numbers(), initial_value=0)
+
+        # ef_for_f0g1_reset pulse for unconditional all-microwave reset
+        op_name = 'ef_for_f0g1_reset_pulse'
+        self.add_operation(op_name)
+        self.add_pulse_parameter(op_name, op_name + '_pulse_type', 'pulse_type',
+                                 initial_value='GaussFilteredCosIQPulse',
+                                 vals=vals.Enum('GaussFilteredCosIQPulse'))
+        self.add_pulse_parameter(op_name, op_name + '_amplitude', 'amplitude',
+                                 vals=vals.Numbers(), initial_value=0.5)
+        self.add_pulse_parameter(op_name, op_name + '_pulse_length', 'pulse_length',
+                                 initial_value=100e-9, vals=vals.Numbers())
+        self.add_pulse_parameter(op_name, op_name + '_gaussian_filter_sigma', 'gaussian_filter_sigma',
+                                 vals=vals.Numbers(), initial_value=5e-9)
+        self.add_pulse_parameter(op_name, op_name + '_buffer_length_start', 'buffer_length_start',
+                                 vals=vals.Numbers(), initial_value=20e-9)
+        self.add_pulse_parameter(op_name, op_name + '_buffer_length_end', 'buffer_length_end',
+                                 vals=vals.Numbers(), initial_value=20e-9)
+        self.add_pulse_parameter(op_name, op_name + '_mod_frequency', 'mod_frequency',
+                                 vals=vals.Numbers(), initial_value=100e6)
+        self.add_pulse_parameter(op_name, op_name + '_phase', 'phase',
+                                 vals=vals.Numbers(), initial_value=0)
+        self.add_pulse_parameter(op_name, op_name + '_alpha', 'alpha',
+                                 vals=vals.Numbers(), initial_value=1)
+        self.add_pulse_parameter(op_name, op_name + '_phi_skew', 'phi_skew',
+                                 vals=vals.Numbers(), initial_value=0)
+        self.add_pulse_parameter(op_name, op_name + '_AcStark_IFCoefs',
+                                 'AcStark_IFCoefs',
+                                 initial_value=np.array([0, 0, 0]),
+                                 vals=vals.Arrays())
+        self.add_pulse_parameter(op_name, op_name + '_AcStark_IFCoefs_error',
+                                 'AcStark_IFCoefs_error',
+                                 initial_value=np.array([0, 0, 0]),
+                                 vals=vals.Arrays())
+
+        op_name = 'f0g1_catch'
+        self.add_operation(op_name)
+        self.add_pulse_parameter(op_name,
+                                 op_name + '_kappa', 'kappa',
+                                 initial_value=0.4e8, vals=vals.Numbers())
+        self.add_pulse_parameter(op_name,
+                                 op_name + '_kappa_error', 'kappa_error',
+                                 initial_value=0, vals=vals.Numbers())
+        self.add_pulse_parameter(op_name,
+                                 op_name + '_frequency', 'frequency',
+                                 initial_value=0, vals=vals.Numbers())
+        self.add_pulse_parameter(op_name,
+                                 op_name + '_timeReverse', 'timeReverse',
+                                 initial_value=True, vals=vals.Bool())
 
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
@@ -1073,6 +1365,16 @@ class QuDev_transmon(MeasurementObject):
     def get_spec_pars(self):
         return self.get_operation_dict()['Spec ' + self.name]
 
+# ---- f0g1 #
+    def get_f0g1_pars(self):
+        return self.get_operation_dict()['f0g1 ' + self.name]
+    def get_flattop_f0g1_pars(self):
+        return self.get_operation_dict()['flattop_f0g1 ' + self.name]
+
+    def get_f0g1_catch_pars(self):
+        return self.get_operation_dict()['f0g1_catch ' + self.name]
+# ---- #
+
     def get_ro_pars(self):
         return self.get_operation_dict()['RO ' + self.name]
 
@@ -1092,6 +1394,29 @@ class QuDev_transmon(MeasurementObject):
     def get_operation_dict(self, operation_dict=None):
         operation_dict = super().get_operation_dict(operation_dict)
         operation_dict['Spec ' + self.name]['operation_type'] = 'Other'
+# ---- f0g1 #
+        operation_dict['f0g1 ' + self.name]['operation_type'] = 'Other'
+        operation_dict['flattop_f0g1 ' + self.name]['operation_type'] = 'Other'
+        operation_dict['f0g1_catch ' + self.name]['operation_type'] = 'Other'
+
+        params_to_copy = ['I_channel', 'Q_channel']
+        for p in params_to_copy:
+            operation_dict['flattop_f0g1 ' + self.name][p] = operation_dict[
+                'f0g1 ' + self.name][p]
+            operation_dict['f0g1_reset_pulse ' + self.name][p] = operation_dict[
+                'f0g1 ' + self.name][p]
+            operation_dict['ef_for_f0g1_reset_pulse ' + self.name][p] = \
+                operation_dict['X180 ' + self.name][p]
+
+        params_f0g1 = [param for param in list(operation_dict['f0g1 ' +
+                                                              self.name].keys())
+                       if not param in ['kappa', 'kappa_error', 'frequency',
+                                        'timeReverse']]
+        for p in params_f0g1:
+            operation_dict['f0g1_catch ' + self.name][p] = operation_dict[
+                'f0g1 ' + self.name][p]
+
+# ---- #
         operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
 
         for tr_name in self.transition_names:
