@@ -65,8 +65,8 @@ class QuDev_transmon(MeasurementObject):
                             'continuous_spec_modulated', 'pulsed_spec',
                             'timedomain']
 
-    def __init__(self, op_name, transition_names=('ge', 'ef'), **kw):
-        super().__init__(op_name, **kw)
+    def __init__(self, name, transition_names=('ge', 'ef'), **kw):
+        super().__init__(name, **kw)
 
         self.transition_names = transition_names
 
