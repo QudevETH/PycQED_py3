@@ -78,6 +78,10 @@ class MeasurementControl(Instrument):
                  live_plot_enabled: bool=True, verbose: bool=True):
         super().__init__(name=name)
 
+        self.add_parameter('fixme_reset_reps',
+                           initial_value=0,
+                           vals=vals.Ints(),
+                           parameter_class=ManualParameter)
         self.add_parameter('datadir',
                            initial_value=datadir,
                            vals=vals.Strings(),
@@ -778,7 +782,8 @@ class MeasurementControl(Instrument):
                 # shots and prepare will get a sweep point for each shot of
                 # each segment, see IntegratingAveragingPollDetector.prepare.
                 self.detector_function.prepare(
-                    np.tile(x, [self.acq_data_len_scaling, 1]))
+                    np.tile(x, [self.acq_data_len_scaling*(
+                            self.fixme_reset_reps()+1), 1]))
                 break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
