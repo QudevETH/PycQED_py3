@@ -4312,7 +4312,7 @@ class f0g1AcStark(SingleQubitGateCalibExperiment):
             # we specify the value for pulse frequency length, and amplitude we are going to use for this point
             AcStark_block.pulses[1]["mod_frequency"] = self.frequencies[qb][sp2d_idx][
                 sp1d_idx
-            ]  # here de frequency
+            ]  # here the frequency
             AcStark_block.pulses[1][
                 "pulse_length"
             ] = sweep_points.get_sweep_params_property("values", 1, "pulse_length")[
