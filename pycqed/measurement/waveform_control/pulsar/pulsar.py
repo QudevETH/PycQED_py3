@@ -13,7 +13,7 @@ from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
-from pycqed.utilities.timer import WatchdogTimer, WatchdogException
+from pycqed.utilities.timer import WatchdogTimer, WatchdogException, Timer
 
 from .zi_pulsar_mixin import ZIPulsarMixin
 
@@ -582,6 +582,7 @@ class Pulsar(Instrument):
 
         super().__init__(name)
 
+        self.timer = None
         self._sequence_cache = dict()
         self.reset_sequence_cache()
 
@@ -1140,6 +1141,7 @@ class Pulsar(Instrument):
 
         for awg in used_awg_interfaces:
             awg.stop()
+        self.timer = None
 
     def sigout_on(self, ch, on:bool=True):
         """Turn channel outputs on or off."""
@@ -1156,6 +1158,15 @@ class Pulsar(Instrument):
             awgs: List of AWGs names, or ``"all"``
         """
 
+        # This and the line in self.stop ensure that a new timer is created
+        # when starting every new measurement. At the end of the measurement
+        # this timer will get stored as a child of the Sequence timer (current
+        # behaviour). Note: 2D sweeps with multiple uploads will create
+        # multiple timers, each new timer becoming a child of the
+        # corresponding Sequence.
+        if self.timer is None:
+            self.timer = Timer(self.name)
+            sequence.timer.children.update({self.name: self.timer})
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
@@ -1166,6 +1177,7 @@ class Pulsar(Instrument):
             self.reset_sequence_cache()
             self._program_awgs(sequence, awgs)
 
+    @Timer()
     def _program_awgs(self, sequence, awgs:Union[List[str], str]='all'):
 
         # Stores the last uploaded sequence for easy access and plotting
@@ -1309,7 +1321,7 @@ class Pulsar(Instrument):
                      f'{time.time() - t0}')
             waveforms, _ = sequence.generate_waveforms_sequences(
                 awgs_to_program + awgs_with_channels_to_upload,
-                resolve_segments=False)
+                resolve_segments=False, awg_sequences=awg_sequences)
             log.debug(f'End of waveform generation sequence {sequence.name} '
                      f'{time.time() - t0}')
             # Check for which channels the sequence structure, or some element

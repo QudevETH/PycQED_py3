@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 class T1FrequencySweep(CalibBuilder):
 
     default_experiment_name = 'T1_frequency_sweep'
+    kw_for_task_keys = ['transition_name']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         """
@@ -51,8 +52,8 @@ class T1FrequencySweep(CalibBuilder):
             If this parameter is provided it will be used for all qubits.
         :param qubits: list of QuDev_transmon class instances
         :param kw: keyword arguments
-            for_ef (bool, default: False): passed to get_cal_points; see
-                docstring there.
+            transition_name (str, default: 'ge'): Qubit transition to
+                measure. Supported values: 'ge', 'ef'.
             spectator_op_codes (list, default: []): see t1_flux_pulse_block
             all_fits (bool, default: True) passed to run_analysis; see
                 docstring there
@@ -76,17 +77,25 @@ class T1FrequencySweep(CalibBuilder):
                 if not isinstance(task['qb'], str):
                     task['qb'] = task['qb'].name
 
+            if 'cal_states' not in kw:
+                kw['cal_states'] = "gef" if ('ef' in [
+                    task.get('transition_name') for task in task_list]
+                    + [kw.get('transition_name')]) else "ge"
+
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
 
             self.analysis = None
-            self.data_to_fit = {qb: 'pe' for qb in self.meas_obj_names}
             self.sweep_points = SweepPoints(
                 [{}, {}] if self.sweep_points is None else self.sweep_points)
             self.task_list = self.add_amplitude_sweep_points(
                 [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            trans_to_pop = {'ge': 'pe', 'ef': 'pf'}
+            self.data_to_fit = {
+                task['qb']: trans_to_pop[task.get('transition_name', 'ge')]
+                for task in self.preprocessed_task_list}
             if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
                 self.sweep_points.reduce_dim(1, inplace=True)
                 self._num_sweep_dims = 1
@@ -120,27 +129,27 @@ class T1FrequencySweep(CalibBuilder):
         """
         if task_list is None:
             task_list = self.task_list
-        # TODO: check combination of sweep points in task and in sweep_points
         for task in task_list:
+            # Combines sweep points in task and in sweep_points
             sweep_points = task.get('sweep_points', [{}, {}])
             sweep_points = SweepPoints(sweep_points)
             if len(sweep_points) == 1:
                 sweep_points.add_sweep_dimension()
+            if len(self.sweep_points) == 1:
+                self.sweep_points.add_sweep_dimension()
+            for i in range(len(sweep_points)):
+                sweep_points[i].update(self.sweep_points[i])
             if 'qubit_freqs' in sweep_points[1]:
                 qubit_freqs = sweep_points['qubit_freqs']
-            elif len(self.sweep_points) >= 2 and \
-                    'qubit_freqs' in self.sweep_points[1]:
-                qubit_freqs = self.sweep_points['qubit_freqs']
             else:
                 qubit_freqs = None
-            if 'amplitude' in sweep_points[1]:
-                amplitudes = sweep_points['amplitude']
-            elif len(self.sweep_points) >= 2 and \
-                    'amplitude' in self.sweep_points[1]:
-                amplitudes = self.sweep_points['amplitude']
-            else:
-                amplitudes = None
+            amplitudes = None
+            for key in sweep_points[1]:
+                if 'amplitude' in key:  # Detect e.g. amplitude2 from 2qb gates
+                    amplitudes = sweep_points[key]
             qubits, _ = self.get_qubits(task['qb'])
+            # Computing either qubit_freqs or amplitudes, if not passed.
+            # Both can also be passed, e.g. to cache or use a different model.
             if qubit_freqs is None and qubits is not None:
                 qb = qubits[0]
                 qubit_freqs = qb.calculate_frequency(
@@ -168,17 +177,21 @@ class T1FrequencySweep(CalibBuilder):
                 amp_sweep_points = SweepPoints('amplitude', amplitudes,
                                                'V', 'Flux pulse amplitude')
                 sweep_points.update([{}] + amp_sweep_points)
+            else:
+                raise ValueError("Please specify either qubit_freqs or "
+                                 "amplitudes!")
             task['sweep_points'] = sweep_points
         return task_list
 
-    def t1_flux_pulse_block(self, qb, sweep_points,
-                            prepend_pulse_dicts=None, **kw):
+    def t1_flux_pulse_block(self, qb, sweep_points, prepend_pulse_dicts=None,
+                            op_code=None, **kw):
         """
         Function that constructs the experiment block for one qubit
         :param qb: name or list with the name of the qubit
             to measure. This function expect only one qubit to measure!
         :param sweep_points: SweepPoints class instance
         :param prepend_pulse_dicts: dictionary of pulses to prepend
+        :param op_code: optional op_code for the flux pulse
         :param kw: keyword arguments
             spectator_op_codes: list of op_codes for spectator qubits
         :return: precompiled block
@@ -188,17 +201,24 @@ class T1FrequencySweep(CalibBuilder):
         if isinstance(qubit_name, list):
             qubit_name = qubit_name[0]
         hard_sweep_dict, soft_sweep_dict = sweep_points
-        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
+        pp = [self.block_from_pulse_dicts(prepend_pulse_dicts)]
 
         pulse_modifs = {'all': {'element_name': 'pi_pulse'}}
-        pp = self.block_from_ops('pipulse',
+        pp += [self.block_from_ops('pipulse',
                                  [f'X180 {qubit_name}'] +
                                  kw.get('spectator_op_codes', []),
-                                 pulse_modifs=pulse_modifs)
+                                 pulse_modifs=pulse_modifs)]
+        if kw.get('transition_name') == 'ef':
+            pp += [self.block_from_ops('pipulse_ef',
+                                     [f'X180_ef {qubit_name}'] +
+                                     kw.get('spectator_op_codes', []),
+                                     pulse_modifs=pulse_modifs)]
+
 
         pulse_modifs = {
             'all': {'element_name': 'flux_pulse', 'pulse_delay': 0}}
-        fp = self.block_from_ops('flux', [f'FP {qubit_name}'],
+        op_code = f'FP {qubit_name}' if op_code is None else op_code
+        fp = self.block_from_ops('flux', [op_code],
                                  pulse_modifs=pulse_modifs)
         for k in hard_sweep_dict:
             for p in fp.pulses:
@@ -208,9 +228,9 @@ class T1FrequencySweep(CalibBuilder):
             for p in fp.pulses:
                 if k in p:
                     p[k] = ParametricValue(k)
+        pp += [fp]
 
-        return self.sequential_blocks(f't1 flux pulse {qubit_name}',
-                                      [pb, pp, fp])
+        return self.sequential_blocks(f't1 flux pulse {qubit_name}', pp)
 
     @Timer()
     def run_analysis(self, **kw):

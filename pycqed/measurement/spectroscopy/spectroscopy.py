@@ -1237,15 +1237,21 @@ class MultiStateResonatorSpectroscopy(ResonatorSpectroscopy):
     Arguments:
         states (list[str], optional): List of strings specifying the initial
             states to be measured. Defaults to `["g", "e"]`.
+        **kw: passed on to the super init. From there, they get passed,
+            among others, to run_update, which interprets the following in
+            this child class:
+                - distance_metric (str): Metric which calculates the optimal
+                    ro_freq, see docstring of self.run_update().
 
     Compatible task dict keys:
         freqs: See :class:`ResonatorSpectroscopy' for details.
 
     Updates:
-        qb.ro_freq: To the value maximizing the distance in the IQ plane between
-            the first two states in task["states"]. If you want to make your RO
-            more dicriminating between e & f you should pass states
-            ["e", "f", ...] instead of e.g. ["g", "e", "f"].
+        qb.ro_freq: To the value maximizing the distance in the IQ plane
+            between the states in task["states"] according to the
+            distance_metric kwarg which gets forwarded to the
+            run_update method.
+
     """
     default_experiment_name = 'MultiStateResonatorSpectroscopy'
     kw_for_sweep_points = dict(

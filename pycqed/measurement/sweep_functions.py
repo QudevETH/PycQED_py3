@@ -10,6 +10,8 @@ class Sweep_function(object):
     sweep_functions class for MeasurementControl(Instrument)
     '''
 
+    supports_batch_mode = False
+
     def __init__(self, **kw):
         self.set_kw(**kw)
 
@@ -58,6 +60,13 @@ class Sweep_function(object):
                 upload and was configured successfully.
         """
         return False
+
+    def get_nr_parameters(self):
+        """
+        Returns:
+            int: Number of parameters set by this sweep_function
+        """
+        return 1
 
 
 class UploadingSweepFunction(Sweep_function):
@@ -131,7 +140,7 @@ class UploadingSweepFunction(Sweep_function):
                 self.upload_finished_callback()
 
     def configure_upload(self, upload=True, upload_first=True,
-                        start_pulsar=True):
+                         start_pulsar=True):
         """Overwrites parent method
         :meth:`~pycqed.measurement.sweep_function.Sweep_function.configure_upload`
         and sets the correspoding attributes.
@@ -403,7 +412,7 @@ class multi_sweep_function(Soft_Sweep):
             sweep_function.prepare(**kw)
 
     def configure_upload(self, upload=True, upload_first=True,
-                        start_pulsar=True):
+                         start_pulsar=True):
         for sweep_function in self.sweep_functions:
             if sweep_function.configure_upload(upload, upload_first,
                                                start_pulsar):
