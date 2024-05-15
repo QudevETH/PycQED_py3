@@ -4843,7 +4843,7 @@ class efWithf0g1AcStark(SingleQubitGateCalibExperiment):
             d = super().gui_kwargs(device)
             d["sweeping_parameters"].update(
                 {
-                    f0g1AcStark.__name__: {
+                    efWithf0g1AcStark.__name__: {
                         0: {
                             "frequency": "Hz",
                         },

@@ -2067,7 +2067,7 @@ class f0g1PitchCatch(CalibBuilder):
         d["kwargs"][MultiTaskingExperiment.__name__]["cal_states"] = (str, "gef")
         d["task_list_fields"].update(
             {
-                Chevron.__name__: odict(
+                f0g1PitchCatch.__name__: odict(
                     {
                         "qbA": ((Qubit, "single_select"), None),
                         "qbB": ((Qubit, "single_select"), None),
@@ -2077,7 +2077,7 @@ class f0g1PitchCatch(CalibBuilder):
         )
         d["sweeping_parameters"].update(
             {
-                Chevron.__name__: {
+                f0g1PitchCatch.__name__: {
                     0: {
                         "delay": "s",
                     }
@@ -2216,7 +2216,7 @@ class f0g1PitchDetuningCalib(CalibBuilder):
         d["kwargs"][MultiTaskingExperiment.__name__]["cal_states"] = (str, "gef")
         d["task_list_fields"].update(
             {
-                Chevron.__name__: odict(
+                f0g1PitchDetuningCalib.__name__: odict(
                     {
                         "qbA": ((Qubit, "single_select"), None),
                         "qbB": ((Qubit, "single_select"), None),
@@ -2227,7 +2227,7 @@ class f0g1PitchDetuningCalib(CalibBuilder):
         if self.sweep_2D:
             d["sweeping_parameters"].update(
                 {
-                    Chevron.__name__: {
+                    f0g1PitchDetuningCalib.__name__: {
                         0: {
                             "Pitch detuning": "Hz",
                         },
@@ -2238,7 +2238,7 @@ class f0g1PitchDetuningCalib(CalibBuilder):
                 }
             )
         else:
-            d["sweeping_parameters"].update({Chevron.__name__: {0: {"detuning": "Hz"}}})
+            d["sweeping_parameters"].update({f0g1PitchDetuningCalib.__name__: {0: {"detuning": "Hz"}}})
         return d
 
 
@@ -2349,7 +2349,7 @@ class f0g1BandwidthCalib(CalibBuilder):
         d["kwargs"][MultiTaskingExperiment.__name__]["cal_states"] = (str, "gef")
         d["task_list_fields"].update(
             {
-                Chevron.__name__: odict(
+                f0g1BandwidthCalib.__name__: odict(
                     {
                         "qbA": ((Qubit, "single_select"), None),
                         "qbB": ((Qubit, "single_select"), None),
@@ -2359,7 +2359,7 @@ class f0g1BandwidthCalib(CalibBuilder):
         )
         d["sweeping_parameters"].update(
             {
-                Chevron.__name__: {
+                f0g1BandwidthCalib.__name__: {
                     0: {
                         "Pitch bandwidth": "Hz",
                     },
