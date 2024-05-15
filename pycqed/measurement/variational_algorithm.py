@@ -154,7 +154,12 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         movnm = {mobj.name: [f'{mobj.name}_{i}' for i in range(2)]  # I,Q
                  for mobj in meas_objs}
         for mobj in meas_objs:
-            pp.add_node('classify_gm', keys_in='raw',
+            # FIXME get this from the metadata instead?
+            reset_reps = mobj.reset.feedback.repetitions()
+            pp.add_node('filter_data', keys_in='raw',
+                        data_filter=lambda x: x[reset_reps::reset_reps+1],
+                        meas_obj_names=mobj.name)
+            pp.add_node('classify_gm', keys_in='previous',
                         keys_out=[f'{mobj.name}.classify_gm.{ps}'
                                   for ps in probability_states],
                         clf_params=classifier_params.get(mobj.name, None),
