@@ -1923,7 +1923,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # if "2D measurement" reshape from (n_soft_sp, n_shots, n_vn)
             #  to ( n_shots * n_soft_sp, n_ro_ch)
             if np.ndim(shots_per_qb[qbn]) == 3:
-                # TODO is this assert still needed in some cases?
                 assert self.get_param_value("TwoD", False) or soft_control, \
                     "'TwoD' is False but single shot data seems to be 2D"
                 # put softsweep as inner most loop for easier processing
