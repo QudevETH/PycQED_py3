@@ -55,6 +55,8 @@ class QuDev_transmon(MeasurementObject):
         Q_offsets=[],
     )
 
+    DEFAULT_TRANSITION_NAMES = ('ge', 'ef')
+
     _acq_weights_type_aliases = {
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
@@ -65,9 +67,11 @@ class QuDev_transmon(MeasurementObject):
                             'continuous_spec_modulated', 'pulsed_spec',
                             'timedomain']
 
-    def __init__(self, name, transition_names=('ge', 'ef'), **kw):
+    def __init__(self, name, transition_names=None, **kw):
         super().__init__(name, **kw)
 
+        if transition_names is None:
+            transition_names = self.DEFAULT_TRANSITION_NAMES
         self.transition_names = transition_names
 
         self.add_parameter('instr_ge_lo',
