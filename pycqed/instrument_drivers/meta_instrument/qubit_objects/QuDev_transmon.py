@@ -771,7 +771,7 @@ class QuDev_transmon(MeasurementObject):
 
     @property
     def transmon_transition_names(self):
-        SPECIAL_TRANSITION_NAMES = ('f0g1')
+        SPECIAL_TRANSITION_NAMES = ('f0g1',)
         return [tn for tn in self.transition_names
                 if tn not in SPECIAL_TRANSITION_NAMES]
 
