@@ -55,6 +55,8 @@ class QuDev_transmon(MeasurementObject):
         Q_offsets=[],
     )
 
+    DEFAULT_TRANSITION_NAMES = ('ge', 'ef')
+
     _acq_weights_type_aliases = {
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
@@ -65,9 +67,11 @@ class QuDev_transmon(MeasurementObject):
                             'continuous_spec_modulated', 'pulsed_spec',
                             'timedomain']
 
-    def __init__(self, name, transition_names=('ge', 'ef'), **kw):
+    def __init__(self, name, transition_names=None, **kw):
         super().__init__(name, **kw)
 
+        if transition_names is None:
+            transition_names = self.DEFAULT_TRANSITION_NAMES
         self.transition_names = transition_names
 
         self.add_parameter('instr_ge_lo',
@@ -216,7 +220,7 @@ class QuDev_transmon(MeasurementObject):
                            vals=vals.MultiType(vals.Lists(), vals.Arrays()))
 
         # add drive pulse parameters
-        for tr_name in self.transition_names:
+        for tr_name in self.transmon_transition_names:
             if tr_name == 'ge':
                 self.add_parameter(
                     f'{tr_name}_fixed_lo_freq', unit='Hz',
@@ -422,6 +426,56 @@ class QuDev_transmon(MeasurementObject):
                                self.DEFAULT_FLUX_DISTORTION),
                            vals=vals.Dict())
 
+        # Pulse preparation parameters
+        DEFAULT_PREP_PARAMS = dict(preparation_type='wait',
+                                   post_ro_wait=1e-6, reset_reps=1,
+                                   final_reset_pulse=True,
+                                   threshold_mapping={
+                                       self.name: {0: 'g', 1: 'e'}})
+
+        self.add_parameter('preparation_params', parameter_class=ManualParameter,
+                            initial_value=DEFAULT_PREP_PARAMS, vals=vals.Dict())
+
+        self.add_parameter('ge_lo_leakage_cal',
+                           parameter_class=ManualParameter,
+                           initial_value=self.DEFAULT_GE_LO_CALIBRATION_PARAMS,
+                           vals=vals.Dict())
+
+        # switch parameters
+        DEFAULT_SWITCH_MODES = OrderedDict({'modulated': {}, 'spec': {},
+                                            'calib': {}})
+        self.switch_modes.initial_value=DEFAULT_SWITCH_MODES
+        self.switch_modes.docstring=(
+            "A dictionary whose keys are identifiers of switch modes and "
+            "whose values are dicts understood by the set_switch method of "
+            "the SwitchControls instrument specified in the parameter "
+            "instr_switch. The keys must include 'modulated' (for routing "
+            "the upconverted IF signal to the experiment output of the "
+            "upconversion board, used for all experiments that do not "
+            "specify a different mode), 'spec' (for routing the LO input to "
+            "the experiment output of the upconversion board, used for "
+            "qubit spectroscopy), and 'calib' (for routing the upconverted "
+            "IF signal to the calibration output of upconversion board, "
+            "used for mixer calibration). The keys can include 'no_drive' "
+            "(to replace the 'modulated' setting in case of measurements "
+            "without drive signal, i.e., when calling qb.prepare with "
+            "drive=None) as well as additional custom modes (to be used in "
+            "manual calls to set_switch).")
+
+        # mixer calibration parameters
+        self.add_parameter(
+            'drive_mixer_calib_settings', parameter_class=ManualParameter,
+            initial_value=dict(), vals=vals.Dict(),
+            docstring='A dict whose keys are names of qcodes parameters of '
+                      'the qubit object. For mixer calibration, these '
+                      'parameters will be temporarily set to the respective '
+                      'values provided in the dict.'
+        )
+
+        if "f0g1" in self.transition_names:
+            self.add_f0g1_parameters()
+
+    def add_f0g1_parameters(self):
         # f0g1 pulse parameters
         op_name = "f0g1"
         self.add_operation(op_name)
@@ -641,52 +695,6 @@ class QuDev_transmon(MeasurementObject):
             initial_value=0,
         )
 
-        # Pulse preparation parameters
-        DEFAULT_PREP_PARAMS = dict(preparation_type='wait',
-                                   post_ro_wait=1e-6, reset_reps=1,
-                                   final_reset_pulse=True,
-                                   threshold_mapping={
-                                       self.name: {0: 'g', 1: 'e'}})
-
-        self.add_parameter('preparation_params', parameter_class=ManualParameter,
-                            initial_value=DEFAULT_PREP_PARAMS, vals=vals.Dict())
-
-        self.add_parameter('ge_lo_leakage_cal',
-                           parameter_class=ManualParameter,
-                           initial_value=self.DEFAULT_GE_LO_CALIBRATION_PARAMS,
-                           vals=vals.Dict())
-
-        # switch parameters
-        DEFAULT_SWITCH_MODES = OrderedDict({'modulated': {}, 'spec': {},
-                                            'calib': {}})
-        self.switch_modes.initial_value=DEFAULT_SWITCH_MODES
-        self.switch_modes.docstring=(
-            "A dictionary whose keys are identifiers of switch modes and "
-            "whose values are dicts understood by the set_switch method of "
-            "the SwitchControls instrument specified in the parameter "
-            "instr_switch. The keys must include 'modulated' (for routing "
-            "the upconverted IF signal to the experiment output of the "
-            "upconversion board, used for all experiments that do not "
-            "specify a different mode), 'spec' (for routing the LO input to "
-            "the experiment output of the upconversion board, used for "
-            "qubit spectroscopy), and 'calib' (for routing the upconverted "
-            "IF signal to the calibration output of upconversion board, "
-            "used for mixer calibration). The keys can include 'no_drive' "
-            "(to replace the 'modulated' setting in case of measurements "
-            "without drive signal, i.e., when calling qb.prepare with "
-            "drive=None) as well as additional custom modes (to be used in "
-            "manual calls to set_switch).")
-
-        # mixer calibration parameters
-        self.add_parameter(
-            'drive_mixer_calib_settings', parameter_class=ManualParameter,
-            initial_value=dict(), vals=vals.Dict(),
-            docstring='A dict whose keys are names of qcodes parameters of '
-                      'the qubit object. For mixer calibration, these '
-                      'parameters will be temporarily set to the respective '
-                      'values provided in the dict.'
-        )
-
         # f0g1_reset pulse for unconditional all-microwave reset
         # The operation is spirit is identical to f0g1_flattop with own params
         op_name = 'f0g1_reset_pulse'
@@ -760,6 +768,12 @@ class QuDev_transmon(MeasurementObject):
         self.add_pulse_parameter(op_name,
                                  op_name + '_timeReverse', 'timeReverse',
                                  initial_value=True, vals=vals.Bool())
+
+    @property
+    def transmon_transition_names(self):
+        SPECIAL_TRANSITION_NAMES = ('f0g1',)
+        return [tn for tn in self.transition_names
+                if tn not in SPECIAL_TRANSITION_NAMES]
 
     def get_idn(self):
         return {'driver': str(self.__class__), 'name': self.name}
@@ -1391,10 +1405,7 @@ class QuDev_transmon(MeasurementObject):
         tn = '' if transition_name == 'ge' else f'_{transition_name}'
         return self.get_operation_dict()[f'X180{tn} ' + self.name]
 
-    def get_operation_dict(self, operation_dict=None):
-        operation_dict = super().get_operation_dict(operation_dict)
-        operation_dict['Spec ' + self.name]['operation_type'] = 'Other'
-# ---- f0g1 #
+    def _add_f0g1_to_operation_dict(self, operation_dict):
         operation_dict['f0g1 ' + self.name]['operation_type'] = 'Other'
         operation_dict['flattop_f0g1 ' + self.name]['operation_type'] = 'Other'
         operation_dict['f0g1_catch ' + self.name]['operation_type'] = 'Other'
@@ -1416,10 +1427,14 @@ class QuDev_transmon(MeasurementObject):
             operation_dict['f0g1_catch ' + self.name][p] = operation_dict[
                 'f0g1 ' + self.name][p]
 
-# ---- #
+    def get_operation_dict(self, operation_dict=None):
+        operation_dict = super().get_operation_dict(operation_dict)
+        operation_dict['Spec ' + self.name]['operation_type'] = 'Other'
         operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
 
-        for tr_name in self.transition_names:
+        if "f0g1" in self.transition_names:
+            self._add_f0g1_to_operation_dict(operation_dict)
+        for tr_name in self.transmon_transition_names:
             tn = '' if tr_name == 'ge' else f'_{tr_name}'
             operation_dict[f'X180{tn} ' + self.name]['basis'] = self.name + tn
             operation_dict[f'X180{tn} ' + self.name]['operation_type'] = 'MW'
