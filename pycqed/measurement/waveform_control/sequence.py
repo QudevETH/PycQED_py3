@@ -660,9 +660,25 @@ class Sequence:
         assert len(np.unique([s.n_segments() for s in sequences])) == 1, \
             "To allow compression, all sequences must have the same number " \
             "of segments"
-        from pycqed.utilities.math import factors
         n_soft_sp = len(sequences)
         n_seg = sequences[0].n_segments()
+        seg_lim_eff, factor = Sequence.compute_compression_seg_lim(
+            n_soft_sp, n_seg, segment_limit)
+        compressed_2D_sweep = Sequence.merge(sequences, seg_lim_eff,
+                                              merge_repeat_patterns)
+        if mc_points is None:
+            hard_sp_ind = np.arange(compressed_2D_sweep[0].n_acq_elements())
+            soft_sp_ind = np.arange(len(compressed_2D_sweep))
+        else:
+            hard_sp_ind = np.arange(len(mc_points)*len(sequences) //
+                                    len(compressed_2D_sweep))
+            soft_sp_ind = np.arange(len(compressed_2D_sweep))
+
+        return compressed_2D_sweep, hard_sp_ind, soft_sp_ind, factor
+
+    @staticmethod
+    def compute_compression_seg_lim(n_soft_sp, n_seg, segment_limit=None):
+        from pycqed.utilities.math import factors
         if segment_limit is None:
             segment_limit = np.inf
 
@@ -687,17 +703,7 @@ class Sequence:
                       f'{np.floor(segment_limit / n_seg)} (full compression)')
             break
         seg_lim_eff = factor * n_seg
-        compressed_2D_sweep = Sequence.merge(sequences, seg_lim_eff,
-                                              merge_repeat_patterns)
-        if mc_points is None:
-            hard_sp_ind = np.arange(compressed_2D_sweep[0].n_acq_elements())
-            soft_sp_ind = np.arange(len(compressed_2D_sweep))
-        else:
-            hard_sp_ind = np.arange(len(mc_points)*len(sequences) //
-                                    len(compressed_2D_sweep))
-            soft_sp_ind = np.arange(len(compressed_2D_sweep))
-
-        return compressed_2D_sweep, hard_sp_ind, soft_sp_ind, factor
+        return seg_lim_eff, factor
 
     def rename(self, new_name):
         self.name = new_name
