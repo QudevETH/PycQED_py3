@@ -13530,7 +13530,9 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
         self.plot_leakage_amp()
 
     def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05,
-                         xtransform=None, draw_lower_lines=True,
+                         xtransform=None,
+                         draw_lower_lines=True, draw_lower_points=True,
+                         color_lower_points=True, color_max_points=True,
                          pop_scale_right=None, pop_scale_left=None,
                          pop_unit_right=None, pop_unit_left=None,
                          pop_label_right=None, pop_label_left=None,
@@ -13544,9 +13546,10 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 Default (None): chooses a small margin around the data.
             cmap_margin (float): Margin for z range, relative to cmap_lim
             xtransform (function): Optional x-axis transformation
+            draw_lower_points (bool): In the projected data panel (bottom),
+                whether to plot each row of data below the maximum
             draw_lower_lines (bool): In the projected data panel (bottom),
-                whether to draw lines to connect each row of data below the
-                maximum (line instead of scatter)
+                whether to draw lines to connect each row of data points
             pop_scale_right (float): Scaling factor for right axis
             pop_scale_left (float): Scaling factor for left axis
             pop_unit_right (str): Unit for right axis
@@ -13684,21 +13687,70 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'cax_id': 3,
             }
 
-            self.plot_dicts[figname + f"_1D_scatter"] = {
+            key = figname + f"_1D_line"
+            if draw_lower_lines:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 2,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([x] * len(pop)),
+                    'yvals': pop / pop_scale_right,
+                    'line_kws': {'zorder': 0},
+                    'color': 'lightgray',
+                    'marker': '',
+                }
+            else:
+                # If this method got called previously in the other if branch,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            key = figname + f"_1D_scatter"
+            if draw_lower_points:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 2,
+                    'plotfn': self.plot_line,
+                    'xvals': x_scatter,
+                    'yvals': y_scatter/pop_scale_right,
+                    'color': cmap(norm(y_scatter)) if color_lower_points
+                        else 'lightgray',
+                    'scatter': True,
+                    'line_kws': {'zorder': 1},
+                    'xlabel': nice_labels[0],
+                    'ylabel': pop_label_left if pop_label_left else
+                              f"Leakage, $P_1$ ({pop_unit_left})",
+                }
+            else:
+                # If this method got called previously in the other if branch,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            self.plot_dicts[figname + f"_1D_line_max"] = {
                 'fig_id': figname,
                 'ax_id': 2,
                 'plotfn': self.plot_line,
-                'xvals': x_scatter,
-                'yvals': y_scatter/pop_scale_right,
-                'alpha': 0.3,
-                'yrange': _cmap_lim/pop_scale_right,
-                'color': cmap(norm(y_scatter)),
-                'scatter': True,
-                'line_kws': {'zorder': 1},
-                'xlabel': nice_labels[0],
-                'ylabel': pop_label_left if pop_label_left else
-                          f"Leakage, $P_1$ ({pop_unit_left})",
+                'xvals': x,
+                'yvals': y_max/pop_scale_right,
+                'yerr': y_err/pop_scale_right,
+                'alpha': 1,
+                'line_kws': {'zorder': 2},
+                'color': 'k',
             }
+            self.plot_dicts[figname + f"_1D_scatter_max"] = {
+                'fig_id': figname,
+                'ax_id': 2,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_right,
+                # yrange: so the plot matches the range of the right y axis
+                'yrange': _cmap_lim/pop_scale_right,
+                'alpha': 1,
+                'color': cmap(norm(y_max)) if color_max_points else cmap(
+                    norm(max(y_max))),
+                'scatter': True,
+                'line_kws': {'zorder': 3},
+            }
+
             if gate_yticks is not None:
                 # Set explicit values for the left yticks, and compute their
                 # locations (corresponding to the scale of the colorbar axis)
@@ -13717,7 +13769,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     f_1ton_valid = lambda p, n: np.abs(np.arcsin(np.sqrt(
                         np.abs(p))) * n) <= np.pi / 2
 
-                self.plot_dicts[figname + f"_1D_scatter"].update({
+                self.plot_dicts[figname + f"_1D_scatter_max"].update({
                     'ytick_loc': f_1ton(gate_yticks, n)/pop_scale_right,
                     'ytick_labels': [f'{p/pop_scale_left:.{gate_yticks_prec}g}'
                                      for p in gate_yticks],
@@ -13741,49 +13793,9 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 def formatter(p_n, _):
                     p_1 = f_nto1(p_n*pop_scale_right, n)/pop_scale_left
                     return f'{p_1:.{gate_yticks_prec}g}'
-                self.plot_dicts[figname + f"_1D_scatter"].update({
+                self.plot_dicts[figname + f"_1D_scatter_max"].update({
                     'set_major_formatter': {'yaxis': formatter},
                 })
-
-            key = figname + f"_1D_line"
-            if draw_lower_lines:
-                self.plot_dicts[key] = {
-                    'fig_id': figname,
-                    'ax_id': 2,
-                    'plotfn': self.plot_line,
-                    'xvals': np.array([x]*len(pop)),
-                    'yvals': pop/pop_scale_right,
-                    'alpha': 0.1,
-                    'line_kws': {'zorder': 0},
-                    'color': 'k',
-                }
-            else:
-                # If this method got called previously with draw_lower_lines,
-                # this entry will be populated. Here resetting it to default.
-                self.plot_dicts[key] = {'plotfn': None}
-
-            self.plot_dicts[figname + f"_1D_line_max"] = {
-                'fig_id': figname,
-                'ax_id': 2,
-                'plotfn': self.plot_line,
-                'xvals': x,
-                'yvals': y_max/pop_scale_right,
-                'yerr': y_err/pop_scale_right,
-                'alpha': 1,
-                'line_kws': {'zorder': 0},
-                'color': 'k',
-            }
-            self.plot_dicts[figname + f"_1D_scatter_max"] = {
-                'fig_id': figname,
-                'ax_id': 2,
-                'plotfn': self.plot_line,
-                'xvals': x,
-                'yvals': y_max/pop_scale_right,
-                'alpha': 1,
-                'color': cmap(norm(y_max)),
-                'scatter': True,
-                'line_kws': {'zorder': 1},
-            }
 
             id_opt = np.argmin(y_max)
             self.leakage_ymax = {
