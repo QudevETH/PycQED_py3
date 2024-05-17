@@ -35,15 +35,22 @@ def DoubleExpDampOscFunc(t, tau_1, tau_2,
     return cos_1 + cos_2 + osc_offset
 
 
-def double_RandomizedBenchmarkingDecay(numCliff, p, offset,
-                                       invert=1):
+def double_RandomizedBenchmarkingDecay(numCliff, p, offset, invert=1):
     """
     A variety of the RB-curve that allows fitting both the inverting and
     non-inverting exponential.
+
     The amplitude of the decay curve is constrained to start at 0 or 1.
     The offset is the common point both curves converge to.
 
-    pick invert to be 1 or 0
+    Args:
+        numCliff (float): Parameter for the function.
+        p (float): Parameter for the function.
+        offset (float): Parameter for the function.
+        invert (int, optional): Pick invert to be 1 or 0. Defaults to 1.
+
+    Returns:
+        float: Value of the function.
     """
     # Inverting clifford curve
     val_inv = (1 - offset) * (p ** numCliff) + offset
@@ -487,20 +494,22 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
     Returns:
         float: The calculated damped oscillation value at time 't'.
 
-    Function used for fitting model, that fits the following equation:
+    Notes:
+        The function fits the following equation:
 
-    Dr. Paul Magnard PhD Thesis, 2021 - equation 5.3 :
-                       Γ                                                                                              -
-                      |       -tau * (kappa+gamma)       |        rabi*tau       kappa-gamma         rabi*tau    |^2   |
-        mu_b + mu_a * |  exp( ———————————————————— )  *  |  cosh( ———————— ) +   ——————————— * sinh( ———————— )  |     |
-                      |                2                 |           2              2*rabi              2        |     |
-                      L                                                                                               ⅃
-                                                         ________________________________
-        where:                                          /          (kappa-gamma)^2
-                tau = t-t0        and        rabi = \  /  - g^2 + ————————————————
-                                                     \/                  4
-                and      g = c1*amp + c3*amp^3 + c5*amp^5
+        .. math::
+
+            \mu_b + \mu_a * \left| \exp\left(\frac{-\tau * (\kappa+\gamma)}{2}\right) * \left[ \cosh\left(\frac{\text{rabi}*\tau}{2}\right) + \frac{\kappa-\gamma}{2*\text{rabi}} * \sinh\left(\frac{\text{rabi}*\tau}{2}\right) \right] \right|^2
+
+        where:
+
+        .. math::
+
+            \tau = t-t_0 \\
+            \text{rabi} = \sqrt{-g^2 + \frac{(\kappa-\gamma)^2}{4}} \\
+            g = c_1*\text{amp} + c_3*\text{amp}^3 + c_5*\text{amp}^5
     """
+
 
     g = c1 * amp + c3 * amp**3 + c5 * amp**5
 

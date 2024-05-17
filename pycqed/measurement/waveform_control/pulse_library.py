@@ -1598,7 +1598,7 @@ class CosPulse(pulse.Pulse):
 
 
 class f0g1Pulse(pulse.Pulse):
-    """definition of the symmetric shaped f0g1 Pulse
+    """Definition of the symmetric shaped f0g1 Pulse.
     """
     def __init__(self,
                  I_channel,
@@ -1673,47 +1673,40 @@ class f0g1Pulse(pulse.Pulse):
         return tStart, tStop, tRise, tFall
 
     def GTilde(self, kappa, gamma1, gamma2, delta, a, t):
-        # Dr. Paul Magnard PhD Thesis, 2021 - pag. 43
-        """Generates the drive rate vs time needed to emit a photon with
-            the required shape:
-                     ________________________________________________
-                    /
-            \      /     gamma1+gamma2              gamma1-gamma2
-         a * \    /      —————————————   sinc( pi * ————————————— )
-              \  /             2                    gamma1+gamma2
-               \/
+        """
+        Generates the drive rate vs time needed to emit a photon with the required shape:
 
-                            1
-            * ——————————————————————————————————
-                e^(-gamma1*t/2) + e^(gamma2*t/2)
+        .. math::
 
-        Detuned by delta from the resonance frequency of an
-            emitter qubit/resonator which leaks at rate kappa.
+            a * \frac{\gamma_1 + \gamma_2}{2} \text{sinc}\left(\pi \frac{\gamma_1 - \gamma_2}{\gamma_1 + \gamma_2}\right) \frac{1}{e^{-\gamma_1 t/2} + e^{\gamma_2 t/2}}
 
-        The drive rate is expressed as a "population" Rabi rate, i.e. the swap
-            matrix element is gTilde * (|0><1| + h.c.) / 2
+        Detuned by delta from the resonance frequency of an emitter qubit/resonator which leaks at rate kappa.
 
-        The returned shape of this function is the
-            ** first formula of page 43 - Dr. Paul Magnard PhD Thesis, 2021 **
+        The drive rate is expressed as a "population" Rabi rate, i.e. the swap matrix element is
+        :math:`\tilde{g} * (|0\rangle\langle 1| + \text{h.c.}) / 2`.
 
-        Args:
-            kappa (float): the fixed effective leakage rate of the
-                transfer/emitter resonator-purcell system.
-            gamma1 (float): exponential rate of the rising edge of the
-                emitted photon
-            gamma2 (float): exponential rate of the falling edge of the
-                emitted photon
-            delta (float): detuning of the emitted photon with respect to the
-                emitter resonator/qubit/cavity resonant frequency.
-            a (float): fraction of the photon which is emitted. a^2 = 1
-                corresponds to a full photon emission. a^2 = 0.5 leads to
-                a perfectly entangled emitter-photon system.
-            t (array, float): the values of the time for which we
-                want the amplitude of gTilde
+        The returned shape of this function is the first formula of page 43 - Dr. Paul Magnard PhD Thesis, 2021.
 
-        Returns:
-            (float): value of the first formula of
-                pag. 43 - Dr. Paul Magnard PhD Thesis, 2021
+        Parameters
+        ----------
+        kappa : float
+            The fixed effective leakage rate of the transfer/emitter resonator-purcell system.
+        gamma1 : float
+            Exponential rate of the rising edge of the emitted photon.
+        gamma2 : float
+            Exponential rate of the falling edge of the emitted photon.
+        delta : float
+            Detuning of the emitted photon with respect to the emitter resonator/qubit/cavity resonant frequency.
+        a : float
+            Fraction of the photon which is emitted. :math:`a^2 = 1` corresponds to a full photon emission.
+            :math:`a^2 = 0.5` leads to a perfectly entangled emitter-photon system.
+        t : array_like or float
+            The values of the time for which we want the amplitude of :math:`\tilde{g}`.
+
+        Returns
+        -------
+        float
+            Value of the first formula of page 43 - Dr. Paul Magnard PhD Thesis, 2021.
         """
         # we define two variables that will help us in the definitions
         gamma = gamma1 + gamma2
@@ -1778,53 +1771,32 @@ class f0g1Pulse(pulse.Pulse):
 
     def joinJunctions(self, gTilde_vs_t, tRise, tFall, junctionTrunc,
                       junctionSigma, junctionType, t):
-        """This function creates a 'ramp up' and a 'rump down' for the pulse
-        outside of the interval given by 'tStart' and 'tFall'.
+        """Creates a ramp up and ramp down for a pulse outside of a given interval.
 
         The returned shape will have 3 parts:
-            part_a = ramp up
-            part_b = pulse function
-            part_c = ramp down
+            - part_a = ramp up
+            - part_b = pulse function
+            - part_c = ramp down
 
-        The function is defined the following way:
+        The function is defined as follows:
 
-                part_a: tRise - junctionTrunc*junctionSigma <= t < tRise
-                part_b:                               tRise <= t < tFall
-                part_c:                               tFall  <= t < tFall +
-                                                junctionTrunc*junctionSigma
-                     0:                                     otherwise
+            - part_a: tRise - junctionTrunc*junctionSigma <= t < tRise
+            - part_b: tRise <= t < tFall
+            - part_c: tFall <= t < tFall + junctionTrunc*junctionSigma
+            - 0: otherwise
 
-                                               ~~~~~~
-                                            ~~~~    ~~~~~~
-                                    ~~~~~~~~              \
-                                  /                        \
-                                 /                          \
-                                /                            \
-                               /                              \
-                              /                                \
-                    _________/                                  \_________
-
-                             |- a -|----------- b --------|- c -|
-
-
-
-        The ramps (up and down) can have different shapes: gaussian, tanh or
-        ramp (linear).
+        The ramps (up and down) can have different shapes: gaussian, tanh or ramp (linear).
 
         Args:
-            gTilde_vs_t (array): An array of the shape of the pulse,
-                it spans the whole time here (a, b and c)
-            tRise (float): when part_b starts (when the photon starts)
-            tFall (float): when part_b ends (when the photon ends)
-            junctionTrunc (float), junctionSigma (float): information about the
-                junction bridging the AWG amplitude from the truncated pulse
-                value at the end and zero. These variables denote the junction
-                truncation, width and type respectively
-            junctionType (str): defines the shape of the ramps: 'gaussian',
-                'tanh' or 'ramp' (linear)
+            gTilde_vs_t (array): An array of the shape of the pulse, spanning the whole time (a, b and c).
+            tRise (float): When part_b starts (when the photon starts).
+            tFall (float): When part_b ends (when the photon ends).
+            junctionTrunc (float): Information about the junction bridging the AWG amplitude from the truncated pulse value at the end and zero. Denotes the junction truncation.
+            junctionSigma (float): Information about the junction bridging the AWG amplitude from the truncated pulse value at the end and zero. Denotes the junction width.
+            junctionType (str): Defines the shape of the ramps: 'gaussian', 'tanh' or 'ramp' (linear).
 
-        Retruns:
-            An array of values: the final pulse shape
+        Returns:
+            array: The final pulse shape.
         """
         # raise an error if type_junction is one of the three allowed
         junctionTypes_allowed = ['gaussian', 'tanh', 'ramp']
@@ -1879,61 +1851,53 @@ class f0g1Pulse(pulse.Pulse):
                            junctionTrunc, junctionSigma, junctionType="ramp",
                            timeReverse=False, lowerFreqPhoton=False,
                            driveDetScale=0):
-        """Get the complex amplitude and frequency of the f0g1 pulse, pulse
-        tailored to emit a photon with shape:
-                     ________________________________________________
-                    /
-            \      /     gamma1+gamma2              gamma1-gamma2
-             \    /  a * —————————————   sinc( pi * ————————————— )       *
-              \  /             2                    gamma1+gamma2
-               \/
-                            1
-          * ——————————————————————————————————
-             e^(-gamma1*t/2) + e^(gamma2*t/2)
+        """Get the complex amplitude and frequency of the f0g1 pulse.
 
-        Args:
-            t (np.array): array of time values. It should start at 'tStart'
-                and end at 'tStop'; These two values are calculated with the
-                'relevantTimeValues' function
-            kappa (float): the fixed leakage rate of the transfer/emitter
-                resonator/qubit/cavity.
-            gamma1 (float): exponential rate of the rising edge of the emitted
-                photon
-            gamma2 (float): exponential rate of the falling edge of the emitted
-                photon
-            delta (float): detuning of the emitted photon with respect to the
-                emitter resonator/qubit/cavity resonant frequency.
-            a (float): fraction of the photon which is emitted. a=1 corresponds
-                to a full photon emission. a=0.5 leads to a perfectly entangled
-                emitter-photon system.
-            acStark_coefs (np.array): coefficients of the AcStark function
-                (polynomial): given drive amplitude returns frequency shift
-            rabiRate_coefs (np.array): coefficients of the RabiRate function
-                (polynomial): given drive amplitude returns gTilde amplitude
-            timeValues (tuple): tuple of 4 values 'tStart, tStop, tRise,
-                tFall': these values are given by the 'relevantTimeValues'
-                function
-            junctionTrunc (float), junctionSigma (float): information about the
-                junction bridging the AWG amplitude from the truncated pulse
-                value at the end and zero. These variables denote the junction
-                truncation, width and type respectively
-            junctionType (str): defines the shape of the ramps for the
-                truncation: 'gaussian', 'tanh' or 'ramp' (linear)
-            timeReverse (bool): Says if the pulse should be time reversed to
-                absorb an incoming photon. One should set a=1 for this to work
-            lowerFreqPhoton (bool): Should be set to True is ω_gf > ω_p and to
-                False otherwise. Has an impact on the sign of 'delta' in the
-                drive functions.
-            driveDetScale (int): an additional offset for the final frequency
-                of the pulse
+        This pulse is tailored to emit a photon with shape:
 
-        returns:
-            amplitude_final (np.array): array of amplitudes of the final pulse
-                (it's the envelope of the pulse) for each value of time a
-                complex amplitude is returned
-            ifOffset + deltaDet + driveDetScale (float): value for the
-                frequency of the pulse
+        .. math::
 
+            \\frac{a \\gamma_1 + \\gamma_2}{2} \\operatorname{sinc}\\left(\\pi \\frac{\\gamma_1 - \\gamma_2}{\\gamma_1 + \\gamma_2}\\right) \\frac{1}{e^{-\\gamma_1 t/2} + e^{\\gamma_2 t/2}}
+
+        Parameters
+        ----------
+        t : np.array
+            Array of time values. It should start at 'tStart' and end at 'tStop'; These two values are calculated with the 'relevantTimeValues' function.
+        kappa : float
+            The fixed leakage rate of the transfer/emitter resonator/qubit/cavity.
+        gamma1 : float
+            Exponential rate of the rising edge of the emitted photon.
+        gamma2 : float
+            Exponential rate of the falling edge of the emitted photon.
+        delta : float
+            Detuning of the emitted photon with respect to the emitter resonator/qubit/cavity resonant frequency.
+        a : float
+            Fraction of the photon which is emitted. a=1 corresponds to a full photon emission. a=0.5 leads to a perfectly entangled emitter-photon system.
+        acStark_coefs : np.array
+            Coefficients of the AcStark function (polynomial): given drive amplitude returns frequency shift.
+        rabiRate_coefs : np.array
+            Coefficients of the RabiRate function (polynomial): given drive amplitude returns gTilde amplitude.
+        timeValues : tuple
+            Tuple of 4 values 'tStart, tStop, tRise, tFall': these values are given by the 'relevantTimeValues' function.
+        junctionTrunc : float
+            Information about the junction bridging the AWG amplitude from the truncated pulse value at the end and zero. This variable denotes the junction truncation.
+        junctionSigma : float
+            Information about the junction bridging the AWG amplitude from the truncated pulse value at the end and zero. This variable denotes the junction width.
+        junctionType : str
+            Defines the shape of the ramps for the truncation: 'gaussian', 'tanh' or 'ramp' (linear).
+        timeReverse : bool
+            Says if the pulse should be time reversed to absorb an incoming photon. One should set a=1 for this to work.
+        lowerFreqPhoton : bool
+            Should be set to True if ω_gf > ω_p and to False otherwise. Has an impact on the sign of 'delta' in the drive functions.
+        driveDetScale : int
+            An additional offset for the final frequency of the pulse.
+
+        Returns
+        -------
+        amplitude_final : np.array
+            Array of amplitudes of the final pulse (it's the envelope of the pulse) for each value of time a complex amplitude is returned.
+        ifOffset + deltaDet + driveDetScale : float
+            Value for the frequency of the pulse.
         """
         # if t, acStark_coefs and gTilde_to_amplitude_coefs are not numpy
         # arrays we create them as so
