@@ -1673,8 +1673,7 @@ class f0g1Pulse(pulse.Pulse):
         return tStart, tStop, tRise, tFall
 
     def GTilde(self, kappa, gamma1, gamma2, delta, a, t):
-        """
-        Generates the drive rate vs time needed to emit a photon with the required shape:
+        r"""Generates the drive rate vs time needed to emit a photon with the required shape:
 
         .. math::
 
@@ -1851,7 +1850,7 @@ class f0g1Pulse(pulse.Pulse):
                            junctionTrunc, junctionSigma, junctionType="ramp",
                            timeReverse=False, lowerFreqPhoton=False,
                            driveDetScale=0):
-        """Get the complex amplitude and frequency of the f0g1 pulse.
+        r"""Get the complex amplitude and frequency of the f0g1 pulse.
 
         This pulse is tailored to emit a photon with shape:
 

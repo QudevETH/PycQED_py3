@@ -475,7 +475,7 @@ def CosFunc(t, amplitude, frequency, phase, offset):
 
 
 def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
-    """Calculates the damped oscillation value based on Dr. Paul Magnard's model.
+    r"""Calculates the damped oscillation value based on Dr. Paul Magnard's model.
 
     This function implements equation 5.3 from Dr. Paul Magnard's PhD Thesis (2021).
 

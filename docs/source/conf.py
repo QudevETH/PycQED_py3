@@ -37,6 +37,7 @@ import sphinx_rtd_theme
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "sphinx.ext.mathjax",  # Add LaTeX support to our docs
     "sphinx.ext.autodoc",
 # FIXME: This can't handle our __init__ arguments which are sometimes added
 # to the class docstrings.
@@ -48,6 +49,8 @@ extensions = [
 # FIXME: This one is broken
 #    "autodoc_instrument",
 ]
+
+mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 
 # Enable writing pages both in ReStructuredText and Markdown
 source_suffix = [".rst", ".md"]
