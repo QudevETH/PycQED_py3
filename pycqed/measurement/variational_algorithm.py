@@ -8,6 +8,7 @@ import pycqed.analysis_v3.processing_pipeline as pp_mod
 import pycqed.analysis_v3.helper_functions as hlp_mod
 # ana_v3.reload_anav3()
 from pycqed.analysis_v2 import timedomain_analysis as tda
+import pycqed.measurement.sweep_points as sp_mod
 
 log = logging.getLogger(__name__)
 
@@ -22,12 +23,15 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     default_experiment_name = 'VariationalAlgorithm'
 
-    def __init__(self, optimize=True, optimizer=None, classified=False, df_name='int_log_det', sweep_points=None, **kw):
+    def __init__(self, optimize=True, optimizer=None,
+                 classified=False, df_name='int_log_det',
+                 sweep_points=None, fixed_params_values=None, **kw):
         super().__init__(
             classified=classified, df_name=df_name,
             sequence_kwargs=dict(sweep_points=sweep_points), **kw
         )
         self.set_block_and_params()
+        self.resolve_fixed_block_params(fixed_params_values)
         self.exp_metadata.update({
             'predict_proba': True,
             'rotate': False,
@@ -103,6 +107,21 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                                             set_end_after_all_pulses=True,
                                             destroy=True)
 
+    def resolve_fixed_block_params(self, fixed_params_values=None):
+        """Partially resolves self.block, to set params which are not swept
+
+        Args:
+            fixed_params_values: dict of the form {'param_name': value,}
+        """
+        if fixed_params_values is None:
+            return
+        # Convert into sweep_points format
+        sweep_dicts_list = sp_mod.SweepPoints()
+        for key, val in fixed_params_values.items():
+            sweep_dicts_list.add_sweep_parameter(key, [val])
+        # Update self.block: fix parameters contained in sweep_dicts_list
+        self.block.pulses = self.block.pulses_sweepcopy(sweep_dicts_list, [0])
+
     # here data should be in the flattened shape
     @staticmethod
     def classical_postprocessing(single_shots_per_qb_thresholded):
@@ -116,7 +135,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     @staticmethod
     def cost_function(cpp_output, targets):
-        # cpp_output: (n_shots, trainable params, fixed params)
+        # cpp_output: (n_shots, trainable params, non trainable params)
         targets = np.array(targets)
         cost_func = np.average(
             np.array([
@@ -370,13 +389,14 @@ class VQAOptimizer:
             data = np.array([
                 data[key].reshape((-1, *batch_shape, 3)) for key in data.keys()
             ])
-            # data shape: (n_qb, n_shots, n_trainable_params, n_fixed_params,
-            # 3 states)
+            # data shape: (n_qb, n_shots, n_trainable_params,
+            # n_non_trainable_params, 3 states)
             costs = []
             # classical_params = []
             for i in range(batch_shape[0]):
                 data_batch = data[:, :, i, :, :]
-                # data batch shape: (n_qb, n_shots, n_fixed_params, 3 states)
+                # data batch shape: (n_qb, n_shots, n_non_trainable_params,
+                # 3 states)
                 # cost is scalar
                 cost, classical_params, classical_param = \
                     self._classical_training(data_batch, targets)
@@ -392,7 +412,7 @@ class VQAOptimizer:
             cpp_output = VariationalAlgorithm.classical_postprocessing(data)
             cpp_output = cpp_output.reshape((-1, *batch_shape))
             # shape = [(len(mobj), )n_shots, *batch_shape]
-            # batch_shape = (n_trainable, n_fixed)
+            # batch_shape = (n_trainable, n_non_trainable)
             cost = self.cost_function(cpp_output, targets)
             # record training process
             self.sweep_points.append(np.atleast_2d(params))  # Nelder-Mead, EGO
@@ -413,7 +433,7 @@ class VQAOptimizer:
             # readout
             c_para_vector = np.array([1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
             cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
-            # cpp_output shape = (n_shots, n_fixed_params)
+            # cpp_output shape = (n_shots, n_non_trainable_params)
             for i in range(data_batch_shape[1]):
                 for j in range(data_batch_shape[2]):
                     cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
@@ -449,15 +469,15 @@ class VQAOptimizer:
         training_settings and data (FIXME for now mean_square_error also does)
 
         Args:
-            params:
+            trainable_params_values: TODO
 
         training_settings = {  TODO should these belong to the QE?
             'params': [''],  TODO unused
             'trainable_params': int,  # Could be generalised to a list of
             bool of the same length as 'params'. For now, this method
-            assumes that params are ordered (fixed then trainable). This is
-            used in the list comprehension.
-            'fixed_params_values': [[x0, x1 ...] ...],
+            assumes that params are ordered (non trainable then trainable).
+            This is used in the list comprehension.
+            'non_trainable_params_values': [[x0, x1 ...] ...],
             'out_targets': [y ...],  # corresponding target outputs
             TODO unused. Use, and generate random choice if None?
             'trainable_params_init_values': [x0, x1 ...],
@@ -466,19 +486,20 @@ class VQAOptimizer:
         Returns:
 
         """
-        fixed_params_values = self.training_settings.get('fixed_params_values')
-        if fixed_params_values is None:
-            fixed_params_values = [[]]
+        non_trainable_params_values = self.training_settings.get(
+            'non_trainable_params_values')
+        if non_trainable_params_values is None:
+            non_trainable_params_values = [[]]
         trainable_params_values = np.atleast_2d(trainable_params_values)
         out_targets = self.training_settings['out_targets']
         params_values = np.array([
             [
                 np.append(vf, vt)
-                for vf in fixed_params_values
+                for vf in non_trainable_params_values
             ] for vt in trainable_params_values
         ])
         # Shape at this point: (
-        #  number of sets of fixed params,
+        #  number of sets of non trainable params,
         #  number of sets of trainable params,
         #  number of params (= number of parametrised gates)
         # )
@@ -549,7 +570,7 @@ class VQAOptimizer:
     #  the rest of the framework?
     @staticmethod
     def mean_square_error(vals, targets):
-        # shape: [mobj, shots, trainable pars, fixed pars]
+        # shape: [mobj, shots, trainable pars, non trainable pars]
         vals = np.average(vals, (0, 1))
         vals = np.array([(val-targets)**2 for val in vals])
         vals = np.average(vals, 1)
