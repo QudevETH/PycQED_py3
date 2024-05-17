@@ -373,7 +373,7 @@ class VQAOptimizer:
             # data shape: (n_qb, n_shots, n_trainable_params, n_fixed_params,
             # 3 states)
             costs = []
-            classical_params = []
+            # classical_params = []
             for i in range(batch_shape[0]):
                 data_batch = data[:, :, i, :, :]
                 # data batch shape: (n_qb, n_shots, n_fixed_params, 3 states)
@@ -407,11 +407,13 @@ class VQAOptimizer:
         # return: cost (scalar)
         data_batch_shape = data_batch.shape
         classical_params = []
+        # FIXME: create a logical branch for the two different optimizations
         def to_optimize(c_para):
             # c_para_vector: 1D array conforms the multi-qubit single-shot
             # readout
             c_para_vector = np.array([1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
             cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
+            # cpp_output shape = (n_shots, n_fixed_params)
             for i in range(data_batch_shape[1]):
                 for j in range(data_batch_shape[2]):
                     cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
@@ -419,6 +421,19 @@ class VQAOptimizer:
             cost = np.average(np.array([
                 np.mean((row - targets) ** 2) for row in cpp_output
             ]), axis=0)
+            classical_params.append(c_para[0])
+            return cost
+
+        def to_optimize_(c_para):
+            # c_para_vector: 1D array conforms the multi-qubit single-shot
+            # readout
+            c_para_vector = np.array([1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
+            data_batch_test = np.concatenate((data_batch[0], data_batch[1]),
+                                        axis=-1)
+            data_batch_test = np.average(data_batch_test, axis=0)
+            cpp_output = np.matmul(data_batch_test,
+                                   c_para_vector.T).reshape(-1)
+            cost = np.mean((cpp_output - targets) ** 2)
             classical_params.append(c_para[0])
             return cost
         result = self.classical_optimizer_function(to_optimize,
