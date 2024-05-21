@@ -89,6 +89,4 @@ user = [
 where = ["./"]
 
 [tool.setuptools.package-data]
-pycqed = [
-    "utilities/WARNING.png",
-]
+pycqed = ["utilities/WARNING.png", "**/*.json"]
