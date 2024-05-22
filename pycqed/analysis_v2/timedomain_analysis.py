@@ -12469,10 +12469,16 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
     @staticmethod
     def apply_gate_mtx(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, nreps=1):
-        """Calculates the time evolution of the y and z components of the qubit state vector under the application of an X gate.
+        """Calculates the time evolution of the y and z components of the qubit
+        This function implements the matrix version of apply_gate: y and z here
+        are y - yinf and z - zinf in apply_gate.
 
-        This function implements the matrix version of apply_gate: y and z
-        here are y - yinf and z - zinf in apply_gate.
+        To be specific: Calculates the time evolution of the y and z
+        components of the qubit state vector under the application of
+        an X gate described by the time-independent Hamiltonian 
+        (ang_scaling*pi/t_gate)*sigma_x/2.
+
+        https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
 
         This function is used in sim_func when fixed_scaling is None.
 
@@ -12486,10 +12492,12 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             t_gate (float): Gate length (s).
             gamma_1 (float): Qubit energy relaxation rate.
             gamma_phi (float): Qubit dephasing rate.
-            nreps (int, optional): Number of times the gate is applied. Defaults to 1.
+            nreps (int, optional): Number of times the gate is applied.
+                Defaults to 1.
 
         Returns:
-            Tuple[float, float]: Scaled coordinates of the qubit state vector after the evolution.
+            Tuple[float, float]: Scaled coordinates of the qubit state
+            vector after the evolution.
 
         References:
             https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
@@ -12556,7 +12564,8 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 away from the ideal scaling. This error will be fitted
             ideal_scaling (float): ideal amplitude scaling factor
             T2 (float): qubit decoherence time in seconds to be used as a guess
-            t2_r (float, optional): ratio T2_varied/T2. This ratio will be fitted. Defaults to 1.
+            t2_r (float, optional): ratio T2_varied/T2. This ratio will be fitted.
+                Defaults to 1.
             nr_pulses_pi (int, optional): the number of pulses that together
                 implement a pi rotation. Defaults to None.
             y0 (float, optional): y coordinate of the initial state. Defaults to 0.
