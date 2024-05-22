@@ -2949,30 +2949,93 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
             # logical branch for hybrid training
             if self.get_param_value('hybrid'):
-                self.proc_data_dict['projected_data_dict'][self.qb_names[0]].update(
+                self.proc_data_dict['projected_data_dict'] \
+                    [self.qb_names[0]].update(
                         {'classical_params_result': self.raw_data_dict[
                             'classical_params_result']})
-
             for useless_qb in self.qb_names[1:]:
                 del self.proc_data_dict['projected_data_dict'][useless_qb]
             self.proc_data_dict['sweep_points_dict'][
                 self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
         else:
-            # cpp_output shape: flattened 1D array
+            array = np.array  # for the following evaluation
+            sweep_points = eval(self.raw_data_dict['exp_metadata'][
+                'sweep_points'])
+            hard_sweep, soft_sweep = self.sp.length()
             cpp_output = va.classical_postprocessing(self.proc_data_dict[
-                    'single_shots_per_qb_thresholded'])
-            cost_func = va.cost_function(cpp_output)
-            # reconstruct data structure (qb3_sweep, single_shots, qb2_sweep)
-            qb3_sweep = len(self.proc_data_dict['sweep_points_dict']['qb3'][
-                                'sweep_points'])
-            qb2_sweep = len(self.proc_data_dict['sweep_points_dict']['qb2'][
-                                'sweep_points'])
-            n_hard_sp, n_soft_sp = self.sp.length()
-            print(f"self.sp.length() = {self.sp.length()}")
-            # cost_func = np.reshape(cost_func, (qb3_sweep, -1, qb2_sweep))
-            cost_func = np.reshape(cost_func, (-1, n_hard_sp, n_soft_sp))
+                                            'single_shots_per_qb_thresholded'])
+            # cpp_output shape (soft_sweep, n_shots, hard_sweep)
+            cpp_output = cpp_output.reshape((soft_sweep, -1, hard_sweep))
+            # transpose to (n_shots, soft_sweep, hard_sweep)
+            cpp_output = np.transpose(
+                a=cpp_output,
+                axes=(1, 0, 2)
+            )
+            # -> (n_shots, soft_sweep, hard_sweep, soft_label, hard_label)
+            cpp_output = np.reshape(
+                a=cpp_output,
+                newshape=(-1, soft_sweep, hard_sweep, 1, 1)
+            )
+            oneD_axis = None  # indicator for the plot function
+            if 'targets' in sweep_points[0]:
+                oneD_axis = 1
+            elif 'targets' in sweep_points[1]:
+                oneD_axis = 0
+            # Reason for assume target = 0 when there is only one state in the
+            # training set: the absolute value of the cost function doesn't
+            # matter, and there is no need to specify the exact value of
+            # targets.
+            targets = [0]
+            if oneD_axis is not None:
+                targets = sweep_points[1 - oneD_axis]['targets'][0]
+                cpp_output = \
+                    np.swapaxes(cpp_output, 1 + oneD_axis, 3 + oneD_axis)
+            n_shots, soft_sweep, hard_sweep, soft_label, hard_label = \
+                cpp_output.shape
+            # Pay extra attention to the following reshaping. This step makes
+            # the cpp_output a valid input for va.cost_function.
+            cpp_output = cpp_output.reshape((n_shots, soft_sweep*hard_sweep,
+                                             soft_label*hard_label))
+            cost_function_values = va.cost_function(cpp_output, targets)
+            # reconstruct the 2D data structure for single state cost function
+            if len(targets) == 1:
+                cost_function_values = np.reshape(
+                    a=cost_function_values,
+                    newshape=(soft_sweep, hard_sweep)
+                )
+            self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
+                'cost func': cost_function_values,
+            }
+            # set appropriate sweep points for plotting
+            if len(targets) > 1:
+                param_name, params_value = sweep_points[oneD_axis].popitem()
+                self.proc_data_dict['sweep_points_dict'][self.qb_names[0]] = {
+                    'sweep_points': params_value[0],
+                    'param_names': [param_name],
+                    'msmt_sweep_points': params_value[0],
+                    'cal_points_sweep_points': []
+                }
+                self.proc_data_dict['sweep_points_2D_dict'][self.qb_names[0]] = {
+                    'dummy': [0]
+                }
+
+            for useless_qb in self.qb_names[1:]:
+                del self.proc_data_dict['projected_data_dict'][useless_qb]
+            # va.cost_function input (n_shots, trainable params, fixed params)
+            # reshape to:
+            # 1. when only one state, (n_shots, soft_sweep * hard_sweep, 1)
+            # 2. when label along hard_sweep, (n_shots, soft_sweep, hard_sweep)
+            # cpp_output = np.reshape(
+            #     a=cpp_output,
+            #     newshape=(-1, soft_sweep * hard_sweep // len(targets),
+            #               len(targets))
+            # )
+            # cost_function_values = va.cost_function(cpp_output, targets)
+            #
+            # if len(targets) == 1:
+            #     cost_function_values.reshape((soft_sweep, hard_sweep))
             # self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
-            #     'cost_function': np.average(cost_func, axis=0)
+            #     'cost func': cost_function_values,
             # }
 
     def prepare_plots(self):
@@ -2981,7 +3044,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_cost_function_plots(self):
         self.prepare_projected_data_plots()
-
 
 
 class MultiQubit_HistogramAnalysis(MultiQubit_TimeDomain_Analysis):

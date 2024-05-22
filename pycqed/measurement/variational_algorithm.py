@@ -144,7 +144,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             ]),
             axis=0,
         )
-        # (trainable parameter number in one batch,) or scalar
+        # cost_func shape: (trainable parameter number in one batch,) or scalar
         return cost_func.reshape((-1, 1))  # 2D: for EGO function format
 
     # @staticmethod  # FIXME?
@@ -411,7 +411,7 @@ class VQAOptimizer:
         else:
             cpp_output = VariationalAlgorithm.classical_postprocessing(data)
             cpp_output = cpp_output.reshape((-1, *batch_shape))
-            # shape = [(len(mobj), )n_shots, *batch_shape]
+            # shape = [n_shots, *batch_shape]
             # batch_shape = (n_trainable, n_non_trainable)
             cost = self.cost_function(cpp_output, targets)
             # record training process
