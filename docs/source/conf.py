@@ -81,7 +81,7 @@ exclude_patterns = []
 add_module_names = False
 
 # FIXME: Lots of bugs...
-autosummary_generate = False
+autosummary_generate = True
 
 # FIXME: See above
 autodoc_default_options = {
