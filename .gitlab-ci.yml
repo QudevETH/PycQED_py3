@@ -64,5 +64,3 @@ pages:
     - qudev_master
     - /^Proj\/.*$/
     - /^doc\/.*$/
-      # TODO: WIP - will be deleted after succcess
-    - /^bugfix\/124-.*$/
