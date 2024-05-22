@@ -849,7 +849,8 @@ class MeasurementControl(Instrument):
         if filter_out:
             vals = np.ones((1, len(self.detector_function.value_names)))*np.nan
         else:
-            # Transpose because detectors return [num_points, len(value_names)]
+            # Transpose since detectors return [len(value_names), num_points],
+            # to get shape [num_points, len(value_names)]
             # TODO confirm that all det.acquire_data_point can be deleted,
             #  see comment in Multi_Detector.acquire_data_point
             vals = np.array(self.detector_function.get_values()).T
