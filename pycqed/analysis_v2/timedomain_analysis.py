@@ -3021,7 +3021,6 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
     Analyses the results of the state tomography experiment and calculates
     the corresponding quantum state.
 
-    Here the constructors arguments:
     ```
     Possible options that can be passed in the options_dict parameter:
         cal_points: A data structure specifying the indices of the calibration
