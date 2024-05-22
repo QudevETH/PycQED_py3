@@ -500,7 +500,12 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
 
         .. math::
 
-            \mu_b + \mu_a * \left| \exp\left(\frac{-\tau * (\kappa+\gamma)}{2}\right) * \left[ \cosh\left(\frac{\text{rabi}*\tau}{2}\right) + \frac{\kappa-\gamma}{2*\text{rabi}} * \sinh\left(\frac{\text{rabi}*\tau}{2}\right) \right] \right|^2
+            \mu_b + \mu_a * \left| \exp\left(\frac{-\tau *
+                (\kappa+\gamma)}{2}\right) * \left[
+                \cosh\left(\frac{\text{rabi}*\tau}{2}\right) +
+                \frac{\kappa-\gamma}{2*\text{rabi}} *
+                \sinh\left(\frac{\text{rabi}*\tau}{2}\right) \right]
+            \right|^2
 
         where:
 

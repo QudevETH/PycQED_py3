@@ -1677,7 +1677,10 @@ class f0g1Pulse(pulse.Pulse):
 
         .. math::
 
-            a * \frac{\gamma_1 + \gamma_2}{2} \text{sinc}\left(\pi \frac{\gamma_1 - \gamma_2}{\gamma_1 + \gamma_2}\right) \frac{1}{e^{-\gamma_1 t/2} + e^{\gamma_2 t/2}}
+            a * \frac{\gamma_1 + \gamma_2}{2}
+                \text{sinc}\left(\pi \frac{\gamma_1 - \gamma_2}
+                {\gamma_1 + \gamma_2}\right) \frac{1}{e^{-\gamma_1 t/2}
+            + e^{\gamma_2 t/2}}
 
         Detuned by delta from the resonance frequency of an emitter qubit/resonator which leaks at rate kappa.
 
@@ -1869,7 +1872,9 @@ class f0g1Pulse(pulse.Pulse):
 
         .. math::
 
-            \frac{a \gamma_1 + \gamma_2}{2} \operatorname{sinc}\left(\pi \frac{\gamma_1 - \gamma_2}{\gamma_1 + \gamma_2}\right) \frac{1}{e^{-\gamma_1 t/2} + e^{\gamma_2 t/2}}
+            \frac{a \gamma_1 + \gamma_2}{2} \operatorname{sinc}
+                \left(\pi \frac{\gamma_1 - \gamma_2}{\gamma_1 + \gamma_2}\right)
+            \frac{1}{e^{-\gamma_1 t/2} + e^{\gamma_2 t/2}}
 
         Parameters
         ----------
