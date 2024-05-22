@@ -14,12 +14,12 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath("../.."))
-sys.path.append(os.path.abspath("../../../pycqed_scripts"))
 sys.path.append(os.path.abspath("./ext"))
 
 # Custom variable __sphinx_build__ which can be used to check inside the code
 # if the documentation is being built.
 import builtins
+
 builtins.__sphinx_build__ = True
 
 
@@ -31,7 +31,6 @@ copyright = "2023, Quantum Device Laboratory"
 
 # -- General configuration ---------------------------------------------------
 
-import sphinx_rtd_theme
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
@@ -50,6 +49,7 @@ extensions = [
 #    "autodoc_instrument",
 ]
 
+napoleon_use_mathjax = True
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 
 # Enable writing pages both in ReStructuredText and Markdown
