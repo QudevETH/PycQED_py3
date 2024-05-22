@@ -150,6 +150,9 @@ class T1FrequencySweep(CalibBuilder):
             qubits, _ = self.get_qubits(task['qb'])
             # Computing either qubit_freqs or amplitudes, if not passed.
             # Both can also be passed, e.g. to cache or use a different model.
+            if qubit_freqs is None and amplitudes is None:
+                raise ValueError("Please specify either qubit_freqs or "
+                                 "amplitudes!")
             if qubit_freqs is None and qubits is not None:
                 qb = qubits[0]
                 qubit_freqs = qb.calculate_frequency(
@@ -177,9 +180,6 @@ class T1FrequencySweep(CalibBuilder):
                 amp_sweep_points = SweepPoints('amplitude', amplitudes,
                                                'V', 'Flux pulse amplitude')
                 sweep_points.update([{}] + amp_sweep_points)
-            else:
-                raise ValueError("Please specify either qubit_freqs or "
-                                 "amplitudes!")
             task['sweep_points'] = sweep_points
         return task_list
 
