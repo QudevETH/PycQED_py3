@@ -44,13 +44,14 @@ def double_RandomizedBenchmarkingDecay(numCliff, p, offset, invert=1):
     The offset is the common point both curves converge to.
 
     Args:
-        numCliff (float): Parameter for the function.
-        p (float): Parameter for the function.
-        offset (float): Parameter for the function.
-        invert (int, optional): Pick invert to be 1 or 0. Defaults to 1.
+        numCliff (float | numpy.ndarray): Number of Clifford gates.
+        p (float): depolarizing parameter (0 <= p <= 1).
+        offset (float): offset (value of the function when numCliff -> infinity).
+        invert (int, optional): Whether the exponential decay should start from 0 (invert = 0)
+            or from 1 (invert = 1). Defaults to 1.
 
     Returns:
-        float: Value of the function.
+        float | numpy.ndarray: Value of the function.
     """
     # Inverting clifford curve
     val_inv = (1 - offset) * (p ** numCliff) + offset
