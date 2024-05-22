@@ -1702,7 +1702,7 @@ class f0g1Pulse(pulse.Pulse):
         t : array_like or float
             The values of the time for which we want the amplitude of :math:`\tilde{g}`.
 
-        Returns
+        Returns:
         -------
         float
             Value of the first formula of page 43 - Dr. Paul Magnard PhD Thesis, 2021.
@@ -1784,6 +1784,19 @@ class f0g1Pulse(pulse.Pulse):
             - part_c: tFall <= t < tFall + junctionTrunc*junctionSigma
             - 0: otherwise
 
+        ::
+
+                         ~~~~~~
+                      ~~~~    ~~~
+                  ~~~~           \\
+                /                 \\
+               /                   \\
+              /                     \\
+             /                       \\
+            /                         \\
+          _/                           \\__
+          |-- a --|------- b -----|-- c --|
+
         The ramps (up and down) can have different shapes: gaussian, tanh or ramp (linear).
 
         Args:
@@ -1856,7 +1869,7 @@ class f0g1Pulse(pulse.Pulse):
 
         .. math::
 
-            \\frac{a \\gamma_1 + \\gamma_2}{2} \\operatorname{sinc}\\left(\\pi \\frac{\\gamma_1 - \\gamma_2}{\\gamma_1 + \\gamma_2}\\right) \\frac{1}{e^{-\\gamma_1 t/2} + e^{\\gamma_2 t/2}}
+            \frac{a \gamma_1 + \gamma_2}{2} \operatorname{sinc}\left(\pi \frac{\gamma_1 - \gamma_2}{\gamma_1 + \gamma_2}\right) \frac{1}{e^{-\gamma_1 t/2} + e^{\gamma_2 t/2}}
 
         Parameters
         ----------
@@ -1891,7 +1904,7 @@ class f0g1Pulse(pulse.Pulse):
         driveDetScale : int
             An additional offset for the final frequency of the pulse.
 
-        Returns
+        Returns:
         -------
         amplitude_final : np.array
             Array of amplitudes of the final pulse (it's the envelope of the pulse) for each value of time a complex amplitude is returned.
