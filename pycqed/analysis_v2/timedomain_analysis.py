@@ -12468,155 +12468,191 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
         return y_t, z_t
 
     @staticmethod
-def apply_gate_mtx(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, nreps=1):
-    """Calculates the time evolution of the y and z components of the qubit state vector under the application of an X gate.
+    def apply_gate_mtx(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, nreps=1):
+        """Calculates the time evolution of the y and z components of the qubit state vector under the application of an X gate.
 
-    This function implements the matrix version of apply_gate: y and z
-    here are y - yinf and z - zinf in apply_gate.
+        This function implements the matrix version of apply_gate: y and z
+        here are y - yinf and z - zinf in apply_gate.
 
-    This function is used in sim_func when fixed_scaling is None.
+        This function is used in sim_func when fixed_scaling is None.
 
-    Args:
-        y (float): Scaled y coordinate of the qubit state vector at the
-            start of the evolution.
-        z (float): Scaled z coordinate of the qubit state vector at the
-            start of the evolution.
-        ang_scaling (float or array): Fraction of a pi rotation
-            (see Hamiltonian above).
-        t_gate (float): Gate length (s).
-        gamma_1 (float): Qubit energy relaxation rate.
-        gamma_phi (float): Qubit dephasing rate.
-        nreps (int, optional): Number of times the gate is applied. Defaults to 1.
+        Args:
+            y (float): Scaled y coordinate of the qubit state vector at the
+                start of the evolution.
+            z (float): Scaled z coordinate of the qubit state vector at the
+                start of the evolution.
+            ang_scaling (float or array): Fraction of a pi rotation
+                (see Hamiltonian above).
+            t_gate (float): Gate length (s).
+            gamma_1 (float): Qubit energy relaxation rate.
+            gamma_phi (float): Qubit dephasing rate.
+            nreps (int, optional): Number of times the gate is applied. Defaults to 1.
 
-    Returns:
-        Tuple[float, float]: Scaled coordinates of the qubit state vector after the evolution.
+        Returns:
+            Tuple[float, float]: Scaled coordinates of the qubit state vector after the evolution.
 
-    References:
-        https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
-    """
-    Omega = ang_scaling * np.pi / t_gate
-    f_rabi = np.sqrt(Omega ** 2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
-    prefactor = np.exp(-(3 * gamma_1 + 2 * gamma_phi) * t_gate / 4)
-    mtx = prefactor * np.array([
-        [np.cos(f_rabi * t_gate) + np.sin(f_rabi * t_gate) * \
-            (gamma_1 - 2 * gamma_phi) / (4 * f_rabi),
-         np.sin(f_rabi * t_gate) * Omega / f_rabi],
-        [-np.sin(f_rabi * t_gate) * Omega / f_rabi,
-         np.cos(f_rabi * t_gate) - np.sin(f_rabi * t_gate) * \
-            (gamma_1 - 2 * gamma_phi) / (4 * f_rabi)]])
-    mtx = np.linalg.matrix_power(mtx, nreps)
-    res = mtx @ np.array([[y], [z]])
-    return res[0][0], res[1][0]
+        References:
+            https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
+        """
+        Omega = ang_scaling * np.pi / t_gate
+        f_rabi = np.sqrt(Omega**2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
+        prefactor = np.exp(-(3 * gamma_1 + 2 * gamma_phi) * t_gate / 4)
+        mtx = prefactor * np.array(
+            [
+                [
+                    np.cos(f_rabi * t_gate)
+                    + np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                    np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                ],
+                [
+                    -np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                    np.cos(f_rabi * t_gate)
+                    - np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                ],
+            ]
+        )
+        mtx = np.linalg.matrix_power(mtx, nreps)
+        res = mtx @ np.array([[y], [z]])
+        return res[0][0], res[1][0]
 
     @staticmethod
-def sim_func(nr_pi_pulses, sc_error, ideal_scaling,
-             T2, t2_r=1, nr_pulses_pi=None,
-             y0=0, z0=1, zth=1, fixed_scaling=None,
-             T1=None, t_gate=None, mobjn=None, ts=None):
-    """
-    Simulation function for the excited qubit state populations for a trace
-    of the N-pulse calibration experiment:
-        - X90 - [ repeated groups of pulses ]^nr_pi_pulses -
+    def sim_func(
+        nr_pi_pulses,
+        sc_error,
+        ideal_scaling,
+        T2,
+        t2_r=1,
+        nr_pulses_pi=None,
+        y0=0,
+        z0=1,
+        zth=1,
+        fixed_scaling=None,
+        T1=None,
+        t_gate=None,
+        mobjn=None,
+        ts=None,
+    ):
+        """
+        Simulation function for the excited qubit state populations for a trace
+        of the N-pulse calibration experiment:
+            - X90 - [ repeated groups of pulses ]^nr_pi_pulses -
 
-    The repeated groups of pulses are either:
-     - nr_pulses_pi x R(pi/nr_pulses_pi)
-     or
-     - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
-        if fixed_scaling is not None
+        The repeated groups of pulses are either:
+        - nr_pulses_pi x R(pi/nr_pulses_pi)
+        or
+        - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
+            if fixed_scaling is not None
 
-     See also the docstring of the measurement class DriveAmpCalib.
+        See also the docstring of the measurement class DriveAmpCalib.
 
-    Args:
-        nr_pi_pulses (array): number of repeated pulses applied to the qubit
-            prepared in the + state
-        sc_error (float or array): error(s) on the amplitude scaling
-            away from the ideal scaling. This error will be fitted
-        ideal_scaling (float): ideal amplitude scaling factor
-        T2 (float): qubit decoherence time in seconds to be used as a guess
-        t2_r (float, optional): ratio T2_varied/T2. This ratio will be fitted. Defaults to 1.
-        nr_pulses_pi (int, optional): the number of pulses that together
-            implement a pi rotation. Defaults to None.
-        y0 (float, optional): y coordinate of the initial state. Defaults to 0.
-        z0 (float, optional): z coordinate of the initial state. Defaults to 1.
-        zth (float, optional): z coordinate at equilibrium. Defaults to 1.
-        fixed_scaling (float, optional): the amplitude scaling of
-            the first rotation in the description above. Defaults to None.
-        T1 (float, optional): quit lifetime (s). Defaults to None.
-        t_gate (float, optional): gate length (s). Defaults to None.
-        mobjn (str, optional): name of the qubit. Defaults to None.
-        ts (str, optional): measurement timestamp. Defaults to None.
-        The last two parameers will be used to extract T1/t_gate if the
-        latter are not specified (see docstring of sim_func)
+        Args:
+            nr_pi_pulses (array): number of repeated pulses applied to the qubit
+                prepared in the + state
+            sc_error (float or array): error(s) on the amplitude scaling
+                away from the ideal scaling. This error will be fitted
+            ideal_scaling (float): ideal amplitude scaling factor
+            T2 (float): qubit decoherence time in seconds to be used as a guess
+            t2_r (float, optional): ratio T2_varied/T2. This ratio will be fitted. Defaults to 1.
+            nr_pulses_pi (int, optional): the number of pulses that together
+                implement a pi rotation. Defaults to None.
+            y0 (float, optional): y coordinate of the initial state. Defaults to 0.
+            z0 (float, optional): z coordinate of the initial state. Defaults to 1.
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
+            fixed_scaling (float, optional): the amplitude scaling of
+                the first rotation in the description above. Defaults to None.
+            T1 (float, optional): quit lifetime (s). Defaults to None.
+            t_gate (float, optional): gate length (s). Defaults to None.
+            mobjn (str, optional): name of the qubit. Defaults to None.
+            ts (str, optional): measurement timestamp. Defaults to None.
+            The last two parameers will be used to extract T1/t_gate if the
+            latter are not specified (see docstring of sim_func)
 
-    Returns:
-        array: e_pops, same length as nr_pi_pulses and containing the
-            qubit excited state populations after the application of
-            nr_pi_pulses repeated groups of pulses
-    """
+        Returns:
+            array: e_pops, same length as nr_pi_pulses and containing the
+                qubit excited state populations after the application of
+                nr_pi_pulses repeated groups of pulses
+        """
 
-    if any([v is None for v in [T1, T2, t_gate]]):
-        assert mobjn is not None
-        assert ts is not None
-    if ts is not None:
-        from pycqed.utilities.settings_manager import SettingsManager
-        sm = SettingsManager()
-    if t_gate is None:
-        t_gate = sm.get_parameter(mobjn + '.ge_sigma', ts) * \
-                 sm.get_parameter(mobjn + '.ge_nr_sigma', ts)
-    if t_gate == 0:
-        raise ValueError('Please specify t_gate.')
-    if T1 is None:
-        T1 = sm.get_parameter(mobjn + '.T1', ts)
-    if T1 == 0:
-        raise ValueError('Please specify T1.')
+        if any([v is None for v in [T1, T2, t_gate]]):
+            assert mobjn is not None
+            assert ts is not None
+        if ts is not None:
+            from pycqed.utilities.settings_manager import SettingsManager
 
-    T2 = t2_r * T2
-    if nr_pulses_pi is None and fixed_scaling is None:
-        raise ValueError('Please specify either nr_pulses_pi or '
-                         'fixed_scaling.')
+            sm = SettingsManager()
+        if t_gate is None:
+            t_gate = sm.get_parameter(mobjn + ".ge_sigma", ts) * sm.get_parameter(
+                mobjn + ".ge_nr_sigma", ts
+            )
+        if t_gate == 0:
+            raise ValueError("Please specify t_gate.")
+        if T1 is None:
+            T1 = sm.get_parameter(mobjn + ".T1", ts)
+        if T1 == 0:
+            raise ValueError("Please specify T1.")
 
-    gamma_1 = 1/T1
-    gamma_2 = 1/T2
-    gamma_phi = gamma_2 - 0.5*gamma_1
+        T2 = t2_r * T2
+        if nr_pulses_pi is None and fixed_scaling is None:
+            raise ValueError("Please specify either nr_pulses_pi or " "fixed_scaling.")
 
-    # apply initial pi/2 gate
-    y00, z00 = NPulseAmplitudeCalibAnalysis.apply_gate(
-        y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth)
+        gamma_1 = 1 / T1
+        gamma_2 = 1 / T2
+        gamma_phi = gamma_2 - 0.5 * gamma_1
 
-    # calculate yinf, zinf with amp_sc
-    amp_sc = sc_error + ideal_scaling
-    if hasattr(amp_sc, '__iter__'):
-        amp_sc = amp_sc[0]
-    Omega = amp_sc * np.pi / t_gate
-    yinf = 2 * zth * Omega * gamma_1 / \
-           (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
-    zinf = zth * gamma_1 * (gamma_1 + 2 * gamma_phi) / \
-           (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
+        # apply initial pi/2 gate
+        y00, z00 = NPulseAmplitudeCalibAnalysis.apply_gate(
+            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth
+        )
 
-    e_pops = np.zeros(len(nr_pi_pulses))
-    for i, n in enumerate(nr_pi_pulses):
-        if fixed_scaling is None:
-            # start in superposition state (after pi/2 pulse application)
-            # redefine variables y -> y - yinf; z -> z - zinf;
-            # adds offset to initial values
-            y, z = y00 - yinf, z00 - zinf
-            y, z = NPulseAmplitudeCalibAnalysis.apply_gate_mtx(
-                y, z, amp_sc, t_gate, gamma_1, gamma_phi,
-                nreps=nr_pulses_pi * n)
-            # get back the true y and z
-            y += yinf
-            z += zinf
-        else:
-            y, z = y00, z00
-            for j in range(n):
-                # apply pulse with varying scaling
-                y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                    y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth)
-                # apply pulse with fixed scaling
-                y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                    y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth)
-        e_pops[i] = 0.5 * (1 - z)
-    return e_pops
+        # calculate yinf, zinf with amp_sc
+        amp_sc = sc_error + ideal_scaling
+        if hasattr(amp_sc, "__iter__"):
+            amp_sc = amp_sc[0]
+        Omega = amp_sc * np.pi / t_gate
+        yinf = (
+            2
+            * zth
+            * Omega
+            * gamma_1
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
+        zinf = (
+            zth
+            * gamma_1
+            * (gamma_1 + 2 * gamma_phi)
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
+
+        e_pops = np.zeros(len(nr_pi_pulses))
+        for i, n in enumerate(nr_pi_pulses):
+            if fixed_scaling is None:
+                # start in superposition state (after pi/2 pulse application)
+                # redefine variables y -> y - yinf; z -> z - zinf;
+                # adds offset to initial values
+                y, z = y00 - yinf, z00 - zinf
+                y, z = NPulseAmplitudeCalibAnalysis.apply_gate_mtx(
+                    y, z, amp_sc, t_gate, gamma_1, gamma_phi, nreps=nr_pulses_pi * n
+                )
+                # get back the true y and z
+                y += yinf
+                z += zinf
+            else:
+                y, z = y00, z00
+                for j in range(n):
+                    # apply pulse with varying scaling
+                    y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
+                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
+                    # apply pulse with fixed scaling
+                    y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
+                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
+            e_pops[i] = 0.5 * (1 - z)
+        return e_pops
 
     @staticmethod
     def fit_trace(data_to_fit, nr_pi_pulses, amp_sc_err, T2,
