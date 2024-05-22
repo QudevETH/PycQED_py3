@@ -2508,14 +2508,9 @@ class MeasurementControl(Instrument):
             else:  # 1D Hard detector (returns values in chunks)
                 xlen = len(new_data)
         else:
-            if self.detector_function.detector_control == 'soft':
-                # FIXME: this is an inconsistency that should not be there.
-                xlen = np.shape(new_data)[1]
-                # TODO confirm that this branch can be deleted
-                log.warning('Deleted branch in MC: check that percdone works!')
-            if True:
-                # in case of an N-D Hard detector dataset
-                xlen = np.shape(new_data)[0]
+            # in case of an N-D Hard detector dataset
+            # new_data has shape [sweep points, value names]
+            xlen = np.shape(new_data)[0]
 
         start_idx = self.get_datawriting_start_idx()
         stop_idx = start_idx + xlen
