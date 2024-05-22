@@ -1783,7 +1783,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             param_names = self.proc_data_dict['sweep_points_dict'][qb_name][
                 'param_names']
             _, xunit, xlabel = self.sp.get_sweep_params_description(
-                param_names=param_names, dimension=0)[0]
+                param_names=param_names)[0]
         elif hard_sweep_params is not None:
             xlabel = list(hard_sweep_params)[0]
             xunit = list(hard_sweep_params.values())[0][
