@@ -612,7 +612,12 @@ class BaseDataAnalysis(object):
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
 
-                # add training data
+                # Add training process data. The try-except branch is
+                # because this part is called twice: the first time to
+                # readout experiment data and the second time just to
+                # extract the classifier.
+                # FIXME: replace the try statement with a logical branch,
+                #  read 'optimize' from the hdf5 file directly.
                 try:
                     if raw_data_dict_ts['exp_metadata']['optimize']:
                         array = np.array  # FIXME

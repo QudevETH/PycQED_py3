@@ -174,7 +174,8 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                  for mobj in meas_objs}
         for mobj in meas_objs:
             # FIXME get this from the metadata instead?
-            reset_reps = mobj.reset.feedback.repetitions()
+            reset_reps = mobj.reset.feedback.repetitions() if hasattr(
+                mobj.reset, 'feedback') else 1
             pp.add_node('filter_data', keys_in='raw',
                         data_filter=lambda x: x[reset_reps::reset_reps+1],
                         meas_obj_names=mobj.name)
@@ -356,11 +357,11 @@ class VQAOptimizer:
         self.sweep_points = []
         self.cost_function_values = []
         self.hybrid = hybrid
-        self.classical_params_result = []  # FIXME: remove it when not hybrid
         if self.hybrid:
             self._set_classical_optimizer_function(
                 classical_optimizer_function_name, classical_optimizer_kw)
             self.classical_params_list = []
+            self.classical_params_result = []
 
     def __call__(self, fun, **kw):
         # in MeasurementControl.measure_soft_adaptive:
@@ -368,7 +369,6 @@ class VQAOptimizer:
         self.measurement_function = fun
         result = self.optimizer_function(self._full_circuit,
                                          **self.optimizer_kw)
-        print(f"result = {result}")
         # if self.optimizer_callback is not None:
         #     result = self.optimizer_callback(result)
         result_dict = {'opt_result': result, 'sweep_points': self.sweep_points,
@@ -425,39 +425,45 @@ class VQAOptimizer:
     def _classical_training(self, data_batch, targets):
         # optimize separately for each trainable parameter set
         # return: cost (scalar)
-        data_batch_shape = data_batch.shape
         classical_params = []
-        # FIXME: create a logical branch for the two different optimizations
-        def to_optimize(c_para):
-            # c_para_vector: 1D array conforms the multi-qubit single-shot
-            # readout
-            c_para_vector = np.array([1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
-            cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
-            # cpp_output shape = (n_shots, n_non_trainable_params)
-            for i in range(data_batch_shape[1]):
-                for j in range(data_batch_shape[2]):
-                    cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
-                        -1), c_para_vector)
-            cost = np.average(np.array([
-                np.mean((row - targets) ** 2) for row in cpp_output
-            ]), axis=0)
-            classical_params.append(c_para[0])
-            return cost
+        # There are two ways to define the cost function. The first one
+        # calculate the cost function value for each single shot readout and
+        # then take the average, while the second one take the average of
+        # the single shot readout result and then calculate the cost function.
+
+        # def to_optimize(c_para):
+        #     # c_para_vector: 1D array conforms the multi-qubit single-shot
+        #     # readout
+        #     data_batch_shape = data_batch.shape
+        #     c_para_vector = np.array(
+        #       [1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
+        #     cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
+        #     # cpp_output shape = (n_shots, n_non_trainable_params)
+        #     for i in range(data_batch_shape[1]):
+        #         for j in range(data_batch_shape[2]):
+        #             cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
+        #                 -1), c_para_vector)
+        #     cost = np.average(np.array([
+        #         np.mean((row - targets) ** 2) for row in cpp_output
+        #     ]), axis=0)
+        #     classical_params.append(c_para[0])
+        #     return cost
 
         def to_optimize_(c_para):
             # c_para_vector: 1D array conforms the multi-qubit single-shot
             # readout
-            c_para_vector = np.array([1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
-            data_batch_test = np.concatenate((data_batch[0], data_batch[1]),
-                                        axis=-1)
+            c_para_vector = np.array(
+                [1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
+            data_batch_test = np.concatenate(
+                (data_batch[0], data_batch[1]), axis=-1)
             data_batch_test = np.average(data_batch_test, axis=0)
             cpp_output = np.matmul(data_batch_test,
                                    c_para_vector.T).reshape(-1)
             cost = np.mean((cpp_output - targets) ** 2)
             classical_params.append(c_para[0])
             return cost
-        result = self.classical_optimizer_function(to_optimize,
-                                                   **self.classical_optimizer_kw)
+        result = self.classical_optimizer_function(to_optimize_,
+                                                **self.classical_optimizer_kw)
         optimized_cost = result.fun
         classical_param = result.x
         return optimized_cost, classical_params, classical_param
