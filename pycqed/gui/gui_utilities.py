@@ -197,3 +197,46 @@ def powerset(iterable):
     """
     s = list(iterable)
     return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
+
+
+def reinitialize_toolbar(toolbar: qt.NavigationToolbar2QT):
+    """Reinitializes values to ensure toolbar function after figure change.
+
+    Args:
+        toolbar: NavigationToolbar2QT object to reinitialize.
+    """
+    # upon changing the figure associated to the FigureCanvasQTAgg
+    # instance self.view, the zoom and pan tools of the toolbar can't be
+    # used to manipulate the figure unless the corresponding callback
+    # methods are reinitialized. Reinitialization of callback methods
+    # corresponds to the __init__ method of the FigureCanvasQTAgg class.
+    toolbar._id_press = toolbar.canvas.mpl_connect(
+        'button_press_event', toolbar._zoom_pan_handler)
+    toolbar._id_release = toolbar.canvas.mpl_connect(
+        'button_release_event', toolbar._zoom_pan_handler)
+    toolbar._id_drag = toolbar.canvas.mpl_connect(
+        'motion_notify_event', toolbar.mouse_move)
+    toolbar._pan_info = None
+    toolbar._zoom_info = None
+    toolbar.update()
+
+
+class TriggerResizeEventMixin:
+    """Mixin for `_trigger_resize_event()` function."""
+    def _trigger_resize_event(self):
+        """Manually resize the window to trigger resize event."""
+        # Manually change the size of the window to intermediary size and
+        # back to its original to trigger the resize event. The resize event
+        # forces readjustment of widget sizes this way fitting all of them in
+        # the current window. This was the only way that was found to cause
+        # this manually. It's needed because if some widget changes the size
+        # (or a widget itself is replaced with another one of different size)
+        # it might overflow into area that is beyond the displayed window of
+        # the program. This forces a widget to resize to fit the window.
+        # Note: just dispatching the event manually doesn't seem to have an
+        # effect. Probably, because event handler check whether the size
+        # actually changed.
+
+        size = self.size()
+        self.resize(self.width() + 1, self.height())
+        self.resize(size)
