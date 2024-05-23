@@ -729,6 +729,17 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
     def get_awgs(self):
         return [self.AWG]
 
+    def set_acq_length(self, val):
+        """Set the acquisition length (overwrite value given in init).
+
+        Has to be implemented in child classes where needed.
+
+        Args:
+            val (float): new acquisition length in seconds
+        """
+        raise NotImplementedError(
+            f'set_acq_length not implemented in {self.__class__}.')
+
     @Timer()
     def poll_data(self):
         """
@@ -1028,6 +1039,10 @@ class MultiPollDetector(PollDetector):
             return [self.AWG.master_awg] + self.AWG.awgs
         return [self.AWG]
 
+    def set_acq_length(self, val):
+        for d in self.detectors:
+            d.set_acq_length(val)
+
     def get_values(self):
         """
         Get raw acquisition data from poll_data and process it by calling
@@ -1234,6 +1249,9 @@ class AveragingPollDetector(PollDetector):
             averages=self.nr_averages,
             loop_cnt=int(self.nr_averages),
             mode='avg')
+
+    def set_acq_length(self, val):
+        self.acquisition_length = val
 
 
 class IntegratingAveragingPollDetector(PollDetector):
@@ -1523,6 +1541,11 @@ class IntegratingAveragingPollDetector(PollDetector):
             mode=self._acq_mode, data_type=self.data_type,
         )
 
+    def set_acq_length(self, val):
+        self.integration_length = val
+        value_properties = self.acq_dev.get_value_properties(
+            self.data_type, self.integration_length)
+        self.scaling_factor = value_properties['scaling_factor']
 
 class ScopePollDetector(PollDetector):
     """
