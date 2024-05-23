@@ -188,7 +188,7 @@ class CircuitBuilder:
             qb_map = {qb.name: qb for qb in self.qubits}
             return [qb_map[qb] for qb in qb_names], qb_names
 
-    def get_prep_params(self, qb_names='all'):
+    def get_reset_params(self, qb_names="all"):
         """Gets a copy of preparation parameters (used for active reset,
         preselection) for qb_names.
 
