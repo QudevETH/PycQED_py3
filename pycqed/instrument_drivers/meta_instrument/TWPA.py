@@ -20,10 +20,8 @@ class TWPAObject(MeasurementObject):
         super().__init__(name, **kw)
 
         # Add instrument reference parameters
-        self.add_parameter('instr_pump', parameter_class=InstrumentRefParameter)
-        self.add_parameter('instr_signal',
+        self.add_parameter('instr_pump',
                            parameter_class=InstrumentRefParameter)
-        self.add_parameter('instr_lo', parameter_class=InstrumentRefParameter)
 
         # Add pump control parameters
         self.add_parameter('pump_freq', label='Pump frequency', unit='Hz',
@@ -45,33 +43,35 @@ class TWPAObject(MeasurementObject):
         # Add signal control parameters
         def set_freq(val, self=self):
             if self.pulsed():
-                self.instr_signal.get_instr().frequency(val - self.acq_mod_freq())
-                if self.instr_lo() != self.instr_signal():
-                    self.instr_lo.get_instr().frequency(val - self.acq_mod_freq())
+                self.instr_ro_lo.get_instr().frequency(
+                    val - self.acq_mod_freq())
             else:
-                self.instr_signal.get_instr().frequency(val)
-                self.instr_lo.get_instr().frequency(val - self.acq_mod_freq())
+                raise NotImplementedError("Continuous spectroscopy not "
+                                          "implemented!")
+                # TODO use instr_acq and instr_ro_lo from the base class
+                # self.instr_signal.get_instr().frequency(val)
+                # self.instr_lo.get_instr().frequency(val - self.acq_mod_freq())
 
         # Add signal control parameters
         def get_freq(self=self):
             if self.pulsed():
-                return self.instr_signal.get_instr().frequency() + \
+                return self.instr_ro_lo.get_instr().frequency() + \
                        self.acq_mod_freq()
             else:
-                return self.instr_signal.get_instr().frequency()
+                return self.instr_ro_lo.get_instr().frequency()
 
         self.add_parameter('signal_freq', label='Signal frequency', unit='Hz',
                            get_cmd=get_freq, set_cmd=set_freq)
         self.add_parameter('signal_power', label='Signal power', unit='dBm',
                            get_cmd=(lambda self=self:
-                                    self.instr_signal.get_instr().power()),
+                                    self.instr_ro_lo.get_instr().power()),
                            set_cmd=(lambda val, self=self:
-                                    self.instr_signal.get_instr().power(val)))
+                                    self.instr_ro_lo.get_instr().power(val)))
         self.add_parameter('signal_status', label='Signal status',
                            get_cmd=(lambda self=self:
-                                    self.instr_signal.get_instr().status()),
+                                    self.instr_ro_lo.get_instr().status()),
                            set_cmd=(lambda val, self=self:
-                                    self.instr_signal.get_instr().status(val)))
+                                    self.instr_ro_lo.get_instr().status(val)))
 
         # add pulse parameters
         self.add_parameter('pulsed', parameter_class=ManualParameter,
@@ -110,12 +110,14 @@ class TWPAObject(MeasurementObject):
         pulsar = self.instr_pulsar.get_instr()
 
         # Prepare MWG states
+        # There are (currently) 3 possible use cases:
+        # - Continuous spectroscopy (self.pulsed() == False)
+        # - Pulsed spectroscopy by gating the MWG
+        # - Pulsed spectroscopy using readout pulse modulation
+        # Currently the code below only works in the third case
         self.instr_pump.get_instr().pulsemod_state('Off')
-        if not self.pulsed():
-            self.instr_signal.get_instr().pulsemod_state('Off')
-            self.instr_signal.get_instr().on()
-        self.instr_lo.get_instr().pulsemod_state('Off')
-        self.instr_lo.get_instr().on()
+        self.instr_ro_lo.get_instr().pulsemod_state('Off')
+        self.instr_ro_lo.get_instr().on()
         # make sure that the lo frequency is set correctly
         self.signal_freq(self.signal_freq())
 
