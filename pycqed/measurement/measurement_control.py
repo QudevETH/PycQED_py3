@@ -777,9 +777,9 @@ class MeasurementControl(Instrument):
                 # Example SSRO: acq_data_len_scaling equals the number of
                 # shots and prepare will get a sweep point for each shot of
                 # each segment, see IntegratingAveragingPollDetector.prepare.
-                self.detector_function.prepare(
-                    np.tile(sweep_function.sequence.n_acq_elements,
-                            self.acq_data_len_scaling))
+                self.detector_function.prepare(np.tile(
+                    np.zeros(sweep_function.sequence.n_acq_elements()),
+                    self.acq_data_len_scaling))
                 break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
