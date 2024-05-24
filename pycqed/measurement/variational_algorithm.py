@@ -197,8 +197,12 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                  for mobj in meas_objs}
         for mobj in meas_objs:
             # FIXME get this from the metadata instead?
-            reset_reps = mobj.reset.feedback.repetitions() if hasattr(
-                mobj.reset, 'feedback') else 1
+            steps = mobj.reset.steps()
+            assert np.all(np.array(steps) == 'feedback') or not steps
+            num_feedback_steps = len(steps)
+            num_repetitions = mobj.reset.feedback.repetitions() if hasattr(
+                mobj.reset, 'feedback') else 0
+            reset_reps = num_repetitions*num_feedback_steps
             pp.add_node('filter_data', keys_in='raw',
                         data_filter=lambda x: x[reset_reps::reset_reps+1],
                         meas_obj_names=mobj.name)
