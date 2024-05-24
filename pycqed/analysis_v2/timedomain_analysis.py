@@ -1910,12 +1910,23 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             shots_per_qb[qbn] = \
                 np.asarray(list(
                     pdd[key][qbn].values())).T
+            n_vn = shots_per_qb[qbn].shape[-1]
+            if (sc := self.get_param_value('sweep_control'))\
+                    and sc[0] == 'soft':
+                # 1D soft sweep with single shots: turn into a 2D measurement
+                # with shape (n_soft_sp, n_shots, n_vn)
+                soft_control = True
+                nr_shots = self.get_param_value(
+                    "nr_shots", self._extract_param_from_det("nr_shots"))
+                shots_per_qb[qbn] = shots_per_qb[qbn].reshape((-1, nr_shots,
+                                                               n_vn))
+            else:
+                soft_control = False
             # if "2D measurement" reshape from (n_soft_sp, n_shots, n_vn)
             #  to ( n_shots * n_soft_sp, n_ro_ch)
             if np.ndim(shots_per_qb[qbn]) == 3:
-                assert self.get_param_value("TwoD", False) == True, \
+                assert self.get_param_value("TwoD", False) or soft_control, \
                     "'TwoD' is False but single shot data seems to be 2D"
-                n_vn = shots_per_qb[qbn].shape[-1]
                 # put softsweep as inner most loop for easier processing
                 shots_per_qb[qbn] = np.swapaxes(shots_per_qb[qbn], 0, 1)
                 # reshape to 2D array
@@ -2067,17 +2078,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.proc_data_dict['single_shots_per_qb'] = deepcopy(shots_per_qb)
 
         # determine number of shots
-        n_shots = self.get_param_value("n_shots")
-        if n_shots is None:
-            # FIXME: this extraction of number of shots won't work with soft repetitions.
-            # FIXME: refactor to use settings manager instead of raw_data_dict
-            n_shots_from_hdf = [
-                int(self.get_data_from_timestamp_list({
-                    f'sh': f"Instrument settings.{qbn}.acq_shots"})['sh']) for qbn in self.qb_names]
-            if len(np.unique(n_shots_from_hdf)) > 1:
-                log.warning("Number of shots extracted from hdf are not all the same:"
-                            "assuming n_shots=max(qb.acq_shots() for qb in qb_names)")
-            n_shots = np.max(n_shots_from_hdf)
+        n_shots = self.get_param_value(
+            "nr_shots", self._extract_param_from_det("nr_shots"))
 
         # determine number of readouts per sequence
         if self.get_param_value("TwoD", False):
@@ -2187,6 +2189,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
+            # Note: shots has been re-ordered in _get_single_shots_per_qb,
+            # compared to the raw data from the measurement
             for ro in range(n_readouts*n_seqs):
                 shots_single_ro = shots[ro::n_readouts*n_seqs]
                 presel_mask_single_ro = preselection_masks[qbn][ro::n_readouts*n_seqs]
@@ -9971,21 +9975,6 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                     f'sure that your measurement stores it (or pass it '
                     f'via the options_dict).')
             setattr(self, param, val)
-
-    def _extract_param_from_det(self, param, default=None):
-        det_metadata = self.metadata.get("Detector Metadata", None)
-        val = None
-        if det_metadata is not None:
-            # multi detector function: look for child "detectors"
-            # assumes at least 1 child and that all children have the same
-            # number of averages
-            val = det_metadata.get(param, None)
-            if val is None:
-                det = list(det_metadata.get('detectors', {}).values())[0]
-                val = det.get(param, None)
-        if val is None:
-            val = default
-        return val
 
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
                               count_nan_measurements=False):
