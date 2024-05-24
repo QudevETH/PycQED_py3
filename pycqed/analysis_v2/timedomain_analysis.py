@@ -5751,10 +5751,12 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 old_qb_freq = 0  # FIXME: explain why
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'old_qb_freq'] = old_qb_freq
+            legacy_sign = 1 if self.get_param_value('right_handed_basis')\
+                else -1  # -1 for old measurements with left-handed basis
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
-                'new_qb_freq'] = old_qb_freq + \
-                                 self.artificial_detuning_dict[qbn] - \
-                                 fit_res.best_values['frequency']
+                'new_qb_freq'] = old_qb_freq + legacy_sign * (
+                    fit_res.best_values['frequency']
+                    - self.artificial_detuning_dict[qbn])
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq_stderr'] = fit_res.params['frequency'].stderr
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
@@ -7317,9 +7319,18 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 amps_errs = np.nan_to_num(amps_errs)
                 # amps_errs.dtype = amps.dtype
                 if qbn in self.ramsey_qbnames:
-                    # phase_diffs
-                    phases = np.array([fr.best_values['phase'] for fr in
+                    # Extracting the phases:
+                    # the data were fitted using cos(phase+phase_offset), where
+                    # * phase (named t in the model) are the phase sweep points
+                    # * phase_offset (phase in the model) is a fitted offset
+                    # Here we want to know the phase at which the cosine is
+                    # maximum, which is phase = -phase_offset
+                    phases = -np.array([fr.best_values['phase'] for fr in
                                        fit_res_objs])
+                    # -1 for old measurements with left-handed basis
+                    legacy_sign = 1 if self.get_param_value(
+                        'right_handed_basis') else -1
+                    phases = legacy_sign*phases
                     phases_errs = np.array([fr.params['phase'].stderr for fr in
                                             fit_res_objs], dtype=np.float64)
                     phases_errs = np.nan_to_num(phases_errs)
@@ -7329,7 +7340,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
 
                     # compute phase diffs
                     if getattr(self, 'delta_tau', 0) is not None:
-                        # this can be false for Cyroscope with
+                        # this can be false for Cryoscope with
                         # estimation_window == None and odd nr of trunc lengths
                         phase_diffs = phases[0::2] - phases[1::2]
                         phase_diffs %= (2*np.pi)

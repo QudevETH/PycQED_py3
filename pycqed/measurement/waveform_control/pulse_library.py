@@ -2120,7 +2120,7 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     If alpha >= 1.0: The modulation and predistortion is calculated as
     [I_mod] = [cos(phi_skew)  sin(phi_skew)] [ cos(wt)  sin(wt)] [I_env]
     [Q_mod]   [0              1/alpha      ] [-sin(wt)  cos(wt)] [Q_env],
-    where wt = 360 * mod_frequency * (tvals - tval_phaseref) + phase
+    where wt = 360 * mod_frequency * (tvals - tval_phaseref) - phase
 
     If alpha < 1.0: I_mod and Q_mod will be multiplied with alpha on top of
     the expression above. This is to make sure that all elements of the
@@ -2143,7 +2143,16 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
     Returns:
         np.ndarray, np.ndarray: The predistorted and modulated outputs.
     """
-    phi = 360 * mod_frequency * (tvals - tval_phaseref) + phase
+
+    # - sign: so that 'phase' is the phase of the drive on the Bloch sphere.
+    # This ensures that calling this method with the phase attribute of a pulse
+    # yields a drive right-handed rotated by 'phase' around the vertical axis.
+    # Intuitively, this is because, in the laboratory frame, the quantum state
+    # precesses clockwise, seen from the top (assuming |0> is the top of the
+    # Bloch sphere). This means that the drive also rotates clockwise vs time
+    # (one of the two exponentials in cos(\omega t - phase)). The - sign then
+    # ensures that the drive rotates counterclockwise as a function of phase.
+    phi = 360 * mod_frequency * (tvals - tval_phaseref) - phase
     phii = phi + phi_skew
     phiq = phi + 90
 
