@@ -1801,6 +1801,7 @@ class BaseDataAnalysis(object):
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
         plot_grid = pdict.get('grid', None)
+        plot_opposite_axis = pdict.get('opposite_axis', False)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
         # Ensures that 'color' can be passed both ways (and that it does not
         # collide with plot_linekws).
@@ -1918,6 +1919,9 @@ class BaseDataAnalysis(object):
         if plot_ytick_labels is not None:
             axs.yaxis.set_ticklabels(plot_ytick_labels,
                                      rotation=plot_ytick_rotation)
+        if plot_opposite_axis:
+            axs.yaxis.set_label_position("right")
+            axs.yaxis.tick_right()
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -2273,6 +2277,7 @@ class BaseDataAnalysis(object):
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        plot_cbar_opposite_axis = pdict.get('cbar_opposite_axis', False)
         if not isinstance(axs, Axes3D):
             cmap = axs.cmap
         else:
@@ -2302,9 +2307,14 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
-        if orientation == 'horizontal':
+        if orientation == 'horizontal' and not plot_cbar_opposite_axis:
+            # Defaults to top, unless plot_cbar_opposite_axis
             axs.cax.xaxis.set_label_position("top")
             axs.cax.xaxis.tick_top()
+        if orientation == 'vertical' and plot_cbar_opposite_axis:
+            # Defaults to right, unless plot_cbar_opposite_axis
+            axs.cax.yaxis.set_label_position("left")
+            axs.cax.yaxis.tick_left()
 
         if self.tight_fig:
             axs.figure.tight_layout()
