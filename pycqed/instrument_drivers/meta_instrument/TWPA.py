@@ -101,6 +101,10 @@ class TWPAObject(MeasurementObject):
         return operation_dict
 
     def prepare_readout(self):
+        # FIXME most of this could be done using MeasurementObject.prepare()
+        #  including features like automatic switching for pulsed or
+        #  not-pulsed (modulated or spec, respectively), and gated pulsed
+        #  measurements
         UHF = self.instr_acq.get_instr()
         if not UHF.IDN()['model'].startswith('UHF'):
             raise NotImplementedError(
@@ -128,6 +132,7 @@ class TWPAObject(MeasurementObject):
             mod_freq=self.acq_mod_freq(),
         )
 
+        # FIXME this should use the RO operation from MeasurementObject
         # Program the AWG
         if self.pulsed():
             pulse = {'pulse_type': 'GaussFilteredCosIQPulse',
@@ -159,6 +164,8 @@ class TWPAObject(MeasurementObject):
             single_int_avg=True)
 
     def _measure_1D(self, parameter, values, label, analyze=True):
+        # FIXME should be unified as a QuantumExperiment measurement
+        #  (currently only works with a UHFQA acquisition device)
 
         MC = self.instr_mc.get_instr()
 
@@ -178,6 +185,8 @@ class TWPAObject(MeasurementObject):
 
     def _measure_2D(self, parameter1, parameter2, values1, values2,
                     label, analyze=True):
+        # FIXME should be unified as a QuantumExperiment measurement
+        #  (currently only works with a UHFQA acquisition device)
 
         MC = self.instr_mc.get_instr()
 
