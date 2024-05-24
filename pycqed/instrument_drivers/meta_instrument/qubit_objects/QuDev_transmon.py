@@ -427,12 +427,6 @@ class QuDev_transmon(MeasurementObject):
                                self.DEFAULT_FLUX_DISTORTION),
                            vals=vals.Dict())
 
-        # Pulse preparation parameters
-        DEFAULT_PREP_PARAMS = dict(preparation_type='wait',
-                                   post_ro_wait=1e-6, reset_reps=1,
-                                   final_reset_pulse=True,
-                                   threshold_mapping={
-                                       self.name: {0: 'g', 1: 'e'}})
 
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
                             set_parser=self._validate_preparation_params)
