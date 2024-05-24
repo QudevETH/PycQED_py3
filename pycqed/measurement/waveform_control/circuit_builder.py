@@ -1,18 +1,19 @@
 import itertools
-import numpy as np
-from copy import copy
-from copy import deepcopy
-from pycqed.measurement.waveform_control.block import Block
-from pycqed.measurement.waveform_control.block import ParametricValue
-from pycqed.measurement.waveform_control.sequence import Sequence
-from pycqed.measurement.waveform_control.segment import Segment
-from pycqed.measurement import multi_qubit_module as mqm
 import logging
+from copy import copy, deepcopy
+
+import numpy as np
+
+from pycqed.measurement import multi_qubit_module as mqm
+
 log = logging.getLogger(__name__)
+from pycqed.measurement.waveform_control.block import Block, ParametricValue
+from pycqed.measurement.waveform_control.segment import Segment
+from pycqed.measurement.waveform_control.sequence import Sequence
+
 
 class CircuitBuilder:
-    """
-    A class that helps to build blocks, segments, or sequences, e.g.,
+    """A class that helps to build blocks, segments, or sequences, e.g.,
     when implementing quantum algorithms.
 
     :param dev: the device on which the algorithm will be executed
@@ -102,9 +103,9 @@ class CircuitBuilder:
 
     @staticmethod
     def _parse_reset(reset_params=None):
-        """
-        Parse reset parameters such that the output is either "None"
+        """Parse reset parameters such that the output is either "None"
         or a dictionary containing reset parameters.
+
         Args:
             reset_params (None, str, dict): reset parameters.
             If None, returned reset params will be None.
@@ -131,8 +132,7 @@ class CircuitBuilder:
             return reset_params
 
     def update_operation_dict(self, operation_dict=None):
-        """
-        Updates the stored operation_dict based on the passed operation_dict or
+        """Updates the stored operation_dict based on the passed operation_dict or
         based on the stored device/qubit objects.
         :param operation_dict: (optional) The operation dict to be used. If
             not provided, an operation dict is generated from  the stored
@@ -147,8 +147,7 @@ class CircuitBuilder:
             self.operation_dict = deepcopy(mqm.get_operation_dict(self.qubits))
 
     def get_qubits(self, qb_names=None, strict=True):
-        """
-        Wrapper to get 'all' qubits, single qubit specified as string
+        """Wrapper to get 'all' qubits, single qubit specified as string
         or list of qubits, checking they are in self.qubits
         :param qb_names: 'all', single qubit name (eg. 'qb1') or list of
             qb names
@@ -190,9 +189,9 @@ class CircuitBuilder:
             return [qb_map[qb] for qb in qb_names], qb_names
 
     def get_reset_params(self, qb_names="all"):
-        """
-        Gets a copy of reset parameters (used for active reset,
+        """Gets a copy of preparation parameters (used for active reset,
         preselection) for qb_names.
+
         Args:
             qb_names (list): list of qubit names for which the
                 reset params should be retrieved. Default is 'all',
@@ -217,8 +216,7 @@ class CircuitBuilder:
         return reset_params
 
     def _get_reset_steps(self, qb_names="all", steps=None):
-        """
-        Constructs the global reset steps for the given qubits in qb_names
+        """Constructs the global reset steps for the given qubits in qb_names
         by retrieving the steps of the individual qubits in qb.reset.steps
         or from the passed `steps`
         Args:
@@ -237,10 +235,10 @@ class CircuitBuilder:
         # modification within this function without affecting original object
         if qubits is None:
             # no qubits objects passed, so no reset possible
-            log.warning(f"Failed to retrieve reset "
-                        f"steps from qb.reset.steps() because no qubits "
-                        f"objects were found (self.qubits is None). "
-                        f"No reset steps will be added.")
+            log.warning("Failed to retrieve reset "
+                        "steps from qb.reset.steps() because no qubits "
+                        "objects were found (self.qubits is None). "
+                        "No reset steps will be added.")
             reset_steps = {qbn: [] for qbn in qb_names}
             analysis_instructions = {qbn: [dict(preparation_type="wait")]
                                      for qbn in qb_names}
@@ -270,8 +268,7 @@ class CircuitBuilder:
 
     def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None,
                               cz_pulse_name=None, **kw):
-        """
-        Finds the name of the CZ gate between qb1-qb2 that exists in
+        """Finds the name of the CZ gate between qb1-qb2 that exists in
         self.operation_dict.
         :param qb1: name of qubit object of one of the gate qubits
         :param qb2: name of qubit object of the other gate qubit
@@ -313,10 +310,10 @@ class CircuitBuilder:
         return pulses[0]
 
     def get_pulses(self, op):
-        """
-        Gets pulse dictionaries, corresponding to the operation op, from the
+        """Gets pulse dictionaries, corresponding to the operation op, from the
         operation dictionary, and possibly parses logical indexing as well as
         arbitrary angles.
+
         Examples:
              >>> get_pulses('CZ 0 2')
              will perform a CZ gate (according to cz_pulse_name)
@@ -567,8 +564,7 @@ class CircuitBuilder:
         return p
 
     def swap_qubit_indices(self, i, j=None):
-        """
-        Swaps logical qubit indices by swapping the entries in self.qb_names.
+        """Swaps logical qubit indices by swapping the entries in self.qb_names.
         :param i: (int or iterable): index of the first qubit to be swapped or
             indices of the two qubits to be swapped (as two ints given in the
             first two elements of the iterable)
@@ -581,8 +577,7 @@ class CircuitBuilder:
     def initialize(self, init_state='0', qb_names='all', reset_params=None,
                    simultaneous=True, block_name=None, pulse_modifs=None,
                    prepend_block=None):
-        """
-        Initializes the specified qubits with the corresponding init_state
+        """Initializes the specified qubits with the corresponding init_state
         :param init_state (String or list): Can be one of the following
             - one of the standard initializations: '0', '1', '+', '-'.
               In that case the same init_state is done on all qubits
@@ -652,8 +647,7 @@ class CircuitBuilder:
 
     def finalize(self, init_state='0', qb_names='all', simultaneous=True,
                  block_name=None, pulse_modifs=None):
-        """
-        Applies the specified final rotation to the specified qubits.
+        """Applies the specified final rotation to the specified qubits.
         This is basically the same initialize, but without preparation.
         For parameters, see initialize().
         :return: finalization block
@@ -669,12 +663,15 @@ class CircuitBuilder:
     def reset(self, qb_names='all', steps=None,
               step_alignment='start', alignment="end",
               block_name=None, **kws):
-        """
-        Prepares a reset of a list of qubits using a sequence of steps (globally provided
-        as argument to this function or individually specified from qubit.init.steps).
+        """Prepares a reset of a list of qubits using a sequence of steps
+        (globally provided as argument to this function or individually
+         specified from qubit.init.steps).
+
+        I.e.:
 
         qb0 --[step 0 ] -- ... - [step i]
         qb1 --[step 0 ] -- ... - [step j]
+
         Args:
             qb_names: which qubits to prepare. Defaults to all.
             steps (list, str, None, dict): list of steps for the preparation.
@@ -714,7 +711,6 @@ class CircuitBuilder:
             sequantial_blocks: A Reset_{qb_names} block with a sequential list
             of simultaneous prep blocks.
         """
-
         qubits, qb_names = self.get_qubits(qb_names)
         if block_name is None:
             block_name = f"Reset_{qb_names}"
@@ -775,6 +771,39 @@ class CircuitBuilder:
                 )
             )
 
+        # FIXME: Temporarily dropping support for f0g1_reset.
+        #        Will be reintroduced with devel/f0g1_init_schemes.
+        #
+        # # f0g1 reset
+        # elif preparation_type == 'f0g1_reset':
+        #     preparation_pulses = []
+        #     for i, qbn in enumerate(qb_names):
+        #         preparation_pulses.append(
+        #             self.get_pulse('f0g1_reset_pulse ' + qbn))
+        #         preparation_pulses[-1]['ref_point'] = 'start'
+        #         preparation_pulses[-1]['element_name'] = 'f0g1_reset'
+
+        #         preparation_pulses.append(
+        #             self.get_pulse('ef_for_f0g1_reset_pulse ' + qbn))
+        #         preparation_pulses[-1]['ref_point'] = 'start'
+        #         preparation_pulses[-1]['element_name'] = 'f0g1_reset'
+
+        #     preparation_pulses[0]['ref_pulse'] = ref_pulse
+        #     preparation_pulses[0]['name'] = 'f0g1_reset_pulse'
+        #     preparation_pulses[0]['pulse_delay'] = 0  # -ro_separation
+
+        #     preparation_pulses[1]['ref_pulse'] = ref_pulse
+        #     preparation_pulses[1]['name'] = 'ef_for_f0g1_reset_pulse'
+        #     preparation_pulses[1]['pulse_delay'] = 0  # -ro_separation
+
+        #     block_end = dict(name='end', pulse_type="VirtualPulse",
+        #                      ref_pulse='f0g1_reset_pulse',
+        #                      pulse_delay=ro_separation,
+        #                      ref_point='end')
+        #     preparation_pulses += [block_end]
+        #     return Block(block_name, preparation_pulses, copy_pulses=False)
+
+
         return self.sequential_blocks(block_name, prep)
 
     def mux_readout(self, qb_names='all', element_name='RO', block_name="Readout",
@@ -805,16 +834,13 @@ class CircuitBuilder:
             return block
 
     def Z_gate(self, theta=0, qb_names='all'):
-
-        """
-        Software Z-gate of arbitrary rotation.
+        """Software Z-gate of arbitrary rotation.
 
         :param theta:           rotation angle, in degrees
         :param qb_names:      pulse parameters (dict)
 
         :return: Pulse dict of the Z-gate
         """
-
         # if qb_names is the name of a single qb, expects single pulse output
         single_qb_given = not isinstance(qb_names, list)
         _, qb_names = self.get_qubits(qb_names)
@@ -824,8 +850,7 @@ class CircuitBuilder:
 
     def get_ops_duration(self, operations=None, pulses=None, fill_values=None,
                          pulse_modifs=None, init_state='0'):
-        """
-        Calculates the total duration of the operations by resolving a dummy
+        """Calculates the total duration of the operations by resolving a dummy
         segment created from operations.
         :param operations: list of operations (str), which can be preformatted
             and later filled with values in the dictionary fill_values
@@ -855,8 +880,7 @@ class CircuitBuilder:
 
     def block_from_ops(self, block_name, operations, fill_values=None,
                        pulse_modifs=None):
-        """
-        Returns a block with the given operations.
+        """Returns a block with the given operations.
         Eg.
         >>> ops = ['X180 {qbt:}', 'X90 {qbc:}']
         >>> builder.block_from_ops("MyAwesomeBlock",
@@ -909,8 +933,7 @@ class CircuitBuilder:
                             block_align='end', segment_prefix='calibration_',
                             sweep_dicts_list=None, sweep_index_list=None,
                             **kw):
-        """
-        Returns a list of segments for each cal state in cal_points.states.
+        """Returns a list of segments for each cal state in cal_points.states.
         :param cal_points: CalibrationPoints instance
         :param init_state: initialization state (string or list),
             see documentation of initialize().
@@ -961,8 +984,8 @@ class CircuitBuilder:
         return segments
 
     def block_from_anything(self, pulses, block_name):
-        """
-        Convert various input formats into a `Block`.
+        """Convert various input formats into a `Block`.
+
         Args:
             pulses: A specification of a pulse sequence. Can have the following
                 formats:
@@ -978,7 +1001,6 @@ class CircuitBuilder:
             block_name: Name of the resulting block
         Returns: The input converted to a Block.
         """
-
         if hasattr(pulses, 'build'):  # Block
             return pulses
         elif isinstance(pulses, str):  # opcode
@@ -992,8 +1014,7 @@ class CircuitBuilder:
 
     def block_from_pulse_dicts(self, pulse_dicts,
                                block_name='from_pulse_dicts'):
-        """
-        Generates a block from a list of pulse dictionaries.
+        """Generates a block from a list of pulse dictionaries.
 
         Args:
             pulse_dicts: list
@@ -1028,8 +1049,7 @@ class CircuitBuilder:
 
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):
-        """
-        Returns a segment with the given operations using the function
+        """Returns a segment with the given operations using the function
         block_from_ops().
         :param operations: list of operations (str), which can be preformatted
             and later filled with values in the dictionary fill_values
@@ -1055,8 +1075,7 @@ class CircuitBuilder:
 
     def seq_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seq_name='Sequence', ro_kwargs=None):
-        """
-        Returns a sequence with the given operations using the function
+        """Returns a sequence with the given operations using the function
         block_from_ops().
         :param operations: list of operations (str), which can be preformatted
             and later filled with values in the dictionary fill_values
@@ -1082,8 +1101,7 @@ class CircuitBuilder:
     def simultaneous_blocks(self, block_name, blocks, block_align='start',
                             set_end_after_all_pulses=False,
                             disable_block_counter=False, destroy=False):
-        """
-        Creates a block with name :block_name: that consists of the parallel
+        """Creates a block with name :block_name: that consists of the parallel
         execution of the given :blocks:. Ensures that any pulse or block
         following the created block will occur after the longest given block.
 
@@ -1110,7 +1128,6 @@ class CircuitBuilder:
                 individual blocks can be destroyed (speedup by avoiding
                 copying pulses, see Block.build).
         """
-
         simultaneous = Block(block_name, [])
 
         if not hasattr(destroy, '__iter__'):
@@ -1129,7 +1146,7 @@ class CircuitBuilder:
             # with block alignment otherwise create it
             block_start = block.block_start or {'block_align': block_align}
             simultaneous.extend(block.build(
-                ref_pulse=f"start", block_start=block_start,
+                ref_pulse="start", block_start=block_start,
                 name=block.name if disable_block_counter else None,
                 destroy=d))
             # FIXME: This start block is quite contrary to its name, added to the end
@@ -1137,7 +1154,7 @@ class CircuitBuilder:
 
         # the name of the simultaneous_end_pulse is used in
         # Segment.resolve_timing and should not be changed
-        simultaneous.extend([{"name": f"simultaneous_end_pulse",
+        simultaneous.extend([{"name": "simultaneous_end_pulse",
                               "pulse_type": "VirtualPulse",
                               "pulse_delay": 0,
                               "ref_pulse": simultaneous_end_pulses,
@@ -1149,8 +1166,7 @@ class CircuitBuilder:
     def sequential_blocks(self, block_name, blocks,
                           set_end_after_all_pulses=False,
                           disable_block_counter=False, destroy=False):
-        """
-        Creates a block with name :block_name: that consists of the serial
+        """Creates a block with name :block_name: that consists of the serial
         execution of the given :blocks:.
 
         CAUTION: For each of the given blocks, the end time of the block is
@@ -1172,7 +1188,6 @@ class CircuitBuilder:
                 False): whether the individual blocks can be destroyed
                 (speedup by avoiding copying pulses, see Block.build).
         """
-
         sequential = Block(block_name, [])
         if not hasattr(destroy, '__iter__'):
             destroy = [destroy] * len(blocks)
@@ -1188,8 +1203,7 @@ class CircuitBuilder:
                     ro_kwargs=None, return_segments=False, ro_qubits='all',
                     repeat_ro=True, init_kwargs=None, final_kwargs=None,
                     segment_kwargs=None, **kw):
-        """
-        Creates a sequence or a list of segments by doing an N-dim sweep
+        """Creates a sequence or a list of segments by doing an N-dim sweep
         over the given operations based on the sweep_points.
         Currently, only 1D and 2D sweeps are implemented.
 
@@ -1365,9 +1379,7 @@ class CircuitBuilder:
 
     def tomography_pulses(self, tomo_qubits=None,
                           basis_rots=('I', 'X90', 'Y90'), all_rots=True):
-
-        """
-        Generates a complete list of tomography pulse lists for tomo_qubits.
+        """Generates a complete list of tomography pulse lists for tomo_qubits.
         :param tomo_qubits: None, list of qubit names, or of qubits indices in
             self.get_qubits(). I None, then tomo_qubit = self.get_qubits()[1].
             If list of indices, they will be sorted.
@@ -1391,7 +1403,6 @@ class CircuitBuilder:
                 len(tomo_qubits) repetitions of each pulse in basis_rots
                 (i.e. all qubits get the same pulses).
         """
-
         if not isinstance(basis_rots[0], str):
             return basis_rots
 
