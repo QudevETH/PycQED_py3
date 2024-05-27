@@ -135,7 +135,10 @@ class MeasureSSRO(CalibBuilder):
                 'multiplexed_ssro': self.multiplexed_ssro,
             })
 
-            # adding cal points for analysis, no actual cal points are measured
+            # Adding cal_points for analysis by using that the cal_points are
+            # in self._metadata_params. These are written into the meta-data
+            # when calling run_measurement, making them accessible for the
+            # analysis. No actual cal points are measured.
             self.cal_points = ana_cal_points
 
             self.autorun(**kw)
