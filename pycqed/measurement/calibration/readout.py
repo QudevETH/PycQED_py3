@@ -136,9 +136,10 @@ class MeasureSSRO(CalibBuilder):
             })
 
             # Adding cal_points for analysis by using that the cal_points are
-            # in self._metadata_params. These are written into the meta-data
-            # when calling run_measurement, making them accessible for the
-            # analysis. No actual cal points are measured.
+            # in self._metadata_params. When running the measurement,
+            # update_metadata is called, which writes self.cal_points to the
+            # metadata, making them available for analysis. No actual cal
+            # points are measured.
             self.cal_points = ana_cal_points
 
             self.autorun(**kw)
