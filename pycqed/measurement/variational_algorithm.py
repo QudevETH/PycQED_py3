@@ -126,12 +126,13 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     @staticmethod
     def classical_postprocessing(single_shots_per_qb_thresholded):
         # returns the sum of g state population
-        # data shape: dictionary of flattened single shot measurement
+        # single_shots_per_qb_thresholded shape: dictionary of flattened single
+        # shot measurement
         e_state_data = [single_shots_per_qb_thresholded[qbn][:, 1] for qbn
                         in single_shots_per_qb_thresholded.keys()]
-        # return shape: {qb: (flattened_len,)} -> (flattened_len,)
-        # return value: averaged e state population
-        return np.average(e_state_data, axis=0)  # average over qubits
+        # return shape: (flattened_len,)
+        # return value: averaged e state population over qubits
+        return np.average(e_state_data, axis=0)
 
     @staticmethod
     def cost_function(cpp_output, targets):
@@ -145,7 +146,8 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             axis=0,
         )
         # cost_func shape: (trainable parameter number in one batch,) or scalar
-        return cost_func.reshape((-1, 1))  # 2D: for EGO function format
+        # reshape cost_func to 2D: for EGO
+        return cost_func.reshape((-1, 1))
 
     # @staticmethod  # FIXME?
     def _data_processing_function(self, vals,
@@ -201,14 +203,12 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             } for mobj_i, mobj in enumerate(meas_objs)
         }
         pp.run(data_dict, overwrite_data_dict=True)
+        print(f"pp.data_dict[qb.name]['classify_gm'] = "
+              f"{pp.data_dict['qb2']['classify_gm']}")
 
-        data = {qb.name: np.vstack(
-            (pp.data_dict[qb.name]['classify_gm']['pg'], pp.data_dict[qb.name][
-                'classify_gm']['pe'], pp.data_dict[qb.name]['classify_gm'][
-                'pf'])
-        ).T for qb in meas_objs}
-        # Shape at this point:
-        # {qb.name: flattened three state readout}
+        # data shape: {qb.name: flattened three state readout}
+        data = {qb.name: np.array([v for v in pp.data_dict[qb.name][
+            'classify_gm'].values()]).T for qb in meas_objs}
         return data
 
     def _prepare_sequences(self, sequences=None, sequence_function=None,
@@ -383,7 +383,6 @@ class VQAOptimizer:
 
     def _full_circuit(self, params):
         all_params, batch_shape, targets = self.get_batch_params(params)
-        # Below: optimization_function in measurement_control.py
         data = self.measurement_function(all_params)
         if self.hybrid:
             data = np.array([
@@ -392,38 +391,30 @@ class VQAOptimizer:
             # data shape: (n_qb, n_shots, n_trainable_params,
             # n_non_trainable_params, 3 states)
             costs = []
-            # classical_params = []
             for i in range(batch_shape[0]):
                 data_batch = data[:, :, i, :, :]
                 # data batch shape: (n_qb, n_shots, n_non_trainable_params,
                 # 3 states)
-                # cost is scalar
+                # cost below is scalar
                 cost, classical_params, classical_param = \
                     self._classical_training(data_batch, targets)
                 costs.append([cost])
                 self.classical_params_list.append(np.array(classical_params))
                 self.classical_params_result.append(np.array(classical_param))
-            # record training process
-            self.sweep_points.append(np.atleast_2d(params))  # Nelder-Mead, EGO
-            self.cost_function_values.append(np.array(costs))
-            # costs here is equivalent to cost below
-            return np.array(costs)
+            costs = np.array(costs)
         else:
             cpp_output = VariationalAlgorithm.classical_postprocessing(data)
             cpp_output = cpp_output.reshape((-1, *batch_shape))
-            # shape = [n_shots, *batch_shape]
+            # cpp_output shape = (n_shots, n_trainable, n_non_trainable)
             # batch_shape = (n_trainable, n_non_trainable)
-            cost = self.cost_function(cpp_output, targets)
-            # record training process
-            self.sweep_points.append(np.atleast_2d(params))  # Nelder-Mead, EGO
-            self.cost_function_values.append(cost)
-            # self.classical_params_result.append(cost)
-            # cost: 2D list of values
-            # [[value_1], [value_2], ... [value_n_trainable]]
-            return cost
+            costs = self.cost_function(cpp_output, targets)
+        # cost: 2D list of values
+        # [[value_1], [value_2], ... [value_n_trainable]]
+        self.sweep_points.append(np.atleast_2d(params))
+        self.cost_function_values.append(costs)
+        return costs
 
     def _classical_training(self, data_batch, targets):
-        # optimize separately for each trainable parameter set
         # return: cost (scalar)
         classical_params = []
         # There are two ways to define the cost function. The first one
