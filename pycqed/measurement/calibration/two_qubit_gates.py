@@ -154,12 +154,13 @@ class MultiTaskingExperiment(QuantumExperiment):
         return self.find_qubits_in_tasks(self.qb_names, [task])
 
     @staticmethod
-    def _prepare_qubits_and_tasklist(qubits, task_list):
+    def _parse_qubits_and_tasklist(qubits, task_list):
+        """Generates a task_list and qb_names list form `qubits` argument.
+
+        Implements the shortcut where just specifying `qubits` will generate a
+        task_list and a list of the qubit names.
         """
-        Extracts the qubits and task_list from arguments. Implements the
-        shortcut where just specifying `qubits` will generate a task_list.
-        """
-        # prepare task_list
+        # generate task_list
         if task_list is None:
             if qubits is None:
                 raise ValueError('Please provide either '

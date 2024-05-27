@@ -7845,13 +7845,13 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
 
 
 class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
-    """
-    Analysis class for timetraces, in particular use to compute
-    Optimal SNR integration weights.
+    """Computes the Optimal SNR integration weights.
+
+    Analysis class for OptimalWeights and find_optimal_weights.
     """
     def __init__(self, qb_names=None, auto=True, **kwargs):
-        """
-        Initializes the timetrace analysis class.
+        """Initializes the timetrace analysis class.
+
         Args:
             qb_names (list): name of the qubits to analyze (can be a subset
                 of the measured qubits)
@@ -7878,11 +7878,11 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             scale_weights (bool): scales the weights near unity to avoid
                 loss of precision on FPGA if weights are too small (default: True)
             filter_residual_tones (bool): Whether to filter the measured
-                weights. Specify filter using ``residual_tone_filter_fcn``.
+                weights. Specify filter using ``residual_tone_filter_func``.
                 Creates new field ``'optimal_weights_unfiltered'`` in
                 ``analysis_params_dict`` to save weights before filtering
                 (default: True)
-            residual_tone_filter_fcn (fcn, str): function (``freq``, ``ro_freq``) ->
+            residual_tone_filter_func (func, str): function (``freq``, ``ro_freq``) ->
                 float. For a given value of the parameter ``ro_freq`` (in Hz),
                 the function value indicates the complex scaling factor by
                 which a frequency component at frequency ``freq`` (in Hz) is
@@ -7890,7 +7890,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 eval(). (default: Gaussian centered at ``ro_freq`` with sigma
                 ``residual_tone_filter_sigma``)
             residual_tone_filter_sigma (float): specifies the width
-                of the Gaussian filter. Ignored if a ``residual_tone_filter_fcn``
+                of the Gaussian filter. Ignored if a ``residual_tone_filter_func``
                 is provided. (default: 1e7 (10 MHz))
             plot_end_time (float): specifies the time up to which the
                 timetraces and weights are plotted, no effect if None (default:
@@ -7948,7 +7948,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ana_params['means'] = defaultdict(dict)
 
         if self.get_param_value('filter_residual_tones', True):
-            filter_fcn = self._get_residual_tone_filter_fcn()
+            filter_func = self._get_residual_tone_filter_func()
 
         for qb_indx, qbn in enumerate(self.qb_names):
             # retrieve time traces
@@ -8031,7 +8031,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                 basis /= k
 
             if self.get_param_value('filter_residual_tones', twoD):
-                basis = self._get_filtered_basis(basis, filter_fcn, qbn)
+                basis = self._filter_timetraces(basis, filter_func, qbn)
 
             ana_params['optimal_weights'][qbn] = basis
             ana_params['optimal_weights_basis_labels'][qbn] = basis_labels
@@ -8045,35 +8045,36 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
             self.save_processed_data()
 
-    def _get_residual_tone_filter_fcn(self):
+    def _get_residual_tone_filter_func(self):
         pdd = self.proc_data_dict
         ana_params = pdd['analysis_params_dict']
 
         ana_params['optimal_weights_unfiltered'] = defaultdict(dict)
-        filter_fcn = self.get_param_value(
-            'residual_tone_filter_fcn', None)
-        if filter_fcn is None:
+        filter_func = self.get_param_value(
+            'residual_tone_filter_func', None)
+        if filter_func is None:
             # if no filter is given, use gaussian filter with width sigma
             sigma = self.get_param_value('residual_tone_filter_sigma', 1e7)
-            filter_fcn = lambda f, f0: np.exp(
+            filter_func = lambda f, f0: np.exp(
                 -.5 * (f - f0) ** 2 / sigma ** 2)
         else:
             try:
-                filter_fcn = eval(filter_fcn) if \
-                    isinstance(filter_fcn, str) else filter_fcn
+                filter_func = eval(filter_func) if \
+                    isinstance(filter_func, str) else filter_func
             except SyntaxError:
                 log.warning(
                     'Could not parse the custom filter function. '
                     'Either pass a valid lambda function '
                     'directly or as a string')
-        return filter_fcn
+        return filter_func
 
-    def _get_filtered_basis(self, basis, filter_fcn, qbn):
-        """
-        Residual/spurious tone filtering, only supported if called by
-        OptimalWeights.
+    def _filter_timetraces(self, basis, filter_func, qbn):
+        """Applies filtering function to the timetraces.
 
-        Applies ``filter_fcn`` to the time trace in ``basis`` with the
+        Perfroms the residual/spurious tone filtering, only supported if called
+        by OptimalWeights.
+
+        Applies ``filter_func`` to the timetraces in ``basis`` with the
         RO-frequency and RO modulation frequency of the qubit ``qbn``, returns
         the modified basis.
         """
@@ -8082,8 +8083,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
         # safe copy for comparison
         ana_params['optimal_weights_unfiltered'][qbn] = deepcopy(basis)
-        # TODO: Allow for per qb/acq_instr sampling rates. This change
-        #  requires the respective changes in readout.OptimalWeights.
+        # FIXME: Allow for per qb/acq_instr sampling rates. This change
+        # requires the respective changes in readout.OptimalWeights.
         sampling_rate = self.get_param_value('acq_sampling_rate', None)
         if sampling_rate is None:
             raise ValueError("Please provide acq_sampling_rate.")
@@ -8091,29 +8092,29 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ro_mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
 
         if np.ndim(basis) == 1:
-            basis = self._filter_residual_tones(
-                basis, ro_freq, ro_mod_freq, sampling_rate, filter_fcn)
+            basis = self._filter_timetrace(
+                basis, ro_freq, ro_mod_freq, sampling_rate, filter_func)
         else:
             assert np.ndim(basis) == 2, "Basis arr should only be 2D."
             for i in range(len(basis)):
-                basis[i] = self._filter_residual_tones(
+                basis[i] = self._filter_timetrace(
                     basis[i], ro_freq, ro_mod_freq, sampling_rate,
-                    filter_fcn)
+                    filter_func)
         return basis
 
     @staticmethod
-    def _filter_residual_tones(w, ro_freq, ro_mod_freq, sampling_rate,
-                               filter_fcn):
-        """
-        Filtering of timetraces to reduce residual tones and noise. Filtering
-        is carried out in fourier space in units of MHz.
+    def _filter_timetrace(w, ro_freq, ro_mod_freq, sampling_rate,
+                          filter_func):
+        """Applies filtering function to a single timetrace.
+
+        Filtering is carried out in fourier space in units of MHz.
 
         Args:
             w: complex weigths I + .j * Q to be filtered
             ro_freq: ro freq of qb (in Hz)
             ro_mod_freq: ro modulation freq of qb (in Hz)
             sampling_rate: sampling rate of timetrace acq_instr
-            filter_fcn: filter to be applied around ro_freq, see docstring of
+            filter_func: filter to be applied around ro_freq, see docstring of
             __init__ for more details.
 
         Returns:
@@ -8123,7 +8124,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         w_spec = np.fft.fftshift(w_spec)
         f = np.fft.fftfreq(len(w_spec), 1e6 / sampling_rate)
         f = np.fft.fftshift(f) + ro_freq / 1e6 - ro_mod_freq / 1e6
-        w_spec *= filter_fcn(f * 1e6, ro_freq)
+        w_spec *= filter_func(f * 1e6, ro_freq)
         w = np.fft.ifftshift(w_spec)
         w = np.fft.ifft(w)
         w /= np.max(np.abs(w))
@@ -8201,9 +8202,10 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
 
 
 class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
-    """
-    Analysis class for parallel SSRO qutrit/qubit calibration. It is a child class
-    from the tda.MultiQubit_Timedomain_Analysis as it uses the same functions to
+    """Analysis class for parallel SSRO qutrit/qubit calibration.
+
+    It is a child class from the tda.MultiQubit_Timedomain_Analysis as it uses
+    the same functions to
     - preprocess the data to remove active reset/preselection
     - extract the channel map
     - reorder the data per qubit
@@ -8213,8 +8215,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
 
     def __init__(self,
                  options_dict: dict = None, auto=True, **kw):
-        """
-        Initializes the SSRO analysis class.
+        """Initializes the SSRO analysis class.
 
         Args:
             qb_names (list): name of the qubits to analyze (can be a subset
@@ -8303,8 +8304,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                                  for qbn in self.qb_names})
 
     def process_data(self):
-        """
-        Create the histograms based on the raw data
+        """Create the histograms based on the raw data
         """
         ######################################################
         #  Separating data into shots for each level         #
@@ -8685,11 +8685,12 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
 
     @staticmethod
     def _extract_snr(gmm=None,  state_labels=None, clf_params=None,):
-        """
-        Extracts SNR between pairs of states. SNR is defined as dist(m1,
-        m2)/mean(std1, std2), where dist = L2 norm, m1, m2 are the means of the
-        pair of states and std1, std2 are the "standard deviation" (obtained
-        from the confidence ellipse of the covariance if 2D).
+        """Extracts SNR between pairs of states.
+
+        SNR is defined as dist(m1,m2)/mean(std1, std2), where dist = L2 norm,
+        m1, m2 are the means of the pair of states and std1, std2 are the
+        "standard deviation" (obtained from the confidence ellipse of the
+        covariance if 2D).
         :param gmm: Gaussian mixture model
         :param clf_params: Classifier parameters. Not implemented but could
         reconstruct gmm from clf params. Would be more analysis friendly.
@@ -8977,9 +8978,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def _order_multiplexed_state_labels(states_labels, order=STATE_ORDER,
                                         most_significant_state_first=True):
-        """
-        Orders multiplexed state labels according to provided ordering. e.g.
-        for default ordering [('e', 'g'), ('g', 'g'), ('e', 'e'), ('g', 'e')]
+        """Orders multiplexed state labels according to provided ordering.
+
+        e.g. for default ordering [('e', 'g'), ('g', 'g'), ('e', 'e'), ('g', 'e')]
         becomes [['g', 'g'], ['e', 'g'], ['g', 'e'], ['e', 'e']].
         Args:
             states_labels (2D list, tuple): list of states_labels to be sorted
@@ -9002,8 +9003,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             return states_labels
 
     def plot(self, **kwargs):
-        """
-        Main plotting function for MeasureSSRO.
+        """Main plotting function for MeasureSSRO.
 
         Infers which measurement was run (multiplexed and/or sweep) and which
         single, multiplexed and trend plots should be prepared. See docstring
@@ -9082,7 +9082,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         super().plot(**kwargs)
 
     def plot_single_qb_plots(self, qbn, slice_title=None, sweep_indx=0, **kw):
-        """
+        """Plots single qubit SSRO plots.
+
         Plots IQ plane scatter plots and state assignment probability matrices
         for a given qbn and sweep index (2nd dimension).
 
@@ -9255,7 +9256,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             self.figs[fig_key] = fig
 
     def plot_multiplexed_plots(self, slice_title=None, sweep_indx=0, **kw):
-        """
+        """Plots multi qubit SSRO plots.
+
         Plots the state assignment probability matrices for a given qbn and
         sweep index (2nd dimension).
 
@@ -9321,10 +9323,11 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             self.figs[fig_key] = fig
 
     def prepare_plots(self):
-        """
-        Prepares sweep plots: Prepare fidelity (linear) and infidelity (log)
-        plots as well as parse custom plotting metrics given in ``plot_metrics``
-        or ``multiplexed_plot_metrics``. See __init__ docstring for details
+        """Prepares sweep plots.
+
+        Prepare fidelity (linear) and infidelity (log) plots as well as parse
+        custom plotting metrics given in ``plot_metrics`` or
+        ``multiplexed_plot_metrics``. See __init__ docstring for details
         on custom plotting metrics.
         """
         # don't prepare sweep plots if there was no sweep
@@ -9383,9 +9386,10 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         self.prepare_sweep_plot(qbn, pm)
 
     def prepare_sweep_plot(self, qbn, plot_settings, multiplexed=False):
-        """
-        Helper function for ``prepare_plots``: Prepares (single qb) trend plots
-        and custom (single qb) trend plots when sweeping in 2nd dimension.
+        """Helper function for ``prepare_plots``
+
+        Prepares (single qb) trend plots and custom (single qb) trend plots
+        when sweeping in 2nd dimension.
 
         Args:
             qbn (str): Name of qb
@@ -9468,8 +9472,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'ymax': ymax, })
 
     def get_base_sweep_plot_options(self, qbn, plot_name, multiplexed=False):
-        """
-        Helper function for prepare_sweep_plot. Prepares default trend plots.
+        """Prepares default sweep plots shared by all sweep plots.
+
+        Helper function for prepare_sweep_plot.
 
         Args:
             qbn (str): Name of qb

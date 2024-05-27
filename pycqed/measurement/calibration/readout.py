@@ -87,8 +87,8 @@ class MeasureSSRO(CalibBuilder):
                  update_classifier=True, update_ro_params=True,
                  preselection=True, **kw):
         try:
-            qubits, task_list = self._prepare_qubits_and_tasklist(qubits,
-                                                                  task_list)
+            qubits, task_list = self._parse_qubits_and_tasklist(qubits,
+                                                                task_list)
 
             kw.setdefault('df_name', 'int_log_det')
             kw.update({'cal_states': ()})  # we don't want any cal_states.
@@ -110,6 +110,7 @@ class MeasureSSRO(CalibBuilder):
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
+            # grouping only has an impact for acq_length sweeps
             self.grouped_tasks = {}
             self.group_tasks(**kw)
             self._resolve_acq_length_sweep_points()
@@ -143,9 +144,16 @@ class MeasureSSRO(CalibBuilder):
             traceback.print_exc()
 
     def _configure_sweep_points(self, states):
-        """
+        """Configures self.sweep_points for SSRO
+
         Modifies self.sweep_points to perform the SSRO measurement, i.e.
-        sweeps the init states in dimension 0.
+        sweeps the init states in dimension 0. Checks whether other
+        (incompatible) sweeps were added.
+
+        It uses the methods for the generation of Calibration Points and
+        returns the generated cal_points for it to be used in analysis
+        (due to backwards-compatibility). No actual Calibration Points are
+        measured.
         """
         # use the methods for cal_point generation to generate the states
         cal_points = CalibrationPoints.multi_qubit(
@@ -176,7 +184,9 @@ class MeasureSSRO(CalibBuilder):
         return cal_points
 
     def group_tasks(self, **kw):
-        """Fills the grouped_tasks dict with a list of tasks from
+        """Groups the tasks by the acquisition device.
+
+        Fills the grouped_tasks dict with a list of tasks from
         preprocessed_task_list per acquisition device found in
         the preprocessed_task_list.
         """
@@ -187,7 +197,8 @@ class MeasureSSRO(CalibBuilder):
             self.grouped_tasks[acq_dev] += [task]
 
     def _resolve_acq_length_sweep_points(self):
-        """
+        """Creates and resolves the acquisition length sweeps
+        
         Implements the logic to ensure that the acq_length is swept with the
         ro_length and that the acq_lengths per instr_acq are identical.
         """
@@ -255,8 +266,7 @@ class MeasureSSRO(CalibBuilder):
                 for task in tasks[1:]})
 
     def get_detector_function(self, acq_dev):
-        """
-        Returns the detector function of the corresponding acq_dev.
+        """Returns the detector function of the corresponding acq_dev.
 
         It is a helper function which is called by swf.AcquisitionLengthSweep
         if acq_length is being swept during the measurement. It is used to
@@ -269,7 +279,8 @@ class MeasureSSRO(CalibBuilder):
 
     def sweep_block(self, qb, sweep_points,
                     sweep_preselection_ro_pulses=True, **kw):
-        """
+        """Creates the SSRO sweep block.
+        
         Creates the sweep block with one RO pulse and replaces the RO pulse
         parameters with ParametricValues.
         """
@@ -301,7 +312,7 @@ class MeasureSSRO(CalibBuilder):
             self.run_update_ro_params()
 
     def run_update_classifier(self):
-        """ Updates qubit classifier.
+        """Updates qubit classifier.
 
         Chooses the classifiers that yielded the highest fidelities if a sweep
         was performed.
@@ -327,7 +338,7 @@ class MeasureSSRO(CalibBuilder):
                     pddap['state_prob_mtx'][qb.name][best_indx])
 
     def run_update_ro_params(self):
-        """ Updates RO pulse parameters if sweep was performed.
+        """Updates RO pulse parameters if sweep was performed.
 
         Sets qubit readout pulse parameters to the values that yielded the
         highest fidelity.
@@ -355,9 +366,9 @@ class MeasureSSRO(CalibBuilder):
 
 
 class OptimalWeights(CalibBuilder):
-    """
-    Measures time traces for specified states and finds optimal integration
-    weights. Applies filters to optimal integration weights if specified.
+    """Measures time traces and finds optimal integration weights. 
+    
+    Applies filters to optimal integration weights if specified.
 
     For convenience, this class accepts the ``qubits`` argument in which case
     task_list is not needed and will be created from qubits.
@@ -403,7 +414,7 @@ class OptimalWeights(CalibBuilder):
                  acq_length=None, acq_weights_basis=None, orthonormalize=True,
                  **kw):
         try:
-            qubits, task_list = self._prepare_qubits_and_tasklist(
+            qubits, task_list = self._parse_qubits_and_tasklist(
                 qubits, task_list)
 
             kw.update({'cal_states': (),  # we don't want any cal_states.
@@ -418,7 +429,7 @@ class OptimalWeights(CalibBuilder):
             self.acq_weights_basis = acq_weights_basis
 
             self._check_acq_devices()
-            self._configure_time_samples(acq_length)
+            self._calculate_sampling_times(acq_length)
             self._configure_sweep_points(states)
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
 
@@ -454,8 +465,7 @@ class OptimalWeights(CalibBuilder):
         return self.get_qubits(task['qb'])[0][0]
 
     def _check_acq_devices(self):
-        """
-        Checks whether an acquisition device is used more than once.
+        """Checks whether an acquisition device is used more than once.
         """
         qbs_in_tasks = [self.get_qubit(task) for task in self.task_list]
         acq_dev_names = np.array([qb.instr_acq() for qb in qbs_in_tasks])
@@ -469,8 +479,12 @@ class OptimalWeights(CalibBuilder):
                     f"except if you know what you are doing.")
         return
 
-    def _configure_time_samples(self, acq_length):
-        """
+    def _calculate_sampling_times(self, acq_length):
+        """Calculates the sampling times of the acquisition device(s)
+
+        Uses the properties of the acquisition device of the first qubit in the
+        task list to calculate the sampling times.
+        
         Populates the fields
          - self.acq_sampling_rate
          - self.acq_length
@@ -513,7 +527,8 @@ class OptimalWeights(CalibBuilder):
             self.acq_length, align_acq_granularity=True)
 
     def _configure_sweep_points(self, states):
-        """
+        """Configures self.sweep_points for the OptimalWeights experiment
+
         Modifies self.sweep_points to perform the time trace measurement, i.e.
         with sampling times in dimension 0 and the init states in dimension 1.
         """
@@ -552,7 +567,8 @@ class OptimalWeights(CalibBuilder):
 
 
     def sweep_block(self, qb, **kw):
-        """
+        """Creates the OptimalWeights sweep block.
+
         Creates sweep block for a qubit containing only the readout.
         """
 

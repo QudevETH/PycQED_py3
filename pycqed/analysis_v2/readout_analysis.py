@@ -987,7 +987,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             plot_cb (bool): whether to plot colour bar
             plot_compact (bool): doesn't annotate all fidelity matrix values &
                 doesn't rotate target value tick marks if set to ``True``
-            presel_column (list): array of ``len(prep_names)`` values in
+            presel_column (array): array of ``len(prep_names)`` with values in
                 [0, 1] indicating the fraction of shots for which the
                 preselection condition was fulfilled. Will be added to the plot
                 as a separate column.
