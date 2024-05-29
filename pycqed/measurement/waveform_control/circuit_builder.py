@@ -210,7 +210,6 @@ class CircuitBuilder:
             qb_names=reset_params.get('qb_names', qb_names),
             steps=reset_params.get('steps', None))
 
-        # return reset_steps, analysis_instructions
         reset_params.update(dict(steps=steps, analysis_instructions=
                                  analysis_instructions))
         return reset_params
@@ -1149,7 +1148,6 @@ class CircuitBuilder:
                 ref_pulse="start", block_start=block_start,
                 name=block.name if disable_block_counter else None,
                 destroy=d))
-            # FIXME: This start block is quite contrary to its name, added to the end
             simultaneous_end_pulses.append(simultaneous.pulses[-1]['name'])
 
         # the name of the simultaneous_end_pulse is used in

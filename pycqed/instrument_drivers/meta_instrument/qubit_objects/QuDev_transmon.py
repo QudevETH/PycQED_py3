@@ -2993,9 +2993,7 @@ class QuDev_transmon(MeasurementObject):
             feedback_reset (bool, optional): If True, adds the FeedbackReset
                 scheme. Default is True.
             parametric_flux_reset (bool, optional): If True, adds the
-                ParametricFluxReset scheme. Default is True. Because of
-                some implementation dependencies (LRU) and insufficient
-                testing.
+                ParametricFluxReset scheme. Default is False.
 
         Returns: None
 
@@ -3041,7 +3039,9 @@ class QuDev_transmon(MeasurementObject):
                     submodule_name, reset.ParametricFluxReset(self.reset)
                 )
 
-# FIXME: Is this needed with add_reset_schemes covering PFM?
+# FIXME: We could call this also directly in `add_reset_schemes` when 
+# `parametric_flux_reset==True` if we detect that the operation 'PFM' 
+# and/or 'PFM_ef' do not exist.
     def add_parametric_flux_modulation(
         self,
         op_name="PFM",
