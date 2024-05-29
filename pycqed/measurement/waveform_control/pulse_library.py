@@ -1773,7 +1773,8 @@ class f0g1Pulse(pulse.Pulse):
 
     def joinJunctions(self, gTilde_vs_t, tRise, tFall, junctionTrunc,
                       junctionSigma, junctionType, t):
-        """Creates a ramp up and ramp down for a pulse outside of a given interval.
+        """Creates a 'ramp up' and a 'rump down' for the pulse outside
+        of the interval given by 'tStart' and 'tFall'.
 
         The returned shape will have 3 parts:
             - part_a = ramp up
