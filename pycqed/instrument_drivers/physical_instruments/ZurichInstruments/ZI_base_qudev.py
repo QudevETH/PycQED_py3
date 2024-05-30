@@ -25,9 +25,18 @@ class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
         """
         super().start()  # ZI_base_instrument.start() does not expect kwargs
 
+    def store_awg_source_string(self, awg_nr, awg_str):
+        """Save awg source string in a private attribute for debugging
+
+        Args:
+            awg_nr (int): index of the channel pair (0-indexed)
+            awg_str (str): source string to be stored
+        """
+        self._awg_source_strings[awg_nr] = awg_str
+
     def configure_awg_from_string(self, awg_nr: int, program_string: str,
                                   *args, **kwargs):
-        self._awg_source_strings[awg_nr] = program_string
+        self.store_awg_source_string(awg_nr, program_string)
         super().configure_awg_from_string(awg_nr, program_string,
                                           *args, **kwargs)
 

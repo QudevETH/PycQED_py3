@@ -29,6 +29,7 @@ from pycqed.measurement.calibration import calibration_points as cp_mod
 
 # Used for auto qcodes parameter wrapping
 from pycqed.measurement import sweep_functions as swf
+from pycqed.measurement import awg_sweep_functions as awg_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_det
 from pycqed.analysis.tools.data_manipulation import get_generation_means
@@ -156,10 +157,12 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
-        self.add_parameter('clean_interrupt',
-                           vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           initial_value=False)
+        self.add_parameter(
+            'clean_interrupt', docstring=
+            'Whether data that has already been received from acquisition '
+            'instruments should be stored in case of a KeyboardInterrupt.',
+            vals=vals.Bool(), parameter_class=ManualParameter,
+            initial_value=True)
         self.add_parameter('compress_dataset',
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
@@ -252,6 +255,12 @@ class MeasurementControl(Instrument):
 
         self.parameter_checks = {}
 
+        # We initiallize the adaptive_function parameters
+        self.af_pars = {}
+        self.data_processing_function = self._default_data_processing_function
+        """Data processing function for adaptive measurements, see docstring
+        of _default_data_processing_function."""
+
     ##############################################
     # Functions used to control the measurements #
     ##############################################
@@ -285,7 +294,7 @@ class MeasurementControl(Instrument):
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
-            previous_attempts=0, **kw):
+            previous_attempts=0, store_sweep_indices=False, **kw):
         '''
         Core of the Measurement control.
 
@@ -312,6 +321,8 @@ class MeasurementControl(Instrument):
                     has already been tried. This is usually not passed by
                     the calling function, but only used by run() when it
                     calls itself recursively.
+            store_sweep_indices (bool): If True, when storing the data the
+                iteration indices are prepended instead of the sweep points.
         '''
 
         def try_finish():
@@ -330,6 +341,8 @@ class MeasurementControl(Instrument):
         self.print_measurement_start_msg()
 
         self.mode = mode
+        # When storing the data, prepend indices instead of the full sweep pts
+        self.store_sweep_indices = store_sweep_indices
         # used in determining data writing indices (deprecated?)
         self.iteration = 0
 
@@ -369,6 +382,8 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
+            self.exp_metadata['sweep_control'] = [
+                s.sweep_control for s in getattr(self, 'sweep_functions', [])]
             self.save_exp_metadata(self.exp_metadata)
             exception = None
             try:
@@ -465,8 +480,9 @@ class MeasurementControl(Instrument):
             sweep_function.prepare()
         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
 
-        if (self.sweep_functions[0].sweep_control == 'soft' and
-                self.detector_function.detector_control == 'soft'):
+        if self.sweep_functions[0].sweep_control == 'soft':
+            # Note that we allow the combination of soft sweep and hard
+            # detector (e.g., SSRO in soft sweep)
             self.detector_function.prepare()
             self.get_measurement_preparetime()
             self.measure_soft_static()
@@ -513,8 +529,7 @@ class MeasurementControl(Instrument):
                     self.detector_function.prepare(sweep_points=sp)
                     self.measure_hard(filtered_sweep)
         else:
-            raise Exception('Sweep and Detector functions not '
-                            + 'of the same type. \nAborting measurement')
+            raise Exception('Hard sweep with soft detector not allowed.')
 
         self.check_keyboard_interrupt()
         self.update_instrument_monitor()
@@ -536,28 +551,69 @@ class MeasurementControl(Instrument):
     def measure_soft_static(self):
         for j in range(self.soft_avg()):
             self.soft_iteration = j
-            for i, sweep_point in enumerate(self.sweep_points):
+            sp = self.sweep_points
+            if self.detector_function.detector_control == 'hard':
+                # sp have been tiled for points*shots, but for a soft sweep
+                # with hard detector, we have to undo this because the soft
+                # sweep function needs each point only once even if
+                # multiple shots are returned by the hard detector.
+                sp = sp[0:len(sp) // self.acq_data_len_scaling]
+            for i, sweep_point in enumerate(sp):
                 self.measurement_function(sweep_point, index=i)
 
+    @Timer()
     def measure_soft_adaptive(self, method=None):
         '''
         Uses the adaptive function and keywords for that function as
         specified in self.af_pars()
+
+        FIXME this method is used in a very convoluted way:
+         - the user passes an adaptive_function, which is the optimiser and
+           itself expects a function returning data as its argument
+         - the user passes data_processing_function, which is an analysis
+         - measure_soft_adaptive calls the adaptive_function, passing
+           optimization_function to it
+         - optimization_function calls measurement_function (which calls
+           the detectors), and data_processing_function, and returns values
+         - adaptive_function gets the values, takes a decision, and returns
+           an optimal (set of) sweep point(s)
+         One possible cleaner way could be:
+         - measure_soft_adaptive calls the adaptive_function, passing
+           measurement_function to it
+         - data_processing_function is part of the adaptive_function and
+           just called by it
+         - adaptive_function finally takes the decisions, and returns
+           optimal sweep point(s)
+         In addition, one could replace the adaptive_function by a base
+         class, including a data_processing_function analysis and an
+         optimisation method (defaulting to doing a min/max optimisation as
+         currently in optimization_function).
         '''
         self.save_optimization_settings()
         self.adaptive_function = self.af_pars.pop('adaptive_function')
+        self.data_processing_function = self.af_pars.pop(
+            'data_processing_function', self._default_data_processing_function)
         if self._live_plot_enabled():
             self.initialize_plot_monitor()
             self.initialize_plot_monitor_adaptive()
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.prepare.start")
         for sweep_function in self.sweep_functions:
             sweep_function.prepare()
-        self.detector_function.prepare()
+        if self.detector_function.detector_control != 'hard':
+            # A hard detector requires sweep points, these will only be
+            # generated later in measurement_function, which then takes care of
+            # calling self.detector_function.prepare(sp).
+            self.detector_function.prepare()
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.prepare.end")
         self.get_measurement_preparetime()
 
         if self.adaptive_function == 'Powell':
             self.adaptive_function = fmin_powell
-        if (isinstance(self.adaptive_function, types.FunctionType) or
-                isinstance(self.adaptive_function, np.ufunc)):
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.adaptive_function.start")
+        if callable(self.adaptive_function):
             try:
                 # exists so it is possible to extract the result
                 # of an optimization post experiment
@@ -569,6 +625,8 @@ class MeasurementControl(Instrument):
         else:
             raise Exception('optimization function: "%s" not recognized'
                             % self.adaptive_function)
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.adaptive_function.end")
         self.save_optimization_results(self.adaptive_function,
                                        result=self.adaptive_result)
 
@@ -589,12 +647,16 @@ class MeasurementControl(Instrument):
             ones will be skipped (False). Default: None, in which case all
             acquisition elements will be played.
         """
+        if self.store_sweep_indices:
+            raise NotImplementedError("store_sweep_indices not yet "
+                                      "implemented for hard sweeps!")
         n_acquired = 0
         for i_rep in range(self.soft_repetitions()):
             # Tell the detector_function to call print_progress for intermediate
             # progress reports during get_detector_function.values.
             self.detector_function.progress_callback = (
                 lambda x, n=n_acquired: self.print_progress(x + n))
+            # Transpose because detectors return [len(value_names), num_points]
             this_new_data = np.array(self.detector_function.get_values()).T
             n_acquired += this_new_data.shape[0]
             new_data = this_new_data if i_rep == 0 else np.concatenate(
@@ -627,19 +689,19 @@ class MeasurementControl(Instrument):
         len_new_data = stop_idx-start_idx
         if len(np.shape(new_data)) == 1:
             old_vals = self.dset[start_idx:stop_idx,
-                                 len(self.sweep_functions)]
+                                 self._get_nr_sweep_point_columns()]
             new_vals = ((new_data + old_vals*self.soft_iteration) /
                         (1+self.soft_iteration))
 
             self.dset[start_idx:stop_idx,
-                      len(self.sweep_functions)] = new_vals
+                      self._get_nr_sweep_point_columns()] = new_vals
         else:
             old_vals = self.dset[start_idx:stop_idx,
-                                 len(self.sweep_functions):]
+                                 self._get_nr_sweep_point_columns():]
             new_vals = ((new_data + old_vals * self.soft_iteration) /
                         (1 + self.soft_iteration))
             self.dset[start_idx:stop_idx,
-                      len(self.sweep_functions):] = new_vals
+                      self._get_nr_sweep_point_columns():] = new_vals
         sweep_len = len(self.get_sweep_points().T) * self.acq_data_len_scaling
 
 
@@ -676,13 +738,21 @@ class MeasurementControl(Instrument):
         self.print_progress()
         return new_data
 
+    @Timer()
     def measurement_function(self, x, index=None):
         '''
         Core measurement function used for soft sweeps
+
+        FIXME: not tested for len(self.sweep_functions) > 2
         '''
-        if np.size(x) == 1:
+        if np.isscalar(x):
             x = [x]
-        if np.size(x) != len(self.sweep_functions):
+        # The len()==1 condition is a consistency check because batch_mode
+        # is currently only implemented for the case of a single sweep
+        # function (e.g., break in the if statement inside the for loop)
+        batch_mode = (len(self.sweep_functions) == 1 and
+                      self.sweep_functions[0].supports_batch_mode)
+        if np.size(x) != len(self.sweep_functions) and not batch_mode:
             raise ValueError(
                 'size of x "%s" not equal to # sweep functions' % x)
         # The following will be set to True (in the second-last iteration,
@@ -690,6 +760,27 @@ class MeasurementControl(Instrument):
         # last iteration, sweep dimension 0) in a filtered sweep.
         filter_out = False
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
+            if batch_mode:
+                # Here, x corresponds to a tuple of circuit parameters or a
+                # list of tuples of circuit parameters, see
+                # `BlockSoftHardSweep` for details.
+                x = np.atleast_2d(x)
+                self.timer.checkpoint(
+                    "MeasurementControl.measurement_function.set_parameter"
+                    ".start")
+                sweep_function.set_parameter(x)
+                self.timer.checkpoint(
+                    "MeasurementControl.measurement_function.set_parameter"
+                    ".end")
+                # Detector functions assume to receive the sweep points
+                # tiled, according to the number in acq_data_len_scaling.
+                # Example SSRO: acq_data_len_scaling equals the number of
+                # shots and prepare will get a sweep point for each shot of
+                # each segment, see IntegratingAveragingPollDetector.prepare.
+                self.detector_function.prepare(np.tile(
+                    np.zeros(sweep_function.sequence.n_acq_elements()),
+                    self.acq_data_len_scaling))
+                break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
             # will not be called. This is important when setting a parameter
@@ -750,17 +841,35 @@ class MeasurementControl(Instrument):
         datasetshape = self.dset.shape
         # self.iteration = datasetshape[0] + 1
 
+        # vals.shape = [num_points, len(value_names)]
         if filter_out:
-            vals = np.ones(len(self.detector_function.value_names)) * np.nan
+            vals = np.ones((1, len(self.detector_function.value_names)))*np.nan
         else:
-            vals = self.detector_function.acquire_data_point()
+            # Transpose since detectors return [len(value_names), num_points],
+            # to get shape [num_points, len(value_names)]
+            # TODO confirm that all det.acquire_data_point can be deleted,
+            #  see comment in Multi_Detector.acquire_data_point
+            vals = np.array(self.detector_function.get_values()).T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        new_data = np.append(x, vals)
+        if self.store_sweep_indices:
+            x = self.iteration
+        # Because x is allowed to be a list of tuples (batch sampling),
+        # and the detector function may return 1D values, we unify their
+        # format before we can save them to the dset.
+        x = np.atleast_2d(x)
+        vals = np.atleast_2d(vals)
+        # Concatenates the sweep points x with the data vals,
+        # by prepending x as columns. If vals has more rows than x,
+        # x is repeated vertically.
+        new_data = np.concatenate(
+            (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
+            axis=-1
+        )
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
@@ -780,6 +889,29 @@ class MeasurementControl(Instrument):
             self.print_progress()
         return vals
 
+    @staticmethod
+    def _default_data_processing_function(vals, dset):
+        """Default data processing function for adaptive measurements.
+
+        This is used in optimization_function (mode = adaptive) if no
+        custom function is provided via af_pars['data_processing_function'].
+
+        The default processing takes the first column if the data has two
+        columns. A potential use case of this is for data consisting of
+        magnitude and phase. In case of a single data column, the default
+        processing is an identity operation.
+
+        Args:
+            vals (array): Array with the output of measurement_function.
+            dset (array): The data set self.dset will be passed here. Not
+                used in the default processing, but included as an argument
+                to allow custom data processing functions to access the dset.
+        """
+        if len(np.shape(vals)) == 2:
+            vals = np.array(vals)[:, 0]
+        return vals
+
+    @Timer()
     def optimization_function(self, x):
         '''
         A wrapper around the measurement function.
@@ -798,18 +930,17 @@ class MeasurementControl(Instrument):
                 x[i] = float(x[i])/float(self.x_scale[i])
 
         vals = self.measurement_function(x)
-        # This takes care of data that comes from a "single" segment of a
-        # detector for a larger shape such as the UFHQC single int avg detector
-        # that gives back data in the shape [[I_val_seg0, Q_val_seg0]]
-        if len(np.shape(vals)) == 2:
-            vals = np.array(vals)[:, 0]
+        self.timer.checkpoint(
+            "MeasurementControl.data_processing_function.start")
+        vals = self.data_processing_function(vals, self.dset)
+        self.timer.checkpoint(
+            "MeasurementControl.data_processing_function.end")
         if self.minimize_optimization:
             if (self.f_termination is not None):
                 if (vals < self.f_termination):
                     raise StopIteration()
         else:
-            vals = self.measurement_function(x)
-            # when maximizing interrupt when larger than condition before
+            # when maximizing, interrupt when larger than condition before
             # inverting
             if (self.f_termination is not None):
                 if (vals > self.f_termination):
@@ -818,7 +949,7 @@ class MeasurementControl(Instrument):
 
         # to check if vals is an array with multiple values
         if hasattr(vals, '__iter__'):
-            if len(vals) > 1:
+            if len(vals) > 1 and self.par_idx is not None:
                 vals = vals[self.par_idx]
 
         return vals
@@ -1787,12 +1918,19 @@ class MeasurementControl(Instrument):
             kwargs.update({'compression': "gzip", 'compression_opts': 9})
         return kwargs
 
+    def _get_nr_sweep_point_columns(self):
+        if self.store_sweep_indices:
+            return 1
+        else:
+            return np.sum([sweep_function.get_nr_parameters() \
+                for sweep_function in self.sweep_functions])
+
     def create_experimentaldata_dataset(self):
         data_group = self._get_experimentaldata_group()
         self.dset = data_group.create_dataset(
-            'Data', (0, len(self.sweep_functions) +
+            'Data', (0, self._get_nr_sweep_point_columns() +
                      len(self.detector_function.value_names)),
-            maxshape=(None, len(self.sweep_functions) +
+            maxshape=(None, self._get_nr_sweep_point_columns() +
                       len(self.detector_function.value_names)),
             dtype='float64', **self._get_create_dataset_kwargs())
         self.get_column_names()
@@ -2367,12 +2505,9 @@ class MeasurementControl(Instrument):
             else:  # 1D Hard detector (returns values in chunks)
                 xlen = len(new_data)
         else:
-            if self.detector_function.detector_control == 'soft':
-                # FIXME: this is an inconsistency that should not be there.
-                xlen = np.shape(new_data)[1]
-            else:
-                # in case of an N-D Hard detector dataset
-                xlen = np.shape(new_data)[0]
+            # in case of an N-D Hard detector dataset
+            # new_data has shape [sweep points, value names]
+            xlen = np.shape(new_data)[0]
 
         start_idx = self.get_datawriting_start_idx()
         stop_idx = start_idx + xlen
@@ -2517,7 +2652,11 @@ class MeasurementControl(Instrument):
             "f_termination" None    terminates the loop if the measured value
                                     is smaller than this value
             "par_idx": 0            If a parameter returns multiple values,
-                                    specifies which one to use.
+                                    specifies which one to use. If set to
+                                    None, there will be no selection and all
+                                    values are passed on.
+            "data_processing_function":    function. Overwrites
+                                           _default_data_processing_function
 
         Common keywords (used in python nelder_mead implementation):
             "x0":                   list of initial values
