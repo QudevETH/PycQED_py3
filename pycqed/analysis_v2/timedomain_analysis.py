@@ -1157,8 +1157,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         """
 
         # Count num_cal_points from self.cal_states_dict
-        self.num_cal_points = np.hstack(list(self.cal_states_dict[
-                list(self.cal_states_dict)[0]].values())).size
+        num_cp_list = list(
+            self.cal_states_dict[list(self.cal_states_dict)[0]].values())
+        if len(num_cp_list) == 0:
+            self.num_cal_points = 0
+        else:
+            self.num_cal_points = np.hstack(num_cp_list).size
 
         self.no_cp_but_cp_in_data = False
         spd = self.proc_data_dict['sweep_points_dict']
