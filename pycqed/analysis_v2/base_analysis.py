@@ -1533,11 +1533,8 @@ class BaseDataAnalysis(object):
         Returns:
             list: list of unique figure ids.
         """
-        fig_ids = []
-        for name, item in self.plot_dicts.items():
-            fig_ids.append(item['fig_id'])
-
-        return np.unique(fig_ids).tolist()
+        fig_ids = [v['fig_id'] for v in self.plot_dicts.values()]
+        return list(np.unique(fig_ids))
 
     def add_to_plots(self, key_list=None):
         pass
