@@ -162,6 +162,7 @@ class Instrument(DelegateAttributes):
         Args:
             name (str): name of the respective instrument
         """
+        self.station = None
         self.name = name
         self.parameters = {}
         self.functions = {}
@@ -356,6 +357,7 @@ class Station(DelegateAttributes):
                 f'Cannot add component "{namestr}", because a '
                 'component of that name is already registered to the station')
         self.components[namestr] = inst
+        inst.station = self
 
     def get(self, path_to_param):
         """
@@ -387,6 +389,7 @@ class Station(DelegateAttributes):
         self.parameters.update(station.parameters)
         self.config.update(station.config)
         for comp_name, comp_inst in station.components.items():
+            comp_inst.station = self
             if comp_name in self.components.keys():
                 self.components[comp_name].update(comp_inst)
             else:
