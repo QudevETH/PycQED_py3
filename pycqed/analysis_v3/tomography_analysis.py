@@ -1253,6 +1253,9 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
     hlp_mod.add_param('preparation_params',
                       hlp_mod.get_param('preparation_params', data_dict, **params),
                       data_dict_temp)
+    hlp_mod.add_param('reset_params',
+                      hlp_mod.get_param('reset_params', data_dict, **params),
+                      data_dict_temp)
     hlp_mod.add_param('rho_target',
                       hlp_mod.get_param('rho_target', data_dict),
                       data_dict_temp)
