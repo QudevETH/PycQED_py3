@@ -234,6 +234,16 @@ class Instrument(DelegateAttributes):
     def add_classname(self, name: str):
         # Not existing in qcodes.instrument.base.instrument.
         self.classname = name
+        self._load_custom_mock_class(name)
+
+    def _load_custom_mock_class(self, cls):
+        """Load custom mock class if it exists for the given class"""
+        if isinstance(cls, str):
+            cls = cls.split('.')[-1]  # extract class name (strip modules)
+            from pycqed.instrument_drivers import mock_qcodes_special_classes \
+                as mqs
+            if hasattr(mqs, cls):
+                self.__class__ = getattr(mqs, cls)
 
     def add_submodule(self, name: str, submod: Instrument):
         """
