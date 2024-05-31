@@ -298,6 +298,7 @@ class Station(DelegateAttributes):
             timestamp (str): For accepted formats of the timestamp see
             a_tools.verify_timestamp(str)
         """
+        self.settings_manager = None
         self.instruments: dict = {}
         self.parameters: dict = {}
         self.components: dict = {}

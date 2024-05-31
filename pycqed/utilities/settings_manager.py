@@ -72,6 +72,7 @@ class SettingsManager:
                             f'not specified.')
         if hasattr(station, 'snapshot'):
             self.stations[timestamp] = station
+            station.settings_manager = self
         else:
             raise TypeError(f'Cannot add station "{timestamp}", because the '
                             'station is not a QCode or Mock station class '
@@ -133,6 +134,7 @@ class SettingsManager:
             self.load_from_file(timestamp, param_path=param_path, **kwargs)
         else:
             if param_path is None:
+                self.stations[timestamp].settings_manager = None
                 self.stations.pop(timestamp)
                 self.load_from_file(timestamp=timestamp)
             else:
