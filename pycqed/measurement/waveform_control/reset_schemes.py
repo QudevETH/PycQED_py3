@@ -447,7 +447,7 @@ class FeedbackReset(ResetScheme):
                            docstring='dictionary where keys are the codewords'
                                      ' and values are the corresponding '
                                      ' state of the qubit.',
-                           initial_value=0, vals=validators.Numbers(),
+                           initial_value=4e-6, vals=validators.Numbers(),
                            parameter_class=ManualParameter,
                            get_parser=self._validate_ro_feedback_delay)
 
