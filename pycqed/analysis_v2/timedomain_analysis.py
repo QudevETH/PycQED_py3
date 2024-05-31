@@ -5926,9 +5926,11 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
         for qbn in self.qb_names:
             freqs[qbn] = \
                 {'val': np.array([d[self.fit_type]['new_qb_freq']
-                                     for k, d in apd.items() if qbn in k]),
+                                  for k, d in apd.items()
+                                  if qbn == k.split('_')[0]]),
                  'stderr': np.array([d[self.fit_type]['new_qb_freq_stderr']
-                                     for k, d in apd.items() if qbn in k])}
+                                     for k, d in apd.items()
+                                     if qbn == k.split('_')[0]])}
         self.proc_data_dict['analysis_params_dict']['qubit_frequencies'] = freqs
 
         fit_dict_keys = self.prepare_fitting_qubit_freqs()
