@@ -1141,7 +1141,7 @@ class CPhase(CalibBuilder):
                 self.label = self.experiment_name
             if self.classified:
                 self.label += '_classified'
-            if 'active' in self.get_reset_params()['preparation_type']:
+            if self.get_reset_params() is not None:
                 self.label += '_reset'
             for t in self.task_list:
                 self.label += f"_{t['qbl']}{t['qbr']}"
