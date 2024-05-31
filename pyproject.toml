@@ -7,7 +7,7 @@ name = "pycqed"
 version = "0.1.0"
 description = "Python-based circuit QED data acquisition framework"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.12" # 2024.05: we recommend 3.11.
 authors = [
     {name = "Quantum Device Laboratory"},
 ]
@@ -89,6 +89,4 @@ user = [
 where = ["./"]
 
 [tool.setuptools.package-data]
-pycqed = [
-    "utilities/WARNING.png",
-]
+pycqed = ["utilities/WARNING.png", "**/*.json"]

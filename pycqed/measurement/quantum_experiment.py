@@ -54,7 +54,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                                   awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
-                 callback_condition=lambda : True, mc_mode=None, **kw):
+                 callback_condition=lambda : True, mc_mode=None,
+                 mc_store_sweep_indices=False, **kw):
         """
         Initializes a QuantumExperiment.
 
@@ -149,6 +150,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             callback_condition (func): function returning a bool to decide whether or
                 not the callback function should be executed. Defaults to always True.
             mc_mode (str): manually set the mode argument in the call to MC.run
+            mc_store_sweep_indices (bool): set MC.store_sweep_indices in MC.run
             **kw:
                 further keyword arguments are passed to the CircuitBuilder __init__
         """
@@ -181,6 +183,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.callback_condition = callback_condition
         self.plot_sequence = plot_sequence
         self.mc_mode = mc_mode
+        self.mc_store_sweep_indices = mc_store_sweep_indices
 
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
@@ -227,7 +230,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.exp_metadata.update(kw)
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
-                                  'data_type': data_type})
+                                  'data_type': data_type,
+                                  'right_handed_basis': True,
+                                  })
         self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
@@ -302,7 +307,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # run measurement
             try:
                 self.MC.run(name=self.label, exp_metadata=self.exp_metadata,
-                            mode=self.mc_mode)
+                            mode=self.mc_mode,
+                            store_sweep_indices=self.mc_store_sweep_indices)
             except (Exception, KeyboardInterrupt) as e:
                 exception = e  # exception will be raised below
         self.extract_timestamp()

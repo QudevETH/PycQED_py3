@@ -294,7 +294,7 @@ class MeasurementControl(Instrument):
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
-            previous_attempts=0, **kw):
+            previous_attempts=0, store_sweep_indices=False, **kw):
         '''
         Core of the Measurement control.
 
@@ -321,6 +321,8 @@ class MeasurementControl(Instrument):
                     has already been tried. This is usually not passed by
                     the calling function, but only used by run() when it
                     calls itself recursively.
+            store_sweep_indices (bool): If True, when storing the data the
+                iteration indices are prepended instead of the sweep points.
         '''
 
         def try_finish():
@@ -339,6 +341,8 @@ class MeasurementControl(Instrument):
         self.print_measurement_start_msg()
 
         self.mode = mode
+        # When storing the data, prepend indices instead of the full sweep pts
+        self.store_sweep_indices = store_sweep_indices
         # used in determining data writing indices (deprecated?)
         self.iteration = 0
 
@@ -378,6 +382,8 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
+            self.exp_metadata['sweep_control'] = [
+                s.sweep_control for s in getattr(self, 'sweep_functions', [])]
             self.save_exp_metadata(self.exp_metadata)
             exception = None
             try:
@@ -481,8 +487,9 @@ class MeasurementControl(Instrument):
             sweep_function.prepare()
         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
 
-        if (self.sweep_functions[0].sweep_control == 'soft' and
-                self.detector_function.detector_control == 'soft'):
+        if self.sweep_functions[0].sweep_control == 'soft':
+            # Note that we allow the combination of soft sweep and hard
+            # detector (e.g., SSRO in soft sweep)
             self.detector_function.prepare()
             self.get_measurement_preparetime()
             self.measure_soft_static()
@@ -529,8 +536,7 @@ class MeasurementControl(Instrument):
                     self.detector_function.prepare(sweep_points=sp)
                     self.measure_hard(filtered_sweep)
         else:
-            raise Exception('Sweep and Detector functions not '
-                            + 'of the same type. \nAborting measurement')
+            raise Exception('Hard sweep with soft detector not allowed.')
 
         self.check_keyboard_interrupt()
         self.update_instrument_monitor()
@@ -552,7 +558,14 @@ class MeasurementControl(Instrument):
     def measure_soft_static(self):
         for j in range(self.soft_avg()):
             self.soft_iteration = j
-            for i, sweep_point in enumerate(self.sweep_points):
+            sp = self.sweep_points
+            if self.detector_function.detector_control == 'hard':
+                # sp have been tiled for points*shots, but for a soft sweep
+                # with hard detector, we have to undo this because the soft
+                # sweep function needs each point only once even if
+                # multiple shots are returned by the hard detector.
+                sp = sp[0:len(sp) // self.acq_data_len_scaling]
+            for i, sweep_point in enumerate(sp):
                 self.measurement_function(sweep_point, index=i)
 
     @Timer()
@@ -641,12 +654,16 @@ class MeasurementControl(Instrument):
             ones will be skipped (False). Default: None, in which case all
             acquisition elements will be played.
         """
+        if self.store_sweep_indices:
+            raise NotImplementedError("store_sweep_indices not yet "
+                                      "implemented for hard sweeps!")
         n_acquired = 0
         for i_rep in range(self.soft_repetitions()):
             # Tell the detector_function to call print_progress for intermediate
             # progress reports during get_detector_function.values.
             self.detector_function.progress_callback = (
                 lambda x, n=n_acquired: self.print_progress(x + n))
+            # Transpose because detectors return [len(value_names), num_points]
             this_new_data = np.array(self.detector_function.get_values()).T
             n_acquired += this_new_data.shape[0]
             new_data = this_new_data if i_rep == 0 else np.concatenate(
@@ -735,7 +752,7 @@ class MeasurementControl(Instrument):
 
         FIXME: not tested for len(self.sweep_functions) > 2
         '''
-        if np.size(x) == 1:
+        if np.isscalar(x):
             x = [x]
         # The len()==1 condition is a consistency check because batch_mode
         # is currently only implemented for the case of a single sweep
@@ -756,19 +773,20 @@ class MeasurementControl(Instrument):
                 # `BlockSoftHardSweep` for details.
                 x = np.atleast_2d(x)
                 self.timer.checkpoint(
-                    "MeasurementControl.measure_soft_adaptive"
-                    ".adaptive_function.swf.set_parameter.start")
+                    "MeasurementControl.measurement_function.set_parameter"
+                    ".start")
                 sweep_function.set_parameter(x)
                 self.timer.checkpoint(
-                    "MeasurementControl.measure_soft_adaptive"
-                    ".adaptive_function.swf.set_parameter.end")
+                    "MeasurementControl.measurement_function.set_parameter"
+                    ".end")
                 # Detector functions assume to receive the sweep points
                 # tiled, according to the number in acq_data_len_scaling.
                 # Example SSRO: acq_data_len_scaling equals the number of
                 # shots and prepare will get a sweep point for each shot of
                 # each segment, see IntegratingAveragingPollDetector.prepare.
-                self.detector_function.prepare(
-                    np.tile(x, self.acq_data_len_scaling))
+                self.detector_function.prepare(np.tile(
+                    np.zeros(sweep_function.sequence.n_acq_elements()),
+                    self.acq_data_len_scaling))
                 break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
@@ -830,40 +848,35 @@ class MeasurementControl(Instrument):
         datasetshape = self.dset.shape
         # self.iteration = datasetshape[0] + 1
 
+        # vals.shape = [num_points, len(value_names)]
         if filter_out:
-            vals = np.ones(len(self.detector_function.value_names)) * np.nan
+            vals = np.ones((1, len(self.detector_function.value_names)))*np.nan
         else:
-            vals = self.detector_function.acquire_data_point()
-
-        if batch_mode:
-            # FIXME: add an explaining comment why the transpose is needed
-            vals = vals.T
+            # Transpose since detectors return [len(value_names), num_points],
+            # to get shape [num_points, len(value_names)]
+            # TODO confirm that all det.acquire_data_point can be deleted,
+            #  see comment in Multi_Detector.acquire_data_point
+            vals = np.array(self.detector_function.get_values()).T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        if batch_mode:
-            # Because x is allowed to be a list of tuples (batch sampling), we
-            # need to reshape and reformat x and vals accordingly before we can
-            # save them to the dset.
-            x = np.atleast_2d(x) # to unify format of x
-            vals = vals.reshape((-1, len(self.detector_function.value_names)))
-            # the following np.concatenate ensures that the measured values are
-            # concatenated with the correct parameters in x.
-            new_data = np.concatenate(
-                (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
-                axis=-1
-            )
-        else:
-            # FIXME: the batch_mode code above is supposed to also treat the
-            #  case without batch mode correctly. However, until someone
-            #  verifies this rigorously (both for measure_soft_adaptive and for
-            #  measure_soft_static with 1D, 2D, 3D sweeps) and adds explaining
-            #  comments, we rather play safe and explicitly keep the
-            #  previous implementation as else branch.
-            new_data = np.append(x, vals)
+        if self.store_sweep_indices:
+            x = self.iteration
+        # Because x is allowed to be a list of tuples (batch sampling),
+        # and the detector function may return 1D values, we unify their
+        # format before we can save them to the dset.
+        x = np.atleast_2d(x)
+        vals = np.atleast_2d(vals)
+        # Concatenates the sweep points x with the data vals,
+        # by prepending x as columns. If vals has more rows than x,
+        # x is repeated vertically.
+        new_data = np.concatenate(
+            (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
+            axis=-1
+        )
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
@@ -1913,8 +1926,11 @@ class MeasurementControl(Instrument):
         return kwargs
 
     def _get_nr_sweep_point_columns(self):
-        return np.sum([sweep_function.get_nr_parameters() \
-            for sweep_function in self.sweep_functions])
+        if self.store_sweep_indices:
+            return 1
+        else:
+            return np.sum([sweep_function.get_nr_parameters() \
+                for sweep_function in self.sweep_functions])
 
     def create_experimentaldata_dataset(self):
         data_group = self._get_experimentaldata_group()
@@ -2496,12 +2512,9 @@ class MeasurementControl(Instrument):
             else:  # 1D Hard detector (returns values in chunks)
                 xlen = len(new_data)
         else:
-            if self.detector_function.detector_control == 'soft':
-                # FIXME: this is an inconsistency that should not be there.
-                xlen = np.shape(new_data)[1]
-            else:
-                # in case of an N-D Hard detector dataset
-                xlen = np.shape(new_data)[0]
+            # in case of an N-D Hard detector dataset
+            # new_data has shape [sweep points, value names]
+            xlen = np.shape(new_data)[0]
 
         start_idx = self.get_datawriting_start_idx()
         stop_idx = start_idx + xlen
