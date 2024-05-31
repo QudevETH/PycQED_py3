@@ -172,6 +172,20 @@ class Instrument(DelegateAttributes):
         # .qubit_objects.QuDev_transmon.QuDev_transmon
         self.classname: str = None
 
+    def __getattr__(self, key: str):
+        try:
+            return super().__getattr__(key)
+        except AttributeError:
+            # Try to load the missing parameter or submodules if a settings
+            # manager is available
+            if (station := self.station) and (ts := station.timestamp) and \
+                    (set_man := station.settings_manager):
+                path_to_param = self.name + '.' + key
+                set_man.get_parameter(path_to_param, ts)
+                return super().__getattr__(key)
+            else:
+                raise
+
     def snapshot(self, reduced=False) -> dict[any, any]:
         """
         Creates recursively a snapshot (dictionary) which has the same structure
