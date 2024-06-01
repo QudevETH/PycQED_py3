@@ -418,4 +418,4 @@ class QDac2Smooth(qdac2_mod.QDac2):
             E.g. {0: 0.1, 1: -1.4, 2: 0.3, ...}
         """
         return {chan: self.channels[chan].dc_constant_V()
-                for chan in range(self.num_chans)}
+                for chan in range(len(self.channels))}
