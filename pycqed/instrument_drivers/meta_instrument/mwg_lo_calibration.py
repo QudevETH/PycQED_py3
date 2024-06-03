@@ -32,10 +32,7 @@ def mwg_with_lo_calibration_template(mwg_class):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
-            self.add_parameter('lo_cal_data',
-                               vals=vals.Dict(),
-                               parameter_class=ManualParameter,
-                               initial_value=dict())
+            self.lo_cal_data = dict()
             self.add_parameter('lo_cal_interp_kind',
                                vals=vals.Enum(
                                    'linear', 'nearest', 'zero', 'slinear',
@@ -50,7 +47,7 @@ def mwg_with_lo_calibration_template(mwg_class):
 
         @staticmethod
         def lo_calib(val, lo_cal_data, lo_cal_interp_kind):
-            for par, freqs, cal_vals in lo_cal_data().values():
+            for par, freqs, cal_vals in lo_cal_data.values():
                 par(float(sp.interpolate.interp1d(
                     freqs, cal_vals, kind=lo_cal_interp_kind(),
                     fill_value=(min(cal_vals), max(cal_vals)),
