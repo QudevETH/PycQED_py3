@@ -1890,47 +1890,61 @@ class f0g1Pulse(pulse.Pulse):
 
         .. math::
 
-            \frac{a \gamma_1 + \gamma_2}{2} \operatorname{sinc}
-                \left(\pi \frac{\gamma_1 - \gamma_2}{\gamma_1 + \gamma_2}\right)
-            \frac{1}{e^{-\gamma_1 t/2} + e^{\gamma_2 t/2}}
+            a \cdot \sqrt{\frac{\gamma_1 + \gamma_2}{2}
+                \text{ sinc}\left(\pi * \frac{\gamma_1 - \gamma_2}
+                {\gamma_1 + \gamma_2}\right)} \cdot \frac{1}{e^{-\gamma_1 t/2}
+            + e^{\gamma_2 t/2}}
 
         Parameters
         ----------
         t : np.array
-            Array of time values. It should start at 'tStart' and end at 'tStop'; These two values are calculated with the 'relevantTimeValues' function.
+            Array of time values. It should start at 'tStart' and end at
+            'tStop'; These two values are calculated with the
+            'relevantTimeValues' function.
         kappa : float
-            The fixed leakage rate of the transfer/emitter resonator/qubit/cavity.
+            The fixed leakage rate of the transfer/emitter
+            resonator/qubit/cavity.
         gamma1 : float
             Exponential rate of the rising edge of the emitted photon.
         gamma2 : float
             Exponential rate of the falling edge of the emitted photon.
         delta : float
-            Detuning of the emitted photon with respect to the emitter resonator/qubit/cavity resonant frequency.
+            Detuning of the emitted photon with respect to the emitter
+            resonator/qubit/cavity resonant frequency. ('Smart detuning').
         a : float
-            Fraction of the photon which is emitted. a=1 corresponds to a full photon emission. a=0.5 leads to a perfectly entangled emitter-photon system.
+            Fraction of the photon which is emitted. :math:`a^2 = 1`
+            corresponds to a full photon emission. :math:`a^2 = 0.5` leads to
+            a perfectly entangled emitter-photon system.
         acStark_coefs : np.array
-            Coefficients of the AcStark function (polynomial): given drive amplitude returns frequency shift.
+            Coefficients of the AcStark function (polynomial): given
+            drive amplitude returns frequency shift.
         rabiRate_coefs : np.array
-            Coefficients of the RabiRate function (polynomial): given drive amplitude returns gTilde amplitude.
+            Coefficients of the RabiRate function (polynomial): given
+            drive amplitude returns the coupling strength gTilde.
         timeValues : tuple
-            Tuple of 4 values 'tStart, tStop, tRise, tFall': these values are given by the 'relevantTimeValues' function.
-        junctionTrunc : float
-            Information about the junction bridging the AWG amplitude from the truncated pulse value at the end and zero. This variable denotes the junction truncation.
-        junctionSigma : float
-            Information about the junction bridging the AWG amplitude from the truncated pulse value at the end and zero. This variable denotes the junction width.
+            Tuple of 4 values 'tStart, tStop, tRise, tFall': these values
+            are given by the 'relevantTimeValues' function.
+            junctionTrunc (float), junctionSigma (float): information about the
+                junction bridging the AWG amplitude from the truncated pulse
+                value at the end and zero. These variables denote the junction
+                truncation, width and type, respectively
         junctionType : str
-            Defines the shape of the ramps for the truncation: 'gaussian', 'tanh' or 'ramp' (linear).
+            Defines the shape of the ramps for the truncation: 'gaussian',
+            'tanh' or 'ramp' (linear).
         timeReverse : bool
-            Says if the pulse should be time reversed to absorb an incoming photon. One should set a=1 for this to work.
+            Says if the pulse should be time reversed to absorb an
+            incoming photon. One should set a=1 for this to work.
         lowerFreqPhoton : bool
-            Should be set to True if ω_gf > ω_p and to False otherwise. Has an impact on the sign of 'delta' in the drive functions.
+            Should be set to True if ω_gf > ω_p and to False otherwise.
+            Has an impact on the sign of 'delta' in the drive functions.
         driveDetScale : int
             An additional offset for the final frequency of the pulse.
 
         Returns:
         -------
         amplitude_final : np.array
-            Array of amplitudes of the final pulse (it's the envelope of the pulse) for each value of time a complex amplitude is returned.
+            Array of amplitudes of the final pulse (it's the envelope of
+            the pulse) for each value of time a complex amplitude is returned.
         ifOffset + deltaDet + driveDetScale : float
             Value for the frequency of the pulse.
         """
