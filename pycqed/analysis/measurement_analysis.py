@@ -1410,7 +1410,7 @@ class OptimizationAnalysis(MeasurementAnalysis):
         savename3 = self.timestamp_string + '_' + base_figname + '_' + \
                     fig3_type
 
-        cm = plt.cm.get_cmap('RdYlBu')
+        cm = matplotlib.cm.get_cmap('RdYlBu')
         if len(self.parameter_names) != 1:
             axarray[0].set_title(self.timestamp_string + ' ' + figname3)
             for i in range(len(self.parameter_names)):
