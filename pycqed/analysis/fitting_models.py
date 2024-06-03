@@ -476,15 +476,15 @@ def CosFunc(t, amplitude, frequency, phase, offset):
 
 
 def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
-    r"""Calculates the damped oscillation value based on Dr. Paul Magnard's model.
-
-    This function implements equation 5.3 from Dr. Paul Magnard's PhD Thesis (2021).
+    r"""Describes the damped oscillation model used for f0g1 calibration
+    routines. This function implements equation 5.3 from Dr. Paul Magnard's
+    PhD Thesis (2021).
 
     Args:
         t (float): Time value.
         amp (float): Amplitude.
-        gamma (float): Damping coefficient.
-        kappa (float): Coupling coefficient.
+        gamma (float): Coupling coefficient.
+        kappa (float): Damping coefficient.
         mu_a (float): Coefficient of the oscillation term.
         mu_b (float): Baseline offset.
         t0 (float): Initial time.
@@ -500,19 +500,19 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
 
         .. math::
 
-            \mu_b + \mu_a * \left| \exp\left(\frac{-\tau *
-                (\kappa+\gamma)}{2}\right) * \left[
-                \cosh\left(\frac{\text{rabi}*\tau}{2}\right) +
-                \frac{\kappa-\gamma}{2*\text{rabi}} *
-                \sinh\left(\frac{\text{rabi}*\tau}{2}\right) \right]
-            \right|^2
+            \mu_b + \mu_a \cdot \left[ e^{-\frac{(\kappa+\gamma)}{2}\tau}
+                \left| \cosh\left(\frac{\Omega\tau}{2}\right) +
+                \frac{\kappa-\gamma}{2\Omega} \cdot
+                \sinh\left(\frac{\Omega\tau}{2}\right) \right|^2
+            \right]
 
         where:
 
         .. math::
 
+            FIXME: Why does the Rabi term not have a factor of 2?
             \tau = t-t_0 \\
-            \text{rabi} = \sqrt{-g^2 + \frac{(\kappa-\gamma)^2}{4}} \\
+            \Omega = \sqrt{-g^2 + \frac{(\kappa-\gamma)^2}{4}} \\
             g = c_1*\text{amp} + c_3*\text{amp}^3 + c_5*\text{amp}^5
     """
 
@@ -520,7 +520,7 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
     g = c1 * amp + c3 * amp**3 + c5 * amp**5
 
     tau = t - t0
-    rabi = np.sqrt((-(g**2) + (kappa - gamma) ** 2 / 4) * (1 + 0j))
+    rabi = np.sqrt((-(g**2) + (kappa - gamma) ** 2 / 4) * (1 + 0j)) # \Omega
     return (
         mu_b
         + mu_a
