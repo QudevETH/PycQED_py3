@@ -134,6 +134,9 @@ class SettingsManager:
             self.load_from_file(timestamp, param_path=param_path, **kwargs)
         else:
             if param_path is None:
+                # Remove the reference to allow python garbage collection to
+                # collect the previous settings_manager if it is not needed
+                # anymore.
                 self.stations[timestamp].settings_manager = None
                 self.stations.pop(timestamp)
                 self.load_from_file(timestamp=timestamp)

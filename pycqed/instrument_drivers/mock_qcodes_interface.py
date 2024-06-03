@@ -371,6 +371,9 @@ class Station(DelegateAttributes):
                 f'Cannot add component "{namestr}", because a '
                 'component of that name is already registered to the station')
         self.components[namestr] = inst
+        # The station attribute of the instrument is used in __getattr__ of
+        # the mock Instrument. Therefore, the station attribute of the
+        # instrument has to be updated.
         inst.station = self
 
     def get(self, path_to_param):
