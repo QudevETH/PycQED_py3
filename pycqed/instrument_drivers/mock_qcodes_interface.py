@@ -258,6 +258,12 @@ class Instrument(DelegateAttributes):
             from pycqed.instrument_drivers import mock_qcodes_special_classes \
                 as mqs
             if hasattr(mqs, cls):
+                # The class of the actual instrument which should be
+                # imitated has to have the same classname as the mock class.
+                # This would lead to an issue if multiple qcodes instrument
+                # classes have the same classname and are supposed to use
+                # different mock classes. But this is not the case in the
+                # current implementation.
                 self.__class__ = getattr(mqs, cls)
 
     def add_submodule(self, name: str, submod: Instrument):
