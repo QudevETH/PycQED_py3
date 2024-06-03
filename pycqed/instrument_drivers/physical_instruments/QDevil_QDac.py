@@ -311,7 +311,7 @@ class QDac2Smooth(qdac2_mod.QDac2):
 
             self.add_parameter(name=f"volt_{ch_name}",
                 label=f"DC source voltage on channel {ch_name}", unit='V',
-                get_cmd=self.channels[ch_number].v,
+                get_cmd=self.channels[ch_number].dc_constant_V,
                 set_cmd=lambda val, ch_number=ch_number: self.set_smooth(
                     {ch_number: val}),
             )
