@@ -259,9 +259,7 @@ class QDacSmooth(qdac_mod.QDac):
             self.parameters[f"volt_{ch_name}"].cache.set(v_set)
 
 class QDac2Smooth(qdac2_mod.QDac2):
-    """
-    Driver for the QDevil QDAC with the ability to set voltages gradually/
-    smoothly.
+    """Driver for the QDevil QDAC with the ability to set voltages gradually/smoothly.
 
     The voltages can be set in a different number of ways. Below is a
     list of recommended ways in which fluxline/channel 17 (with "index" 16)
@@ -292,7 +290,13 @@ class QDac2Smooth(qdac2_mod.QDac2):
     """
 
     def __init__(self, name, ip_address, channel_map):
-        """Create a QDac2Smooth, which behaves the same as the QDacSmooth."""
+        """Create a QDac2Smooth, which behaves the same as the QDacSmooth.
+
+        Args:
+            name (str): The name of the instrument.
+            ip_address (str): The IP address of the instrument.
+            channel_map (dict): A dictionary mapping channel numbers to channel names.
+        """
         super().__init__(name, visalib='@py', address=f'TCPIP::{ip_address}::5025::SOCKET')
         self.channel_map = channel_map
         self.add_parameter('smooth_timestep', unit='s',
@@ -320,9 +324,9 @@ class QDac2Smooth(qdac2_mod.QDac2):
                            vals=vals.Bool(), initial_value=False)
 
     def set_smooth(self, voltagedict):
-        """
-        Set the voltages as specified in ``voltagedict` smoothly,
-        by changing the output on each module at a rate
+        """Set the voltages as specified in ``voltagedict`` smoothly.
+
+        The voltages are changed on each module at a rate of
         ``volt_#_step/smooth_timestep``.
 
         Args:
@@ -391,10 +395,7 @@ class QDac2Smooth(qdac2_mod.QDac2):
             print_progress(step + 1, N_steps, begintime)
 
     def get_fluxline_voltages(self):
-        """
-        Convenience method to retrieve the fluxline voltages. This will give you
-        a voltage dict with all fluxline voltages that can also be directly
-        passed into QDacSmooth.set_smooth().
+        """Retrieve the fluxline voltages.
 
         Returns:
             dict: Keys are the channel names provided by the user in
@@ -407,10 +408,7 @@ class QDac2Smooth(qdac2_mod.QDac2):
                                          range(self.num_chans))}
 
     def get_channel_voltages(self):
-        """
-        Convenience method to retrieve the channel voltages. This will give you
-        a voltage dict with all channel voltages that can also be directly
-        passed into QDacSmooth.set_smooth().
+        """Retrieve the channel voltages.
 
         Returns:
             dict: Keys are the channel numbers (starting at 0), and the values
