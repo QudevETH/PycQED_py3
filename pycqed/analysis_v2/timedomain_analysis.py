@@ -10030,7 +10030,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                                 ' to the options_dict: reset_params=dict(steps=["feedback"],'
                                 ' analysis_instructions=dict(qb1=[dict(preparation_type='
                                 '"active_reset", reset_reps=N_RESET_REPS)]))'
-                                 )]))
+                                )
                     n_resets = 3
                 n_hsp = n_hsp // (1 + n_resets)
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
