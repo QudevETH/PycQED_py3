@@ -1141,8 +1141,6 @@ class CPhase(CalibBuilder):
                 self.label = self.experiment_name
             if self.classified:
                 self.label += '_classified'
-            if self.get_reset_params() is not None:
-                self.label += '_reset'
             for t in self.task_list:
                 self.label += f"_{t['qbl']}{t['qbr']}"
                 num_cz_gates = t.get('num_cz_gates', 1)
