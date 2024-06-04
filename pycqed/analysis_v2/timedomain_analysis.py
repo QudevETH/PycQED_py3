@@ -13550,6 +13550,10 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 whether to plot each row of data below the maximum
             draw_lower_lines (bool): In the projected data panel (bottom),
                 whether to draw lines to connect each row of data points
+            color_lower_points (bool): If True, colours the lower points
+                according to the color bar.
+            color_max_points (bool): If True, colours the max points
+                according to the color bar.
             pop_scale_right (float): Scaling factor for right axis
             pop_scale_left (float): Scaling factor for left axis
             pop_unit_right (str): Unit for right axis
