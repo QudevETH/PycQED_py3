@@ -818,6 +818,21 @@ class BaseDataAnalysis(object):
             raw_data_dict = raw_data_dict[0]
         return raw_data_dict
 
+    def _extract_param_from_det(self, param, default=None):
+        det_metadata = self.metadata.get("Detector Metadata", None)
+        val = None
+        if det_metadata is not None:
+            # multi detector function: look for child "detectors"
+            # assumes at least 1 child and that all children have the same
+            # number of averages
+            val = det_metadata.get(param, None)
+            if val is None:
+                det = list(det_metadata.get('detectors', {}).values())[0]
+                val = det.get(param, None)
+        if val is None:
+            val = default
+        return val
+
     @staticmethod
     def add_measured_data(raw_data_dict, compression_factor=1,
                           sweep_points=None, cal_points=None,

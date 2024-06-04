@@ -1590,8 +1590,12 @@ class DynamicPhase(CalibBuilder):
                 op = task['op_code']
             self.dyn_phases[op] = {}
             for qb_name in task['qubits_to_measure']:
+                # The analysis returns the phase p acquired by the qb.
+                # Cancelling this phase requires a Z gate with angle -p,
+                # meaning basis_rotation=-p. Here, in order to allow setting
+                # basis_rot_par(dp) in run_update below, we set dp={qbn: -p}
                 self.dyn_phases[op][qb_name] = \
-                    (self.dynamic_phase_analysis.proc_data_dict[
+                    -(self.dynamic_phase_analysis.proc_data_dict[
                         'analysis_params_dict'][f"dynamic_phase_{qb_name}"][
                         'val'] * 180 / np.pi)[0]
         if self.parent is not None:

@@ -166,7 +166,6 @@ class PhaseErrorsAnalysisMixin():
                    f'\nold envelope mod. freq. ={chr}{old_pulse_par_val:.4f} MHz'
 
 
-# Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1909,12 +1908,23 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             shots_per_qb[qbn] = \
                 np.asarray(list(
                     pdd[key][qbn].values())).T
+            n_vn = shots_per_qb[qbn].shape[-1]
+            if (sc := self.get_param_value('sweep_control'))\
+                    and sc[0] == 'soft':
+                # 1D soft sweep with single shots: turn into a 2D measurement
+                # with shape (n_soft_sp, n_shots, n_vn)
+                soft_control = True
+                nr_shots = self.get_param_value(
+                    "nr_shots", self._extract_param_from_det("nr_shots"))
+                shots_per_qb[qbn] = shots_per_qb[qbn].reshape((-1, nr_shots,
+                                                               n_vn))
+            else:
+                soft_control = False
             # if "2D measurement" reshape from (n_soft_sp, n_shots, n_vn)
             #  to ( n_shots * n_soft_sp, n_ro_ch)
             if np.ndim(shots_per_qb[qbn]) == 3:
-                assert self.get_param_value("TwoD", False) == True, \
+                assert self.get_param_value("TwoD", False) or soft_control, \
                     "'TwoD' is False but single shot data seems to be 2D"
-                n_vn = shots_per_qb[qbn].shape[-1]
                 # put softsweep as inner most loop for easier processing
                 shots_per_qb[qbn] = np.swapaxes(shots_per_qb[qbn], 0, 1)
                 # reshape to 2D array
@@ -2066,17 +2076,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.proc_data_dict['single_shots_per_qb'] = deepcopy(shots_per_qb)
 
         # determine number of shots
-        n_shots = self.get_param_value("n_shots")
-        if n_shots is None:
-            # FIXME: this extraction of number of shots won't work with soft repetitions.
-            # FIXME: refactor to use settings manager instead of raw_data_dict
-            n_shots_from_hdf = [
-                int(self.get_data_from_timestamp_list({
-                    f'sh': f"Instrument settings.{qbn}.acq_shots"})['sh']) for qbn in self.qb_names]
-            if len(np.unique(n_shots_from_hdf)) > 1:
-                log.warning("Number of shots extracted from hdf are not all the same:"
-                            "assuming n_shots=max(qb.acq_shots() for qb in qb_names)")
-            n_shots = np.max(n_shots_from_hdf)
+        n_shots = self.get_param_value(
+            "nr_shots", self._extract_param_from_det("nr_shots"))
 
         # determine number of readouts per sequence
         if self.get_param_value("TwoD", False):
@@ -2186,6 +2187,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
+            # Note: shots has been re-ordered in _get_single_shots_per_qb,
+            # compared to the raw data from the measurement
             for ro in range(n_readouts*n_seqs):
                 shots_single_ro = shots[ro::n_readouts*n_seqs]
                 presel_mask_single_ro = preselection_masks[qbn][ro::n_readouts*n_seqs]
@@ -3021,6 +3024,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
     Analyses the results of the state tomography experiment and calculates
     the corresponding quantum state.
 
+    ```
     Possible options that can be passed in the options_dict parameter:
         cal_points: A data structure specifying the indices of the calibration
                     points. See the AveragedTimedomainAnalysis for format.
@@ -3061,6 +3065,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
              with more qubits require smaller tolerance to converge.
         rho_target (optional): A qutip density matrix that the result will be
                                compared to when calculating fidelity.
+        ```
     """
     def __init__(self, *args, **kwargs):
         auto = kwargs.pop('auto', True)
@@ -5159,6 +5164,14 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class NPulsePhaseErrorCalibAnalysis(RabiAnalysis, PhaseErrorsAnalysisMixin):
+    """
+    Analysis class for calibrating phase errors in N-pulse sequences.
+
+    This class inherits from RabiAnalysis and PhaseErrorsAnalysisMixin, and is
+    used to analyze data from N-pulse sequences to calibrate phase errors. It
+    extracts data, prepares plots, and performs fitting to determine the phase
+    error values.
+    """
 
     def extract_data(self):
         super().extract_data()
@@ -5746,10 +5759,12 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 old_qb_freq = 0  # FIXME: explain why
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'old_qb_freq'] = old_qb_freq
+            legacy_sign = 1 if self.get_param_value('right_handed_basis')\
+                else -1  # -1 for old measurements with left-handed basis
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
-                'new_qb_freq'] = old_qb_freq + \
-                                 self.artificial_detuning_dict[qbn] - \
-                                 fit_res.best_values['frequency']
+                'new_qb_freq'] = old_qb_freq + legacy_sign * (
+                    fit_res.best_values['frequency']
+                    - self.artificial_detuning_dict[qbn])
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq_stderr'] = fit_res.params['frequency'].stderr
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
@@ -7312,9 +7327,18 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 amps_errs = np.nan_to_num(amps_errs)
                 # amps_errs.dtype = amps.dtype
                 if qbn in self.ramsey_qbnames:
-                    # phase_diffs
-                    phases = np.array([fr.best_values['phase'] for fr in
+                    # Extracting the phases:
+                    # the data were fitted using cos(phase+phase_offset), where
+                    # * phase (named t in the model) are the phase sweep points
+                    # * phase_offset (phase in the model) is a fitted offset
+                    # Here we want to know the phase at which the cosine is
+                    # maximum, which is phase = -phase_offset
+                    phases = -np.array([fr.best_values['phase'] for fr in
                                        fit_res_objs])
+                    # -1 for old measurements with left-handed basis
+                    legacy_sign = 1 if self.get_param_value(
+                        'right_handed_basis') else -1
+                    phases = legacy_sign*phases
                     phases_errs = np.array([fr.params['phase'].stderr for fr in
                                             fit_res_objs], dtype=np.float64)
                     phases_errs = np.nan_to_num(phases_errs)
@@ -7324,7 +7348,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
 
                     # compute phase diffs
                     if getattr(self, 'delta_tau', 0) is not None:
-                        # this can be false for Cyroscope with
+                        # this can be false for Cryoscope with
                         # estimation_window == None and odd nr of trunc lengths
                         phase_diffs = phases[0::2] - phases[1::2]
                         phase_diffs %= (2*np.pi)
@@ -9970,21 +9994,6 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                     f'via the options_dict).')
             setattr(self, param, val)
 
-    def _extract_param_from_det(self, param, default=None):
-        det_metadata = self.metadata.get("Detector Metadata", None)
-        val = None
-        if det_metadata is not None:
-            # multi detector function: look for child "detectors"
-            # assumes at least 1 child and that all children have the same
-            # number of averages
-            val = det_metadata.get(param, None)
-            if val is None:
-                det = list(det_metadata.get('detectors', {}).values())[0]
-                val = det.get(param, None)
-        if val is None:
-            val = default
-        return val
-
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
                               count_nan_measurements=False):
         """
@@ -12347,24 +12356,31 @@ class f0g1BandwidthAnalysis(MultiQubit_TimeDomain_Analysis):
 class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     """
     Analysis class for the DriveAmpCalib measurement.
+
     The typical accepted input parameters are described in the parent class.
 
-    Additional parameters that this class recognises, which can be passed in the
-    options_dict:
-        - nr_pulses_pi (int; default: None): specifying into how many identical
-            pulses a pi rotation was divided ( nr_pulses_pi pulses with rotation
-            angle pi/nr_pulses_pi ). See docstring of the measurement class.
-            Can also be dict with qb names as keys.
-        - fixed scaling (int; default: None): specifying the amplitude scaling
-            for the pulse that wasn't swept. See docstring of the measurement
-            class. Can also be dict with qb names as keys.
-        - fitted_scaling_errors (dict; default: None): the keys are qubit names
-            and the values are arrays of fit results for each soft sweep
-            ex: {'qb10':  np.array([-0.00077432, -0.00055945])}
-        - maxeval (int; default: 400): number of evaluations for the optimiser
-        - T1 (float; default: value from hdf): qubit T1 to use for fit (fixed)
-        - T2 (float; default: value from hdf): qubit T2 to use as starting value
-            for the fit (dimensionless fraction T2/T2_guess is varied)
+    Args:
+        options_dict: Additional parameters that this class recognises:
+            nr_pulses_pi (int, optional): Specifying into how many identical
+                pulses a pi rotation was divided (nr_pulses_pi pulses with
+                rotation angle pi/nr_pulses_pi). See docstring of the
+                measurement class. Can also be dict with qb names as keys.
+                Defaults to None.
+            fixed_scaling (int, optional): Specifying the amplitude scaling
+                for the pulse that wasn't swept. See docstring of the
+                measurement class. Can also be dict with qb names as keys.
+                Defaults to None.
+            fitted_scaling_errors (dict, optional): The keys are qubit names
+                and the values are arrays of fit results for each soft sweep.
+                Example: {'qb10':  np.array([-0.00077432, -0.00055945])}
+                Defaults to None.
+            maxeval (int, optional): Number of evaluations for the optimiser.
+                Defaults to 400.
+            T1 (float, optional): Qubit T1 to use for fit (fixed).
+                Defaults to value from hdf.
+            T2 (float, optional): Qubit T2 to use as starting value for the
+                fit (dimensionless fraction T2/T2_guess is varied).
+                Defaults to value from hdf.
     """
     def extract_data(self):
         super().extract_data()
@@ -12441,10 +12457,10 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             t_gate (float): gate length (s)
             gamma_1 (float): qubit energy relaxation rate
             gamma_phi (float): qubit dephasing rate
-            zth (float; default=1): z coordinate at equilibrium
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
 
-        Returns
-            y, z: coordinates of the qubit state vector after the evolution
+        Returns:
+            tuple: y, z: coordinates of the qubit state vector after the evolution
         """
         Omega = ang_scaling*np.pi/t_gate
         f_rabi = np.sqrt(Omega**2 - (1/16)*(gamma_1-2*gamma_phi)**2)
@@ -12465,63 +12481,93 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
     @staticmethod
     def apply_gate_mtx(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, nreps=1):
-        """
-        Calculates the time evolution of the y and z components of the qubit
-        state vector under the application of an X gate described by the
-        time-independent Hamiltonian (ang_scaling*pi/t_gate)*sigma_x/2.
+        """Calculates the time evolution of the y and z components of the qubit
+        This function implements the matrix version of apply_gate: y and z here
+        are y - yinf and z - zinf in apply_gate.
+
+        To be specific: Calculates the time evolution of the y and z
+        components of the qubit state vector under the application of
+        an X gate described by the time-independent Hamiltonian 
+        (ang_scaling*pi/t_gate)*sigma_x/2.
+
         https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
-        This function implements the matrix version of apply_gate: y and z
-        here are y - yinf and z - zinf in apply_gate
 
         This function is used in sim_func when fixed_scaling is None.
 
         Args:
-            y (float): scaled y coordinate of the qubit state vector at the
-                start of the evolution
-            z (float): scaled z coordinate of the qubit state vector at the
-                start of the evolution
-            ang_scaling (float or array): fraction of a pi rotation
-                (see Hamiltonian above)
-            t_gate (float): gate length (s)
-            gamma_1 (float): qubit energy relaxation rate
-            gamma_phi (float): qubit dephasing rate
-            nreps (int; default: 1): number of times the gate is applied
+            y (float): Scaled y coordinate of the qubit state vector at the
+                start of the evolution.
+            z (float): Scaled z coordinate of the qubit state vector at the
+                start of the evolution.
+            ang_scaling (float or array): Fraction of a pi rotation
+                (see Hamiltonian above).
+            t_gate (float): Gate length (s).
+            gamma_1 (float): Qubit energy relaxation rate.
+            gamma_phi (float): Qubit dephasing rate.
+            nreps (int, optional): Number of times the gate is applied.
+                Defaults to 1.
 
-        Returns
-            y, z: scaled coordinates of the qubit state vector after the
-                evolution
+        Returns:
+            Tuple[float, float]: Scaled coordinates of the qubit state
+            vector after the evolution.
+
+        References:
+            https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
         """
         Omega = ang_scaling * np.pi / t_gate
-        f_rabi = np.sqrt(Omega ** 2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
+        f_rabi = np.sqrt(Omega**2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
         prefactor = np.exp(-(3 * gamma_1 + 2 * gamma_phi) * t_gate / 4)
-        mtx = prefactor * np.array([
-            [np.cos(f_rabi * t_gate) + np.sin(f_rabi * t_gate) * \
-                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi),
-             np.sin(f_rabi * t_gate) * Omega / f_rabi],
-            [-np.sin(f_rabi * t_gate) * Omega / f_rabi,
-             np.cos(f_rabi * t_gate) - np.sin(f_rabi * t_gate) * \
-                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi)]])
+        mtx = prefactor * np.array(
+            [
+                [
+                    np.cos(f_rabi * t_gate)
+                    + np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                    np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                ],
+                [
+                    -np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                    np.cos(f_rabi * t_gate)
+                    - np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                ],
+            ]
+        )
         mtx = np.linalg.matrix_power(mtx, nreps)
         res = mtx @ np.array([[y], [z]])
         return res[0][0], res[1][0]
 
     @staticmethod
-    def sim_func(nr_pi_pulses, sc_error, ideal_scaling,
-                 T2, t2_r=1, nr_pulses_pi=None,
-                 y0=0, z0=1, zth=1, fixed_scaling=None,
-                 T1=None, t_gate=None, mobjn=None, ts=None):
+    def sim_func(
+        nr_pi_pulses,
+        sc_error,
+        ideal_scaling,
+        T2,
+        t2_r=1,
+        nr_pulses_pi=None,
+        y0=0,
+        z0=1,
+        zth=1,
+        fixed_scaling=None,
+        T1=None,
+        t_gate=None,
+        mobjn=None,
+        ts=None,
+    ):
         """
         Simulation function for the excited qubit state populations for a trace
         of the N-pulse calibration experiment:
             - X90 - [ repeated groups of pulses ]^nr_pi_pulses -
 
         The repeated groups of pulses are either:
-         - nr_pulses_pi x R(pi/nr_pulses_pi)
-         or
-         - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
+        - nr_pulses_pi x R(pi/nr_pulses_pi)
+        or
+        - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
             if fixed_scaling is not None
 
-         See also the docstring of the measurement class DriveAmpCalib.
+        See also the docstring of the measurement class DriveAmpCalib.
 
         Args:
             nr_pi_pulses (array): number of repeated pulses applied to the qubit
@@ -12530,23 +12576,24 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 away from the ideal scaling. This error will be fitted
             ideal_scaling (float): ideal amplitude scaling factor
             T2 (float): qubit decoherence time in seconds to be used as a guess
-            t2_r (float; default=1): ratio T2_varied/T2. This ratio will be fitted
-            nr_pulses_pi (int; default=None): the number of pulses that together
-                implement a pi rotation.
-            y0 (float; default=0): y coordinate of the initial state
-            z0 (float; default=1): z coordinate of the initial state
-            zth (float; default=1): z coordinate at equilibrium
-            fixed_scaling (float; default: None): the amplitude scaling of
-                the first rotation in the description above
-            T1 (float; default: None): quit lifetime (s)
-            t_gate (float): gate length (s)
-            mobjn (str): name of the qubit
-            ts (str): measurement timestamp
+            t2_r (float, optional): ratio T2_varied/T2. This ratio will be fitted.
+                Defaults to 1.
+            nr_pulses_pi (int, optional): the number of pulses that together
+                implement a pi rotation. Defaults to None.
+            y0 (float, optional): y coordinate of the initial state. Defaults to 0.
+            z0 (float, optional): z coordinate of the initial state. Defaults to 1.
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
+            fixed_scaling (float, optional): the amplitude scaling of
+                the first rotation in the description above. Defaults to None.
+            T1 (float, optional): quit lifetime (s). Defaults to None.
+            t_gate (float, optional): gate length (s). Defaults to None.
+            mobjn (str, optional): name of the qubit. Defaults to None.
+            ts (str, optional): measurement timestamp. Defaults to None.
             The last two parameers will be used to extract T1/t_gate if the
             latter are not specified (see docstring of sim_func)
 
-        Returns
-            e_pops (array): same length as nr_pi_pulses and containing the
+        Returns:
+            array: e_pops, same length as nr_pi_pulses and containing the
                 qubit excited state populations after the application of
                 nr_pi_pulses repeated groups of pulses
         """
@@ -12556,39 +12603,50 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             assert ts is not None
         if ts is not None:
             from pycqed.utilities.settings_manager import SettingsManager
+
             sm = SettingsManager()
         if t_gate is None:
-            t_gate = sm.get_parameter(mobjn + '.ge_sigma', ts) * \
-                     sm.get_parameter(mobjn + '.ge_nr_sigma', ts)
+            t_gate = sm.get_parameter(mobjn + ".ge_sigma", ts) * sm.get_parameter(
+                mobjn + ".ge_nr_sigma", ts
+            )
         if t_gate == 0:
-            raise ValueError('Please specify t_gate.')
+            raise ValueError("Please specify t_gate.")
         if T1 is None:
-            T1 = sm.get_parameter(mobjn + '.T1', ts)
+            T1 = sm.get_parameter(mobjn + ".T1", ts)
         if T1 == 0:
-            raise ValueError('Please specify T1.')
+            raise ValueError("Please specify T1.")
 
         T2 = t2_r * T2
         if nr_pulses_pi is None and fixed_scaling is None:
-            raise ValueError('Please specify either nr_pulses_pi or '
-                             'fixed_scaling.')
+            raise ValueError("Please specify either nr_pulses_pi or " "fixed_scaling.")
 
-        gamma_1 = 1/T1
-        gamma_2 = 1/T2
-        gamma_phi = gamma_2 - 0.5*gamma_1
+        gamma_1 = 1 / T1
+        gamma_2 = 1 / T2
+        gamma_phi = gamma_2 - 0.5 * gamma_1
 
         # apply initial pi/2 gate
         y00, z00 = NPulseAmplitudeCalibAnalysis.apply_gate(
-            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth)
+            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth
+        )
 
         # calculate yinf, zinf with amp_sc
         amp_sc = sc_error + ideal_scaling
-        if hasattr(amp_sc, '__iter__'):
+        if hasattr(amp_sc, "__iter__"):
             amp_sc = amp_sc[0]
         Omega = amp_sc * np.pi / t_gate
-        yinf = 2 * zth * Omega * gamma_1 / \
-               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
-        zinf = zth * gamma_1 * (gamma_1 + 2 * gamma_phi) / \
-               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
+        yinf = (
+            2
+            * zth
+            * Omega
+            * gamma_1
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
+        zinf = (
+            zth
+            * gamma_1
+            * (gamma_1 + 2 * gamma_phi)
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
 
         e_pops = np.zeros(len(nr_pi_pulses))
         for i, n in enumerate(nr_pi_pulses):
@@ -12598,8 +12656,8 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 # adds offset to initial values
                 y, z = y00 - yinf, z00 - zinf
                 y, z = NPulseAmplitudeCalibAnalysis.apply_gate_mtx(
-                    y, z, amp_sc, t_gate, gamma_1, gamma_phi,
-                    nreps=nr_pulses_pi * n)
+                    y, z, amp_sc, t_gate, gamma_1, gamma_phi, nreps=nr_pulses_pi * n
+                )
                 # get back the true y and z
                 y += yinf
                 z += zinf
@@ -12608,10 +12666,12 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 for j in range(n):
                     # apply pulse with varying scaling
                     y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth)
+                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
                     # apply pulse with fixed scaling
                     y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth)
+                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
             e_pops[i] = 0.5 * (1 - z)
         return e_pops
 
