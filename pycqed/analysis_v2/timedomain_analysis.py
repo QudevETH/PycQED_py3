@@ -2946,7 +2946,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['sweep_points_dict'][
                 self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
         else:
-            # TODO: use the correct way to import array
+            # sweep mode data processing
             array = np.array  # for the following evaluation
             sweep_points = eval(self.raw_data_dict['exp_metadata'][
                 'sweep_points'])

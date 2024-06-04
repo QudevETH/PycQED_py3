@@ -263,6 +263,70 @@ class VariationalAlgorithmCZ(VariationalAlgorithm):
                                             destroy=True)
 
 
+class QCNN4(VariationalAlgorithm):
+    """Experiment to train a variational quantum algorithm.
+
+    The blocks are hard coded at the moment because this was the easiest way to implement parallel
+    single-qubit gates during the state preparation. Next step would be to generalize to arbitrary
+    parameterized quantum circuits. TODO
+    """
+
+    default_experiment_name = 'VariationalAlgorithmCZ'
+
+    def _add_ry_block(self, prefix, qubits):
+        self._blocks.append(self.simultaneous_blocks(
+                block_name=prefix,
+                blocks=[self.block_from_anything(
+                    f"Y:{prefix}_{qb.name} {qb.name}",
+                    f"{prefix}_{qb.name}")
+                    for qb in qubits],
+                block_align='middle',
+                set_end_after_all_pulses=True,
+                destroy=True,
+            ))
+        self.params += [f"{prefix}_{qb.name}" for qb in qubits]
+
+    def _add_cz_block(self, prefix, qubits):
+        self._blocks.append(self.simultaneous_blocks(
+            block_name=prefix,
+            blocks=[
+                self.block_from_ops(
+                    block_name=f'CZ:{prefix}_0',
+                    operations=[f'CZ:{prefix}_0 {qubits[0].name}'
+                                f' {qubits[1].name}']
+                ),
+                self.block_from_ops(
+                    block_name=f'CZ:{prefix}_1',
+                    operations=[f'CZ:{prefix}_1 {qubits[2].name}'
+                                f' {qubits[3].name}']
+                )
+            ],
+            block_align='middle',
+            set_end_after_all_pulses=True,
+            destroy=True,
+            ))
+        self.params += [f"{prefix}_0", f"{prefix}_1"]
+
+    def set_block_and_params(self):
+        self._blocks = []
+        self.params = []
+        if len(self.qubits) == 4:
+            self._add_ry_block('RY1', self.qubits)
+            self._add_cz_block('CZ1', self.qubits)
+            self._add_ry_block('RY2', self.qubits)
+            self._add_cz_block('CZ2', [self.qubits[0], self.qubits[2],
+                               self.qubits[1], self.qubits[3]])
+            self._add_ry_block('RY3', self.qubits)
+        elif len(self.qubits) == 9:
+            pass  # TODO
+        else:
+            raise ValueError("Only 4 or 9 qubits are supported!")
+        self.block = self.sequential_blocks('QCNN',
+                                            self._blocks,
+                                            set_end_after_all_pulses=True,
+                                            destroy=True)
+
+
 class QCNNExperiment(VariationalAlgorithm):
     """QuantumExperiment to perform training of the 3qb spin chain QCNN for quantum phase recognition.
     """
