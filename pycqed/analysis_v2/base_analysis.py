@@ -2308,11 +2308,13 @@ class BaseDataAnalysis(object):
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
         if orientation == 'horizontal' and not plot_cbar_opposite_axis:
-            # Defaults to top, unless plot_cbar_opposite_axis
+            # Defaults to top here (matplotlib defaults to bottom),
+            # unless plot_cbar_opposite_axis
             axs.cax.xaxis.set_label_position("top")
             axs.cax.xaxis.tick_top()
         if orientation == 'vertical' and plot_cbar_opposite_axis:
-            # Defaults to right, unless plot_cbar_opposite_axis
+            # Defaults to right (as in matplotlib),
+            # unless plot_cbar_opposite_axis
             axs.cax.yaxis.set_label_position("left")
             axs.cax.yaxis.tick_left()
 
