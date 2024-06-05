@@ -2579,7 +2579,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
             do_legend_cal_states=True, TwoD=None, yrange=None,
-            linestyle='none', xlabel=None, xunit=None):
+            linestyle=None, xlabel=None, xunit=None):
         """
         Prepares one projected data plot, typically one of the keys in
         proc_data_dict['projected_data_dict'].
@@ -2628,6 +2628,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             data_axis_label = self.get_yaxis_label(qb_name=qb_name)
         plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
         plotsize = (plotsize[0], plotsize[0]/1.25)
+        linestyle = linestyle if linestyle is not None \
+            else self.get_param_value('linestyle', '')
 
         if sweep_points is None:
             sweep_points = self.proc_data_dict['sweep_points_dict'][qb_name][
