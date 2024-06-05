@@ -1,5 +1,7 @@
 import logging
 log = logging.getLogger(__name__)
+from typing import Dict, Any, Optional, Union
+
 import re
 import os
 import h5py
@@ -1236,13 +1238,27 @@ def get_cal_sweep_points(sweep_points_array, cal_points, qb_name):
 
 
 def get_reset_reps_from_data_dict(data_dict):
+    """
+    Retrieves the number of reset repetitions from a data dictionary.
+
+    This function parses a data dictionary to find the number of reset
+    repetitions. It supports both new and legacy formats for reset parameters.
+    If 'reset_params' is found, it translates to the legacy format. If neither
+    is set, it defaults to 0 reset repetitions.
+
+    Args:
+        data_dict (dict): The data dictionary containing experiment information,
+            including metadata under 'exp_metadata'.
+
+    Returns:
+        int: The number of repetitions for reset operations, defaulting to 0
+            if not explicitly specified in the data dictionary.
+    """
     reset_reps = 0
-    metadata = data_dict.get('exp_metadata', {})
-    if 'preparation_params' in metadata:
-        if 'active' in metadata['preparation_params'].get(
-                'preparation_type', 'wait'):
-            reset_reps = metadata['preparation_params'].get(
-                'reset_reps', 3)
+
+    # Extract reset_reps
+    reset_reps = get_preparation_parameters(data_dict).get("reset_reps", 3)
+
     return reset_reps
 
 
@@ -1676,3 +1692,132 @@ def read_from_hdf(data_dict, hdf_group, split_char='.', raise_exceptions=False):
         else:
             log.error(traceback.format_exc())
 
+
+# FIXME: Implement the support of multiple steps / analysis_instructions
+# FIXME: This is duplicated work(also in v2/base_analysis.py)
+def translate_reset_to_prep_params(
+    reset_parameters: Union[str, dict],
+    qbn: Optional[str] = None,
+    default_return_value: Any = None
+) -> dict:
+    """
+    This static method performs the translation of reset parameters
+    (new framework for performing reset, used on the control measurement side)
+    to a preparation parameters dict (old framework)
+    required by the analysis framework. It handles cases
+    where the reset parameters are either a string or a dictionary.
+
+    Args:
+        reset_params (str or dict): The reset parameters to be translated.
+        qbn (Optional[str]): Qubit name of which the reset parameters
+            should be extracted. In the new framework, each qubit
+            can have its own type of reset and thus the
+            returned analysis instructions can depend on the qubit.
+            In the old framework, there is only one global set of preparation
+            parameters. `qbn` indicates the reset parameters of which are used
+            as global preparation parameters for the legacy analysis code.
+            Defaults to the first qubit listed in reset_params['analysis_instructions'].
+        default_value (Optional): Default value to be returned if the reset
+            parameters do not match any known patterns. Defaults to None.
+
+    Returns:
+        dict or default_value: Dictionary containing the translated preparation
+            parameters if the reset parameters match a known pattern. Otherwise,
+            returns the default_value.
+
+    Note:
+        In case of legacy code where the reset parameters stored in the
+        experimental metadata or provided to the analysis is only a string
+        summarizing the reset type for all qubits, this method manually performs
+        the translation to the dictionary required by the analysis framework.
+
+        If the reset parameters are a string, the method maps specific values of
+        the string to the corresponding dictionary format. If the reset
+        parameters are a dictionary, it checks for the presence of
+        "analysis_instructions" and returns the last step of the analysis
+        instructions for the specified qubit.
+
+        If the reset parameters do not match any known patterns or if there is
+        missing data, appropriate warning messages are logged, and the
+        default_value is returned.
+
+        """
+
+    # dictionary map from new active reset to prep params
+    RESET_PARAM_MAPPING = {
+        'preselection': {'preparation_type': 'preselection'},
+        'feedback': {'preparation_type': 'active_reset'},
+        'parametric_flux': {'preparation_type': 'wait'},
+    }
+
+    # In most QE based measurements the stored reset params is a dict which
+    # stores instructions for the analysis.
+    if isinstance(reset_parameters, dict):
+
+        # Fallback in case of garbled active reset params
+        if "analysis_instructions" not in reset_parameters:
+            log.warning(f'Reset params dictionary does not contain '
+                        f'"analysis_instructions": {reset_parameters}.'
+                        f' Analysis will proceed without any specific'
+                        f' reset-specific data processing.')
+            return dict(preparation_type="wait")
+
+        # Check preconeditions and catch not implemented corner cases
+        else:
+            if qbn is None:
+                qbn = list(reset_parameters['analysis_instructions'].keys())[0]
+            if len(reset_parameters['analysis_instructions'][qbn]) == 0:
+                # empty list, i.e. no reset steps
+                return { 'preparation_type': 'wait'}
+            elif len(reset_parameters['analysis_instructions'][qbn]) > 1:
+                log.warning(f'Reset params dictionary contains several'
+                            f' steps: {reset_parameters["steps"]}, '
+                            f'currently the analysis will consider'
+                            f' only the last step for data '
+                            f'processing/filtering'
+                            )
+            return reset_parameters['analysis_instructions'][qbn][-1]
+
+    # and in legacy legacy setups the parameters are stored as string
+    elif isinstance(reset_parameters, str):
+
+        if reset_parameters in RESET_PARAM_MAPPING:
+            return RESET_PARAM_MAPPING[reset_parameters]
+        else:
+            # Any other '{reset_params}' is likely legacy.
+            # Assume that the analysis can be performed
+            # with the default behavior i.e.,
+            # preparation_type='wait' in the legacy code.
+            return {'preparation_type': 'wait'}
+
+    return default_return_value
+
+def get_preparation_parameters(
+    data_dict: Dict[str, Any],
+    **params: Any
+) -> Dict[str, Any]:
+    """
+    This function extracts preparation parameters from the data dictionary,
+    translating them if necessary.
+
+    Args:
+        data_dict (OrderedDict): An ordered dictionary containing the
+        experimental data and metadata.
+
+    Returns:
+        dict: A dictionary containing the preparation parameters.
+
+    Raises:
+        ValueError: If the 'reset_params' key is not found in the metadata and
+        the 'preparation_params' key is also not found.
+    """
+
+    # New reset format or legacy?
+    if "reset_params" in data_dict.get("exp_metadata", {}):
+        prep_params = translate_reset_to_prep_params(
+            get_param("reset_params", data_dict, **params)
+        )
+    else:
+        prep_params = get_param("preparation_params", data_dict, **params)
+
+    return prep_params

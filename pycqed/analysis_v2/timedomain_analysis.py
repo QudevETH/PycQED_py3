@@ -396,8 +396,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             qbn: self.raw_data_dict['measurementstring'] for qbn in
             self.qb_names}
 
-        self.prep_params = self.get_param_value('preparation_params',
-                                                default_value=dict())
+        self.prep_params = self.get_reset_params(default_value=dict())
 
         # creates self.channel_map
         self.get_channel_map()
@@ -8177,8 +8176,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.preselection = \
-            self.get_param_value("preparation_params",
-                                 {}).get("preparation_type", "wait") == "preselection"
+            self.get_reset_params(default_value={})\
+                                .get("preparation_type", "wait") == "preselection"
         default_states_info = defaultdict(dict)
         default_states_info.update({"g": {"label": r"$|g\rangle$"},
                                "e": {"label": r"$|e\rangle$"},
@@ -8793,9 +8792,9 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        if "ro_separation" in self.get_param_value("preparation_params"):
-            ro_sep = \
-                self.get_param_value("preparation_params")["ro_separation"]
+
+        if "ro_separation" in self.prep_params:
+            ro_sep = self.prep_params["ro_separation"]
         else:
             return
 
@@ -9041,9 +9040,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         from matplotlib.ticker import MaxNLocator
         for axname, ax in self.axs.items():
             if "populations" in axname:
-                if "ro_separation" in self.get_param_value("preparation_params"):
-                    ro_sep = \
-                        self.get_param_value("preparation_params")["ro_separation"]
+                if "ro_separation" in self.prep_params:
+                    ro_sep = self.prep_params["ro_separation"]
                     timeax = ax.twiny()
                     timeax.set_xlabel(r"Time ($\mu s$)")
                     timeax.set_xlim(0, ax.get_xlim()[1] * ro_sep * 1e6)
@@ -10024,11 +10022,25 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         else:
             # Note that the number of shots is already included in n_hsp
             n_hsp = len(self.raw_data_dict['hard_sweep_points'])
-            prep_params = self.metadata['preparation_params']
+            prep_params = self.get_reset_params(default_value={})
             if 'active' in prep_params['preparation_type']:
                 # If reset: n_hsp already includes the number of shots
                 # and the final readout is interleaved with n_reset readouts
-                n_resets = prep_params['reset_reps']
+                n_resets = prep_params.get('reset_reps')
+                # in some cases the number of reset might not be part of the 
+                # reset params if it was not provided at run time. 
+                # So we tell the user about it and mention how the info can be provided.
+                if not n_resets:
+                    log.warning('reset_reps not found in reset_params obtained '
+                                'with self.get_reset_params(). Assuming'
+                                ' 3 repetitions. This will affect the timing'
+                                ' calculations of the bare_measurement_timer.'
+                                ' For manual adjustment, provide e.g., the following'
+                                ' to the options_dict: reset_params=dict(steps=["feedback"],'
+                                ' analysis_instructions=dict(qb1=[dict(preparation_type='
+                                '"active_reset", reset_reps=N_RESET_REPS)]))'
+                                )
+                    n_resets = 3
                 n_hsp = n_hsp // (1 + n_resets)
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:

@@ -166,7 +166,7 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
-            'preparation_params': self.get_prep_params(),
+            'reset_params': self.get_reset_params(),
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
@@ -1141,8 +1141,6 @@ class CPhase(CalibBuilder):
                 self.label = self.experiment_name
             if self.classified:
                 self.label += '_classified'
-            if 'active' in self.get_prep_params()['preparation_type']:
-                self.label += '_reset'
             for t in self.task_list:
                 self.label += f"_{t['qbl']}{t['qbr']}"
                 num_cz_gates = t.get('num_cz_gates', 1)

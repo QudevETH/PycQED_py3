@@ -1,9 +1,12 @@
 import itertools
+import logging
 from copy import copy, deepcopy
 
 import numpy as np
 
 from pycqed.measurement import multi_qubit_module as mqm
+
+log = logging.getLogger(__name__)
 from pycqed.measurement.waveform_control.block import Block, ParametricValue
 from pycqed.measurement.waveform_control.segment import Segment
 from pycqed.measurement.waveform_control.sequence import Sequence
@@ -30,8 +33,9 @@ class CircuitBuilder:
             decomposed, e.g {'CZ_nztc': [['qb2', 'qb1'], ['qb3', 'qb4]]}. In
             the latter case the single-qubit gates of the decomposition are
             applied to the first qubit of the pair.
-         prep_params: (dict) custom preparation params (default: from
-            instrument settings)
+         reset_params: (dict) Global reset parameters, see doc string of
+            CircuitBuilder.reset()
+            If None, they are taken from the individual qubit.reset modules.
          fast_mode: (bool, default: False) activate faster processing by
             - creating segments with fast_mode=True in self.sweep_n_dim
                 (see fast_mode parameter in Segment class)
@@ -46,8 +50,6 @@ class CircuitBuilder:
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
                 'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef']}
-    STD_PREP_PARAMS = {'preparation_type': 'wait', 'reset_reps': 3,
-                       'ro_separation': 1.5e-6, 'post_ro_wait': 1e-6}
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  filter_qb_names=None, **kw):
@@ -69,7 +71,7 @@ class CircuitBuilder:
         self.decompose_rotation_gates = kw.get('decompose_rotation_gates', {})
         self.fast_mode = kw.get('fast_mode', False)
         self.copy_op = copy if self.fast_mode else deepcopy
-        self.prep_params = kw.get('prep_params', None)
+        self.reset_params = self._parse_reset(kw.get('reset_params', None))
 
     @staticmethod
     def extract_qubits(dev=None, qubits=None, operation_dict=None,
@@ -98,6 +100,36 @@ class CircuitBuilder:
                 qubits = [qb for qb in qubits if qb.name in filter_qb_names]
             qb_names = [qb for qb in qb_names if qb in filter_qb_names]
         return qubits, qb_names
+
+    @staticmethod
+    def _parse_reset(reset_params=None):
+        """Parse reset parameters such that the output is either "None"
+        or a dictionary containing reset parameters.
+
+        Args:
+            reset_params (None, str, dict): reset parameters.
+            If None, returned reset params will be None.
+            If False, returned reset params is a dict with no reset steps
+            If string, returned reset params is a dict where the reset step is
+            the string.
+            If a dict, then reset_params is returned untouched.
+            Otherwise, an exception is raised.
+
+        Returns:
+            reset_parameters (dict, None): FIXME
+        """
+        if isinstance(reset_params, str):
+            return dict(steps=[reset_params])
+        elif reset_params == False:
+            return dict(steps=[])
+        elif reset_params is None:
+            return reset_params
+        elif not isinstance(reset_params, dict):
+            raise ValueError(f'reset_params must be a string, False,'
+                             f' or a dict, but not {reset_params} of type'
+                             f' {type(reset_params)}')
+        else:
+            return reset_params
 
     def update_operation_dict(self, operation_dict=None):
         """Updates the stored operation_dict based on the passed operation_dict or
@@ -156,28 +188,82 @@ class CircuitBuilder:
             qb_map = {qb.name: qb for qb in self.qubits}
             return [qb_map[qb] for qb in qb_names], qb_names
 
-    def get_prep_params(self, qb_names='all'):
+    def get_reset_params(self, qb_names="all"):
         """Gets a copy of preparation parameters (used for active reset,
         preselection) for qb_names.
 
         Args:
             qb_names (list): list of qubit names for which the
-                preparation params should be retrieved. Default is 'all',
-                which retrieves the preparation parameters for all qubits.
+                reset params should be retrieved. Default is 'all',
+                which retrieves the reset parameters for all qubits.
+                Note: this parameter is overwritten by
+                self.reset_params["qb_names"] in case it exists.
 
         Returns:
-            preparation_params (dict): deep copy of preparation parameters
+            reset_params (dict): deep copy of preparation parameters
+
+        """
+        reset_params = deepcopy(self.reset_params) or {}
+
+        # collect them from CircuitBuilder
+        steps, analysis_instructions = self._get_reset_steps(
+            qb_names=reset_params.get('qb_names', qb_names),
+            steps=reset_params.get('steps', None))
+
+        reset_params.update(dict(steps=steps, analysis_instructions=
+                                 analysis_instructions))
+        return reset_params
+
+    def _get_reset_steps(self, qb_names="all", steps=None):
+        """Constructs the global reset steps for the given qubits in qb_names
+        by retrieving the steps of the individual qubits in qb.reset.steps
+        or from the passed `steps`
+        Args:
+            qb_names (str, list): list of qubit names.
+            steps (None, list, str): list of reset steps for all qubits in
+                qb_names. If None (default), steps are taken for each qubit
+                from qb.reset.steps
+
+        Returns:
+            reset_steps (dict): preparation parameters
+            analysis_instructions (dict)
 
         """
         qubits, qb_names = self.get_qubits(qb_names)
-        if self.prep_params is not None:
-            return deepcopy(self.prep_params)
-        elif self.dev is not None:
-            return self.dev.get_prep_params(qubits)
-        elif qubits is not None:
-            return mqm.get_multi_qubit_prep_params(qubits)
+        # collect steps and ensure they are lists, and deepcopy them to allow
+        # modification within this function without affecting original object
+        if qubits is None:
+            # no qubits objects passed, so no reset possible
+            log.warning("Failed to retrieve reset "
+                        "steps from qb.reset.steps() because no qubits "
+                        "objects were found (self.qubits is None). "
+                        "No reset steps will be added.")
+            reset_steps = {qbn: [] for qbn in qb_names}
+            analysis_instructions = {qbn: [dict(preparation_type="wait")]
+                                     for qbn in qb_names}
+        elif steps is None:
+            try:
+                reset_steps = {qb.name: deepcopy(qb.reset.steps()) for qb in qubits}
+                analysis_instructions = \
+                    {qb.name: [qb.reset.submodules.get(s).get_analysis_instructions()
+                               for s in qb.reset.steps() if s != "padding"]
+                     for qb in qubits}
+            except AttributeError as e:
+                log.error(f"Failed to retrieve reset "
+                          f"steps from qb.reset.steps(): {e}. "
+                          f"No reset steps will be added.")
+                reset_steps = {qbn: [] for qbn in qb_names}
+                analysis_instructions = {qbn: [dict(preparation_type="wait")]
+                                         for qbn in qb_names}
         else:
-            return deepcopy(self.STD_PREP_PARAMS)
+            if isinstance(steps, str):
+                steps = [steps]
+            reset_steps = {qb.name: deepcopy(steps) for qb in qubits}
+            analysis_instructions =\
+                {qb.name: [qb.reset.submodules.get(s).get_analysis_instructions()
+                           for s in steps]
+                for qb in qubits}
+        return reset_steps, analysis_instructions
 
     def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None,
                               cz_pulse_name=None, **kw):
@@ -486,7 +572,7 @@ class CircuitBuilder:
             i, j = i[0], i[1]
         self.qb_names[i], self.qb_names[j] = self.qb_names[j], self.qb_names[i]
 
-    def initialize(self, init_state='0', qb_names='all', prep_params=None,
+    def initialize(self, init_state='0', qb_names='all', reset_params=None,
                    simultaneous=True, block_name=None, pulse_modifs=None,
                    prepend_block=None):
         """Initializes the specified qubits with the corresponding init_state
@@ -500,7 +586,7 @@ class CircuitBuilder:
               not include space and qubit name (those are added internally).
         :param qb_names (list or 'all'): list of qubits on which init should be
             applied. Defaults to all qubits.
-        :param prep_params: preparation parameters
+        :param reset_params: preparation parameters
         :param simultaneous: (bool, default True) whether initialization
             pulses should be applied simultaneously.
         :param block_name: (str, optional) a name to replace the
@@ -516,8 +602,8 @@ class CircuitBuilder:
         _, qb_names = self.get_qubits(qb_names)
         if not len(qb_names):
             return Block(block_name, [])
-        if prep_params is None:
-            prep_params = self.get_prep_params(qb_names)
+        if reset_params is None:
+            reset_params = self.get_reset_params(qb_names)
         if len(init_state) == 1 and isinstance(init_state, str):
             init_state = [init_state] * len(qb_names)
         else:
@@ -544,16 +630,18 @@ class CircuitBuilder:
         block = Block(block_name, pulses, copy_pulses=False)
         block.set_end_after_all_pulses()
         blocks = []
-        if len(prep_params) != 0:
-            blocks.append(self.prepare(qb_names, ref_pulse="start",
-                                       **prep_params))
+        # if reset parameters exist and location specifies reset should be done
+        # at start of sequence (note: is this really the best way to encode where
+        # to do the reset? shall we make this 'per_qubit')?)
+        if len(reset_params) != 0 and \
+                reset_params.get('location', 'start') == 'start':
+            blocks.append(self.reset(**reset_params))
         if prepend_block is not None:
             blocks.append(prepend_block)
         if len(blocks) > 0:
             blocks.append(block)
             block = self.sequential_blocks(block_name, blocks)
         return block
-
 
     def finalize(self, init_state='0', qb_names='all', simultaneous=True,
                  block_name=None, pulse_modifs=None):
@@ -566,198 +654,158 @@ class CircuitBuilder:
             block_name = f"Finalialization_{qb_names}"
         return self.initialize(init_state=init_state, qb_names=qb_names,
                                simultaneous=simultaneous,
-                               prep_params={},
+                               reset_params={},
                                block_name=block_name,
                                pulse_modifs=pulse_modifs)
 
-    def prepare(self, qb_names='all', ref_pulse='start',
-                preparation_type=STD_PREP_PARAMS['preparation_type'],
-                post_ro_wait=STD_PREP_PARAMS['post_ro_wait'],
-                ro_separation=STD_PREP_PARAMS['ro_separation'],
-                reset_reps=STD_PREP_PARAMS['reset_reps'], final_reset_pulse=False,
-                pad_end=False, threshold_mapping=None, block_name=None):
-        """Prepares specified qb for an experiment by creating preparation pulse
-        for preselection or active reset.
+    def reset(self, qb_names='all', steps=None,
+              step_alignment='start', alignment="end",
+              block_name=None, **kws):
+        """Prepares a reset of a list of qubits using a sequence of steps
+        (globally provided as argument to this function or individually
+         specified from qubit.init.steps).
+
+        I.e.:
+
+        qb0 --[step 0 ] -- ... - [step i]
+        qb1 --[step 0 ] -- ... - [step j]
 
         Args:
             qb_names: which qubits to prepare. Defaults to all.
-            ref_pulse: reference pulse of the first pulse in the pulse list.
-                reset pulse will be added in front of this.
-                If the pulse list is empty,
-                reset pulses will simply be before the block_start.
-            preparation_type:
-                for nothing: 'wait'
-                for preselection: 'preselection'
-                for active reset on |e>: 'active_reset_e'
-                for active reset on |e> and |f>: 'active_reset_ef'
-            post_ro_wait: wait time after a readout pulse before applying reset
-            ro_separation: spacing between two consecutive readouts
-            reset_reps: number of reset repetitions
-            final_reset_pulse: Note: NOT used in this function.
-            threshold_mapping (dict): thresholds mapping for each qb
-            pad_end (bool): Only used in active reset. Whether or not padding
-                should be added after the last reset readout pulse. If False,
-                no padding is added and therefore any subsequent pulse will start
-                right after the last reset pulse. If True, then the end of the
-                prepare block is set such that the subsequent pulse start
-                "ro_separation" after the start of the last readout pulse.
+            steps (list, str, None, dict): list of steps for the preparation.
+                If a list is provided, all steps are the same for all qubits.
+                If a string is provided, it is converted to a single-entry list.
+                If None (default), takes the steps for each qubit individually
+                from qubit.init.steps. The different qubits can
+                have different number of steps. The qubits with less steps
+                will get padded (waiting time) in the beginning or the end
+                of the block, depending on `alignment`.
+                If dict, then it assumes that keys are qubit names and values
+                are lists of steps.
+                To get no reset whatsoever, pass an emtpy list.
+                Constraints: if a step includes acquisition(s)
+                (e.g. preselection, active reset), then they
+                should happen simultaneously for all qubits which are on
+                the same acquisition unit (constraint of, e.g., ZI devices) and the
+                same number of times across all qubits sharing that acquisition
+                device. Note that this function does not name the elements explicitly
+                for the acquisition (this is handled by Segment.add()),
+                and it DOES ALLOW steps which do not satisfy this
+                constraint (in case the constraint is relaxed in the future by the
+                instrument drivers).
+            step_alignment (str): "start", "center" or "end". Indicates whether
+                step i on all qubits should be start, center- or end- aligned.
+                Note that if the steps contain readout pulses which
+                are generated by the same acquisition unit, only "Start"
+                should be used, to ensure the acquisition is started simultaneously
+                on all qubits on that acquisition unit. Defaults to "start".
+            alignment (str): "start" or "end". In case the number of
+                steps is different for the different qubits, specifies whether
+                the qubits should be aligned at the start or finish the preparation.
 
+            block_name (str): Name of the preparation block.
 
         Returns:
-
+            sequantial_blocks: A Reset_{qb_names} block with a sequential list
+            of simultaneous prep blocks.
         """
+        qubits, qb_names = self.get_qubits(qb_names)
         if block_name is None:
-            block_name = f"Preparation_{qb_names}"
-        _, qb_names = self.get_qubits(qb_names)
+            block_name = f"Reset_{qb_names}"
 
-        if threshold_mapping is None or len(threshold_mapping) == 0:
-            threshold_mapping = {qbn: {0: 'g', 1: 'e'} for qbn in qb_names}
+        # parse steps if not yet done.
+        if not isinstance(steps, dict):
+            steps, _ = self._get_reset_steps(qb_names, steps)
+        max_steps = np.max([len(steps) for steps in steps.values()])
 
-        # Calculate the length of a ge pulse, assumed the same for all qubits
-        state_ops = dict(g=["I "], e=["X180 "], f=["X180_ef ", "X180 "])
+        # pad qubits which have less steps
+        for qbn in steps:
+            padding = max_steps - len(steps[qbn])
+            if alignment == "end":
+                # add padding steps at the beginning
+                steps[qbn] = ["padding"] * padding + steps[qbn]
+            elif alignment == "start":
+                # add padding steps at the end
+                steps[qbn] = steps[qbn] + ["padding"] * padding
+            else:
+                raise NotImplementedError("Only start and end alignment of "
+                                          "the preparation block is currently"
+                                          " supported.")
 
-        # no preparation pulses
-        if preparation_type == 'wait':
-            return Block(block_name, [])
+        # Fill prep list first with parallel reset blocks
+        prep = []
+        for i in range(max_steps):
 
-        # active reset
-        elif 'active_reset' in preparation_type:
-            reset_ro_pulses = []
-            ops_and_codewords = {}
-            for i, qbn in enumerate(qb_names):
-                reset_ro_pulses += self.get_pulses('RO ' + qbn)
-                reset_ro_pulses[-1]['ref_point'] = 'start' if i != 0 else 'end'
+            # Collect all parallel Blocks in current step i for each qubit
+            simultaneous_blocks = []
+            for qb in qubits:
+                if steps[qb.name][i] == "padding":
+                    simultaneous_blocks.append(
+                        Block(f"padding_step_{i}_{qb.name}", [])
+                    )
+                else: # if reset block
+                    try:
+                        reset_scheme = qb.reset.instrument_modules[steps[qb.name][i]]
+                    except KeyError as e:
+                        log.error(
+                            f"Reset Step '{steps[qb.name][i]}' not known for {qb.name}."
+                            f"Available steps are: {qb.reset.instrument_modules.keys()}")
+                        raise e
 
-                if preparation_type == 'active_reset_e':
-                    ops_and_codewords[qbn] = [
-                        (state_ops[threshold_mapping[qbn][0]], 0),
-                        (state_ops[threshold_mapping[qbn][1]], 1)]
-                elif preparation_type == 'active_reset_ef':
-                    assert len(threshold_mapping[qbn]) == 4, \
-                        f"Active reset for the f-level requires a mapping of " \
-                        f"length 4 but only {len(threshold_mapping)} were " \
-                        f"given: {threshold_mapping}"
-                    ops_and_codewords[qbn] = [
-                        (state_ops[threshold_mapping[qbn][0]], 0),
-                        (state_ops[threshold_mapping[qbn][1]], 1),
-                        (state_ops[threshold_mapping[qbn][2]], 2),
-                        (state_ops[threshold_mapping[qbn][3]], 3)]
-                else:
-                    raise ValueError(f'Invalid preparation type '
-                                     f'{preparation_type}')
+                    simultaneous_blocks.append(
+                        reset_scheme.reset_block(
+                            f"step_{i}_{qb.name}",
+                            sweep_params=self._prep_sweep_params.get(qb.name, None),
+                        )
+                    )
 
-            reset_pulses = []
-            for i, qbn in enumerate(qb_names):
-                for ops, codeword in ops_and_codewords[qbn]:
-                    for j, op in enumerate(ops):
-                        reset_pulses += self.get_pulses(op + qbn)
-                        # Reset pulses cannot include phase information at the moment
-                        # since we use the exact same waveform(s) (corresponding to
-                        # a given codeword) for every reset pulse(s) we play (no
-                        # matter where in the circuit). Therefore, remove phase_lock
-                        # that references the phase to algorithm time t=0.
-                        reset_pulses[-1]['phaselock'] = False
-                        reset_pulses[-1]['codeword'] = codeword
-                        if j == 0:
-                            reset_pulses[-1]['ref_point'] = 'start'
-                            reset_pulses[-1]['pulse_delay'] = post_ro_wait
-                        else:
-                            reset_pulses[-1]['ref_point'] = 'start'
-                            pulse_length = 0
-                            for jj in range(1, j + 1):
-                                if 'pulse_length' in reset_pulses[-1 - jj]:
-                                    pulse_length += reset_pulses[-1 - jj][
-                                        'pulse_length']
-                                else:
-                                    pulse_length += \
-                                        reset_pulses[-1 - jj]['sigma'] * \
-                                        reset_pulses[-1 - jj]['nr_sigma']
-                            reset_pulses[-1]['pulse_delay'] = post_ro_wait + \
-                                                              pulse_length
+            # Finally append all parallel blocks of step i
+            prep.append(
+                self.simultaneous_blocks(
+                    f"Reset_step_{i}",
+                    simultaneous_blocks,
+                    set_end_after_all_pulses=True,
+                    block_align=step_alignment,
+                )
+            )
 
-            prep_pulse_list = []
-            for rep in range(reset_reps):
-                ro_list = [self.copy_op(p) for p in reset_ro_pulses]
-                ro_list[0]['name'] = 'refpulse_reset_element_{}'.format(rep)
+        # FIXME: Temporarily dropping support for f0g1_reset.
+        #        Will be reintroduced with devel/f0g1_init_schemes.
+        #
+        # # f0g1 reset
+        # elif preparation_type == 'f0g1_reset':
+        #     preparation_pulses = []
+        #     for i, qbn in enumerate(qb_names):
+        #         preparation_pulses.append(
+        #             self.get_pulse('f0g1_reset_pulse ' + qbn))
+        #         preparation_pulses[-1]['ref_point'] = 'start'
+        #         preparation_pulses[-1]['element_name'] = 'f0g1_reset'
 
-                for pulse in ro_list:
-                    pulse['element_name'] = 'reset_ro_element_{}'.format(rep)
-                if rep == 0:
-                    ro_list[0]['ref_pulse'] = ref_pulse
-                    ro_list[0]['pulse_delay'] = -reset_reps * ro_separation
-                else:
-                    ro_list[0]['ref_pulse'] = \
-                        'refpulse_reset_element_{}'.format(rep - 1)
-                    ro_list[0]['pulse_delay'] = ro_separation
-                    ro_list[0]['ref_point'] = 'start'
+        #         preparation_pulses.append(
+        #             self.get_pulse('ef_for_f0g1_reset_pulse ' + qbn))
+        #         preparation_pulses[-1]['ref_point'] = 'start'
+        #         preparation_pulses[-1]['element_name'] = 'f0g1_reset'
 
-                rp_list = [self.copy_op(p) for p in reset_pulses]
-                for j, pulse in enumerate(rp_list):
-                    pulse['element_name'] = f'reset_pulse_element_{rep}'
-                    pulse['ref_pulse'] = f'refpulse_reset_element_{rep}'
-                prep_pulse_list += ro_list
-                prep_pulse_list += rp_list
+        #     preparation_pulses[0]['ref_pulse'] = ref_pulse
+        #     preparation_pulses[0]['name'] = 'f0g1_reset_pulse'
+        #     preparation_pulses[0]['pulse_delay'] = 0  # -ro_separation
 
-            if pad_end:
-                block_end = dict(
-                    name='end', pulse_type="VirtualPulse",
-                    ref_pulse=f'refpulse_reset_element_{reset_reps - 1}',
-                    pulse_delay=ro_separation, ref_point="start")
-                prep_pulse_list += [block_end]
-            return Block(block_name, prep_pulse_list, copy_pulses=False)
+        #     preparation_pulses[1]['ref_pulse'] = ref_pulse
+        #     preparation_pulses[1]['name'] = 'ef_for_f0g1_reset_pulse'
+        #     preparation_pulses[1]['pulse_delay'] = 0  # -ro_separation
 
-        # f0g1 reset
-        elif preparation_type == 'f0g1_reset':
-            preparation_pulses = []
-            for i, qbn in enumerate(qb_names):
-                preparation_pulses.append(
-                    self.get_pulse('f0g1_reset_pulse ' + qbn))
-                preparation_pulses[-1]['ref_point'] = 'start'
-                preparation_pulses[-1]['element_name'] = 'f0g1_reset'
+        #     block_end = dict(name='end', pulse_type="VirtualPulse",
+        #                      ref_pulse='f0g1_reset_pulse',
+        #                      pulse_delay=ro_separation,
+        #                      ref_point='end')
+        #     preparation_pulses += [block_end]
+        #     return Block(block_name, preparation_pulses, copy_pulses=False)
 
-                preparation_pulses.append(
-                    self.get_pulse('ef_for_f0g1_reset_pulse ' + qbn))
-                preparation_pulses[-1]['ref_point'] = 'start'
-                preparation_pulses[-1]['element_name'] = 'f0g1_reset'
 
-            preparation_pulses[0]['ref_pulse'] = ref_pulse
-            preparation_pulses[0]['name'] = 'f0g1_reset_pulse'
-            preparation_pulses[0]['pulse_delay'] = 0  # -ro_separation
-
-            preparation_pulses[1]['ref_pulse'] = ref_pulse
-            preparation_pulses[1]['name'] = 'ef_for_f0g1_reset_pulse'
-            preparation_pulses[1]['pulse_delay'] = 0  # -ro_separation
-
-            block_end = dict(name='end', pulse_type="VirtualPulse",
-                             ref_pulse='f0g1_reset_pulse',
-                             pulse_delay=ro_separation,
-                             ref_point='end')
-            preparation_pulses += [block_end]
-            return Block(block_name, preparation_pulses, copy_pulses=False)
-
-        # preselection
-        elif preparation_type == 'preselection':
-            preparation_pulses = []
-            for i, qbn in enumerate(qb_names):
-                preparation_pulses += self.get_pulses('RO ' + qbn)
-                preparation_pulses[-1]['ref_point'] = 'start'
-                preparation_pulses[-1]['element_name'] = 'preselection_element'
-
-                for k, v in self._prep_sweep_params[qbn].items():
-                    if k in preparation_pulses[-1]:
-                        preparation_pulses[-1][k] = ParametricValue(v)
-
-            preparation_pulses[0]['ref_pulse'] = ref_pulse
-            preparation_pulses[0]['name'] = 'preselection_RO'
-            preparation_pulses[0]['pulse_delay'] = -ro_separation
-            block_end = dict(name='end', pulse_type="VirtualPulse",
-                             ref_pulse='preselection_RO',
-                             pulse_delay=ro_separation,
-                             ref_point='start')
-            preparation_pulses += [block_end]
-            return Block(block_name, preparation_pulses, copy_pulses=False)
+        return self.sequential_blocks(block_name, prep)
 
     def mux_readout(self, qb_names='all', element_name='RO', block_name="Readout",
+                    reset_params=None,
                     **pulse_pars):
         _, qb_names = self.get_qubits(qb_names)
         ro_pulses = []
@@ -772,7 +820,16 @@ class CircuitBuilder:
             ro_pulses.append(ro_pulse)
         block = Block(block_name, ro_pulses, copy_pulses=False)
         block.set_end_after_all_pulses()
-        return block
+        if reset_params is None:
+            reset_params = self.get_reset_params(qb_names)
+
+        if reset_params.get("location", "start") == "end":
+            return self.sequential_blocks(
+                f"{block_name}_and_reset",
+                [block, self.reset(**reset_params)]
+            )
+        else:
+            return block
 
     def Z_gate(self, theta=0, qb_names='all'):
         """Software Z-gate of arbitrary rotation.
@@ -1070,19 +1127,28 @@ class CircuitBuilder:
                 copying pulses, see Block.build).
         """
         simultaneous = Block(block_name, [])
+
         if not hasattr(destroy, '__iter__'):
             destroy = [destroy] * len(blocks)
+
         simultaneous_end_pulses = []
+
+        # saves computation time in Segment.resolve_timing
         if block_align == 'start':
-            # saves computation time in Segment.resolve_timing
             block_align = None
+
         for block, d in zip(blocks, destroy):
             if set_end_after_all_pulses:
                 block.set_end_after_all_pulses()
+            # if there is already custom block start, then just update it
+            # with block alignment otherwise create it
+            block_start = block.block_start or {'block_align': block_align}
             simultaneous.extend(block.build(
-                ref_pulse="start", block_start=dict(block_align=block_align),
-                name=block.name if disable_block_counter else None, destroy=d))
+                ref_pulse="start", block_start=block_start,
+                name=block.name if disable_block_counter else None,
+                destroy=d))
             simultaneous_end_pulses.append(simultaneous.pulses[-1]['name'])
+
         # the name of the simultaneous_end_pulse is used in
         # Segment.resolve_timing and should not be changed
         simultaneous.extend([{"name": "simultaneous_end_pulse",
@@ -1205,7 +1271,16 @@ class CircuitBuilder:
 
         ro = self.mux_readout(**ro_kwargs, qb_names=ro_qubits)
         _, all_ro_qubits = self.get_qubits(ro_qubits)
-        all_ro_op_codes = [p['op_code'] for p in ro.pulses]
+        # FIXME: checking whether op_code starts with RO or Acq is a good
+        #  hack because mux_readout() was modified to also sometimes be RO + reset
+        #  but maybe a cleaner solution would be to have a separate block for the
+        #  end reset after the readout?
+        # FIXME: add an explaining comment why the space in 'RO ' is necessary to
+        # avoid matching other op_codes. Which other op_codes starting with 'RO' are there?
+
+        all_ro_op_codes = [p['op_code'] for p in ro.pulses if "op_code" in p
+                           and (p['op_code'].startswith('RO ') # space after RO required to avoid matching the wrong OP code
+                                or p['op_code'].startswith('Acq'))]
         if body_block is not None:
             op_codes = [p['op_code'] for p in body_block.pulses if 'op_code'
                         in p]
