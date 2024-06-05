@@ -26,6 +26,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     def __init__(self, optimize=True, optimizer=None,
                  classified=False, df_name='int_log_det',
                  sweep_points=None, fixed_params_values=None, **kw):
+        # TODO add try except around the whole init
         super().__init__(
             classified=classified, df_name=df_name,
             sequence_kwargs=dict(sweep_points=sweep_points), **kw
@@ -124,18 +125,14 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     # here data should be in the flattened shape
     @staticmethod
-    def classical_postprocessing(single_shots_per_qb_thresholded):
-        # returns the sum of g state population
-        # single_shots_per_qb_thresholded shape: dictionary of flattened single
-        # shot measurement
-        e_state_data = [single_shots_per_qb_thresholded[qbn][:, 1] for qbn
-                        in single_shots_per_qb_thresholded.keys()]
-        # return shape: (flattened_len,)
-        # return value: averaged e state population over qubits
-        return np.average(e_state_data, axis=0)
+    def classical_postprocessing(shots):
+        raise ValueError("Refactor and move to tda!")
+        # TODO maybe discard f state
+        return shots
 
     @staticmethod
     def cost_function(cpp_output, targets):
+        raise ValueError("Refactor and move to tda!")
         # cpp_output: (n_shots, trainable params, non trainable params)
         targets = np.array(targets)
         cost_func = np.average(
@@ -273,50 +270,58 @@ class QCNN4(VariationalAlgorithm):
 
     default_experiment_name = 'VariationalAlgorithmCZ'
 
-    def _add_ry_block(self, prefix, qubits):
+    def _add_ry_block(self, prefix, qbns):
         self._blocks.append(self.simultaneous_blocks(
                 block_name=prefix,
                 blocks=[self.block_from_anything(
-                    f"Y:{prefix}_{qb.name} {qb.name}",
-                    f"{prefix}_{qb.name}")
-                    for qb in qubits],
+                    f"Y:{prefix}_{qbn} {qbn}",
+                    f"{prefix}_{qbn}")
+                    for qbn in qbns],
                 block_align='middle',
                 set_end_after_all_pulses=True,
                 destroy=True,
             ))
-        self.params += [f"{prefix}_{qb.name}" for qb in qubits]
+        self.params += [f"{prefix}_{qbn}" for qbn in qbns]
 
-    def _add_cz_block(self, prefix, qubits):
+    def _add_cz_block(self, prefix, qubit_lists):
         self._blocks.append(self.simultaneous_blocks(
             block_name=prefix,
             blocks=[
                 self.block_from_ops(
-                    block_name=f'CZ:{prefix}_0',
-                    operations=[f'CZ:{prefix}_0 {qubits[0].name}'
-                                f' {qubits[1].name}']
-                ),
-                self.block_from_ops(
-                    block_name=f'CZ:{prefix}_1',
-                    operations=[f'CZ:{prefix}_1 {qubits[2].name}'
-                                f' {qubits[3].name}']
-                )
+                    block_name=f'CZ:{prefix}_{qbns[0]}_{qbns[1]}',
+                    operations=[f'CZ:{prefix}_{qbns[0]}_{qbns[1]} '
+                                f'{qbns[0]} {qbns[1]}']
+                ) for i, qbns in enumerate(qubit_lists)
             ],
             block_align='middle',
             set_end_after_all_pulses=True,
             destroy=True,
             ))
-        self.params += [f"{prefix}_0", f"{prefix}_1"]
+        self.params += [f"{prefix}_{qbns[0]}_{qbns[1]}"
+                        for i, qbns in enumerate(qubit_lists)]
 
     def set_block_and_params(self):
         self._blocks = []
         self.params = []
         if len(self.qubits) == 4:
-            self._add_ry_block('RY1', self.qubits)
-            self._add_cz_block('CZ1', self.qubits)
-            self._add_ry_block('RY2', self.qubits)
-            self._add_cz_block('CZ2', [self.qubits[0], self.qubits[2],
-                               self.qubits[1], self.qubits[3]])
-            self._add_ry_block('RY3', self.qubits)
+            # Prep circuit
+            self._add_ry_block('RYp1', range(len(self.qubits)))
+            self._add_cz_block('CZp1', [[0, 1]])
+            self._add_ry_block('RYp2', range(len(self.qubits)))
+            # self._add_cz_block('CZp2', [[1, 2], [0, 3]])
+            self._add_cz_block('CZp2', [[1, 2]])
+            self._add_cz_block('CZp3', [[0, 3]])
+            self._add_ry_block('RYp3', range(len(self.qubits)))
+            # QCNN
+            self._add_ry_block('RY1', range(len(self.qubits)))
+            # # self._add_cz_block('CZ1', [[1, 2], [0, 3]])
+            # self._add_cz_block('CZ1', [[1, 2]])
+            # self._add_cz_block('CZ1', [[0, 3]])
+            # self._add_ry_block('RY2', self.qubits)
+            # # self._add_cz_block('CZ2', [[0, 1], [2, 3]])
+            # self._add_cz_block('CZ2', [[0, 1]])
+            # self._add_cz_block('CZ2', [[2, 3]])
+            # self._add_ry_block('RY3', self.qubits)
         elif len(self.qubits) == 9:
             pass  # TODO
         else:
@@ -326,6 +331,36 @@ class QCNN4(VariationalAlgorithm):
                                             set_end_after_all_pulses=True,
                                             destroy=True)
 
+    #
+    # def set_block_and_params(self):
+    #     self._blocks = []
+    #     self.params = []
+    #     if len(self.qubits) == 2:
+    #         # Prep circuit
+    #         self._add_ry_block('RYp1', range(len(self.qubits)))
+    #         self._add_cz_block('CZp1', [[0, 1]])
+    #         self._add_ry_block('RY2', [0])
+    #     self.block = self.sequential_blocks('QCNN',
+    #                                         self._blocks,
+    #                                         set_end_after_all_pulses=True,
+    #                                         destroy=True)
+
+
+    # def set_block_and_params(self):
+    #     self._blocks = []
+    #     self.params = []
+    #     if len(self.qubits) == 4:
+    #         # Prep circuit
+    #         self._add_ry_block('RYp1', [0, 1, 2, 3])
+    #         # self._add_ry_block('RYp1', [1])
+    #         self._add_ry_block('RY1', [0, 1, 2, 3])
+    #         # self._add_ry_block('RY1', [1])
+    #     else:
+    #         raise ValueError("Only 4 or 9 qubits are supported!")
+    #     self.block = self.sequential_blocks('QCNN',
+    #                                         self._blocks,
+    #                                         set_end_after_all_pulses=True,
+    #                                         destroy=True)
 
 class QCNNExperiment(VariationalAlgorithm):
     """QuantumExperiment to perform training of the 3qb spin chain QCNN for quantum phase recognition.
@@ -448,12 +483,15 @@ class VQAOptimizer:
     def _full_circuit(self, params):
         all_params, batch_shape, targets = self.get_batch_params(params)
         data = self.measurement_function(all_params)
+        data = np.array([
+            data[key].reshape((-1, *batch_shape, 3)) for key in data.keys()
+        ])
+        # shape: (n_qb, n_shots, n_trainable_params,
+        #   n_non_trainable_params, 3 states)
+        # Take the e state probability (now array contains 0s and 1s)
+        data = data[..., 1]
+        # shape: (n_qb, n_shots, n_trainable_params, n_non_trainable_params)
         if self.hybrid:
-            data = np.array([
-                data[key].reshape((-1, *batch_shape, 3)) for key in data.keys()
-            ])
-            # data shape: (n_qb, n_shots, n_trainable_params,
-            # n_non_trainable_params, 3 states)
             costs = []
             for i in range(batch_shape[0]):
                 data_batch = data[:, :, i, :, :]
@@ -468,8 +506,6 @@ class VQAOptimizer:
             costs = np.array(costs)
         else:
             cpp_output = VariationalAlgorithm.classical_postprocessing(data)
-            cpp_output = cpp_output.reshape((-1, *batch_shape))
-            # cpp_output shape = (n_shots, n_trainable, n_non_trainable)
             # batch_shape = (n_trainable, n_non_trainable)
             costs = self.cost_function(cpp_output, targets)
         # cost: 2D list of values

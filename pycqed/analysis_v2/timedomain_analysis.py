@@ -2919,7 +2919,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def process_data(self):
         super().process_data()
-        print('VariationalAlgorithmAnalysis used')
 
         # FIXME: replacing the values of a qubit is a hack, we should
         #  instead create a new entry
@@ -2947,73 +2946,173 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
         else:
             # sweep mode data processing
-            array = np.array  # for the following evaluation
-            sweep_points = eval(self.raw_data_dict['exp_metadata'][
-                'sweep_points'])
-            sweep_dim_0, sweep_dim_1 = self.sp.length()
-            cpp_output = va.classical_postprocessing(self.proc_data_dict[
-                                            'single_shots_per_qb_thresholded'])
-            # cpp_output shape (n_shots, hard_sweep, soft_sweep)
-            cpp_output = cpp_output.reshape((-1, sweep_dim_0, sweep_dim_1))
-            # -> (n_shots, soft_sweep, hard_sweep, soft_label, hard_label)
-            cpp_output = np.reshape(
-                a=cpp_output,
-                newshape=(-1, sweep_dim_0, sweep_dim_1, 1, 1)
-            )
-            # oneD_axis is the indicator for the plot function
-            oneD_axis = None
-            if 'targets' in sweep_points[0]:
-                oneD_axis = 1
-            elif 'targets' in sweep_points[1]:
-                oneD_axis = 0
-            # Reason for assume target = 0: when there is only one state in the
-            # training set, the absolute value of the cost function doesn't
-            # matter, and there is no need to specify the exact value of
-            # targets.
-            targets = [0]
-            if oneD_axis is not None:
-                targets = sweep_points[1 - oneD_axis]['targets'][0]
-                cpp_output = \
-                    np.swapaxes(cpp_output, 1 + 1 - oneD_axis,
-                                3 + 1 - oneD_axis)
-            n_shots, soft_sweep, hard_sweep, soft_label, hard_label = \
-                cpp_output.shape
-            # The following reshaping makes the cpp_output a valid input for
-            # va.cost_function.
-            cpp_output = cpp_output.reshape((n_shots, soft_sweep*hard_sweep,
-                                             soft_label*hard_label))
-            cost_function_values = va.cost_function(cpp_output, targets)
-            # reconstruct the 2D data structure for single state cost function
-            if len(targets) == 1:
-                cost_function_values = np.reshape(
-                    a=cost_function_values,
-                    newshape=(soft_sweep, hard_sweep)
-                )
-            self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
-                'cost func': cost_function_values,
-            }
-            # set appropriate sweep points for plotting
-            if len(targets) > 1:
-                param_name, params_value = sweep_points[oneD_axis].popitem()
-                self.proc_data_dict['sweep_points_dict'][self.qb_names[0]] = {
-                    'sweep_points': params_value[0],
-                    'param_names': [param_name],
-                    'msmt_sweep_points': params_value[0],
-                    'cal_points_sweep_points': []
-                }
-                self.proc_data_dict['sweep_points_2D_dict'][self.qb_names[0]] = {
-                    'dummy': [0]
-                }
+            shots = self.proc_data_dict['single_shots_per_qb_thresholded']
+            shots = np.array([
+                shots[key] for key in shots.keys()
+            ])
+            # Take the e state probability (now array contains 0s and 1s)
+            shots = shots[..., 1]
+            shots = shots.reshape((shots.shape[0], -1, *self.sp.length()))
+            # shape (n_qb, n_shots, hard_sweep, soft_sweep)
 
-            for useless_qb in self.qb_names[1:]:
-                del self.proc_data_dict['projected_data_dict'][useless_qb]
+            to_plot = self.cpp_stabilizers(shots)
+            for k, v in to_plot.items():
+                self.add_dummy_qb_data(k, v)
+            # cpp_output = va.classical_postprocessing()
+
+    def add_dummy_qb_data(self, key, values, sp_name=None):
+        # set appropriate values and sweep points for plotting
+
+        if len(values.shape) == len(self.sp.length()):
+            self.proc_data_dict['sweep_points_dict'][key] =\
+                self.proc_data_dict['sweep_points_dict'][self.qb_names[0]]
+            self.proc_data_dict['sweep_points_2D_dict'][key] =\
+                self.proc_data_dict['sweep_points_2D_dict'][self.qb_names[0]]
+        elif len(values.shape) == 1:
+            sp_value = self.sp[sp_name]
+            self.proc_data_dict['sweep_points_dict'][key] = {
+                'sweep_points': sp_value,
+                'param_names': [sp_name],
+                'msmt_sweep_points': sp_value,
+                'cal_points_sweep_points': []
+            }
+            self.proc_data_dict['sweep_points_2D_dict'][key] = {
+                'dummy': [0]
+            }
+        else:
+            log.warning(f"Ignoring {key}: {values.shape}")
+            return
+        self.proc_data_dict['projected_data_dict'][key] = {
+            'value '+key: values,
+        }
+
+    def cpp_stabilizers(self, shots):
+        # Should return {'dummy_qbn': values}
+        assert len(self.qb_names)==4
+        # Z stabilizer
+        def stabz(shots):
+            shape = shots.shape
+
+            shots_flat = shots.reshape([shape[0], shape[1], -1])
+
+            parity = np.sum(shots_flat, axis=0) % 2
+            parity = np.mean(parity, axis=0)
+            stab = 1 - 2 * parity
+
+            return stab.reshape(shape[2:])
+
+        # x stabilizer
+        def stabx(shots):
+            shape = shots.shape
+
+            shots_flat = shots.reshape([shape[0], shape[1], -1])
+
+            parity = np.zeros(shots_flat.shape)
+            for index in np.arange(4):
+                parity[index] = np.sum(shots_flat[[index, (index + 2) % 4]],
+                                       axis=0) % 2
+
+            parity = np.mean(parity, axis=1)
+
+            stab = 1 - 2 * parity
+
+            return stab.reshape(-1, *shape[2:])
+
+        return {
+            'stabz': stabz(shots),
+            'stabx': stabx(shots),
+        }
+
+    # shot to freq
+    @staticmethod
+    def cpp_histogram(shots):
+        shape = shots.shape
+
+        shots_flat = shots.reshape([shape[0], shape[1], -1])
+
+        convrt = 2 ** np.arange(shape[0])
+
+        for i in range(shape[2]):
+
+            freqs = np.zeros((2 ** shape[0], np.prod(shape[2:])))
+
+            for j in range(np.prod(shape[2:])):
+                # count histogram# relative frequencies of samples
+                bitstrings = convrt @ shots_flat[:, :, j]
+                values, counts = np.unique(bitstrings, return_counts=True)
+                freqs[values, j] = counts / shape[
+                    1]  # calculate relative frequencies
+
+        return freqs.reshape(np.concatenate((np.array([-1]), shape[2:])))
+
+    @staticmethod
+    def cpp_cost_function(freqs, targets):
+        # cpp_output: (n_qb, n_shots, trainable params, non trainable params)
+
+        shape = freqs.shape
+        tol = 1e-10
+
+        cost_func = np.zeros(shape[1])
+
+        for i in range(shape[1]):
+            weights_emp = 0.5 * np.ones(shape[0])
+            freq1 = freqs[:, i, :] @ targets / np.sum(targets)
+            freq0 = freqs[:, i, :] @ (1 - targets) / np.sum(1 - targets)
+            sel = freq0 + freq1 > tol
+            weights_emp[sel] = freq1[sel] / ((freq0 + freq1)[sel])
+
+            #         print(weights_emp)
+
+            cost_func[i] -= 0.5 * np.log(weights_emp[freq1 > tol]) @ freq1[
+                freq1 > tol]
+            cost_func[i] -= 0.5 * np.log(1 - weights_emp[freq0 > tol]) @ freq0[
+                freq0 > tol]
+
+        return cost_func
+
+    def cpp_auto_collapse_to_1D_whatever(self, shots, sp):  # TODO
+        # -> (n_shots, soft_sweep, hard_sweep, soft_label, hard_label)
+        cpp_output = np.reshape(
+            a=shots,
+            newshape=(-1, *sp.length(), 1, 1)
+        )
+        # oneD_axis is the indicator for the plot function
+        oneD_axis = None
+        if 'targets' in self.sp[0]:
+            oneD_axis = 1
+        elif 'targets' in self.sp[1]:
+            oneD_axis = 0
+        # Reason for assume target = 0: when there is only one state in the
+        # training set, the absolute value of the cost function doesn't
+        # matter, and there is no need to specify the exact value of
+        # targets.
+        targets = [0]
+        if oneD_axis is not None:
+            targets = self.sp[1 - oneD_axis]['targets'][0]
+            cpp_output = \
+                np.swapaxes(cpp_output, 1 + 1 - oneD_axis,
+                            3 + 1 - oneD_axis)
+        n_shots, soft_sweep, hard_sweep, soft_label, hard_label = \
+            cpp_output.shape
+        # The following reshaping makes the cpp_output a valid input for
+        # va.cost_function.
+        cpp_output = cpp_output.reshape((n_shots, soft_sweep*hard_sweep,
+                                         soft_label*hard_label))
+        cost_function_values = va.cost_function(cpp_output, targets)
+        # reconstruct the 2D data structure for single state cost function
+        if len(targets) == 1:
+            cost_function_values = np.reshape(
+                a=cost_function_values,
+                newshape=(soft_sweep, hard_sweep)
+            )
+        return cost_function_values
 
     def prepare_plots(self):
-        # super().prepare_plots()
-        self.prepare_cost_function_plots()
+        super().prepare_plots()
+        # self.prepare_cost_function_plots()
 
-    def prepare_cost_function_plots(self):
-        self.prepare_projected_data_plots()
+    # def prepare_cost_function_plots(self):
+    #     self.prepare_projected_data_plots()
 
 
 class MultiQubit_HistogramAnalysis(MultiQubit_TimeDomain_Analysis):
