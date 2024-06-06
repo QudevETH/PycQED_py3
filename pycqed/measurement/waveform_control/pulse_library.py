@@ -514,7 +514,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'gaussian_filter_sigma': 1e-9,
             'cphase': None,
             'cphase_calib_dict': None,
-            'cphase_ctrl_params': ['trans_amplitude2', 'basis_rotation'],
+            'cphase_ctrl_params': ['trans_length'],
             'fixed_pulse_length': None,
         }
         return params
