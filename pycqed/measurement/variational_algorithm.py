@@ -270,20 +270,26 @@ class QCNN4(VariationalAlgorithm):
 
     default_experiment_name = 'VariationalAlgorithmCZ'
 
-    def _add_ry_block(self, prefix, qbns):
+    def _add_ry_block(self, prefix, qbns, params=None):
+        if params is None:
+            params = [f"{prefix}_{qbn}" for qbn in qbns]
+        self.params += params
         self._blocks.append(self.simultaneous_blocks(
                 block_name=prefix,
                 blocks=[self.block_from_anything(
-                    f"Y:{prefix}_{qbn} {qbn}",
-                    f"{prefix}_{qbn}")
-                    for qbn in qbns],
+                    f"Y:{params[i]} {qbns[i]}",
+                    f"{prefix}_{qbns[i]}")
+                    for i in range(len(qbns))],
                 block_align='middle',
                 set_end_after_all_pulses=True,
                 destroy=True,
             ))
-        self.params += [f"{prefix}_{qbn}" for qbn in qbns]
 
-    def _add_cz_block(self, prefix, qubit_lists):
+    def _add_cz_block(self, prefix, qubit_lists, params=None):
+        if params is None:
+            params = [f"{prefix}_{qbns[0]}_{qbns[1]}"
+                       for i, qbns in enumerate(qubit_lists)]
+        self.params += params
         self._blocks.append(self.simultaneous_blocks(
             block_name=prefix,
             blocks=[
@@ -297,15 +303,14 @@ class QCNN4(VariationalAlgorithm):
             set_end_after_all_pulses=True,
             destroy=True,
             ))
-        self.params += [f"{prefix}_{qbns[0]}_{qbns[1]}"
-                        for i, qbns in enumerate(qubit_lists)]
 
     def set_block_and_params(self):
         self._blocks = []
         self.params = []
         if len(self.qubits) == 4:
             # Prep circuit
-            self._add_ry_block('RYp1', range(len(self.qubits)))
+            self._add_ry_block('RYp1', range(len(self.qubits)),)
+                               # ['[theta_prep]', '3*[theta_prep]-90', 0, 0])
             self._add_cz_block('CZp1', [[0, 1]])
             self._add_ry_block('RYp2', range(len(self.qubits)))
             # self._add_cz_block('CZp2', [[1, 2], [0, 3]])

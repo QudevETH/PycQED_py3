@@ -2925,6 +2925,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         if self.get_param_value('optimize'):
             cost_func = self.raw_data_dict['cost_function_values']
             sweep_points = self.raw_data_dict['optimization_sweep_points']
+            # FIXME remove calls to proc_data_dict here -> add_dummy_qb_data
             self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
                 'cost func': np.reshape(cost_func, (-1)),
             }
@@ -2955,20 +2956,35 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             shots = shots.reshape((shots.shape[0], -1, *self.sp.length()))
             # shape (n_qb, n_shots, hard_sweep, soft_sweep)
 
-            to_plot = self.cpp_stabilizers(shots)
+            to_plot = {}
+            # calculate stabilizers
+            try:
+                to_plot.update(self.cpp_stabilizers(shots))
+                print('stabilizer analysis complete')
+            except Exception as e:
+                log.warning(e)
+            # calculate states correlations
+            try:
+                to_plot.update(self.cpp_corr_states(shots))
+                print('population analysis complete')
+            except Exception as e:
+                raise e
             for k, v in to_plot.items():
                 self.add_dummy_qb_data(k, v)
             # cpp_output = va.classical_postprocessing()
+            # for qb_name in self.qb_names:
+            #     del self.proc_data_dict['projected_data_dict'][qb_name]
 
     def add_dummy_qb_data(self, key, values, sp_name=None):
         # set appropriate values and sweep points for plotting
-
         if len(values.shape) == len(self.sp.length()):
             self.proc_data_dict['sweep_points_dict'][key] =\
                 self.proc_data_dict['sweep_points_dict'][self.qb_names[0]]
             self.proc_data_dict['sweep_points_2D_dict'][key] =\
                 self.proc_data_dict['sweep_points_2D_dict'][self.qb_names[0]]
         elif len(values.shape) == 1:
+            if sp_name is None:
+                raise Exception('sp_name needed in 1D plot')
             sp_value = self.sp[sp_name]
             self.proc_data_dict['sweep_points_dict'][key] = {
                 'sweep_points': sp_value,
@@ -2982,21 +2998,26 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         else:
             log.warning(f"Ignoring {key}: {values.shape}")
             return
+        values = values.T  # See horrible FIXME about self.proc_data_dict
         self.proc_data_dict['projected_data_dict'][key] = {
             'value '+key: values,
         }
 
+    def cpp_corr_states(self, shots):
+        # compatible with any qubit number
+        bitstrings, freqs = self.cpp_histogram(shots)
+        return {b: f for b, f in zip(bitstrings, freqs)}
+
     def cpp_stabilizers(self, shots):
         # Should return {'dummy_qbn': values}
-        assert len(self.qb_names)==4
+        assert len(self.qb_names) == 4
         # Z stabilizer
         def stabz(shots):
             shape = shots.shape
-
             shots_flat = shots.reshape([shape[0], shape[1], -1])
-
             parity = np.sum(shots_flat, axis=0) % 2
             parity = np.mean(parity, axis=0)
+            # even parity -> stab = 1, odd parity -> stab = -1
             stab = 1 - 2 * parity
 
             return stab.reshape(shape[2:])
@@ -3004,9 +3025,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # x stabilizer
         def stabx(shots):
             shape = shots.shape
-
             shots_flat = shots.reshape([shape[0], shape[1], -1])
-
             parity = np.zeros(shots_flat.shape)
             for index in np.arange(4):
                 parity[index] = np.sum(shots_flat[[index, (index + 2) % 4]],
@@ -3020,13 +3039,17 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
         return {
             'stabz': stabz(shots),
-            'stabx': stabx(shots),
+            'stabx0': stabx(shots)[0],
+            'stabx1': stabx(shots)[1],
+            'stabx2': stabx(shots)[2],
+            'stabx3': stabx(shots)[3]
         }
 
-    # shot to freq
+    # shot to freq, not used
     @staticmethod
-    def cpp_histogram(shots):
+    def cpp_histogram2(shots):
         shape = shots.shape
+        # shape = (n_qb, n_shots, hard_sweep, soft_sweep)
 
         shots_flat = shots.reshape([shape[0], shape[1], -1])
 
@@ -3043,7 +3066,39 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 freqs[values, j] = counts / shape[
                     1]  # calculate relative frequencies
 
-        return freqs.reshape(np.concatenate((np.array([-1]), shape[2:])))
+        # return shape: (n_state, ...)
+        return freqs.reshape((-1, *shape[2:]))
+
+    # shot to freq
+    @staticmethod
+    def cpp_histogram(shots):
+        shape = shots.shape
+        # shots.shape = (n_qb, n_shots, other dims...)
+
+        shots_flat = shots.reshape([shape[0], shape[1], -1])
+
+        convrt = 2 ** np.arange(shape[0])
+        # Multiply 1D array with 3D matrix -> 2D matrix
+        bitstrings = np.tensordot(convrt, shots_flat, axes=1)
+        # bitstrings.shape = (n_shots, other dims...)
+        # each entry is the n-qubit bitstrings
+
+        freqs = np.zeros((2 ** shape[0], np.prod(shape[2:])))
+
+        for j in range(np.prod(shape[2:])):
+            # count histogram# relative frequencies of samples
+            b = bitstrings[:, j]
+            values, counts = np.unique(b, return_counts=True)
+            freqs[values, j] = counts / shape[
+                1]  # calculate relative frequencies
+
+        # return shape: (n_state, ...)
+        freqs = freqs.reshape((2 ** shape[0], *shape[2:]))
+        # print(freqs[:, 1, 0])
+        # raise Exception
+        bitstrings_labels = [
+            format(i, f'0{shape[0]}b') for i in range(2**shape[0])]
+        return bitstrings_labels, freqs
 
     @staticmethod
     def cpp_cost_function(freqs, targets):
@@ -3109,8 +3164,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_plots(self):
         super().prepare_plots()
-        # self.prepare_cost_function_plots()
-
+    #     self.prepare_cost_function_plots()
+    #
     # def prepare_cost_function_plots(self):
     #     self.prepare_projected_data_plots()
 
