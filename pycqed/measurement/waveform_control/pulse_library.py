@@ -515,6 +515,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             'cphase': None,
             'cphase_calib_dict': None,
             'cphase_ctrl_params': ['trans_length'],
+            'amp_ctrl_param': 'amplitude2',
             'fixed_pulse_length': None,
         }
         return params
@@ -1110,6 +1111,7 @@ class BufferedFLIPPulse(pulse.Pulse):
             'flux_buffer_length2': 0,
             'channel_relative_delay': 0,
             'gaussian_filter_sigma': 1e-9,
+            'amp_ctrl_param': 'amplitude2',
         }
         return params
 
