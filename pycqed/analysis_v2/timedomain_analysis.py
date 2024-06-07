@@ -12,7 +12,7 @@ from pycqed.utilities import timer as tm_mod
 from sklearn.mixture import GaussianMixture as GM
 from sklearn.tree import DecisionTreeClassifier as DTC
 
-from pycqed.measurement.variational_algorithm import VariationalAlgorithm as va
+# from pycqed.measurement.variational_algorithm import VariationalAlgorithm as va
 from pycqed.analysis import fitting_models as fit_mods
 from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.analysis_v2.base_analysis as ba
@@ -2957,23 +2957,36 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # shape (n_qb, n_shots, hard_sweep, soft_sweep)
 
             to_plot = {}
+            # FIXME: find a cleaner way to add values to to_plot.
             # calculate stabilizers
             try:
                 to_plot.update(self.cpp_stabilizers(shots))
-                print('stabilizer analysis complete')
+                print('stabilizer analysis completed')
             except Exception as e:
                 log.warning(e)
             # calculate states correlations
             try:
                 to_plot.update(self.cpp_corr_states(shots))
-                print('population analysis complete')
+                print('population analysis completed')
             except Exception as e:
                 raise e
+            try:
+                # according to cpp_cost_function, targets must be with
+                # soft_sweep, so self.sp[1]
+                targets = self.sp[1]['targets'][0]
+                _, freqs = self.cpp_histogram(shots)
+                cost_func_values = self.cpp_cost_function(freqs, targets)
+                to_plot.update({'cost_function': cost_func_values})
+                print('cost function analysis completed')
+            except Exception as e:
+                raise e
+
             for k, v in to_plot.items():
-                self.add_dummy_qb_data(k, v)
+                # FIXME: define the sweep points in 1D case
+                self.add_dummy_qb_data(k, v, list(self.sp[0].keys())[0])
             # cpp_output = va.classical_postprocessing()
-            # for qb_name in self.qb_names:
-            #     del self.proc_data_dict['projected_data_dict'][qb_name]
+            for qb_name in self.qb_names:
+                del self.proc_data_dict['projected_data_dict'][qb_name]
 
     def add_dummy_qb_data(self, key, values, sp_name=None):
         # set appropriate values and sweep points for plotting
@@ -2983,9 +2996,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             self.proc_data_dict['sweep_points_2D_dict'][key] =\
                 self.proc_data_dict['sweep_points_2D_dict'][self.qb_names[0]]
         elif len(values.shape) == 1:
-            if sp_name is None:
-                raise Exception('sp_name needed in 1D plot')
-            sp_value = self.sp[sp_name]
+            # print(f"self.sp[0][sp_name][0] = {self.sp[0][sp_name][0]}")
+            # print(f"values = {values}")
+            # raise Exception
+            sp_value = self.sp[0][sp_name][0]
             self.proc_data_dict['sweep_points_dict'][key] = {
                 'sweep_points': sp_value,
                 'param_names': [sp_name],
@@ -3092,37 +3106,39 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             freqs[values, j] = counts / shape[
                 1]  # calculate relative frequencies
 
-        # return shape: (n_state, ...)
+        # freqs shape: (n_state, ...)
         freqs = freqs.reshape((2 ** shape[0], *shape[2:]))
-        # print(freqs[:, 1, 0])
-        # raise Exception
         bitstrings_labels = [
             format(i, f'0{shape[0]}b') for i in range(2**shape[0])]
         return bitstrings_labels, freqs
 
     @staticmethod
     def cpp_cost_function(freqs, targets):
-        # cpp_output: (n_qb, n_shots, trainable params, non trainable params)
+        # freqs shape: (n_state, ...)
+        # targets shape: (n_non_trainable_params,)
 
         shape = freqs.shape
         tol = 1e-10
 
         cost_func = np.zeros(shape[1])
 
+        # loop over hard_sweep, also the number of evaluation points
         for i in range(shape[1]):
             weights_emp = 0.5 * np.ones(shape[0])
+            # the following line assumes that the second dimension is used
+            # for non-trainable parameter to prepare different states in the
+            # training set. freqs shape:
+            # (states, hard_sweep, soft_sweep) ~ (states, train, non_train)
+            # freq1/0 shape: (states,)
             freq1 = freqs[:, i, :] @ targets / np.sum(targets)
             freq0 = freqs[:, i, :] @ (1 - targets) / np.sum(1 - targets)
             sel = freq0 + freq1 > tol
             weights_emp[sel] = freq1[sel] / ((freq0 + freq1)[sel])
-
-            #         print(weights_emp)
-
             cost_func[i] -= 0.5 * np.log(weights_emp[freq1 > tol]) @ freq1[
                 freq1 > tol]
             cost_func[i] -= 0.5 * np.log(1 - weights_emp[freq0 > tol]) @ freq0[
                 freq0 > tol]
-
+        # shape: (hard_sweep,) ~ (n_eval_points,)
         return cost_func
 
     def cpp_auto_collapse_to_1D_whatever(self, shots, sp):  # TODO
@@ -3163,11 +3179,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return cost_function_values
 
     def prepare_plots(self):
-        super().prepare_plots()
-    #     self.prepare_cost_function_plots()
-    #
-    # def prepare_cost_function_plots(self):
-    #     self.prepare_projected_data_plots()
+        # super().prepare_plots()
+        self.prepare_cost_function_plots()
+
+    def prepare_cost_function_plots(self):
+        self.prepare_projected_data_plots()
 
 
 class MultiQubit_HistogramAnalysis(MultiQubit_TimeDomain_Analysis):

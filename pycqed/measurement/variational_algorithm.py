@@ -9,6 +9,8 @@ import pycqed.analysis_v3.helper_functions as hlp_mod
 # ana_v3.reload_anav3()
 from pycqed.analysis_v2 import timedomain_analysis as tda
 import pycqed.measurement.sweep_points as sp_mod
+from pycqed.analysis_v2.timedomain_analysis import (
+    VariationalAlgorithmAnalysis as vaa)
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
         if optimize:
             if None in [optimizer]:
-                raise ValueError("Not all parameters provided")
+                raise ValueError("optimizer not provided")
             self.optimizer = optimizer  # TODO or pass kw and instantiate here?
             self.sweep_functions = [awg_swf.BlockSoftHardSweep(
                 self,
@@ -122,29 +124,30 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             sweep_dicts_list.add_sweep_parameter(key, [val])
         # Update self.block: fix parameters contained in sweep_dicts_list
         self.block.pulses = self.block.pulses_sweepcopy(sweep_dicts_list, [0])
+        self.params = [p for p in self.params if p not in fixed_params_values]
 
     # here data should be in the flattened shape
-    @staticmethod
-    def classical_postprocessing(shots):
-        raise ValueError("Refactor and move to tda!")
-        # TODO maybe discard f state
-        return shots
-
-    @staticmethod
-    def cost_function(cpp_output, targets):
-        raise ValueError("Refactor and move to tda!")
-        # cpp_output: (n_shots, trainable params, non trainable params)
-        targets = np.array(targets)
-        cost_func = np.average(
-            np.array([
-                [np.mean((row-targets)**2) for row in single_sweep] for
-                single_sweep in cpp_output
-            ]),
-            axis=0,
-        )
-        # cost_func shape: (trainable parameter number in one batch,) or scalar
-        # reshape cost_func to 2D: for EGO
-        return cost_func.reshape((-1, 1))
+    # @staticmethod
+    # def classical_postprocessing(shots):
+    #     raise ValueError("Refactor and move to tda!")
+    #     # TODO maybe discard f state
+    #     return shots
+    #
+    # @staticmethod
+    # def cost_function(cpp_output, targets):
+    #     raise ValueError("Refactor and move to tda!")
+    #     # cpp_output: (n_shots, trainable params, non trainable params)
+    #     targets = np.array(targets)
+    #     cost_func = np.average(
+    #         np.array([
+    #             [np.mean((row-targets)**2) for row in single_sweep] for
+    #             single_sweep in cpp_output
+    #         ]),
+    #         axis=0,
+    #     )
+    #     # cost_func shape: (trainable parameter number in one batch,) or scalar
+    #     # reshape cost_func to 2D: for EGO
+    #     return cost_func.reshape((-1, 1))
 
     # @staticmethod  # FIXME?
     def _data_processing_function(self, vals,
@@ -200,8 +203,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             } for mobj_i, mobj in enumerate(meas_objs)
         }
         pp.run(data_dict, overwrite_data_dict=True)
-        print(f"pp.data_dict[qb.name]['classify_gm'] = "
-              f"{pp.data_dict['qb2']['classify_gm']}")
 
         # data shape: {qb.name: flattened three state readout}
         data = {qb.name: np.array([v for v in pp.data_dict[qb.name][
@@ -268,16 +269,30 @@ class QCNN4(VariationalAlgorithm):
     parameterized quantum circuits. TODO
     """
 
-    default_experiment_name = 'VariationalAlgorithmCZ'
+    default_experiment_name = 'QCNN_4_qubit'
+
+    def _parse_param(self, angle):  # FIXME this is copied from circuit builder
+        param_start = angle.find('[') + 1
+        # If '[' is contained, this indicates that the parameter
+        # is part of a mathematical expression. Otherwise, the angle
+        # is equal to the parameter.
+        if param_start > 0:
+            param_end = angle.find(']', param_start)
+            param = angle[param_start:param_end]
+            # angle = angle.replace('[' + param + ']', 'x')
+        else:
+            param = angle
+        return param
 
     def _add_ry_block(self, prefix, qbns, params=None):
         if params is None:
             params = [f"{prefix}_{qbn}" for qbn in qbns]
-        self.params += params
+        self.params += [p for p in params if isinstance(p, str)]
+        op_code_params = [':'+p if isinstance(p, str) else p for p in params]
         self._blocks.append(self.simultaneous_blocks(
                 block_name=prefix,
                 blocks=[self.block_from_anything(
-                    f"Y:{params[i]} {qbns[i]}",
+                    f"Y{op_code_params[i]} {qbns[i]}",
                     f"{prefix}_{qbns[i]}")
                     for i in range(len(qbns))],
                 block_align='middle',
@@ -289,14 +304,13 @@ class QCNN4(VariationalAlgorithm):
         if params is None:
             params = [f"{prefix}_{qbns[0]}_{qbns[1]}"
                        for i, qbns in enumerate(qubit_lists)]
-        self.params += params
+        self.params += [p for p in params if isinstance(p, str)]
         self._blocks.append(self.simultaneous_blocks(
             block_name=prefix,
             blocks=[
                 self.block_from_ops(
                     block_name=f'CZ:{prefix}_{qbns[0]}_{qbns[1]}',
-                    operations=[f'CZ:{prefix}_{qbns[0]}_{qbns[1]} '
-                                f'{qbns[0]} {qbns[1]}']
+                    operations=[f'CZ:{params[i]} {qbns[0]} {qbns[1]}']
                 ) for i, qbns in enumerate(qubit_lists)
             ],
             block_align='middle',
@@ -308,29 +322,35 @@ class QCNN4(VariationalAlgorithm):
         self._blocks = []
         self.params = []
         if len(self.qubits) == 4:
-            # Prep circuit
-            self._add_ry_block('RYp1', range(len(self.qubits)),)
-                               # ['[theta_prep]', '3*[theta_prep]-90', 0, 0])
-            self._add_cz_block('CZp1', [[0, 1]])
-            self._add_ry_block('RYp2', range(len(self.qubits)))
-            # self._add_cz_block('CZp2', [[1, 2], [0, 3]])
-            self._add_cz_block('CZp2', [[1, 2]])
-            self._add_cz_block('CZp3', [[0, 3]])
-            self._add_ry_block('RYp3', range(len(self.qubits)))
-            # QCNN
-            self._add_ry_block('RY1', range(len(self.qubits)))
-            # # self._add_cz_block('CZ1', [[1, 2], [0, 3]])
-            # self._add_cz_block('CZ1', [[1, 2]])
-            # self._add_cz_block('CZ1', [[0, 3]])
-            # self._add_ry_block('RY2', self.qubits)
-            # # self._add_cz_block('CZ2', [[0, 1], [2, 3]])
-            # self._add_cz_block('CZ2', [[0, 1]])
-            # self._add_cz_block('CZ2', [[2, 3]])
-            # self._add_ry_block('RY3', self.qubits)
+            # Prep circuit. Only one parameter determines whether to prepare
+            # the all zero state (theta_p=0) or the ground state (theta_p=180)
+            self._add_ry_block('RYp1', range(len(self.qubits)),
+                               ['[theta_p]/2', '[theta_p]/2', 0, 0])
+            self._add_cz_block('CZp1', [[0, 1]],
+                               ['theta_p'])
+            self._add_ry_block('RYp2', range(len(self.qubits)),
+                                [0, '[theta_p]/2',
+                                '-[theta_p]/2', '-[theta_p]/2'])
+            self._add_cz_block('CZp2', [[1, 2], [0, 3]], ['theta_p', 'theta_p'])
+            self._add_ry_block('RYp3', range(len(self.qubits)),
+                               ['[theta_p]/2', '-[theta_p]/2',
+                                0, '-[theta_p]'])
+            # QCNN. Each gate has an independent patameter.
+            self._add_ry_block('RY1', range(len(self.qubits)),
+                               ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
+            self._add_cz_block('CZ1', [[0, 1]], ['CZ1'])
+            self._add_ry_block('RY2', range(len(self.qubits)),
+                               ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
+            self._add_cz_block('CZ2', [[1, 2], [0, 3]], ['CZ2', 'CZ3'])
+            self._add_ry_block('RY3', range(len(self.qubits)),
+                               ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
         elif len(self.qubits) == 9:
             pass  # TODO
         else:
             raise ValueError("Only 4 or 9 qubits are supported!")
+        self.params = [self._parse_param(p) for p in self.params]
+        _, idx = np.unique(self.params, return_index=True)
+        self.params = list(np.array(self.params)[np.sort(idx)])
         self.block = self.sequential_blocks('QCNN',
                                             self._blocks,
                                             set_end_after_all_pulses=True,
@@ -491,78 +511,78 @@ class VQAOptimizer:
         data = np.array([
             data[key].reshape((-1, *batch_shape, 3)) for key in data.keys()
         ])
-        # shape: (n_qb, n_shots, n_trainable_params,
-        #   n_non_trainable_params, 3 states)
+        # shape: (n_qb, n_shots, n_trainable_params (batch size),
+        #   n_non_trainable_params (eval points), 3 states)
         # Take the e state probability (now array contains 0s and 1s)
         data = data[..., 1]
         # shape: (n_qb, n_shots, n_trainable_params, n_non_trainable_params)
-        if self.hybrid:
-            costs = []
-            for i in range(batch_shape[0]):
-                data_batch = data[:, :, i, :, :]
-                # data batch shape: (n_qb, n_shots, n_non_trainable_params,
-                # 3 states)
-                # cost below is scalar
-                cost, classical_params, classical_param = \
-                    self._classical_training(data_batch, targets)
-                costs.append([cost])
-                self.classical_params_list.append(np.array(classical_params))
-                self.classical_params_result.append(np.array(classical_param))
-            costs = np.array(costs)
-        else:
-            cpp_output = VariationalAlgorithm.classical_postprocessing(data)
-            # batch_shape = (n_trainable, n_non_trainable)
-            costs = self.cost_function(cpp_output, targets)
-        # cost: 2D list of values
+
+        # if self.hybrid:
+        #     costs = []
+        #     for i in range(batch_shape[0]):
+        #         data_batch = data[:, :, i, :, :]
+        #         # data batch shape: (n_qb, n_shots, n_non_trainable_params,
+        #         # 3 states)
+        #         # cost below is scalar
+        #         cost, classical_params, classical_param = \
+        #             self._classical_training(data_batch, targets)
+        #         costs.append([cost])
+        #         self.classical_params_list.append(np.array(classical_params))
+        #         self.classical_params_result.append(np.array(classical_param))
+        #     costs = np.array(costs)
+        _, freqs = vaa.cpp_histogram(data)
+        # batch_shape = (n_trainable, n_non_trainable)
+        costs = vaa.cpp_cost_function(freqs, targets).reshape((-1, 1))
+        # cost must be 2D list of values for EGO to work
         # [[value_1], [value_2], ... [value_n_trainable]]
         self.sweep_points.append(np.atleast_2d(params))
         self.cost_function_values.append(costs)
         return costs
 
-    def _classical_training(self, data_batch, targets):
-        # return: cost (scalar)
-        classical_params = []
-        # There are two ways to define the cost function. The first one
-        # calculate the cost function value for each single shot readout and
-        # then take the average, while the second one take the average of
-        # the single shot readout result and then calculate the cost function.
-
-        # def to_optimize(c_para):
-        #     # c_para_vector: 1D array conforms the multi-qubit single-shot
-        #     # readout
-        #     data_batch_shape = data_batch.shape
-        #     c_para_vector = np.array(
-        #       [1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
-        #     cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
-        #     # cpp_output shape = (n_shots, n_non_trainable_params)
-        #     for i in range(data_batch_shape[1]):
-        #         for j in range(data_batch_shape[2]):
-        #             cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
-        #                 -1), c_para_vector)
-        #     cost = np.average(np.array([
-        #         np.mean((row - targets) ** 2) for row in cpp_output
-        #     ]), axis=0)
-        #     classical_params.append(c_para[0])
-        #     return cost
-
-        def to_optimize_(c_para):
-            # c_para_vector: 1D array conforms the multi-qubit single-shot
-            # readout
-            c_para_vector = np.array(
-                [1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
-            data_batch_test = np.concatenate(
-                (data_batch[0], data_batch[1]), axis=-1)
-            data_batch_test = np.average(data_batch_test, axis=0)
-            cpp_output = np.matmul(data_batch_test,
-                                   c_para_vector.T).reshape(-1)
-            cost = np.mean((cpp_output - targets) ** 2)
-            classical_params.append(c_para[0])
-            return cost
-        result = self.classical_optimizer_function(to_optimize_,
-                                                **self.classical_optimizer_kw)
-        optimized_cost = result.fun
-        classical_param = result.x
-        return optimized_cost, classical_params, classical_param
+    # def _classical_training(self, data_batch, targets):
+    #     # return: cost (scalar)
+    #     classical_params = []
+    #     # There are two ways to define the cost function. The first one
+    #     # calculate the cost function value for each single shot readout and
+    #     # then take the average, while the second one take the average of
+    #     # the single shot readout result and then calculate the cost function.
+    #
+    #     # def to_optimize(c_para):
+    #     #     # c_para_vector: 1D array conforms the multi-qubit single-shot
+    #     #     # readout
+    #     #     data_batch_shape = data_batch.shape
+    #     #     c_para_vector = np.array(
+    #     #       [1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
+    #     #     cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
+    #     #     # cpp_output shape = (n_shots, n_non_trainable_params)
+    #     #     for i in range(data_batch_shape[1]):
+    #     #         for j in range(data_batch_shape[2]):
+    #     #             cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
+    #     #                 -1), c_para_vector)
+    #     #     cost = np.average(np.array([
+    #     #         np.mean((row - targets) ** 2) for row in cpp_output
+    #     #     ]), axis=0)
+    #     #     classical_params.append(c_para[0])
+    #     #     return cost
+    #
+    #     def to_optimize_(c_para):
+    #         # c_para_vector: 1D array conforms the multi-qubit single-shot
+    #         # readout
+    #         c_para_vector = np.array(
+    #             [1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
+    #         data_batch_test = np.concatenate(
+    #             (data_batch[0], data_batch[1]), axis=-1)
+    #         data_batch_test = np.average(data_batch_test, axis=0)
+    #         cpp_output = np.matmul(data_batch_test,
+    #                                c_para_vector.T).reshape(-1)
+    #         cost = np.mean((cpp_output - targets) ** 2)
+    #         classical_params.append(c_para[0])
+    #         return cost
+    #     result = self.classical_optimizer_function(to_optimize_,
+    #                                             **self.classical_optimizer_kw)
+    #     optimized_cost = result.fun
+    #     classical_param = result.x
+    #     return optimized_cost, classical_params, classical_param
 
     def get_batch_params(self, trainable_params_values):
         """
@@ -659,8 +679,8 @@ class VQAOptimizer:
     def _set_cost_function(self, cost_function):
         if callable(cost_function):
             self.cost_function = cost_function
-        elif cost_function == 'va_cost_function':
-            self.cost_function = VariationalAlgorithm.cost_function
+        elif cost_function == 'binary_cross_entropy':
+            self.cost_function = vaa.cpp_cost_function
         elif isinstance(cost_function, str):
             self.cost_function = getattr(self, cost_function)
         else:
