@@ -305,12 +305,13 @@ class QCNN4(VariationalAlgorithm):
             params = [f"{prefix}_{qbns[0]}_{qbns[1]}"
                        for i, qbns in enumerate(qubit_lists)]
         self.params += [p for p in params if isinstance(p, str)]
+        op_code_params = [':'+p if isinstance(p, str) else p for p in params]
         self._blocks.append(self.simultaneous_blocks(
             block_name=prefix,
             blocks=[
                 self.block_from_ops(
-                    block_name=f'CZ:{prefix}_{qbns[0]}_{qbns[1]}',
-                    operations=[f'CZ:{params[i]} {qbns[0]} {qbns[1]}']
+                    block_name=f'{prefix}_{qbns[0]}_{qbns[1]}',
+                    operations=[f'CZ{op_code_params[i]} {qbns[0]} {qbns[1]}']
                 ) for i, qbns in enumerate(qubit_lists)
             ],
             block_align='middle',
@@ -321,27 +322,42 @@ class QCNN4(VariationalAlgorithm):
     def set_block_and_params(self):
         self._blocks = []
         self.params = []
-        if len(self.qubits) == 4:
+
+        if len(self.qubits) == 2:
+            self._add_ry_block('RYp1', range(len(self.qubits)),
+                               [90, '[theta_p]/2'])
+            self._add_cz_block('CZp1', [[0, 1]],
+                               [180])
+            self._add_ry_block('RYp2', range(len(self.qubits)),
+                                [0, '[basis]',])
+        elif len(self.qubits) == 4:
             # Prep circuit. Only one parameter determines whether to prepare
             # the all zero state (theta_p=0) or the ground state (theta_p=180)
             self._add_ry_block('RYp1', range(len(self.qubits)),
-                               ['[theta_p]/2', '[theta_p]/2', 0, 0])
-            self._add_cz_block('CZp1', [[0, 1]],
+                               [0, '[theta_p]/2', '[theta_p]/2', 0])
+            self._add_cz_block('CZp1', [[1, 2]],
                                ['theta_p'])
             self._add_ry_block('RYp2', range(len(self.qubits)),
-                                [0, '[theta_p]/2',
-                                '-[theta_p]/2', '-[theta_p]/2'])
-            self._add_cz_block('CZp2', [[1, 2], [0, 3]], ['theta_p', 'theta_p'])
+                                ['-[theta_p]/2', '[theta_p]/2',
+                                 0, '-[theta_p]/2'])
+            # self._add_cz_block('CZp2', [[0, 1], [2, 3]],
+            #                    ['theta_p', 'theta_p'])
+            self._add_cz_block('CZp2', [[0, 1]],
+                               ['theta_p'])
+            self._add_cz_block('CZp3', [[2, 3]],
+                               ['theta_p'])
             self._add_ry_block('RYp3', range(len(self.qubits)),
-                               ['[theta_p]/2', '-[theta_p]/2',
-                                0, '-[theta_p]'])
+                               [0, '-[theta_p]/2',
+                                '[theta_p]/2', '-[theta_p]'])
             # QCNN. Each gate has an independent patameter.
             self._add_ry_block('RY1', range(len(self.qubits)),
                                ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
+                               # ['theta_b', 'theta_b', 'theta_b', 'theta_b'])
             self._add_cz_block('CZ1', [[0, 1]], ['CZ1'])
+            self._add_cz_block('CZ2', [[2, 3]], ['CZ2'])
             self._add_ry_block('RY2', range(len(self.qubits)),
                                ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
-            self._add_cz_block('CZ2', [[1, 2], [0, 3]], ['CZ2', 'CZ3'])
+            self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
             self._add_ry_block('RY3', range(len(self.qubits)),
                                ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
         elif len(self.qubits) == 9:
