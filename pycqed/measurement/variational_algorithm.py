@@ -1,5 +1,7 @@
 import numpy as np
 import logging
+import h5py
+import traceback
 
 from pycqed.measurement import quantum_experiment as qe_mod
 from pycqed.measurement import awg_sweep_functions as awg_swf
@@ -11,7 +13,6 @@ from pycqed.analysis_v2 import timedomain_analysis as tda
 import pycqed.measurement.sweep_points as sp_mod
 from pycqed.analysis_v2.timedomain_analysis import (
     VariationalAlgorithmAnalysis as vaa)
-import h5py
 
 log = logging.getLogger(__name__)
 
@@ -29,61 +30,64 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     def __init__(self, optimize=True, optimizer=None,
                  classified=False, df_name='int_log_det',
                  sweep_points=None, fixed_params_values=None, **kw):
-        # TODO add try except around the whole init
-        super().__init__(
-            classified=classified, df_name=df_name,
-            sequence_kwargs=dict(sweep_points=sweep_points), **kw
-        )
-        self.set_block_and_params()
-        self.resolve_fixed_block_params(fixed_params_values)
-        self.exp_metadata.update({
-            'predict_proba': True,
-            'rotate': False,
-            'thresholding': True,
-            # 'meas_obj_sweep_points_map': self.sweep_points.get_meas_obj_sweep_points_map(
-            #     [qb.name for qb in self.meas_objs]),
-            'data_to_fit': {},  # FIXME understand why this is needed
-            'training_settings': optimizer.training_settings,
-            'optimize': optimize,
-            'qb_names': self.qb_names,  # FIXME needed?
-        })
-
-        if optimize:
-            if None in [optimizer]:
-                raise ValueError("optimizer not provided")
-            self.optimizer = optimizer  # TODO or pass kw and instantiate here?
-            self.sweep_functions = [awg_swf.BlockSoftHardSweep(
-                self,
-                self.params,
-                block=self.block,
-                parameter_name='Iteration',
-                sweep_kwargs=kw.get('sweep_kwargs', {})
-                )]
-            self.mc_mode = 'adaptive'
-            self.mc_store_sweep_indices = True
-            self.force_2D_sweep = False  # TODO is this needed?
-            self.mc_points = [[0]]
-            self.sequences = [[None]]
-            self._set_MC()  # FIXME needed?
-            # TODO check usage and possibly modify
-            self.MC.set_adaptive_function_parameters(dict(
-                adaptive_function=self.optimizer,
-                data_processing_function=self._data_processing_function,
-                indexed_sweep=True,
-            ))
-            self.exp_metadata.update({'hybrid': self.optimizer.hybrid})
-        else:
-            if sweep_points is None:
-                raise ValueError('No sweep points')
+        try:
+            super().__init__(
+                classified=classified, df_name=df_name,
+                sequence_kwargs=dict(sweep_points=sweep_points), **kw
+            )
+            self.set_block_and_params()
+            self.resolve_fixed_block_params(fixed_params_values)
             self.exp_metadata.update({
-                'meas_obj_sweep_points_map':
-                    self.sweep_points.get_meas_obj_sweep_points_map(
-                        [qb.name for qb in self.meas_objs]),
+                'predict_proba': True,
+                'rotate': False,
+                'thresholding': True,
+                # 'meas_obj_sweep_points_map': self.sweep_points.get_meas_obj_sweep_points_map(
+                #     [qb.name for qb in self.meas_objs]),
+                'data_to_fit': {},  # FIXME understand why this is needed
+                'training_settings': optimizer.training_settings,
+                'optimize': optimize,
+                'qb_names': self.qb_names,  # FIXME needed?
             })
-            self.sequences, self.mc_points = self.sweep_n_dim(
-                sweep_points, body_block=self.block, **kw)
 
-        self.autorun()
+            if optimize:
+                if None in [optimizer]:
+                    raise ValueError("optimizer not provided")
+                self.optimizer = optimizer  # TODO or pass kw and instantiate here?
+                self.sweep_functions = [awg_swf.BlockSoftHardSweep(
+                    self,
+                    self.params,
+                    block=self.block,
+                    parameter_name='Iteration',
+                    sweep_kwargs=kw.get('sweep_kwargs', {})
+                    )]
+                self.mc_mode = 'adaptive'
+                self.mc_store_sweep_indices = True
+                self.force_2D_sweep = False  # TODO is this needed?
+                self.mc_points = [[0]]
+                self.sequences = [[None]]
+                self._set_MC()  # FIXME needed?
+                # TODO check usage and possibly modify
+                self.MC.set_adaptive_function_parameters(dict(
+                    adaptive_function=self.optimizer,
+                    data_processing_function=self._data_processing_function,
+                    indexed_sweep=True,
+                ))
+                self.exp_metadata.update({'hybrid': self.optimizer.hybrid})
+            else:
+                if sweep_points is None:
+                    raise ValueError('No sweep points')
+                self.exp_metadata.update({
+                    'meas_obj_sweep_points_map':
+                        self.sweep_points.get_meas_obj_sweep_points_map(
+                            [qb.name for qb in self.meas_objs]),
+                })
+                self.sequences, self.mc_points = self.sweep_n_dim(
+                    sweep_points, body_block=self.block, **kw)
+
+            self.autorun(**kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
 
     def set_block_and_params(self):
         self.params = [f"prep_{qb.name}" for qb in self.qubits]
