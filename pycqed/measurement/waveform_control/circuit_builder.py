@@ -376,9 +376,6 @@ class CircuitBuilder:
         if op_name[0] == 's':
             simultaneous = True
             op_name = op_name[1:]
-        if op_name[-1] == 's':
-            simultaneous = True
-            op_name = op_name[:-1]
 
         if op in self.operation_dict:
             p = [self.copy_op(self.operation_dict[op])]
