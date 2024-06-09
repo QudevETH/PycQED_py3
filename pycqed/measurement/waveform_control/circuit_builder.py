@@ -409,7 +409,7 @@ class CircuitBuilder:
                     #  we improve or generalise further what op codes can be
                     #  parsed by this method.
                     if param_start > 0:
-                        func_op_code = eval('lambda x : ' + angle)
+                        func_op_code = eval('lambda x, cb=self : ' + angle)
                     else:
                         func_op_code = None
                     # sign * means that func will be -func_op_code
@@ -502,7 +502,7 @@ class CircuitBuilder:
                 if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func_op_code = eval('lambda x : ' + angle)
+                            func_op_code = eval('lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
                             func_op_code = lambda x: x
                         # parameter func
@@ -521,7 +521,7 @@ class CircuitBuilder:
                         if param_start > 0:  # via a mathematical expression
                             # combine the mathematical expression with a
                             # function that calculates the amplitude
-                            func_op_code = eval('lambda x : ' + angle)
+                            func_op_code = eval('lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
                             func_op_code = lambda x: x
                         func = lambda x, a=p[0]['amplitude'], sign=sign,\
