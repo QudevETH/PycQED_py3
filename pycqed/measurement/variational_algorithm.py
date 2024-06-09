@@ -293,19 +293,6 @@ class QCNN4(VariationalAlgorithm):
         param_index = [3,0,1,2,4,8,5,6,7,9,10,14,11,12,13][param_index]
         return self.prep_params_vs_h[h_index, param_index]
 
-    def _parse_param(self, angle):  # FIXME this is copied from circuit builder
-        param_start = angle.find('[') + 1
-        # If '[' is contained, this indicates that the parameter
-        # is part of a mathematical expression. Otherwise, the angle
-        # is equal to the parameter.
-        if param_start > 0:
-            param_end = angle.find(']', param_start)
-            param = angle[param_start:param_end]
-            # angle = angle.replace('[' + param + ']', 'x')
-        else:
-            param = angle
-        return param
-
     def _add_ry_block(self, prefix, qbns, params=None):
         if params is None:
             params = [f"{prefix}_{qbn}" for qbn in qbns]
@@ -386,7 +373,7 @@ class QCNN4(VariationalAlgorithm):
             pass  # TODO
         else:
             raise ValueError("Only 4 or 9 qubits are supported!")
-        self.params = [self._parse_param(p) for p in self.params]
+        self.params = [self._parse_param(p)[0] for p in self.params]
         _, idx = np.unique(self.params, return_index=True)
         self.params = list(np.array(self.params)[np.sort(idx)])
         self.block = self.sequential_blocks('QCNN',
