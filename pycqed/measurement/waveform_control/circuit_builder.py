@@ -400,16 +400,7 @@ class CircuitBuilder:
             if angle:
                 if angle[0] == ':':  # angle depends on a parameter
                     angle = angle[1:]
-                    param_start = angle.find('[') + 1
-                    # If '[' is contained, this indicates that the parameter
-                    # is part of a mathematical expression. Otherwise, the angle
-                    # is equal to the parameter.
-                    if param_start > 0:
-                        param_end = angle.find(']', param_start)
-                        param = angle[param_start:param_end]
-                        angle = angle.replace('[' + param + ']', 'x')
-                    else:
-                        param = angle
+                    param, angle, param_start = self._parse_param(angle)
 
             if op_type.startswith('CZ'):  # Two-qubit gate
                 if param is not None:
@@ -555,6 +546,19 @@ class CircuitBuilder:
             p[0]['ref_point'] = 'start'
 
         return p
+
+    def _parse_param(self, angle):
+        param_start = angle.find('[') + 1
+        # If '[' is contained, this indicates that the parameter
+        # is part of a mathematical expression. Otherwise, the angle
+        # is equal to the parameter.
+        if param_start > 0:
+            param_end = angle.find(']', param_start)
+            param = angle[param_start:param_end]
+            angle = angle.replace('[' + param + ']', 'x')
+        else:
+            param = angle
+        return param, angle, param_start
 
     def swap_qubit_indices(self, i, j=None):
         """Swaps logical qubit indices by swapping the entries in self.qb_names.
