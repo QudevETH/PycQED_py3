@@ -56,8 +56,10 @@ def get_optimal_amp(qbc, qbt, timestamp=None,
     cphases = cphases - 2*np.pi *\
         np.round((cphases[len(cphases) // 2] - phi*np.pi/180) / (2*np.pi))
 
+    # -1 to get the soft (last) dimension
+    soft_sweep_param = tdma.mospm[qbc.name][-1]
     soft_sweep_points = tdma.sp[1]
-    sweep_pts = list(soft_sweep_points.values())[0][0]
+    sweep_pts = soft_sweep_points[soft_sweep_param][0]
     if tangent_fit:
         fit_res = lmfit.Model(lambda x, m, b: m*np.tan(x/2-np.pi/2) + b).fit(
             x=cphases, data=sweep_pts,
@@ -76,17 +78,20 @@ def get_optimal_amp(qbc, qbt, timestamp=None,
             b=np.min(sweep_pts))
     plot_and_save_cz_amp_sweep(cphases=cphases, timestamp=timestamp,
                                soft_sweep_params_dict=soft_sweep_points,
+                               sweep_param_name=soft_sweep_param,
                                fit_res=fit_res, save_fig=True, plot_guess=False,
                                qbc_name=qbc.name, qbt_name=qbt.name, phi=phi,
                                **kw)
-    return fit_res
+    best_val = fit_res.model.func(phi * np.pi / 180, **fit_res.best_values)
+    converged = best_val == np.clip(best_val, sweep_pts[0], sweep_pts[-1])
+    return best_val, converged
 
 
-def plot_and_save_cz_amp_sweep(cphases, soft_sweep_params_dict, fit_res,
+def plot_and_save_cz_amp_sweep(cphases, soft_sweep_params_dict,
+                               sweep_param_name, fit_res,
                                qbc_name, qbt_name, save_fig=True, show=True,
                                plot_guess=False, timestamp=None, phi=180):
 
-    sweep_param_name = list(soft_sweep_params_dict)[0]
     sweep_points = soft_sweep_params_dict[sweep_param_name][0]
     unit = soft_sweep_params_dict[sweep_param_name][1]
     best_val = fit_res.model.func(phi*np.pi/180, **fit_res.best_values)

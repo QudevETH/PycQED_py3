@@ -13972,8 +13972,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             colors = ['C0', 'C1']
         data = self.proc_data_dict['projected_data_dict'][qbH_name][
                    'pf'][0, :-3]
-        x = self.sp.get_sweep_params_property('values',
-                                              dimension=0).copy()
+        x = self.sp[self.mospm[qbH_name][0]]
         if minimize == 'auto':
             minimize = data[len(data) // 2] < (data[0] + data[-1])/2
         if minimize:
