@@ -2947,14 +2947,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
         else:
             # sweep mode data processing
-            shots = self.proc_data_dict['single_shots_per_qb_thresholded']
-            shots = np.array([
-                shots[key] for key in shots.keys()
-            ])
-            # Take the e state probability (now array contains 0s and 1s)
-            shots = shots[..., 1]
-            shots = shots.reshape((shots.shape[0], -1, *self.sp.length()))
-            # shape (n_qb, n_shots, hard_sweep, soft_sweep)
+            shots = self._get_binary_shots_array()
 
             to_plot = {}
             for cpp in [
@@ -2978,6 +2971,18 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # cpp_output = va.classical_postprocessing()
             for qb_name in self.qb_names:
                 del self.proc_data_dict['projected_data_dict'][qb_name]
+
+    def _get_binary_shots_array(self):
+        shots = self.proc_data_dict['single_shots_per_qb_thresholded']
+        shots = np.array([
+            shots[key] for key in shots.keys()
+        ])
+        # Take the e state probability (now array contains 0s and 1s)
+        shots = shots[..., 1]
+        shots = shots.reshape((shots.shape[0], -1, *self.sp.length()))
+        # shape (n_qb, n_shots, hard_sweep, soft_sweep)
+        return shots
+
 
     def add_dummy_qb_data(self, key, values, sp_name=None):
         # set appropriate values and sweep points for plotting

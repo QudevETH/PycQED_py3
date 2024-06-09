@@ -11,6 +11,7 @@ from pycqed.analysis_v2 import timedomain_analysis as tda
 import pycqed.measurement.sweep_points as sp_mod
 from pycqed.analysis_v2.timedomain_analysis import (
     VariationalAlgorithmAnalysis as vaa)
+import h5py
 
 log = logging.getLogger(__name__)
 
@@ -271,6 +272,22 @@ class QCNN4(VariationalAlgorithm):
 
     default_experiment_name = 'QCNN_4_qubit'
 
+    def __init__(self, prep_params_filename=None, *args, **kw):
+        self.prep_params_filename = prep_params_filename
+        super().__init__(*args, **kw)
+
+    def pp(self, h_index, qb_index):
+        """Get a preparation parameter
+
+        Short name for convenience when using in an op code
+        """
+        if not hasattr(self, 'prep_params_vs_h'):
+            if self.prep_params_filename is None:
+                raise ValueError("self.prep_params_filename is None!")
+            with h5py.File(self.prep_params_filename, 'r') as fileObject:
+                self.prep_params_vs_h = np.array(fileObject['angles_opt'])*180/np.pi
+        return self.prep_params_vs_h[h_index, qb_index]
+
     def _parse_param(self, angle):  # FIXME this is copied from circuit builder
         param_start = angle.find('[') + 1
         # If '[' is contained, this indicates that the parameter
@@ -331,35 +348,35 @@ class QCNN4(VariationalAlgorithm):
             self._add_ry_block('RYp2', range(len(self.qubits)),
                                 [0, '[basis]',])
         elif len(self.qubits) == 4:
+            op_code = "cb.pp([h_index],{i})"
             # Prep circuit. Only one parameter determines whether to prepare
             # the all zero state (theta_p=0) or the ground state (theta_p=180)
+            # TODO maybe remove prefix if not needed
             self._add_ry_block('RYp1', range(len(self.qubits)),
-                               [0, '[theta_p]/2', '[theta_p]/2', 0])
+                               [op_code.format(i=i) for i in [3, 0, 1, 2]])
             self._add_cz_block('CZp1', [[1, 2]],
-                               ['theta_p'])
+                               [op_code.format(i=4)])
             self._add_ry_block('RYp2', range(len(self.qubits)),
-                                ['-[theta_p]/2', '[theta_p]/2',
-                                 0, '-[theta_p]/2'])
+                               [op_code.format(i=i) for i in [8, 5, 6, 7]])
             # self._add_cz_block('CZp2', [[0, 1], [2, 3]],
             #                    ['theta_p', 'theta_p'])
-            self._add_cz_block('CZp2', [[0, 1]],
-                               ['theta_p'])
-            self._add_cz_block('CZp3', [[2, 3]],
-                               ['theta_p'])
+            self._add_cz_block('CZp2', [[2, 3]],
+                               [op_code.format(i=9)])
+            self._add_cz_block('CZp3', [[0, 1]],
+                               [op_code.format(i=10)])
             self._add_ry_block('RYp3', range(len(self.qubits)),
-                               [0, '-[theta_p]/2',
-                                '[theta_p]/2', '-[theta_p]'])
-            # QCNN. Each gate has an independent patameter.
+                               [op_code.format(i=i) for i in [14, 11, 12, 13]])
+            # QCNN. Each gate has an independent parameter.
             self._add_ry_block('RY1', range(len(self.qubits)),
-                               ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
-                               # ['theta_b', 'theta_b', 'theta_b', 'theta_b'])
-            self._add_cz_block('CZ1', [[0, 1]], ['CZ1'])
-            self._add_cz_block('CZ2', [[2, 3]], ['CZ2'])
-            self._add_ry_block('RY2', range(len(self.qubits)),
-                               ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
-            self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
-            self._add_ry_block('RY3', range(len(self.qubits)),
-                               ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
+                               # ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
+                               ['theta_b', 'theta_b', 'theta_b', 'theta_b'])
+            # self._add_cz_block('CZ1', [[0, 1]], ['CZ1'])
+            # self._add_cz_block('CZ2', [[2, 3]], ['CZ2'])
+            # self._add_ry_block('RY2', range(len(self.qubits)),
+            #                    ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
+            # self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
+            # self._add_ry_block('RY3', range(len(self.qubits)),
+            #                    ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
         elif len(self.qubits) == 9:
             pass  # TODO
         else:
