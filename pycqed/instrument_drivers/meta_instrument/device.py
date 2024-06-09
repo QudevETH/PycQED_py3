@@ -847,6 +847,7 @@ class Device(Instrument):
         flux_crosstalk_cancellation_mtx = {}
         for calibration_key, calib in calibs.items():
             calib = deepcopy(calib)
+            calib = list(calib)
             if calib is None:
                 calib = [np.identity(len(self.get_qubits()))]
             rounds_calib = rounds[calibration_key]
