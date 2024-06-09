@@ -350,25 +350,20 @@ class QCNN4(VariationalAlgorithm):
                                [op_code.format(i=4)])
             self._add_ry_block('RYp2', range(len(self.qubits)),
                                [op_code.format(i=i) for i in [5, 6, 7, 8]])
-            # self._add_cz_block('CZp2', [[0, 1], [2, 3]],
-            #                    ['theta_p', 'theta_p'])
-            self._add_cz_block('CZp2', [[2, 3]],
-                               [op_code.format(i=9)])
-            self._add_cz_block('CZp3', [[0, 1]],
-                               [op_code.format(i=10)])
+            self._add_cz_block('CZp2', [[2, 3], [0, 1]],
+                               [op_code.format(i=i) for i in [9, 10]])
             self._add_ry_block('RYp3', range(len(self.qubits)),
                                [op_code.format(i=i) for i in [11, 12, 13, 14]])
             # QCNN. Each gate has an independent parameter.
             self._add_ry_block('RY1', range(len(self.qubits)),
-                               # ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
-                               ['theta_b', 'theta_b', 'theta_b', 'theta_b'])
-            # self._add_cz_block('CZ1', [[0, 1]], ['CZ1'])
-            # self._add_cz_block('CZ2', [[2, 3]], ['CZ2'])
-            # self._add_ry_block('RY2', range(len(self.qubits)),
-            #                    ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
-            # self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
-            # self._add_ry_block('RY3', range(len(self.qubits)),
-            #                    ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
+                               ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
+                               # ['theta_b', 'theta_b', 'theta_b', 'theta_b'])
+            self._add_cz_block('CZ1', [[0, 1], [2, 3]], ['CZ1', 'CZ2'])
+            self._add_ry_block('RY2', range(len(self.qubits)),
+                               ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
+            self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
+            self._add_ry_block('RY3', range(len(self.qubits)),
+                               ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
         elif len(self.qubits) == 9:
             pass  # TODO
         else:
