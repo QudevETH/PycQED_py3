@@ -847,7 +847,6 @@ class Device(Instrument):
         flux_crosstalk_cancellation_mtx = {}
         for calibration_key, calib in calibs.items():
             calib = deepcopy(calib)
-            calib = list(calib)
             if calib is None:
                 calib = [np.identity(len(self.get_qubits()))]
             rounds_calib = rounds[calibration_key]
@@ -864,8 +863,10 @@ class Device(Instrument):
                 # pulsar.flux_crosstalk_cancellation(False)
                 # return
 
+            calib = list(calib)  # FIXME to allow editing below
             for i in range(rounds_calib):
                 calib[i] = np.diag(1 / np.diag(calib[i])) @ calib[i]
+            calib = tuple(calib)  # FIXME to not break saving instr settings
             mtx_all = functools.reduce(np.dot, calib[:rounds_calib])
             qb_inds = {qb: ind for qb, ind in
                        zip(xtalk_qbs, self.get_qubits(xtalk_qbs, 'ind'))}
