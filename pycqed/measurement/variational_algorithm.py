@@ -280,7 +280,7 @@ class QCNN4(VariationalAlgorithm):
         self.prep_params_filename = prep_params_filename
         super().__init__(*args, **kw)
 
-    def pp(self, h_index, qb_index):
+    def pp(self, h_index, param_index):
         """Get a preparation parameter
 
         Short name for convenience when using in an op code
@@ -290,7 +290,8 @@ class QCNN4(VariationalAlgorithm):
                 raise ValueError("self.prep_params_filename is None!")
             with h5py.File(self.prep_params_filename, 'r') as fileObject:
                 self.prep_params_vs_h = np.array(fileObject['angles_opt'])*180/np.pi
-        return self.prep_params_vs_h[h_index, qb_index]
+        param_index = [3,0,1,2,4,8,5,6,7,9,10,14,11,12,13][param_index]
+        return self.prep_params_vs_h[h_index, param_index]
 
     def _parse_param(self, angle):  # FIXME this is copied from circuit builder
         param_start = angle.find('[') + 1
@@ -357,11 +358,11 @@ class QCNN4(VariationalAlgorithm):
             # the all zero state (theta_p=0) or the ground state (theta_p=180)
             # TODO maybe remove prefix if not needed
             self._add_ry_block('RYp1', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [3, 0, 1, 2]])
+                               [op_code.format(i=i) for i in [0, 1, 2, 3]])
             self._add_cz_block('CZp1', [[1, 2]],
                                [op_code.format(i=4)])
             self._add_ry_block('RYp2', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [8, 5, 6, 7]])
+                               [op_code.format(i=i) for i in [5, 6, 7, 8]])
             # self._add_cz_block('CZp2', [[0, 1], [2, 3]],
             #                    ['theta_p', 'theta_p'])
             self._add_cz_block('CZp2', [[2, 3]],
@@ -369,7 +370,7 @@ class QCNN4(VariationalAlgorithm):
             self._add_cz_block('CZp3', [[0, 1]],
                                [op_code.format(i=10)])
             self._add_ry_block('RYp3', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [14, 11, 12, 13]])
+                               [op_code.format(i=i) for i in [11, 12, 13, 14]])
             # QCNN. Each gate has an independent parameter.
             self._add_ry_block('RY1', range(len(self.qubits)),
                                # ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
