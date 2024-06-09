@@ -3846,7 +3846,17 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         super().process_data()
 
         pdd = self.proc_data_dict
-        nr_cp = self.num_cal_points
+
+        # FIXME these lines, as well as "make matrix" below, seem needed
+        #  because this is a hybrid measurement but it is not detected as
+        #  such in self.add_measured_data
+        prep_params = self.get_reset_params() or {}
+        if 'active' in prep_params.get('preparation_type', 'wait'):
+            reset_reps = prep_params.get('reset_reps', 3)
+        else:
+            reset_reps = 0
+        nr_cp = self.num_cal_points * (reset_reps + 1)
+
         nr_amps = len(self.metadata['amplitudes'])
         nr_lengths = len(self.metadata['flux_lengths'])
         nr_phases = len(self.metadata['phases'])
