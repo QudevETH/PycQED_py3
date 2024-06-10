@@ -103,6 +103,7 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         self.circuit_builder = circuit_builder
         self.params = params
         self.sweep_points = None
+        self.iteration = 0
 
     def set_parameter(self, vals, **kw):
         """Compiles the `Block` for the given values into a sequence and
@@ -124,6 +125,13 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
             body_block_func=self.block_func,
             **(getattr(self, 'sweep_kwargs', {})))
         self.sequence = seqs[0]
+        self.sequence.rename('Sequence' + str(self.iteration))
+        self.iteration += 1
+
+        if not self.circuit_builder.sequences:
+            self.circuit_builder.sequences = []
+        self.circuit_builder.sequences.append(self.sequence)
+
         self.upload_sequence()
 
     def configure_upload(self, upload=True, upload_first=False,
