@@ -754,7 +754,6 @@ class MeasurementControl(Instrument):
 
         FIXME: not tested for len(self.sweep_functions) > 2
         '''
-        self.print_progress_adaptive()
         if np.isscalar(x):
             x = [x]
         # The len()==1 condition is a consistency check because batch_mode
@@ -895,7 +894,9 @@ class MeasurementControl(Instrument):
         elif self.mode == 'adaptive':
             self.update_plotmon_adaptive()
         self.iteration += 1
-        if self.mode != 'adaptive':
+        if self.mode == 'adaptive':
+            self.print_progress_adaptive()
+        else:
             self.print_progress()
         return vals
 
