@@ -22,8 +22,10 @@ from pycqed.instrument_drivers.mock_qcodes_interface import \
 
 
 def convert_attribute(attr_val):
-    log.warning("Deprecated function, will be removed in a future MR;"
-                " Please use utilities.io.hdf5.decode_attribute_value instead.")
+    log.warning("This function (convert_attribute(attr_val)) is deprecated, "
+                "will be removed in a future MR;"
+                " Please use "
+                "utilities.io.hdf5.decode_attribute_value(attr_val) instead.")
     return decode_attribute_value(attr_val)
 
 
@@ -38,8 +40,11 @@ def decode_parameter_value(param_value):
     Returns:
         the converted parameter value
     """
-    log.warning("Deprecated function, will be removed in a future MR;"
-                " Please use utilities.io.hdf5.decode_attribute_value instead.")
+    log.warning("This function (decode_parameter_value(param_value)) is "
+                "deprecated, will be removed in a future MR;"
+                " Please use "
+                "utilities.io.hdf5.decode_attribute_value(param_value) "
+                "instead.")
     return decode_attribute_value(param_value)
 
 
@@ -49,8 +54,13 @@ def get_hdf_param_value(group, param_name):
     Returns an attribute "key" of the group "Experimental Data"
     in the hdf5 datafile.
     """
-    log.warning("Deprecated function, will be removed in a future MR; "
-                "Please use get_param_from_group() instead.")
+    log.warning("This function (get_hdf_param_value(group, param_name)) is "
+                "deprecated, will be removed in a future MR; "
+                "Please don't access the hdf5 file directly but use the"
+                " function "
+                "get_param_from_group(group_name, param_name, timestamp) "
+                "with the name of the group and the timestamp "
+                "of the file instead.")
     s = group.attrs[param_name]
     return decode_attribute_value(s)
 
@@ -228,8 +238,10 @@ def get_param_from_fit_res(param, fit_res, split_char='.'):
 
 def get_data_from_hdf_file(timestamp=None, data_file=None, close_file=True,
                            **params):
-    log.warning("Deprecated function, will be removed in a future MR;"
-                "use hlp_mod.get_dataset_from_hdf_file() instead.")
+    log.warning("This function (get_data_from_hdf_file) is deprecated, "
+                "will be removed in a future MR;"
+                "use hlp_mod.get_dataset_from_hdf_file with the same "
+                "arguments instead.")
     return get_dataset_from_hdf_file(timestamp=timestamp, data_file=data_file,
                                      close_file=close_file, **params)
 
@@ -286,8 +298,10 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
     Returns:
         open HDF file
     """
-    log.warning("Deprecated function, will be removed in a future MR;"
-                "use a_tools.open_hdf_file() instead.")
+    log.warning("Function (open_hdf_file) is deprecated, will be removed in a "
+                "future MR;"
+                "use a_tools.open_hdf_file with the same arguments instead."
+                )
     return a_tools.open_hdf_file(timestamp=timestamp, folder=folder,
                                  filepath=filepath, mode=mode, file_id=file_id,
                                  **params)
@@ -378,8 +392,10 @@ def get_qb_thresholds_from_hdf_file(meas_obj_names, timestamp=None,
     :return: thresholds of the form
         {meas_obj_name: classification threshold value).
     """
-    log.warning("Deprecated function, will be removed in a future MR;"
-                "use get_qb_thresholds_from_file() instead.")
+    log.warning("This function (get_qb_thresholds_from_hdf_file) is "
+                "deprecated, will be removed in a future MR;"
+                "use get_qb_thresholds_from_hdf_file with the same "
+                "arguments instead.")
     return get_qb_thresholds_from_file(meas_obj_names, timestamp=timestamp,
                                     acq_dev_name=acq_dev_name, th_path=th_path,
                                     th_scaling=th_scaling, **params)
@@ -536,8 +552,10 @@ def get_instr_param_from_hdf_file(instr_name, param_name, timestamp=None,
     :param params: keyword arguments
     :return: value corresponding to param_name
     """
-    log.warning("Deprecated function, will be removed in a future MR;"
-                "use hlp_mod.get_instr_param_from_file() instead.")
+    log.warning("This function (get_instr_param_from_hdf_file) is deprecated, "
+                "will be removed in a future MR;"
+                "use hlp_mod.get_instr_param_from_file() with the same "
+                "arguments instead.")
     return get_instr_param_from_file(instr_name, param_name=param_name,
                                      timestamp=timestamp, folder=folder,
                                      **params)
@@ -564,8 +582,10 @@ def get_params_from_hdf_file(data_dict, params_dict=None, numeric_params=None,
         h5mode (str, default: 'r+'): reading mode of the HDF file
         close_file (bool, default: True): whether to close the HDF file(s)
     """
-    log.warning("Deprecated function, will be removed in a future MR;"
-                "use hlp_mod.get_params_from_files() instead.")
+    log.warning("This function (get_params_from_hdf_file) is deprecated, "
+                "will be removed in a future MR;"
+                "use hlp_mod.get_params_from_files with the same arguments "
+                "instead.")
     return get_params_from_files(data_dict, params_dict=params_dict,
                                  numeric_params=numeric_params,
                                  add_param_method=add_param_method,
