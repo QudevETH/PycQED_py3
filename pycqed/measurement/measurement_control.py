@@ -567,6 +567,7 @@ class MeasurementControl(Instrument):
                 sp = sp[0:len(sp) // self.acq_data_len_scaling]
             for i, sweep_point in enumerate(sp):
                 self.measurement_function(sweep_point, index=i)
+        print()  # New line after the self.print_progress_adaptive
 
     @Timer()
     def measure_soft_adaptive(self, method=None):
@@ -632,6 +633,7 @@ class MeasurementControl(Instrument):
         else:
             raise Exception('optimization function: "%s" not recognized'
                             % self.adaptive_function)
+        print()  # New line after the self.print_progress_adaptive TODO
         self.timer.checkpoint(
             "MeasurementControl.measure_soft_adaptive.adaptive_function.end")
         self.save_optimization_results(self.adaptive_function,
@@ -752,6 +754,7 @@ class MeasurementControl(Instrument):
 
         FIXME: not tested for len(self.sweep_functions) > 2
         '''
+        self.print_progress_adaptive()
         if np.isscalar(x):
             x = [x]
         # The len()==1 condition is a consistency check because batch_mode
@@ -2440,6 +2443,26 @@ class MeasurementControl(Instrument):
             else:
                 end_char = '\n'
             print('\r', progress_message, end=end_char)
+
+    def print_progress_adaptive(self):
+        """
+        Prints the progress of the current measurement, in adaptive mode.
+        """
+        if self.verbose():
+            elapsed_time = time.time() - self.begintime
+            # The trailing spaces are to overwrite some characters in case the
+            # previous progress message was longer. (Due to \r, the string
+            # output will start at the beginning of the current line and
+            # each character of the new string will overwrite a character
+            # of the previous output in the current line.)
+            progress_message = (
+                "\r{timestamp}\t{iteration} iterations completed \telapsed "
+                "time: {t_elapsed}s     ").format(
+                    timestamp=time.strftime('%H:%M:%S', time.localtime()),
+                    iteration=self.iteration,
+                    t_elapsed=round(elapsed_time, 1),
+            )
+            print('\r', progress_message, end='')
 
     def is_complete(self):
         """
