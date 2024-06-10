@@ -531,8 +531,8 @@ class VQAOptimizer:
         data = np.array([
             data[key].reshape((-1, *batch_shape, 3)) for key in data.keys()
         ])
-        # shape: (n_qb, n_shots, n_trainable_params (batch size),
-        #   n_non_trainable_params (eval points), 3 states)
+        # shape: (n_qb, n_shots, sets of trainable params (batch size),
+        #   sets of non trainable params (prep circuit), 3 states)
         # Take the e state probability (now array contains 0s and 1s)
         data = data[..., 1]
         # shape: (n_qb, n_shots, n_trainable_params, n_non_trainable_params)
@@ -550,9 +550,10 @@ class VQAOptimizer:
         #         self.classical_params_list.append(np.array(classical_params))
         #         self.classical_params_result.append(np.array(classical_param))
         #     costs = np.array(costs)
-        _, freqs = vaa.cpp_histogram(data)
+
         # batch_shape = (n_trainable, n_non_trainable)
-        costs = vaa.cpp_cost_function(freqs, targets).reshape((-1, 1))
+        costs = vaa.cpp_cost_function(data, targets)['costfunction'].reshape(
+            (-1, 1))
         # cost must be 2D list of values for EGO to work
         # [[value_1], [value_2], ... [value_n_trainable]]
         self.sweep_points.append(np.atleast_2d(params))
@@ -641,8 +642,8 @@ class VQAOptimizer:
             ] for vt in trainable_params_values
         ])
         # Shape at this point: (
-        #  number of sets of non trainable params,
         #  number of sets of trainable params,
+        #  number of sets of non trainable params,
         #  number of params (= number of parametrised gates)
         # )
         # Extract the first 2 dimensions: this is the real shape of the data

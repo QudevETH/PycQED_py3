@@ -3010,7 +3010,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             return
         values = values.T  # See horrible FIXME about self.proc_data_dict
         self.proc_data_dict['projected_data_dict'][key] = {
-            'value '+key: values,
+            key: values,
         }
 
     @staticmethod
@@ -3116,6 +3116,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def cpp_cost_function(shots, sp):
         # targets must correspond to the soft_sweep, so sp[1]
+        # FIXME: make the following line compatible with training mode,
+        #  where targets are passed directly
         targets = sp[1]['targets'][0]
         _, freqs = VariationalAlgorithmAnalysis.cpp_histogram(shots)
         # freqs shape: (n_state, hard sweep, soft sweep)
@@ -3142,7 +3144,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             cost_func[i] -= 0.5 * np.log(1 - weights_emp[freq0 > tol]) @ freq0[
                 freq0 > tol]
         # shape: (hard_sweep,) ~ (n_eval_points,)
-        return {'cost_function': cost_func}
+        return {'costfunction': cost_func}
 
     def cpp_auto_collapse_to_1D_whatever(self, shots, sp):  # TODO
         # -> (n_shots, soft_sweep, hard_sweep, soft_label, hard_label)
