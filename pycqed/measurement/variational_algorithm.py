@@ -291,6 +291,7 @@ class QCNN4(VariationalAlgorithm):
             with h5py.File(self.prep_params_filename, 'r') as fileObject:
                 self.prep_params_vs_h = np.array(fileObject['angles_opt'])*180/np.pi
         param_index = [3,0,1,2,4,8,5,6,7,9,10,14,11,12,13][param_index]
+        h_index = int(round(h_index))
         return self.prep_params_vs_h[h_index, param_index]
 
     def _add_ry_block(self, prefix, qbns, params=None):
@@ -328,7 +329,7 @@ class QCNN4(VariationalAlgorithm):
             destroy=True,
             ))
 
-    def set_block_and_params(self):
+    def set_block_and_params(self): # TODO call the super!
         self._blocks = []
         self.params = []
 
@@ -711,9 +712,10 @@ class VQAOptimizer:
 
                         # cost = Parallel(n_jobs = num_cores)(delayed(\
                         # cost_function)(angles) for angles in angles_try)
-                        cost = np.array(
-                            [cost_function(angles) for angles in
-                             angles_try]).reshape(npop)
+                        cost = cost_function(angles_try).reshape(npop)
+                        # cost = np.array(
+                        #     [cost_function(angles) for angles in
+                        #      angles_try]).reshape(npop)
 
                         cost_diff = (cost - np.mean(cost)) / np.std(cost)
                         angles_ev[i + 1] = angles_ev[i] - alpha / (
