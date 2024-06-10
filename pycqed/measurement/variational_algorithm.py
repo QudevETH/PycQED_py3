@@ -372,6 +372,11 @@ class QCNN4(VariationalAlgorithm):
                                ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
         elif len(self.qubits) == 9:
             pass  # TODO
+        elif len(self.qubits) == 1:
+            self._add_ry_block('RYp', [qb.name for qb in self.qubits],
+                               ['theta_p'])
+            self._add_ry_block('RYt', [qb.name for qb in self.qubits],
+                               ['theta_t'])
         else:
             raise ValueError("Only 4 or 9 qubits are supported!")
         self.params = [self._parse_param(p)[0] for p in self.params]
@@ -707,9 +712,8 @@ class VQAOptimizer:
                     length = len(angles_init)
 
                     angles_ev = np.zeros([Nsteps + 1, length])
-                    cost_ev = np.zeros([Nsteps + 1])
+                    cost_ev = np.zeros([Nsteps])
                     angles_ev[0] = angles_init  # initial guess
-                    cost_ev[0] = cost_function(angles_ev[0]).item()
 
                     for i in range(Nsteps):
                         seed = np.random.randn(npop, length)
@@ -726,10 +730,10 @@ class VQAOptimizer:
                         angles_ev[i + 1] = angles_ev[i] - alpha / (
                                     npop * sigma) * np.dot(
                             seed.T, cost_diff)
-                        cost_ev[i + 1] = cost_function(angles_ev[i + 1]).item()
+                        cost_ev[i] = np.min(cost)
                         # if i%10 ==0:
                         print(f'iteration: {i}/{Nsteps}', ', cost:',
-                              cost_ev[i + 1])
+                              cost_ev[i])
 
                     class res:
                         fun = cost_ev[-1]
@@ -737,6 +741,9 @@ class VQAOptimizer:
                         x = angles_ev[-1]
                         nit = Nsteps
                         nfev = Nsteps * npop
+
+                    print(f'res={res}')
+                    self.res = res
 
                     return res
                 self.optimizer_function = _evolutionary_strategy
