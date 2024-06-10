@@ -31,6 +31,14 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                  classified=False, df_name='int_log_det',
                  sweep_points=None, fixed_params_values=None, **kw):
         try:
+            if optimize:
+                sweep_points = None
+                if None in [optimizer]:
+                    raise ValueError("optimizer not provided")
+            else:
+                if sweep_points is None:
+                    raise ValueError('No sweep points')
+
             super().__init__(
                 classified=classified, df_name=df_name,
                 sequence_kwargs=dict(sweep_points=sweep_points), **kw
@@ -47,11 +55,10 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 'training_settings': optimizer.training_settings,
                 'optimize': optimize,
                 'qb_names': self.qb_names,  # FIXME needed?
+                'plot_raw_data': False,
             })
 
             if optimize:
-                if None in [optimizer]:
-                    raise ValueError("optimizer not provided")
                 self.optimizer = optimizer  # TODO or pass kw and instantiate here?
                 self.sweep_functions = [awg_swf.BlockSoftHardSweep(
                     self,
@@ -64,8 +71,8 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 self.mc_store_sweep_indices = True
                 self.force_2D_sweep = False  # TODO is this needed?
                 self.mc_points = [[0]]
-                self.sequences = [[None]]
-                self._set_MC()  # FIXME needed?
+                self.sequences = []  # Will be filled by the SF
+                self._set_MC()  # Used in the next line
                 # TODO check usage and possibly modify
                 self.MC.set_adaptive_function_parameters(dict(
                     adaptive_function=self.optimizer,
@@ -74,8 +81,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 ))
                 self.exp_metadata.update({'hybrid': self.optimizer.hybrid})
             else:
-                if sweep_points is None:
-                    raise ValueError('No sweep points')
                 self.exp_metadata.update({
                     'meas_obj_sweep_points_map':
                         self.sweep_points.get_meas_obj_sweep_points_map(
