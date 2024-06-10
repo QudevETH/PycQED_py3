@@ -287,13 +287,16 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 m.prepare(drive=self.drive)
 
             # create/retrieve sequence to run
+            print("calling _prepare_sequences...")
             self._prepare_sequences(self.sequences, self.sequence_function,
                                     self.sequence_kwargs)
 
             # configure measurement control (mc_points, detector functions)
+            print("calling _configure_mc...")
             mode = self._configure_mc()
             if self.mc_mode is None:
                 self.mc_mode = mode
+            print("done.")
 
             self.guess_label(**kw)
 

@@ -15,6 +15,7 @@ import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.measurement.sweep_functions as swf
 import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.measurement import multi_qubit_module as mqm
+from pycqed.utilities.general import temporary_value
 import logging
 import qcodes
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
@@ -182,8 +183,9 @@ class MultiTaskingExperiment(QuantumExperiment):
         """
         # update the nr_averages based on the settings in the user measure
         # objects
-        self.df_kwargs.update(
-            {'nr_averages': max(qb.acq_averages() for qb in self.meas_objs)})
+        with temporary_value(*self.temporary_values):
+            self.df_kwargs.update(
+                {'nr_averages': max(qb.acq_averages() for qb in self.meas_objs)})
 
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
