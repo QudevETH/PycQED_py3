@@ -694,6 +694,46 @@ class VQAOptimizer:
                 self.ego = ego  # FIXME store this somewhere
                 self.optimizer_function = ego.optimize
                 self.optimizer_kw = {}
+            elif optimizer_function == 'evolutionary':
+                def _evolutionary_strategy(cost_function, angles_init, npop,
+                                           sigma, alpha,
+                                           Nsteps):
+                    length = len(angles_init)
+
+                    angles_ev = np.zeros([Nsteps + 1, length])
+                    cost_ev = np.zeros([Nsteps + 1])
+                    angles_ev[0] = angles_init  # initial guess
+                    cost_ev[0] = cost_function(angles_ev[0]).item()
+
+                    for i in range(Nsteps):
+                        seed = np.random.randn(npop, length)
+                        angles_try = angles_ev[i] + sigma * seed
+
+                        # cost = Parallel(n_jobs = num_cores)(delayed(\
+                        # cost_function)(angles) for angles in angles_try)
+                        cost = np.array(
+                            [cost_function(angles) for angles in
+                             angles_try]).reshape(npop)
+
+                        cost_diff = (cost - np.mean(cost)) / np.std(cost)
+                        angles_ev[i + 1] = angles_ev[i] - alpha / (
+                                    npop * sigma) * np.dot(
+                            seed.T, cost_diff)
+                        cost_ev[i + 1] = cost_function(angles_ev[i + 1]).item()
+                        # if i%10 ==0:
+                        print(f'iteration: {i}/{Nsteps}', ', cost:',
+                              cost_ev[i + 1])
+
+                    class res:
+                        fun = cost_ev[-1]
+                        fun_i = cost_ev
+                        x = angles_ev[-1]
+                        nit = Nsteps
+                        nfev = Nsteps * npop
+
+                    return res
+                self.optimizer_function = _evolutionary_strategy
+                self.optimizer_kw = optimizer_kw
         if self.optimizer_function is None:
             raise ValueError
 
