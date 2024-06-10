@@ -2972,7 +2972,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             for qb_name in self.qb_names:
                 del self.proc_data_dict['projected_data_dict'][qb_name]
 
-    def _get_binary_shots_array(self):
+    def _get_binary_shots_array(self, pk=True):
         shots = self.proc_data_dict['single_shots_per_qb_thresholded']
         shots = np.array([
             shots[key] for key in shots.keys()
@@ -2981,6 +2981,23 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         shots = shots[..., 1]
         shots = shots.reshape((shots.shape[0], -1, *self.sp.length()))
         # shape (n_qb, n_shots, hard_sweep, soft_sweep)
+
+        if pk:
+            import os
+            import pickle
+            shape = [str(l) for l in shots.shape]
+            if self.get_param_value('optimize'):
+                type = "optim"
+                sp_names = ''  # TODO
+            else:
+                type = "sweep"
+                sp_names = [list(sp_1dim.keys()) for sp_1dim in self.sp]
+                sp_names = [keys[0] if len(keys) == 1 else f'{len(keys)}params'
+                           for keys in sp_names]
+            fn = f"shots_{type}_{'x'.join(sp_names)}_{'x'.join(shape)}.pkl"
+            with open(os.path.join(a_tools.get_folder(self.timestamps[0]), fn),
+                      "wb") as f:
+                pickle.dump(shots, f)
         return shots
 
 
