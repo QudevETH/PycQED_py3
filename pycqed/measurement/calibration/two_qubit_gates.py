@@ -166,7 +166,6 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
-            'reset_params': self.get_reset_params(),
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })

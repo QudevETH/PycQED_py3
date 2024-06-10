@@ -232,6 +232,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                   'cz_pulse_name': self.cz_pulse_name,
                                   'data_type': data_type,
                                   'right_handed_basis': True,
+                                  'reset_params': self.get_reset_params(),
                                   })
         self.waveform_viewer = None
 
