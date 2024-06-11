@@ -55,7 +55,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 'training_settings': optimizer.training_settings,
                 'optimize': optimize,
                 'qb_names': self.qb_names,  # FIXME needed?
-                'plot_raw_data': False,
             })
 
             if optimize:
@@ -79,7 +78,10 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                     data_processing_function=self._data_processing_function,
                     indexed_sweep=True,
                 ))
-                self.exp_metadata.update({'hybrid': self.optimizer.hybrid})
+                self.exp_metadata.update({
+                    'hybrid': self.optimizer.hybrid,
+                    'plot_raw_data': False,
+                })
             else:
                 self.exp_metadata.update({
                     'meas_obj_sweep_points_map':
@@ -715,6 +717,9 @@ class VQAOptimizer:
                     cost_ev = np.zeros([Nsteps])
                     angles_ev[0] = angles_init  # initial guess
 
+                    min_cost = cost_ev[0]
+                    min_angles = angles_init
+
                     for i in range(Nsteps):
                         seed = np.random.randn(npop, length)
                         angles_try = angles_ev[i] + sigma * seed
@@ -728,22 +733,23 @@ class VQAOptimizer:
 
                         cost_diff = (cost - np.mean(cost)) / np.std(cost)
                         angles_ev[i + 1] = angles_ev[i] - alpha / (
-                                    npop * sigma) * np.dot(
-                            seed.T, cost_diff)
-                        cost_ev[i] = np.min(cost)
-                        # if i%10 ==0:
+                                    npop * sigma) * np.dot(seed.T, cost_diff)
+                        min_index = np.argmin(cost)
+                        cost_ev[i] = cost[min_index]
+                        if cost[min_index] < min_index:
+                            min_cost = cost[min_index]
+                            min_angles = angles_try[min_index]
                         print(f'iteration: {i}/{Nsteps}', ', cost:',
                               cost_ev[i])
 
                     class res:
-                        fun = cost_ev[-1]
+                        fun = min_cost
                         fun_i = cost_ev
-                        x = angles_ev[-1]
+                        x = min_angles
                         nit = Nsteps
                         nfev = Nsteps * npop
 
                     print(f'res={res}')
-                    self.res = res
 
                     return res
                 self.optimizer_function = _evolutionary_strategy
