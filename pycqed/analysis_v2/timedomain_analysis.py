@@ -2924,30 +2924,29 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         #  instead create a new entry
         if self.get_param_value('optimize'):
             # TODO one could recalculate the cost function from shots instead
-            cost_func = np.array(self.raw_data_dict['cost_function_values'])
-            optim_param_values = np.array(
-                self.raw_data_dict['optim_param_values'])
+            cost_func = self.raw_data_dict['cost_function_values']
+            optim_param_values = self.raw_data_dict['optim_param_values']
             # shape = (
-            #   n batches (soft),
-            #   n sets of trainable params per batch (hard)
             #   n trainable params in the quantum circuit
+            #   n sets of trainable params per batch (hard)
+            #   n batches (soft),
             # )
             # Create a 1 D plot (n batches * n sets per batch) for each param
-            for id_param in range(optim_param_values.shape[2]):
-                self.add_dummy_qb_data(
-                    self.get_param_value('optim_param_names')[id_param],
-                    optim_param_values[:,:,id_param].flatten(),
-                    sp_name='iteration',
-                    sp_values=np.array(range(70)))
+            if 'slice_idxs_1d_proj_plot' not in self.options_dict:
+                self.options_dict['slice_idxs_1d_proj_plot'] = {}
+            for id_param in range(optim_param_values.shape[0]):
+                p_name = self.get_param_value('optim_param_names')[id_param]
+                self.add_dummy_qb_data(p_name, optim_param_values[id_param])
+                self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                    p_name, [(':', 'scol')]
+                )
             self.add_dummy_qb_data(
                 'costfunction',
-                cost_func.flatten(),
-                sp_name='iteration',
-                sp_values=np.array(range(70)))
-
-            # FIXME removing the qb data, not sure yet what ends up in there
-            for qbn in self.qb_names:
-                self.proc_data_dict['projected_data_dict'].pop(qbn)
+                cost_func,
+            )
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'costfunction', [(':', 'scol')]
+            )
 
             # # logical branch for hybrid training
             # if self.get_param_value('hybrid'):
@@ -2981,7 +2980,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
             for k, v in to_plot.items():
                 # FIXME: define the sweep points in 1D case
-                self.add_dummy_qb_data(k, v, list(self.sp[0].keys())[0])
+                self.add_dummy_qb_data(
+                    k, v, sp_name=list(self.sp[0].keys())[0])
             # cpp_output = va.classical_postprocessing()
             for qb_name in self.qb_names:
                 del self.proc_data_dict['projected_data_dict'][qb_name]
@@ -3018,7 +3018,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # set appropriate values and sweep points for plotting
         if sp_values is None and len(values.shape) != len(self.sp.length()):
             # This is the case if sp are 2D but values are a 1D slice
-            sp_values = self.sp[sp_name][0]
+            sp_values = self.sp[sp_name]
         if sp_values is None:
             # Directly use existing sweep points
             self.proc_data_dict['sweep_points_dict'][key] =\
