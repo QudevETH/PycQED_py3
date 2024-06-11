@@ -761,8 +761,6 @@ class VQAOptimizer:
                         nit = Nsteps
                         nfev = Nsteps * npop
 
-                    print(f'res={res}')
-
                     return res
                 self.optimizer_function = _evolutionary_strategy
                 self.optimizer_kw = optimizer_kw
