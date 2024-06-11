@@ -652,7 +652,7 @@ def simulate_circuits_2qbs(nr_cycles, nr_seq, circuits_list, T1, T2, t_gate,
 
 
 ## Calculation ##
-def translate(info):
+def translate(info, dd):
     s_gates = ["RX", "RY", "RZ"]
     if info[0][0] == 'Y':
         gate_name = s_gates[1]
@@ -666,8 +666,9 @@ def translate(info):
     else:  # C-phase gate
         gate_name = 'CPHASE'
         angle = 180 if info[0][2:]=='' else float(info[0][2:])
-        # FIXME minus sign to match inconsistent pycqed sign conventions
-        angle = -angle*np.pi/180
+        # -1 for old measurements with left-handed basis
+        legacy_sign = 1 if dd['exp_metadata'].get('right_handed_basis') else -1
+        angle = legacy_sign*angle*np.pi/180
     if int(info[1][3]) == 1:
         qubit = 0
     else:
@@ -675,11 +676,11 @@ def translate(info):
     return gate_name, qubit, angle
 
 
-def construct_from_op(op_lis):
+def construct_from_op(op_lis, dd):
     q = qt.qip.circuit.QubitCircuit(2, reverse_states=False)
     for op in op_lis:
         op_info = op.split(" ")
-        info = translate(op_info)
+        info = translate(op_info, dd=dd)
         if len(op_info) == 2:
             q.add_gate(info[0], info[1], None, info[2], r"\pi/4")
         else:
@@ -703,7 +704,7 @@ def transfer(data_dict, **params):
     lis = []
     for circuit_lis in gates_list:
         for count, circuit in enumerate(circuit_lis):
-            q = construct_from_op(circuit)
+            q = construct_from_op(circuit, dd=data_dict)
             lis += [q]
     return lis
 

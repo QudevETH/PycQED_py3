@@ -1,5 +1,5 @@
 """
-File containing the BaseDataAnalyis class.
+File containing the BaseDataAnalysis class.
 """
 from inspect import signature
 import os
@@ -9,10 +9,13 @@ import copy
 from collections import OrderedDict
 from inspect import signature
 import numbers
+from matplotlib.axes import Axes
 from matplotlib import pyplot as plt
 import matplotlib as mpl
+from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.analysis_v2 import analysis_daemon
 from pycqed.instrument_drivers.mock_qcodes_interface import \
     ParameterNotFoundError
 from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
@@ -23,6 +26,7 @@ from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
     flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from typing import Tuple, Union, Optional
 import datetime
 import json
 import lmfit
@@ -122,6 +126,7 @@ class BaseDataAnalysis(object):
                                 should be loaded. Note: data_file_path has
                                 priority, i.e. if this argument is given time
                                 stamps are ignored.
+                                FIXME: `data_file_path` not used anymore
         :param close_figs: Close the figure (do not display)
         :param options_dict: available options are:
                                 -'presentation_mode'
@@ -423,6 +428,65 @@ class BaseDataAnalysis(object):
         with open(filepath, "w") as f:
             f.write(job)
 
+    @staticmethod
+    def get_analysis_object_from_hdf5_file_path(data_file_path: str):
+        """Reconstructs `BaseDataAnalysis` object from HDF5 file.
+
+        Checks the HDF5 file for `BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF`
+        value under 'Analysis' group and if it exists, gets analysis object
+        from the value.
+        FIXME. Can't have return types for static methods that return class
+         instances in Python <= 3.9. Both Optional[BaseDataAnalysis] and
+         Optional[Self] are invalid. Fix when Python >= 3.10 syntax becomes
+         standard (we stop being backwards compatible with 3.9). Use
+         BaseDataAnalysis.
+
+        Args:
+            data_file_path: string path to an HDF5 file.
+
+        Raises:
+            LookupError: when the file does not contain
+                `BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF` value under
+                'Analysis'.
+
+        Returns:
+            Optional[BaseDataAnalysis]: analysis object reconstructed from
+                the job string saved in the HDF5 file or None.
+        """
+        with h5py.File(data_file_path, 'r') as data_file:
+            try:
+                job = hdf5_io.read_from_hdf5(
+                    BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF,
+                    data_file['Analysis']
+                )
+            except Exception as exception:
+                raise LookupError(
+                    f"File '{data_file_path}' contains no "
+                    f"{BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF}"
+                    f"in 'Analysis' group"
+                )
+
+        # FIXME: we should think about how to rewrite this in the future
+        #  in a way that avoids or reduces string processing. E.g., we
+        #  could have an initial string processing to convert all arguments
+        #  into a dictionary and then perform the modifications there
+        #  instead of by string replacements. Alternatively, one could also
+        #  think about a different way of saving jobs which would save the
+        #  arguments that are replaced here more explicit (not as a single
+        #  string) thus letting us avoid string manipulation all together.
+
+        # Replace some analysis object parameters in job string to speed the
+        # job up. We can change the parameters since the purpose of this
+        # function is only to get the analysis object and not to actually
+        # perform the saved job to full extent. Assuming the job is saved with
+        # "extract_only=False", "'save_figs': True" and "'close_figs': True",
+        # changing them speeds up the process significantly.
+        job = job.replace("extract_only=False", "extract_only=True")
+        job = job.replace("'save_figs': True", "'save_figs': False")
+        job = job.replace("'close_figs': True", "'close_figs': False")
+
+        return analysis_daemon.AnalysisDaemon.execute_job(job)
+
     def _get_param_value(self, param_name, default_value=None, metadata_index=0):
         log.warning('Deprecation warning: please use new function '
                     'self.get_param_value(). This function is intended to be '
@@ -472,6 +536,140 @@ class BaseDataAnalysis(object):
                 return recursive_search(param, search_attrs[search_attrs.index(p) +
                                                          1])
         return recursive_search(param_name, search_attrs[0])
+
+    def get_reset_params(self, qbn=None, default_value=None):
+        """Retrieves the reset parameters for the analysis.
+
+        It first checks if the legacy way of specifying reset parameters is used
+        by checking the value of 'preparation_params' and 'reset_params'
+        attributes:
+
+        - If 'reset_params' is not specified while 'preparation_params' is
+        present, a warning is logged indicating the deprecation of using
+        'preparation_params' and suggests using 'reset_params' instead. The
+        method assumes that the provided 'preparation_params' are in the
+        adequate format (legacy format) for the analysis and returns
+        'preparation_params' in this case.  
+        - If 'reset_params' is provided, the method calls the
+        'translate_reset_to_prep_params' method to translate the reset
+        parameters to preparation parameters required by the analysis framework.
+
+        Args:
+            qbn (Optional[str]): Qubit name of which the reset parameters
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
+            default_value (Optional): Default value to be returned if the reset
+                parameters do not match any known patterns. Defaults to None.
+
+        Returns:
+            dict or default_value: Dictionary containing the translated preparation
+                parameters if the reset parameters match a known pattern or
+                'preparation_params' if the legacy format is used. Otherwise,
+                returns the default_value.
+
+        """
+        # check if legacy way of specifying reset parameters is used
+        prep_params = self.get_param_value("preparation_params", None)
+        reset_params = self.get_param_value("reset_params", None)
+
+        if reset_params is None and prep_params is not None:
+            log.warning("Using 'preparation_params' to specify reset"
+                        " parameters is deprecated. Please use 'reset_params'"
+                        " instead. The code will assume that the provided"
+                        "'preparation_params' is using the adequate"
+                        "format (i.e. legacy format) for the analysis. ")
+            return prep_params
+        return self.translate_reset_to_prep_params(reset_params, qbn,
+                                                   default_value)
+    @staticmethod
+    def translate_reset_to_prep_params(reset_params, qbn=None,
+                                       default_value=None):
+        """
+        This static method performs the translation of reset parameters
+        (new framework for performing reset, used on the control measurement side)
+        to a preparation parameters dict (old framework)
+        required by the analysis framework. It handles cases
+        where the reset parameters are either a string or a dictionary.
+
+        Args:
+            reset_params (str or dict): The reset parameters to be translated.
+            qbn (Optional[str]): Qubit name of which the reset parameters
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
+            default_value (Optional): Default value to be returned if the reset
+                parameters do not match any known patterns. Defaults to None.
+
+        Returns:
+            dict or default_value: Dictionary containing the translated preparation
+                parameters if the reset parameters match a known pattern. Otherwise,
+                returns the default_value.
+
+        Note:
+            In case of legacy code where the reset parameters stored in the
+            experimental metadata or provided to the analysis is only a string
+            summarizing the reset type for all qubits, this method manually performs
+            the translation to the dictionary required by the analysis framework.
+
+            If the reset parameters are a string, the method maps specific values of
+            the string to the corresponding dictionary format. If the reset
+            parameters are a dictionary, it checks for the presence of
+            "analysis_instructions" and returns the last step of the analysis
+            instructions for the specified qubit.
+
+            If the reset parameters do not match any known patterns or if there is
+            missing data, appropriate warning messages are logged, and the
+            default_value is returned.
+
+            """
+        if isinstance(reset_params, str):
+            if reset_params == "preselection":
+                return dict(preparation_type="preselection")
+            elif reset_params == "feedback":
+                return dict(preparation_type="active_reset")
+            elif reset_params == "parametric_flux":
+                return dict(preparation_type="wait")
+            else:
+                log.warning(f"Reset parameters : '{reset_params}'"
+                            f"unknown for legacy analysis code. Analysis will"
+                            f"assume that the analysis can be performed "
+                            f"with the default behavior i.e. "
+                            f"preparation_type='wait' in the legacy code.")
+                return dict(preparation_type="wait")
+        # in most QE based measurements the stored reset params is a dict which
+        # stores instructions for the analysis.
+        elif isinstance(reset_params, dict):
+            if "analysis_instructions" not in reset_params:
+                log.warning(f'Reset params dictionary does not contain '
+                            f'"analysis_instructions": {reset_params}.'
+                            f' Analysis will proceed without any specific'
+                            f' reset-specific data processing.')
+                return dict(preparation_type="wait")
+            else:
+                if qbn is None:
+                    qbn = list(reset_params['analysis_instructions'].keys())[0]
+                if len(reset_params['analysis_instructions'][qbn]) == 0:
+                    # empty list, i.e. no reset steps
+                    return dict(preparation_type="wait")
+                elif len(reset_params['analysis_instructions'][qbn]) > 1:
+                # FIXME: Implement the support of multiple steps / analysis_instructions
+                    log.warning(f'Reset params dictionary contains several'
+                                f' steps: {reset_params["steps"]}, '
+                                f'currently the analysis will consider'
+                                f' only the last step for data '
+                                f'processing/filtering'
+                                )
+                return reset_params['analysis_instructions'][qbn][-1]
+        return default_value
 
     def get_instrument_settings(self, params_dict, timestamp=-1):
         """
@@ -619,6 +817,21 @@ class BaseDataAnalysis(object):
         if len(raw_data_dict) == 1:
             raw_data_dict = raw_data_dict[0]
         return raw_data_dict
+
+    def _extract_param_from_det(self, param, default=None):
+        det_metadata = self.metadata.get("Detector Metadata", None)
+        val = None
+        if det_metadata is not None:
+            # multi detector function: look for child "detectors"
+            # assumes at least 1 child and that all children have the same
+            # number of averages
+            val = det_metadata.get(param, None)
+            if val is None:
+                det = list(det_metadata.get('detectors', {}).values())[0]
+                val = det.get(param, None)
+        if val is None:
+            val = default
+        return val
 
     @staticmethod
     def add_measured_data(raw_data_dict, compression_factor=1,
@@ -825,8 +1038,7 @@ class BaseDataAnalysis(object):
                 self.raw_data_dict,
                 self.get_param_value('compression_factor', 1),
                 SweepPoints(self.get_param_value('sweep_points')),
-                cp, self.get_param_value('preparation_params',
-                                         default_value=dict()),
+                cp, self.get_reset_params(),
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
 
@@ -1234,14 +1446,18 @@ class BaseDataAnalysis(object):
         return dic
 
     def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
-             transparent_background=None, no_label=False):
-        """
-        Plot figures defined in self.plot_dict.
+             transparent_background=None, no_label=False, fig_id=None):
+        """Plot figures defined in self.plot_dict.
+
         Args.
-            key_list (list): list of keys in self.plot_dicts
-            axs_dict (dict): will be used to define self.axs
-            presentation_mode (bool): whether to prepare for presentation
-            no_label (bool): whether figure should have a label
+            key_list (list): list of keys in self.plot_dicts.
+            axs_dict (dict): will be used to define self.axs.
+            presentation_mode (bool): whether to prepare for presentation.
+            transparent_background (bool): if true, figures will have
+                transparent background.
+            no_label (bool): whether figure should have a label.
+            fig_id (str): figure id from `self.plot_dicts`. If passed only
+                specified figure will be plotted.
         """
         self._prepare_for_plot(key_list, axs_dict, no_label)
         if presentation_mode is None:
@@ -1251,7 +1467,36 @@ class BaseDataAnalysis(object):
         if presentation_mode:
             self.plot_for_presentation(self.key_list, transparent_background)
         else:
-            self._plot(self.key_list, transparent_background)
+            self._plot(self.key_list, transparent_background, fig_id=fig_id)
+
+    def plot_for_gui(self, fig_id: str) -> Tuple[Figure, Union[Axes, np.array]]:
+        """Prepares and creates a plot for GUI and returns one figure and axes.
+
+        Args:
+            fig_id: figure id from `self.plot_dicts` to be plotted.
+
+        Raises:
+            ValueError: when axs with fig_id does not have a `Figure` object.
+
+        Returns:
+            tuple: with `Figure` and either `Axes` or `np.array` with
+                multiple `Axes`.
+        """
+        self._prepare_for_plot(key_list='auto')
+        self._plot(key_list=self.key_list, fig_id=fig_id)
+
+        figure = None
+        if isinstance(self.axs[fig_id], Axes):
+            figure = self.axs[fig_id].get_figure()
+        elif isinstance(self.axs[fig_id], np.ndarray):
+            for axis in self.axs[fig_id]:
+                figure = axis.get_figure()
+                break
+
+        if not isinstance(figure, Figure):
+            raise ValueError(f"Could not find figure with id: {fig_id}")
+
+        return figure, self.axs[fig_id]
 
     def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
         """
@@ -1318,18 +1563,47 @@ class BaseDataAnalysis(object):
                 if isinstance(i := pdict.get(ak + '_id'), int):
                     pdict[ak] = self.axs[pdict['fig_id']].flatten()[i]
 
-    def _plot(self, key_list, transparent_background=False):
-        """
-        Creates the figures specified by key_list.
+        # Allows to hide a subplot (to create complex fig layouts by leaving
+        # out some axes blank)
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            if pdict.get('set_axis_off'):
+                ax = self.axs[pdict['fig_id']].flatten()[pdict['ax_id']]
+                ax.set_axis_off()
 
-        Args.
-            key_list (list): list of keys in self.plot_dicts
+        # Allows to set axis formatters (e.g. for nonlinear axes scalings)
+        # Example use: fmt = {'yaxis': Formatter}
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            if fmt := pdict.get('set_major_formatter'):
+                ax = self.axs[pdict['fig_id']].flatten()[pdict['ax_id']]
+                for ax_name, formatter in fmt.items():
+                    getattr(ax, ax_name).set_major_formatter(formatter)
+
+    def _plot(self, key_list, transparent_background=False, fig_id=None):
+        """Creates the figures specified by key_list.
+
+        Args:
+            key_list (list): list of keys in self.plot_dicts.
+            transparent_background (bool): if true, figures will have
+                transparent background.
+            fig_id (str): figure id from `self.plot_dicts`. If passed only
+                specified figure will be plotted.
+
+        Raises:
+            ValueError: in case the used plot function is not valid.
         """
         for key in key_list:
             pdict = self.plot_dicts[key]
+            if fig_id and pdict['fig_id'] != fig_id:
+                continue
             plot_touching = pdict.get('touching', False)
 
-            if type(pdict['plotfn']) is str:
+            if 'plotfn' not in pdict:
+                raise ValueError(f"No 'plotfn' set in plot_dicts['{key}']!")
+            elif pdict['plotfn'] is None:
+                continue  # Do not plot anything if the plotfn is None
+            elif type(pdict['plotfn']) is str:
                 plotfn = getattr(self, pdict['plotfn'])
             else:
                 plotfn = pdict['plotfn']
@@ -1385,6 +1659,18 @@ class BaseDataAnalysis(object):
 
         self.format_datetime_xaxes(key_list)
         self.add_to_plots(key_list=key_list)
+
+    def get_fig_ids(self) -> list:
+        """Gets unique figure ids from `self.plot_dicts`.
+
+        Returns:
+            list: list of unique figure ids.
+        """
+        fig_ids = []
+        for name, item in self.plot_dicts.items():
+            fig_ids.append(item['fig_id'])
+
+        return np.unique(fig_ids).tolist()
 
     def add_to_plots(self, key_list=None):
         pass
@@ -1626,6 +1912,8 @@ class BaseDataAnalysis(object):
                 plot_linekws['yerr'] = plot_linekws.get('yerr', yerr)
             if xerr is not None:
                 plot_linekws['xerr'] = plot_linekws.get('xerr', xerr)
+        if pdict.get('scatter'):
+            pdict['func'] = 'scatter'
 
         pdict['line_kws'] = plot_linekws
         plot_xvals = pdict['xvals']
@@ -1646,9 +1934,12 @@ class BaseDataAnalysis(object):
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
         plot_grid = pdict.get('grid', None)
+        plot_opposite_axis = pdict.get('opposite_axis', False)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
-        if pdict.get('color', False):
-            plot_linekws['color'] = pdict.get('color')
+        # Ensures that 'color' can be passed both ways (and that it does not
+        # collide with plot_linekws).
+        plot_color = pdict.get('color', plot_linekws.pop('color') if
+                               'color' in plot_linekws else None)
 
         plot_linekws['alpha'] = pdict.get('alpha', 1)
         # plot_multiple = pdict.get('multiple', False)
@@ -1677,11 +1968,20 @@ class BaseDataAnalysis(object):
         if plot_multiple:
             p_out = []
             len_color_cycle = pdict.get('len_color_cycle', len(plot_yvals))
-            # Default gives max contrast
-            cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
-            colors = get_color_list(len_color_cycle, cmap)
-            if cmap == 'tab10':
-                len_color_cycle = min(10, len_color_cycle)
+            if plot_color is None:  # Default
+                # Default gives max contrast
+                cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
+                if cmap == 'tab10':
+                    len_color_cycle = min(10, len_color_cycle)
+                plot_color = get_color_list(len_color_cycle, cmap)
+            else:
+                # Distinguish if plot_color is a single color (we need to first
+                # make a list out of it) or already a list of colors.
+                # FIXME: might be useful to have more complete checks to
+                #  distinguish e.g. an array of 3-4 numbers corresponding to
+                #  a single color
+                if isinstance(plot_color, str):
+                    plot_color = [plot_color]*len_color_cycle
 
             # plot_*vals is the list of *vals arrays
             pfunc = getattr(axs, pdict.get('func', 'plot'))
@@ -1689,8 +1989,7 @@ class BaseDataAnalysis(object):
                 p_out.append(pfunc(xvals, yvals,
                                    linestyle=plot_linestyle,
                                    marker=plot_marker,
-                                   color=plot_linekws.pop(
-                                       'color', colors[i % len_color_cycle]),
+                                   color=plot_color[i % len_color_cycle],
                                    label='%s%s' % (
                                        dataset_desc, dataset_label[i]),
                                    **plot_linekws))
@@ -1700,7 +1999,7 @@ class BaseDataAnalysis(object):
             p_out = pfunc(plot_xvals, plot_yvals,
                           linestyle=plot_linestyle, marker=plot_marker,
                           label='%s%s' % (dataset_desc, dataset_label),
-                          **plot_linekws)
+                          color=plot_color, **plot_linekws)
 
         if plot_xrange is None:
             pass  # Do not set xlim if xrange is None as the axs gets reused
@@ -1743,7 +2042,6 @@ class BaseDataAnalysis(object):
             axs.set_xscale(plot_xscale)
         if plot_grid:
             axs.grid(True)
-
         if plot_xtick_loc is not None:
             axs.xaxis.set_ticks(plot_xtick_loc)
         if plot_ytick_loc is not None:
@@ -1754,6 +2052,9 @@ class BaseDataAnalysis(object):
         if plot_ytick_labels is not None:
             axs.yaxis.set_ticklabels(plot_ytick_labels,
                                      rotation=plot_ytick_rotation)
+        if plot_opposite_axis:
+            axs.yaxis.set_label_position("right")
+            axs.yaxis.tick_right()
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -2109,6 +2410,7 @@ class BaseDataAnalysis(object):
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        plot_cbar_opposite_axis = pdict.get('cbar_opposite_axis', False)
         if not isinstance(axs, Axes3D):
             cmap = axs.cmap
         else:
@@ -2138,9 +2440,16 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
-        if orientation == 'horizontal':
+        if orientation == 'horizontal' and not plot_cbar_opposite_axis:
+            # Defaults to top here (matplotlib defaults to bottom),
+            # unless plot_cbar_opposite_axis
             axs.cax.xaxis.set_label_position("top")
             axs.cax.xaxis.tick_top()
+        if orientation == 'vertical' and plot_cbar_opposite_axis:
+            # Defaults to right (as in matplotlib),
+            # unless plot_cbar_opposite_axis
+            axs.cax.yaxis.set_label_position("left")
+            axs.cax.yaxis.tick_left()
 
         if self.tight_fig:
             axs.figure.tight_layout()

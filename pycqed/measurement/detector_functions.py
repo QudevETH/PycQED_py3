@@ -748,7 +748,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         the nr_sweep_points attribute of the detector functions.
 
         Returns:
-            raw data: dict of the form {acq_dev.name: raw data array}
+            raw data: dict of the form {acq_dev.name: raw_data_array}
+                where raw_data_array.shape = [number acquisition_nodes, points]
         """
         if self.AWG is not None:
             self.timer.checkpoint("PollDetector.poll_data.AWG_restart.start")
@@ -1025,8 +1026,6 @@ class MultiPollDetector(PollDetector):
                 MeasurementControl
         """
         super().prepare()
-        if self.detector_control == 'hard' and sweep_points is None:
-            raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
             d.prepare(sweep_points)
         self.progress_scaling = [
@@ -1500,6 +1499,7 @@ class IntegratingAveragingPollDetector(PollDetector):
         # Determine the number of sweep points and set them
         if sweep_points is None or self.single_int_avg:
             # this case will be used when it is a soft detector
+            assert self.detector_control == 'soft'
             # Note: single_int_avg overrides chunk_size
             # single_int_avg = True is equivalent to chunk_size = 1
             self.nr_sweep_points = self.values_per_point
@@ -1786,7 +1786,8 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
     Detector used for integrated single-shot acquisition.
     """
 
-    def __init__(self, acq_dev, nr_shots: int = 4094, **kw):
+    def __init__(self, acq_dev, nr_shots: int = 4094,
+                 single_int_log: bool = False, **kw):
         """
         Init of the IntegratingSingleShotPollDetector.
         See the IntegratingAveragingPollDetector for the full dostring of the
@@ -1795,6 +1796,9 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         Args:
             acq_dev (instrument): data acquisition device
             nr_shots (int)     : number of acquisition shots
+            single_int_log (bool): set to True for a soft sweep (the
+                detector remains a hard detector because it returns several
+                values, the single shots)
 
         Keyword args:
             passed to the init of the parent class. In addition,
@@ -1807,8 +1811,16 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         self.name = '{}_integration_logging_det'.format(self.data_type)
         self.nr_shots = nr_shots
         self.acq_data_len_scaling = self.nr_shots  # to be used in MC
+        self.single_int_log = single_int_log
         # Disable MC live plotting by default for SSRO acquisition
         self.live_plot_allowed = kw.get('live_plot_allowed', False)
+
+    def prepare(self, sweep_points=None):
+        if self.single_int_log:
+            # If soft sweep (meaning each acq. is triggered in software):
+            # the number of values to be acquired is the number of shots
+            sweep_points = [0] * self.acq_data_len_scaling
+        super().prepare(sweep_points)
 
 
 class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):

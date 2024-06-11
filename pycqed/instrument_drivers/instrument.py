@@ -1,4 +1,5 @@
 from qcodes.instrument.base import Instrument as QcodesInstrument
+from qcodes.instrument.channel import InstrumentModule as QcodesInstrumentModule
 import weakref
 
 class FurtherInstrumentsDictMixIn:
@@ -69,6 +70,26 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
                     f"{internal_instrument_class} was requested"
                 )
             return ins
+
+
+# FIXME: Is this class really needed?
+class InstrumentModule(QcodesInstrumentModule):
+    """
+    Custom extension of QcodesInstrumentModule for ResetScheme.
+
+    See QCoDeS docs & reset_schemes.py for more details.
+    """
+
+    def get_idn(self):
+        """Get the Instrument Module's ID and Name.
+
+        See QCoDeS docs for more details.
+
+        Returns:
+            dict: A dictionary with two keys: 'driver' and 'name'.
+                The values are the name of the driver and the name of the instrument (set during initialization).
+        """
+        return {'driver': self.__class__.__name__, 'name': self.name}
 
 
 class DummyVisaHandle:
