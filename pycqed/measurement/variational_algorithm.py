@@ -81,6 +81,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 self.exp_metadata.update({
                     'hybrid': self.optimizer.hybrid,
                     'plot_raw_data': False,
+                    'optim_param_names': self.params,
                 })
             else:
                 self.exp_metadata.update({
@@ -511,7 +512,7 @@ class VQAOptimizer:
         self.training_settings = training_settings
         self.measurement_function = None
         # FIXME maybe this should not be called sweep_points
-        self.sweep_points = []
+        self.optim_param_values = []
         self.cost_function_values = []
         self.hybrid = hybrid
         if self.hybrid:
@@ -528,9 +529,16 @@ class VQAOptimizer:
                                          **self.optimizer_kw)
         # if self.optimizer_callback is not None:
         #     result = self.optimizer_callback(result)
-        result_dict = {'opt_result': result, 'sweep_points': self.sweep_points,
-                'cost_function_values': self.cost_function_values,
-                }
+        # param_values.shape:
+        # (n batches, n sets of trainable params per batch, n trainable params)
+        # -> (-1, n trainable params)
+        # cost_function_values.shape: (n batches, n sets of train. pars, 1)
+        cf = np.array(self.cost_function_values)
+        result_dict = {
+            'opt_result': result,
+            'optim_param_values': np.array(self.optim_param_values),
+            'cost_function_values': cf.reshape(*cf.shape[:-1]),
+        }
         if self.hybrid:
             result_dict.update({
                 'classical_params_list': self.classical_params_list,
@@ -548,7 +556,7 @@ class VQAOptimizer:
         #   sets of non trainable params (prep circuit), 3 states)
         # Take the e state probability (now array contains 0s and 1s)
         data = data[..., 1]
-        # shape: (n_qb, n_shots, n_trainable_params, n_non_trainable_params)
+        # shape: (n_qb, n_shots, sets_trainable_params, sets_non_trainable)
 
         # if self.hybrid:
         #     costs = []
@@ -564,12 +572,12 @@ class VQAOptimizer:
         #         self.classical_params_result.append(np.array(classical_param))
         #     costs = np.array(costs)
 
-        # batch_shape = (n_trainable, n_non_trainable)
+        # batch_shape = (sets_trainable, sets_non_trainable)
         costs = vaa.cpp_cost_function(data, targets)['costfunction'].reshape(
             (-1, 1))
         # cost must be 2D list of values for EGO to work
         # [[value_1], [value_2], ... [value_n_trainable]]
-        self.sweep_points.append(np.atleast_2d(params))
+        self.optim_param_values.append(np.atleast_2d(params))
         self.cost_function_values.append(costs)
         return costs
 

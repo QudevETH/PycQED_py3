@@ -612,28 +612,23 @@ class BaseDataAnalysis(object):
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
 
-                # Add training process data. The try-except branch is
+                # Add training process data. The if is
                 # because this part is called twice: the first time to read
                 # experiment data and the second time just to extract
                 # the classifier.
-                try:
+                if 'exp_metadata' in params_dict:
                     if raw_data_dict_ts['exp_metadata']['optimize']:
-                        array = np.array  # FIXME
-                        # extract sweep points
-                        sweep_points_str = data_file[
-                            'Optimization_result']['opt'].attrs['sweep_points']
-                        raw_data_dict_ts['optimization_sweep_points'] = \
-                            np.concatenate(eval(sweep_points_str))
+                        # extract param values during optimisation
+                        raw_data_dict_ts['optim_param_values'] = np.array(
+                            data_file['Optimization_result']['opt'][
+                                'optim_param_values'])
                         # extract cost function values
-                        cost_function_values = data_file[
-                            'Optimization_result']['opt'].attrs[
-                            'cost_function_values']
-                        raw_data_dict_ts['cost_function_values'] = \
-                            np.concatenate(eval(cost_function_values))
+                        raw_data_dict_ts['cost_function_values'] = np.array(
+                            data_file['Optimization_result']['opt'][
+                                'cost_function_values'])
                         # FIXME: why update params_dict
                         self.params_dict.update({
-                            'optimization_sweep_points':
-                                'optimization_sweep_points',
+                            'optim_param_values': 'optim_param_values',
                             'cost_function_values': 'cost_function_values'
                         })
                         # extract classical params result
@@ -648,8 +643,6 @@ class BaseDataAnalysis(object):
                                 'classical_params_result':
                                     'classical_params_result',
                             })
-                except:
-                    pass
 
                 a_tools.close_files([data_file])
                 raw_data_dict.append(raw_data_dict_ts)

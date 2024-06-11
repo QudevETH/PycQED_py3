@@ -2923,28 +2923,42 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # FIXME: replacing the values of a qubit is a hack, we should
         #  instead create a new entry
         if self.get_param_value('optimize'):
-            cost_func = self.raw_data_dict['cost_function_values']
-            sweep_points = self.raw_data_dict['optimization_sweep_points']
-            # FIXME remove calls to proc_data_dict here -> add_dummy_qb_data
-            self.proc_data_dict['projected_data_dict'][self.qb_names[0]] = {
-                'cost func': np.reshape(cost_func, (-1)),
-            }
-            for i in range(sweep_points.shape[1]):
-                self.proc_data_dict['projected_data_dict'][
-                    self.qb_names[0]].update(
-                    {f'train param {i}': sweep_points[:, i]}
-                )
+            # TODO one could recalculate the cost function from shots instead
+            cost_func = np.array(self.raw_data_dict['cost_function_values'])
+            optim_param_values = np.array(
+                self.raw_data_dict['optim_param_values'])
+            # shape = (
+            #   n batches (soft),
+            #   n sets of trainable params per batch (hard)
+            #   n trainable params in the quantum circuit
+            # )
+            # Create a 1 D plot (n batches * n sets per batch) for each param
+            for id_param in range(optim_param_values.shape[2]):
+                self.add_dummy_qb_data(
+                    self.get_param_value('optim_param_names')[id_param],
+                    optim_param_values[:,:,id_param].flatten(),
+                    sp_name='iteration',
+                    sp_values=np.array(range(70)))
+            self.add_dummy_qb_data(
+                'costfunction',
+                cost_func.flatten(),
+                sp_name='iteration',
+                sp_values=np.array(range(70)))
 
-            # logical branch for hybrid training
-            if self.get_param_value('hybrid'):
-                self.proc_data_dict['projected_data_dict'] \
-                    [self.qb_names[0]].update(
-                        {'classical_params_result': self.raw_data_dict[
-                            'classical_params_result']})
-            for useless_qb in self.qb_names[1:]:
-                del self.proc_data_dict['projected_data_dict'][useless_qb]
-            self.proc_data_dict['sweep_points_dict'][
-                self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
+            # FIXME removing the qb data, not sure yet what ends up in there
+            for qbn in self.qb_names:
+                self.proc_data_dict['projected_data_dict'].pop(qbn)
+
+            # # logical branch for hybrid training
+            # if self.get_param_value('hybrid'):
+            #     self.proc_data_dict['projected_data_dict'] \
+            #         [self.qb_names[0]].update(
+            #             {'classical_params_result': self.raw_data_dict[
+            #                 'classical_params_result']})
+            # for useless_qb in self.qb_names[1:]:
+            #     del self.proc_data_dict['projected_data_dict'][useless_qb]
+            # self.proc_data_dict['sweep_points_dict'][
+            #     self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
         else:
             # sweep mode data processing
             shots = self._get_binary_shots_array()
@@ -3000,31 +3014,31 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 pickle.dump(shots, f)
         return shots
 
-
-    def add_dummy_qb_data(self, key, values, sp_name=None):
+    def add_dummy_qb_data(self, key, values, sp_name=None, sp_values=None):
         # set appropriate values and sweep points for plotting
-        if len(values.shape) == len(self.sp.length()):
+        if sp_values is None and len(values.shape) != len(self.sp.length()):
+            # This is the case if sp are 2D but values are a 1D slice
+            sp_values = self.sp[sp_name][0]
+        if sp_values is None:
+            # Directly use existing sweep points
             self.proc_data_dict['sweep_points_dict'][key] =\
                 self.proc_data_dict['sweep_points_dict'][self.qb_names[0]]
-            self.proc_data_dict['sweep_points_2D_dict'][key] =\
-                self.proc_data_dict['sweep_points_2D_dict'][self.qb_names[0]]
-        elif len(values.shape) == 1:
-            # print(f"self.sp[0][sp_name][0] = {self.sp[0][sp_name][0]}")
-            # print(f"values = {values}")
-            # raise Exception
-            sp_value = self.sp[0][sp_name][0]
+            if 'sweep_points_2D_dict' in self.proc_data_dict:
+                self.proc_data_dict['sweep_points_2D_dict'][key] =\
+                    self.proc_data_dict['sweep_points_2D_dict'][
+                        self.qb_names[0]]
+        else:
+            # Sweep points don't exist yet: need to be created from sp_values
             self.proc_data_dict['sweep_points_dict'][key] = {
-                'sweep_points': sp_value,
+                'sweep_points': sp_values,
                 'param_names': [sp_name],
-                'msmt_sweep_points': sp_value,
+                'msmt_sweep_points': sp_values,
                 'cal_points_sweep_points': []
             }
-            self.proc_data_dict['sweep_points_2D_dict'][key] = {
-                'dummy': [0]
-            }
-        else:
-            log.warning(f"Ignoring {key}: {values.shape}")
-            return
+            if 'sweep_points_2D_dict' in self.proc_data_dict:
+                self.proc_data_dict['sweep_points_2D_dict'][key] = {
+                    'dummy': [0]
+                }
         values = values.T  # See horrible FIXME about self.proc_data_dict
         self.proc_data_dict['projected_data_dict'][key] = {
             key: values,
