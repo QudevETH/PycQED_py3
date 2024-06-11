@@ -529,15 +529,19 @@ class VQAOptimizer:
                                          **self.optimizer_kw)
         # if self.optimizer_callback is not None:
         #     result = self.optimizer_callback(result)
-        # param_values.shape:
-        # (n batches, n sets of trainable params per batch, n trainable params)
-        # -> (-1, n trainable params)
-        # cost_function_values.shape: (n batches, n sets of train. pars, 1)
-        cf = np.array(self.cost_function_values)
+        cf = np.concatenate(self.cost_function_values, axis=1)
+        # cf.shape: (n sets of train. pars (hard), n batches (soft))
+        pv = np.array(self.optim_param_values)
+        pv = np.swapaxes(pv, 0, 2)
+        # pv.shape: (
+        #   n trainable parameters,
+        #   n sets of trainable parameters (hard),
+        #   n batches (soft)
+        # )
         result_dict = {
             'opt_result': result,
-            'optim_param_values': np.array(self.optim_param_values),
-            'cost_function_values': cf.reshape(*cf.shape[:-1]),
+            'optim_param_values': pv,
+            'cost_function_values': cf,
         }
         if self.hybrid:
             result_dict.update({
@@ -578,7 +582,7 @@ class VQAOptimizer:
         # cost must be 2D list of values for EGO to work
         # [[value_1], [value_2], ... [value_n_trainable]]
         self.optim_param_values.append(np.atleast_2d(params))
-        self.cost_function_values.append(costs)
+        self.cost_function_values.append(costs)  # Will be concatenated
         return costs
 
     # def _classical_training(self, data_batch, targets):
