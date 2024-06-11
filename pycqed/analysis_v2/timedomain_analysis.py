@@ -304,11 +304,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             projected data. If None, no slices are plotted.
          The two dicts above are of the form {qb_name: [(idxs, axis)]}, where
             - axis (str) can be either 'row' or 'col', specifying whether idxs
-                are row or column indices
+                are row or column indices. Optionally prepending 's' indicates
+                to simultaneously plot all slices on a single figure
             - idxs can be an int (data index) or a str of the form
                 'idx_start:idx_end' interpreted as standard list/array indexing
                 arr[idx_start:idx_end]
-            Example: {'qb14': [('8:13', 'row'), (0, 'col')]}.
+            Example: {'qb14': [('8:13', 'srow'), (0, 'col')]}.
         Note:
             - to plot only 1D slices of 2D data, the standard plotting of raw
             and projected data can be disabled via the flags `plot_raw_data` and
@@ -2297,8 +2298,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 Example: [('8:13', 'row'), (0, 'col')]
         """
         for slice_idxs in slice_idxs_list:
-            idxs, axis, xvals, xlabel, xunit = \
+            idxs, axis, xvals, xlabel, xunit, sim = \
                 self.get_1d_slice_params(qb_name, slice_idxs)
+            if sim:
+                log.warning("Simultaneous not yet implemented for raw plots!")
             for idx in idxs:
                 fig_suffix = \
                     f'{"_row" if axis == 0 else "_col"}_{idx}'
@@ -2544,15 +2547,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             **kw: passed to prepare_projected_data_plot
         """
         for slice_idxs in slice_idxs_list:
-            idxs, axis, xvals, xlabel, xunit = self.get_1d_slice_params(
+            idxs, axis, xvals, xlabel, xunit, sim = self.get_1d_slice_params(
                 qb_name, slice_idxs)
             for idx in idxs:
                 data_slice = np.take_along_axis(
                     data, np.array([[idx]]), axis).flatten()
                 plot_name_suffix = \
                     f'{"_row" if axis == 0 else "_col"}_{idx}'
-                fn_slice = f'{fig_name}{plot_name_suffix}'
-                ts_slice = f'{title_suffix}{plot_name_suffix}'
+                fn_slice = f"{fig_name}{'' if sim else plot_name_suffix}"
+                ts_slice = f"{title_suffix}{'' if sim else plot_name_suffix}"
                 self.prepare_projected_data_plot(
                     fn_slice, data_slice, qb_name=qb_name,
                     sweep_points=xvals,
@@ -2872,6 +2875,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             xlabel (str): x-axis label
             xunit (str): x-axis unit
         """
+        simultaneous = False
+        if slice_idxs[1].startswith('s'):
+            simultaneous = True
+            slice_idxs = (slice_idxs[0], slice_idxs[1][1:])
         axis = 0 if slice_idxs[1] == 'row' else 1
         if axis == 0:
             xvals = self.proc_data_dict[
@@ -2908,7 +2915,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         else:
             idxs = [idxs]
 
-        return idxs, axis, xvals, xlabel, xunit
+        return idxs, axis, xvals, xlabel, xunit, simultaneous
 
     def get_first_sweep_param(self, qbn=None, dimension=0):
         """
