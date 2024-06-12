@@ -120,12 +120,13 @@ class MeasureSSRO(CalibBuilder):
                 self.generate_sweep_functions()
 
             if preselection is not None:
-                self.prep_params = self.get_prep_params()
-                # force preselection for this measurement if desired by user
-                if preselection:
-                    self.prep_params['preparation_type'] = "preselection"
+                if self.reset_params is None:
+                    self.reset_params = {'steps': ['preselection']} \
+                        if preselection else {'steps': []}
                 else:
-                    self.prep_params['preparation_type'] = "wait"
+                    log.warning("reset_params is provided (i.e. is not None). "
+                                "Using these settings for reset, ignoring "
+                                "'preselection' kwarg.")
 
             self.sequences, self.mc_points = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block, **kw)
