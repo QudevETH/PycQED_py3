@@ -72,7 +72,8 @@ class MeasureSSRO(CalibBuilder):
             - `lengths` as readout pulse length sweep in dimension 1
     """
     default_experiment_name = 'SSRO_measurement'
-    kw_for_task_keys = ['sweep_preselection_ro_pulses']
+    kw_for_task_keys = ['sweep_preselection_ro_pulses',
+                        'sweep_feedback_ro_pulses']
     kw_for_sweep_points = {
         'amps': dict(param_name='amplitude', unit='V',
                      label='RO Pulse Amplitude', dimension=1),
@@ -282,7 +283,8 @@ class MeasureSSRO(CalibBuilder):
         raise KeyError(f'No detector function found for {acq_dev}.')
 
     def sweep_block(self, qb, sweep_points,
-                    sweep_preselection_ro_pulses=True, **kw):
+                    sweep_preselection_ro_pulses=True,
+                    sweep_feedback_ro_pulses=True, **kw):
         """Creates the SSRO sweep block.
         
         Creates the sweep block with one RO pulse and replaces the RO pulse
@@ -298,7 +300,10 @@ class MeasureSSRO(CalibBuilder):
                             param_name)
                         if sweep_preselection_ro_pulses:
                             self._prep_sweep_params[qb][
-                                param_name] = param_name
+                                'preselection_'+param_name] = param_name
+                        if sweep_feedback_ro_pulses:
+                            self._prep_sweep_params[qb][
+                                'feedback_'+param_name] = param_name
         return [ro_block]
 
     def run_analysis(self, analysis_kwargs=None, **kw):

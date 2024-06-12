@@ -341,7 +341,8 @@ class Preselection(ResetScheme):
 
         Args:
             name: Name for the reset block.
-            sweep_params: Optional parameters for sweeping.
+            sweep_params: Optional parameters for sweeping. Can be prefixed
+                with 'preselection_'.
             **kwargs: Additional keyword arguments for constructing the block.
 
         Returns:
@@ -356,6 +357,7 @@ class Preselection(ResetScheme):
         preselection_ro.update(self.get_init_specific_params()['RO'])
 
         for k, v in sweep_params.items():
+            k = k.removeprefix('preselection_')
             if k in preselection_ro:
                 preselection_ro[k] = block_mod.ParametricValue(v)
 
@@ -478,7 +480,8 @@ class FeedbackReset(ResetScheme):
 
         Args:
             name: Name for the reset block.
-            sweep_params: Optional parameters for sweeping.
+            sweep_params: Optional parameters for sweeping. Can be prefixed
+                with 'feedback_'.
             **kwargs: Additional keyword arguments for constructing the block.
 
         Returns:
@@ -488,6 +491,11 @@ class FeedbackReset(ResetScheme):
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
         active_reset_ro = deepcopy(op_dict[self.get_opcode("RO")])
+
+        for k, v in sweep_params.items():
+            k = k.removeprefix('feedback_')
+            if k in active_reset_ro:
+                active_reset_ro[k] = block_mod.ParametricValue(v)
 
         # additional changes
         active_reset_ro['name'] = f'ro_{name}'
