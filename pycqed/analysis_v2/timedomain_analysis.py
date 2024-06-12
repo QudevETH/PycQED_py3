@@ -2973,7 +2973,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             ]:
                 try:
                     func = getattr(self, cpp)
-                    to_plot.update(func(shots, sp=self.sp))
+                    to_plot.update(func(shots,
+                                        sp=self.sp,
+                                        fms=self.get_param_value('fms', False)
+                                        ))
                     print(f"{cpp} completed")
                 except Exception as e:
                     if self.raise_exceptions:
@@ -3152,37 +3155,46 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return bitstrings_labels, freqs
 
     @staticmethod
-    def cpp_cost_function(shots, sp):
+    def cpp_cost_function(shots, sp, fms):
         # targets must correspond to the soft_sweep, so sp[1]
         # FIXME: make the following line compatible with training mode,
         #  where targets are passed directly
-        targets = sp[1]['targets'][0]
         _, freqs = VariationalAlgorithmAnalysis.cpp_histogram(shots)
         # freqs shape: (n_state, hard sweep, soft sweep)
         # targets shape: (n_non_trainable_params,)
+        targets = sp[1]['targets'][0]
+        # if fms == True, we take the fully mixed state as the training data
+        # labelled by 0
+        if fms:
+            freqs = freqs[:, :, targets == 1]
+            targets = np.ones(freqs.shape[2])
         shape = freqs.shape
-        tol = 1e-10
+
+        epsilon_stable = 1e-10  # small parameter to avoid division by zero
 
         cost_func = np.zeros(shape[1])
+        weights_opt = 0.5 * np.ones([shape[1], shape[0]])
 
         # loop over hard_sweep, also the number of evaluation points
         for i in range(shape[1]):
-            weights_emp = 0.5 * np.ones(shape[0])
             # the following part assumes that the second dimension is used
             # for non-trainable parameter to prepare different states in the
             # training set. freqs shape:
             # (states, hard_sweep, soft_sweep) ~ (states, train, non_train)
             # freq1/0 shape: (states,)
             freq1 = freqs[:, i, :] @ targets / np.sum(targets)
-            freq0 = freqs[:, i, :] @ (1 - targets) / np.sum(1 - targets)
-            sel = freq0 + freq1 > tol
-            weights_emp[sel] = freq1[sel] / ((freq0 + freq1)[sel])
-            cost_func[i] -= 0.5 * np.log(weights_emp[freq1 > tol]) @ freq1[
-                freq1 > tol]
-            cost_func[i] -= 0.5 * np.log(1 - weights_emp[freq0 > tol]) @ freq0[
-                freq0 > tol]
-        # shape: (hard_sweep,) ~ (n_eval_points,)
-        return {'costfunction': cost_func}
+            if np.all(targets == 1):
+                # Triggered either by only measuring target=1, or by fms above
+                # probability distribution of a fictitious fully mixed state
+                freq0 = np.ones(shape[0]) / shape[0]
+            else:
+                freq0 = freqs[:, i, :] @ (1 - targets) / np.sum(1 - targets)
+            weights_opt[i] = freq1 / (freq0 + freq1 + epsilon_stable)
+            cost_func[i] -= 0.5 * np.log(
+                weights_opt[i] + epsilon_stable) @ freq1
+            cost_func[i] -= 0.5 * np.log(
+                1 - weights_opt[i] + epsilon_stable) @ freq0
+        return {'costfunction': cost_func, 'weightsopt': weights_opt}
 
     def cpp_auto_collapse_to_1D_whatever(self, shots, sp):  # TODO
         # -> (n_shots, soft_sweep, hard_sweep, soft_label, hard_label)
