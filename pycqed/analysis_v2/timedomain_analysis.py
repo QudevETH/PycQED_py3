@@ -2938,7 +2938,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             n_non_trainable = len(p_names) - self.get_param_value(
                 'training_settings')['trainable_params']
             for id_param in range(optim_param_values.shape[0]):
-                p_name = p_names[n_non_trainable + id_param][:-1]
+                p_name = p_names[n_non_trainable + id_param]
                 self.add_dummy_qb_data(p_name, optim_param_values[id_param])
                 self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                     p_name, [(':', 'scol')]
@@ -2965,7 +2965,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # sweep mode data processing
             shots = self._get_binary_shots_array()
 
-            to_plot = {}
+            self.cpp_outputs = {}
             for cpp in [
                 'cpp_stabilizers',
                 'cpp_corr_states',
@@ -2973,10 +2973,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             ]:
                 try:
                     func = getattr(self, cpp)
-                    to_plot.update(func(shots,
-                                        sp=self.sp,
-                                        fms=self.get_param_value('fms', False)
-                                        ))
+                    self.cpp_outputs.update(
+                        func(shots,
+                        sp=self.sp,
+                        fms=self.get_param_value('fms', False),
+                        weights=self.get_param_value('weights'),
+                    ))
                     print(f"{cpp} completed")
                 except Exception as e:
                     if self.raise_exceptions:
@@ -2984,17 +2986,18 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     else:
                         log.warning(f"{cpp} failed")
 
-            for k, v in to_plot.items():
+            for k, v in self.cpp_outputs.items():
                 # FIXME: define the sweep points in 1D case
                 self.add_dummy_qb_data(
                     k, v, sp_name=list(self.sp[0].keys())[0])
             # cpp_output = va.classical_postprocessing()
             # for qb_name in self.qb_names:
             #     del self.proc_data_dict['projected_data_dict'][qb_name]
-            # TODO use this
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'weightsopt', [(':', 'srow')]
+                'output', [(':', 'srow')]
             )
+        for qb_name in self.qb_names:
+            del self.proc_data_dict['projected_data_dict'][qb_name]
 
     def _get_binary_shots_array(self, pk=True):
         shots = self.proc_data_dict['single_shots_per_qb_thresholded']
@@ -3155,25 +3158,40 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return bitstrings_labels, freqs
 
     @staticmethod
-    def cpp_cost_function(shots, sp, fms):
+    def cpp_cost_function(shots, sp, fms=False, weights=None):
         # targets must correspond to the soft_sweep, so sp[1]
         # FIXME: make the following line compatible with training mode,
         #  where targets are passed directly
         _, freqs = VariationalAlgorithmAnalysis.cpp_histogram(shots)
         # freqs shape: (n_state, hard sweep, soft sweep)
         # targets shape: (n_non_trainable_params,)
-        targets = sp[1]['targets'][0]
+        targets = sp[1].get('targets', [None])[0]  # TODO clean up
         # if fms == True, we take the fully mixed state as the training data
         # labelled by 0
-        if fms:
-            freqs = freqs[:, :, targets == 1]
-            targets = np.ones(freqs.shape[2])
         shape = freqs.shape
+        if targets is not None:
+            if np.all(targets == 1):
+                fms = True
+        if fms and targets is not None:
+            # Replace all states (soft dim) with target==0 by a mixed state
+            if not all(targets == 1):
+                freqs[:, :, targets == 0] = np.ones(
+                    [*shape[:2], sum(targets == 0)]) / shape[0]
+            else:
+                freqs = np.concatenate((freqs, np.ones(
+                    [*shape[:2], 1]) / shape[0]), axis=2)
+                targets = np.concatenate((targets, [0]))
+        shape = freqs.shape
+        output = np.zeros(shape[1:])  # (hard, soft)
 
         epsilon_stable = 1e-10  # small parameter to avoid division by zero
 
-        cost_func = np.zeros(shape[1])
-        weights_opt = 0.5 * np.ones([shape[1], shape[0]])
+        # JS_divergence = np.log(2) * np.ones(shape[1:])  # (hard, soft)
+        if weights is None:  # (hard, n_bs)
+            weights_opt = 0.5 * np.ones([shape[1], shape[0]])
+        else:
+            weights_opt = weights  # TODO could expand to 2D if 1D only
+        cost_func = np.zeros(shape[1])  # (hard)
 
         # loop over hard_sweep, also the number of evaluation points
         for i in range(shape[1]):
@@ -3182,19 +3200,26 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # training set. freqs shape:
             # (states, hard_sweep, soft_sweep) ~ (states, train, non_train)
             # freq1/0 shape: (states,)
-            freq1 = freqs[:, i, :] @ targets / np.sum(targets)
-            if np.all(targets == 1):
-                # Triggered either by only measuring target=1, or by fms above
-                # probability distribution of a fictitious fully mixed state
-                freq0 = np.ones(shape[0]) / shape[0]
-            else:
+            if targets is not None:
+                freq1 = freqs[:, i, :] @ targets / np.sum(targets)
                 freq0 = freqs[:, i, :] @ (1 - targets) / np.sum(1 - targets)
-            weights_opt[i] = freq1 / (freq0 + freq1 + epsilon_stable)
-            cost_func[i] -= 0.5 * np.log(
-                weights_opt[i] + epsilon_stable) @ freq1
-            cost_func[i] -= 0.5 * np.log(
-                1 - weights_opt[i] + epsilon_stable) @ freq0
-        return {'costfunction': cost_func, 'weightsopt': weights_opt}
+                if weights is None:
+                    weights_opt[i] = freq1 / (freq0 + freq1 + epsilon_stable)
+                # JS_divergence[i] += 0.5 * np.log(
+                #     weights_opt[i] + epsilon_stable) @ freqs[:, i, :]
+                # JS_divergence[i] += 0.5 * np.log(
+                #     1 - weights_opt[i] + epsilon_stable) @ freq0
+                cost_func[i] -= 0.5 * np.log(
+                    weights_opt[i] + epsilon_stable) @ freq1
+                cost_func[i] -= 0.5 * np.log(
+                    1 - weights_opt[i] + epsilon_stable) @ freq0
+            output[i] = weights_opt[i] @ freqs[:, i, :]
+        return {
+            'output': output,
+            'costfunction': cost_func,
+            'weightsopt': weights_opt,
+            # 'JSdivergence': JS_divergence,
+        }
 
     def cpp_auto_collapse_to_1D_whatever(self, shots, sp):  # TODO
         # -> (n_shots, soft_sweep, hard_sweep, soft_label, hard_label)
