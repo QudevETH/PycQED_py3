@@ -2922,6 +2922,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
         # FIXME: replacing the values of a qubit is a hack, we should
         #  instead create a new entry
+        if 'slice_idxs_1d_proj_plot' not in self.options_dict:
+            self.options_dict['slice_idxs_1d_proj_plot'] = {}
         if self.get_param_value('optimize'):
             # TODO one could recalculate the cost function from shots instead
             cost_func = self.raw_data_dict['cost_function_values']
@@ -2932,10 +2934,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             #   n batches (soft),
             # )
             # Create a 1 D plot (n batches * n sets per batch) for each param
-            if 'slice_idxs_1d_proj_plot' not in self.options_dict:
-                self.options_dict['slice_idxs_1d_proj_plot'] = {}
+            p_names = self.get_param_value('optim_param_names')
+            n_non_trainable = len(p_names) - self.get_param_value(
+                'training_settings')['trainable_params']
             for id_param in range(optim_param_values.shape[0]):
-                p_name = self.get_param_value('optim_param_names')[id_param]
+                p_name = p_names[n_non_trainable + id_param][:-1]
                 self.add_dummy_qb_data(p_name, optim_param_values[id_param])
                 self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                     p_name, [(':', 'scol')]
@@ -2983,8 +2986,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.add_dummy_qb_data(
                     k, v, sp_name=list(self.sp[0].keys())[0])
             # cpp_output = va.classical_postprocessing()
-            for qb_name in self.qb_names:
-                del self.proc_data_dict['projected_data_dict'][qb_name]
+            # for qb_name in self.qb_names:
+            #     del self.proc_data_dict['projected_data_dict'][qb_name]
+            # TODO use this
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'weightsopt', [(':', 'srow')]
+            )
 
     def _get_binary_shots_array(self, pk=True):
         shots = self.proc_data_dict['single_shots_per_qb_thresholded']
