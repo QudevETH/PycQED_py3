@@ -521,7 +521,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
     operation_dict = dev.get_operation_dict(qubits=qubits)
 
     if preselection:
-        log.warning("Using `preselection` keyword agrument is deprecated and"
+        log.warning("Using `preselection` keyword argument is deprecated and"
                     " will be removed in a future MR. Please use `reset_params"
                     "='preselection'` instead.")
         reset_params = "preselection"
