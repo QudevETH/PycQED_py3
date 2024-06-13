@@ -412,7 +412,10 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                  '_trans_length', initial_value=0,
                                  vals=vals.Numbers(0),
                                  docstring="Used for NZTransitionControlledPulse")
-        self.add_pulse_parameter(op_name, ps_name + '_filter_bypass',
+        for transition_name in ['', '_ef']:
+            self.add_pulse_parameter(f'PFM{transition_name}',
+                                 f'parametric_flux_modulation'
+                                 f'{transition_names}_filter_bypass',
                                  'filter_bypass', initial_value=None,
                                  vals=vals.Enum(None, 'FIR', 'IIR', 'all'),
                                  docstring=
