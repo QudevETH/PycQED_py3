@@ -5235,53 +5235,21 @@ class f0g1Pitch(SingleQubitGateCalibExperiment):
         )
         return d
 
-class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
+class LeakageReductionUnit(SingleQubitGateCalibExperiment):
     """
-    # TODO: Edited the docstring
-    Rabi measurement for finding the amplitude of a pi-pulse that excites
-    the desired transmon transition. This is a SingleQubitGateCalibExperiment,
-    see docstring there for general information.
-
-    Sequence for each task (for further info and possible parameters of
-    the task, see the docstring of the method sweep_block):
-
-        |tr_prep_pulses**|  ---  |X180_tr_name**|  ---  |RO*|
-                                  sweep amplitude
-
-        * = in parallel on all qubits_to_measure (key in the task)
-        ** = in parallel on all qubits_to_measure and aligned at the end
-             (i.e. ends of X180_tr_name are aligned with start of RO pulses)
-
-        Note: if the qubits have different drive pulse lengths, then alignment
-        at the start of RO pulse means the individual drive pulses may end up
-        not being applied in parallel between different qubits.
-        Ex: qb2 has longer ef pulse than qb1
-            qb1:             |X180| --- |X180_ef| --- |RO|
-            qb2:    |X180| --- |     X180_ef    | --- |RO|
-
-        Note: depending on which transition is tuned up in each task, the
-        sequence can have different number of pulses for each qubit.
-
-    See docstring of parent class for the first 3 parameters.
-    :param amps: (numpy array) amplitude sweep points for X180_tr_name.
-        This parameter can be used together with "qubits" for convenience to
-        avoid having to specify a task_list.
-        If not None, amps will be used to create the first dimension of
-        sweep points, which will be identical for all tasks.
+    LRU measurement for finding the amplitude, frequency and pulse length of the LRU.
+    This is a SingleQubitGateCalibExperiment, see docstring there for general information.
 
     :param kw: keyword arguments.
         Can be used to provide keyword arguments to sweep_n_dim, autorun, and
         to the parent class.
 
-        The following keyword arguments will be copied as a key to tasks
-        that do not have their own value specified (see docstring of
-        sweep_block):
-        - n
-
     The following keys in a task are interpreted by this class in
     addition to the ones recognized by the parent classes:
-        - n
-        - amps
+        - amplitude
+        - pulse_length
+        - frequency
+        - transition_name
     """
 
     kw_for_sweep_points = {
@@ -5311,28 +5279,25 @@ class LeakageReudctionUnit(SingleQubitGateCalibExperiment):
         see the pulse sequence in the class docstring.
         :param qb: qubit name
         :param sweep_points: SweepPoints instance
-        :param kw: keyword arguments
-            n: (int, default: 1) number of Rabi pulses (X180_tr_name in the
-                pulse sequence). Amplitude of all these pulses will be swept.
+        :param transition_name: currently we use 'ef' to prepare the e-level
+                                and 'ef' together with the kw argument
+                                'prepare_f' to prepare the f-level
+        :param kw: keyword arguments:
+            - amplitude: (float) amplitude of PFM pulse
+            - pulse_length: (float) length of PFM pulse
+            - frequency: (float) frequency of PFM pulse
+            - prepare_f: (bool) if True, the pulse sequence prepares the f-level
         """
 
-        # create prepended pulses
         prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
                                              **kw)
 
-        # add ef pulse if specified
-
+        # Add ef pulse if specified; transition_name 'ef' only prepares the e-level
         ef_pulse = self.block_from_ops(f'ef_pulse',
                                        [f'X180_ef {qb}'])
 
 
         # add modulation pulse
-        # flux_pulse_amplitude = kw.get('flux_pulse_amplitude', 0)
-        # flux_pulse_length = kw.get('flux_pulse_length', 4e-8)
-        # flux_pulse_frequency = kw.get('flux_pulse_frequency', 0)
-        # pulse_modifs = {'all': {'amplitude': flux_pulse_amplitude,
-        #                     'pulse_length': flux_pulse_length,
-        #                     'frequency': flux_pulse_frequency}}
         modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
                                                [f'PFM{transition_name} {qb}'] * num_LRUs,
                                                # pulse_modifs=pulse_modifs
@@ -5612,104 +5577,3 @@ class DriveAmplitudeNonlinearityCurve(CalibBuilder):
                 qubit.name]
             qubit.set('amp_scaling_correction_coeffs',
                       [nl_fit_pars['a'], nl_fit_pars['b']])
-
-
-class LeakageReductionUnit(SingleQubitGateCalibExperiment):
-    """
-    LRU measurement for finding the amplitude, frequency and pulse length of the LRU.
-    This is a SingleQubitGateCalibExperiment, see docstring there for general information.
-
-    :param kw: keyword arguments.
-        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
-        to the parent class.
-
-    The following keys in a task are interpreted by this class in
-    addition to the ones recognized by the parent classes:
-        - amplitude
-        - pulse_length
-        - frequency
-        - transition_name
-    """
-
-    default_experiment_name = 'Leakage_reduction_unit'
-
-    def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 amps=None, length= None, **kw):
-        try:
-            super().__init__(task_list, qubits=qubits,
-                             sweep_points=sweep_points,
-                             amps=amps, length=length, **kw)
-        except Exception as x:
-            self.exception = x
-            traceback.print_exc()
-
-    def sweep_block(self, qb, sweep_points, transition_name, **kw):
-        """
-        This function creates the blocks for the leakage-reduction task,
-        see the pulse sequence in the class docstring.
-        :param qb: qubit name
-        :param sweep_points: SweepPoints instance
-        :param transition_name: currently we use 'ef' to prepare the e-level and 'ef' together with the kw argument
-                                'prepare_f' to prepare the f-level
-        :param kw: keyword arguments:
-            - amplitude: (float) amplitude of PFR pulse
-            - pulse_length: (float) length of PFR pulse
-            - frequency: (float) frequency of PFR pulse
-            - prepare_f: (bool) if True, the pulse sequence prepares the f-level
-        """
-
-        # Create prepended pulses, should be fh to prepare f-level, but currently we add the ef pulse explicitly below
-        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
-                                             **kw)
-
-        # FIXME: this can likely be removed when using transition_name='fh'
-        # Add ef pulse if specified; transition_name 'ef' only prepares the e-level
-        ef_pulse = self.block_from_ops(f'ef_pulse',
-                                       [f'X180_ef {qb}'])
-
-        # Add modulation pulse
-        pfr_amplitude = kw.get('PFR_amplitude', 0)
-        pfr_length = kw.get('PFR_length', 4e-8)
-        pfr_frequency = kw.get('PFR_frequency', 0)
-        pulse_modifs = {0: {'amplitude': pfr_amplitude,
-                            'pulse_length': pfr_length,
-                            'frequency': pfr_frequency}}
-
-        # Changed to be the actual PFR operation: to be tested
-        # modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
-        #                                        [f'FP {qb}'],
-        #                                        pulse_modifs=pulse_modifs
-        #                                        )
-        modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
-                                               [f'PFR_ef {qb}'],
-                                               pulse_modifs=pulse_modifs
-                                               )
-        # create ParametricValues from param_name in sweep_points
-        for sweep_dict in sweep_points:
-            for param_name in sweep_dict:
-                for pulse_dict in modulation_block.pulses:
-                    if param_name in pulse_dict:
-                        pulse_dict[param_name] = ParametricValue(param_name)
-
-        # FIXME: see above: this can likely be removed when using transition_name='fh'
-        if kw.get('prepare_f', False):
-            return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
-                                          prepend_blocks + [ef_pulse] + [
-                                              modulation_block])
-        else:
-            return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
-                                          prepend_blocks + [modulation_block])
-
-    def run_analysis(self, analysis_kwargs=None, **kw):
-        """
-        Runs analysis and stores analysis instance in self.analysis.
-        :param analysis_kwargs: (dict) keyword arguments for analysis class
-        :param kw: keyword arguments
-        """
-
-        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
-        if analysis_kwargs is None:
-            analysis_kwargs = {}
-        self.analysis = tda.LeakageReductionUnitAnalysis(
-            qb_names=self.meas_obj_names, t_start=self.timestamp,
-            **analysis_kwargs)
