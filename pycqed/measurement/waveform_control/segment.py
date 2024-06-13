@@ -1891,7 +1891,7 @@ class Segment:
                     pulse_wfs = pulse.waveforms(chan_tvals)
 
                     # insert the waveforms at the correct position in wfs
-                                        if pulse.filter_bypass is not None:
+                    if pulse.filter_bypass is not None:
                         assert pulse.filter_bypass in filter_bypasses,\
                             (f'Filter bypass type: {pulse.filter_bypass} not '
                              f'in {filter_bypasses}')
@@ -1902,20 +1902,20 @@ class Segment:
                                                                       pulse_end,
                                                                       pulse_wfs))
                     else:
-                    # offset by the pulsar software channel delay
-                    el_buffer = self.pulsar.min_element_buffer() or 0.
-                    for channel in pulse_channels:
-                        extra_delay = self.pulsar.get(channel + '_delay') or 0.
-                        # extra 1e-12 to deal with numerical precision
-                        if abs(extra_delay) > el_buffer + 1e-12:
-                            raise Exception('Delay on channel {} exceeds the '
-                                    'available pulse buffer!'.format(channel))
-                        extra_delay_samples = self.time2sample(
-                            extra_delay, awg=awg)
-                        ps_mod = pulse_start + extra_delay_samples
-                        pe_mod = pulse_end + extra_delay_samples
-                        wfs[pulse.codeword][channel][ps_mod:pe_mod] += \
-                            pulse_wfs[channel]
+                        # offset by the pulsar software channel delay
+                        el_buffer = self.pulsar.min_element_buffer() or 0.
+                        for channel in pulse_channels:
+                            extra_delay = self.pulsar.get(channel + '_delay') or 0.
+                            # extra 1e-12 to deal with numerical precision
+                            if abs(extra_delay) > el_buffer + 1e-12:
+                                raise Exception('Delay on channel {} exceeds the '
+                                        'available pulse buffer!'.format(channel))
+                            extra_delay_samples = self.time2sample(
+                                extra_delay, awg=awg)
+                            ps_mod = pulse_start + extra_delay_samples
+                            pe_mod = pulse_end + extra_delay_samples
+                            wfs[pulse.codeword][channel][ps_mod:pe_mod] += \
+                                pulse_wfs[channel]
 
                 # for codewords: add the pulses that do not have a codeword to
                 # all codewords
