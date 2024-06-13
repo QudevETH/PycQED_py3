@@ -2968,7 +2968,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             self.cpp_outputs = {}
             for cpp in [
                 'cpp_stabilizers',
-                'cpp_corr_states',
+                'cpp_histogram',
                 'cpp_cost_function',
             ]:
                 try:
@@ -3058,12 +3058,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         }
 
     @staticmethod
-    def cpp_corr_states(shots, **kw):
-        # compatible with any qubit number
-        bitstrings, freqs = VariationalAlgorithmAnalysis.cpp_histogram(shots)
-        return {b: f for b, f in zip(bitstrings, freqs)}
-
-    @staticmethod
     def cpp_stabilizers(shots, **kw):
         # Should return {'dummy_qbn': values}
         shape = shots.shape
@@ -3102,29 +3096,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             'stabx3': stabx(shots)[3]
         }
 
-    # shot to freq, not used
-    @staticmethod
-    def cpp_histogram2(shots):
-        shape = shots.shape
-        # shape = (n_qb, n_shots, hard_sweep, soft_sweep)
-
-        shots_flat = shots.reshape([shape[0], shape[1], -1])
-
-        convrt = 2 ** np.arange(shape[0])
-
-        for i in range(shape[2]):
-
-            freqs = np.zeros((2 ** shape[0], np.prod(shape[2:])))
-
-            for j in range(np.prod(shape[2:])):
-                # count histogram# relative frequencies of samples
-                bitstrings = convrt @ shots_flat[:, :, j]
-                values, counts = np.unique(bitstrings, return_counts=True)
-                freqs[values, j] = counts / shape[
-                    1]  # calculate relative frequencies
-
-        # return shape: (n_state, ...)
-        return freqs.reshape((-1, *shape[2:]))
 
     # shot to freq
     @staticmethod
@@ -3155,14 +3126,15 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freqs = freqs.reshape((2 ** shape[0], *shape[2:]))
         bitstrings_labels = [
             format(i, f'0{shape[0]}b') for i in range(2**shape[0])]
-        return bitstrings_labels, freqs
+        return {b: f for b, f in zip(bitstrings_labels, freqs)}
 
     @staticmethod
     def cpp_cost_function(shots, sp, fms=False, weights=None):
         # targets must correspond to the soft_sweep, so sp[1]
         # FIXME: make the following line compatible with training mode,
         #  where targets are passed directly
-        _, freqs = VariationalAlgorithmAnalysis.cpp_histogram(shots)
+        freqs = VariationalAlgorithmAnalysis.cpp_histogram(shots)
+        freqs = np.array(list(freqs.values()))
         # freqs shape: (n_state, hard sweep, soft sweep)
         # targets shape: (n_non_trainable_params,)
         targets = sp[1].get('targets', [None])[0]  # TODO clean up
@@ -3219,6 +3191,31 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             'costfunction': cost_func,
             'weightsopt': weights_opt,
             # 'JSdivergence': JS_divergence,
+        }
+
+    @staticmethod
+    def cpp_output(freqs, weights, axis=0):
+        # Basic idea: 1D weights dot ND freqs -> ND output
+        # This method additionally allows ND weights (swept over all dims>0)
+        assert isinstance(axis, int)
+        if isinstance(weights, dict):
+            raise NotImplementedError
+            # TODO extract weights from timestamps
+            #  (with slicing)
+        assert isinstance(weights, np.ndarray)
+        shape = freqs.shape
+        if len(weights.shape) == 1:
+            # Broadcast 'weights' to an ND array of dims given by 'shape'
+            # assuming that the current 1D array corresponds to dim 'axis'
+            new_axes = list(range(len(shape)))
+            new_axes.pop(axis)
+            # Create all new_axes, with length 1
+            weights = np.expand_dims(weights, axis=new_axes)
+            # Extend new_axes dims so they match the shape of freqs
+            weights = np.broadcast_to(weights, shape)
+        output = np.sum(weights * freqs, axis=axis)  # dot product along axis
+        return {
+            'output': output,
         }
 
     def cpp_auto_collapse_to_1D_whatever(self, shots, sp):  # TODO
