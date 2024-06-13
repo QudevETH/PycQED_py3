@@ -9255,10 +9255,10 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
 
                 for i, data_mean in enumerate(data_means.values()):
                     main_ax.scatter(data_mean[0], data_mean[1], color='w', s=80)
-                    if len(clf_means):
+                    if len(clf_means) and len(clf_means) > i:
                         main_ax.scatter(clf_means[i][0], clf_means[i][1],
                                         color='k', s=80)
-                    if len(covs) != 0:
+                    if len(covs) != 0 and len(covs) > i:
                         self.plot_std(clf_means[i] if len(clf_means)
                                       else data_mean,
                                       covs[i],
