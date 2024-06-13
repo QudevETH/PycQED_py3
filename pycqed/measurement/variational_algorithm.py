@@ -30,6 +30,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     def __init__(self, optimize=True, optimizer=None,
                  classified=False, df_name='int_log_det',
                  sweep_points=None, fixed_params_values=None, **kw):
+        self.default_experiment_name += '_opt' if optimize else ''
         try:
             if optimize:
                 sweep_points = None
@@ -525,10 +526,13 @@ class VQAOptimizer:
         # in MeasurementControl.measure_soft_adaptive:
         # self.adaptive_function(self.optimization_function, **self.af_pars)
         self.measurement_function = fun
-        result = self.optimizer_function(self._full_circuit,
-                                         **self.optimizer_kw)
-        # if self.optimizer_callback is not None:
-        #     result = self.optimizer_callback(result)
+        try:
+            self.optimizer_function(self._full_circuit,
+                                    **self.optimizer_kw)
+        except KeyboardInterrupt:
+            log.warning(
+                'Caught a KeyboardInterrupt and there is unsaved data. '
+                'Trying clean exit to save data.')
         cf = np.concatenate(self.cost_function_values, axis=1)
         # cf.shape: (n sets of train. pars (hard), n batches (soft))
         pv = np.array(self.optim_param_values)
@@ -539,7 +543,6 @@ class VQAOptimizer:
         #   n batches (soft)
         # )
         result_dict = {
-            'opt_result': result,
             'optim_param_values': pv,
             'cost_function_values': cf,
         }
@@ -721,20 +724,19 @@ class VQAOptimizer:
                 self.optimizer_kw = {}
             elif optimizer_function == 'evolutionary':
                 def _evolutionary_strategy(cost_function, angles_init, npop,
-                                           sigma, alpha,
-                                           Nsteps):
+                                           sigma, rate, Nsteps):
                     length = len(angles_init)
 
                     angles_ev = np.zeros([Nsteps + 1, length])
-                    cost_ev = np.zeros([Nsteps])
                     angles_ev[0] = angles_init  # initial guess
 
-                    min_cost = cost_ev[0]
-                    min_angles = angles_init
 
                     for i in range(Nsteps):
-                        seed = np.random.randn(npop, length)
-                        angles_try = angles_ev[i] + sigma * seed
+                        seed = sigma * np.random.randn(npop-1, length)
+                        # TODO comment
+                        seed = np.concatenate((np.zeros((1, length)), seed),
+                                              axis=0)
+                        angles_try = angles_ev[i] + seed
 
                         # cost = Parallel(n_jobs = num_cores)(delayed(\
                         # cost_function)(angles) for angles in angles_try)
@@ -744,15 +746,11 @@ class VQAOptimizer:
                         #      angles_try]).reshape(npop)
 
                         cost_diff = (cost - np.mean(cost)) / np.std(cost)
-                        angles_ev[i + 1] = angles_ev[i] - alpha / (
-                                    npop * sigma) * np.dot(seed.T, cost_diff)
-                        min_index = np.argmin(cost)
-                        cost_ev[i] = cost[min_index]
-                        if cost[min_index] < min_index:
-                            min_cost = cost[min_index]
-                            min_angles = angles_try[min_index]
+                        gradient = rate * np.dot(seed.T, cost_diff) / npop
+
+                        angles_ev[i + 1] = angles_ev[i] - gradient
                         print(f'iteration: {i}/{Nsteps}', ', cost:',
-                              cost_ev[i])
+                              np.mean(cost))
 
                     class res:
                         fun = min_cost
