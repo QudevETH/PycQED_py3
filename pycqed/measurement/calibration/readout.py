@@ -62,7 +62,10 @@ class MeasureSSRO(CalibBuilder):
         sweep_preselection_ro_pulses (bool): Whether to sweep preselection
             readout pulses the same way as the (final) readout pulse (default:
             True)
-        preselection (bool): Whether to perform preselection (default: True)
+        preselection (bool, None): Deprecated. Use reset_params instead.
+            Whether to perform preselection (default: None).
+            If True: Forces preselection.
+            If False: Forces no preselection.
         **kw: keyword arguments. Can be used to provide keyword arguments to
             parallel_sweep/sweep_n_dim, preprocess_task_list, autorun and to
             the parent class.
@@ -86,7 +89,7 @@ class MeasureSSRO(CalibBuilder):
     def __init__(self, task_list=None, qubits=None, sweep_points=None,
                  n_shots=2**15, states='ge', multiplexed_ssro=False,
                  update_classifier=True, update_ro_params=True,
-                 preselection=True, **kw):
+                 preselection=None, **kw):
         try:
             qubits, task_list = self._parse_qubits_and_tasklist(qubits,
                                                                 task_list)
@@ -102,7 +105,6 @@ class MeasureSSRO(CalibBuilder):
             self.update_classifier = update_classifier
             self.update_ro_params = update_ro_params
             self.multiplexed_ssro = multiplexed_ssro
-            self.preselection = preselection
 
             # create cal_points for analysis, no cal points are measured
             # store in temporary variable because self.parallel_sweep accesses
@@ -120,13 +122,11 @@ class MeasureSSRO(CalibBuilder):
                 self.generate_sweep_functions()
 
             if preselection is not None:
-                if self.reset_params is None:
-                    self.reset_params = {'steps': ['preselection']} \
-                        if preselection else {'steps': []}
-                else:
-                    log.warning("reset_params is provided (i.e. is not None). "
-                                "Using these settings for reset, ignoring "
-                                "'preselection' kwarg.")
+                log.warning(
+                    "Using `preselection` keyword argument is deprecated and"
+                    " will be removed in a future MR. Please use `reset_params"
+                    "='preselection'` or `reset_params={'steps':[]}` instead.")
+                self.reset_params = 'preselection' if preselection else False
 
             self.sequences, self.mc_points = self.parallel_sweep(
                 self.preprocessed_task_list, self.sweep_block, **kw)
