@@ -12360,6 +12360,411 @@ class f0g1BandwidthAnalysis(MultiQubit_TimeDomain_Analysis):
                     'setlabel': '$P_g$',
                 }
 
+class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
+    def extract_data(self):
+        super().extract_data()
+
+        # Probably not needed anymore but keep it for now to avoid
+        # re-implmenting it if needed. Was used to calculate fit parameters
+        # self.task_list = self.get_param_value('task_list')
+        # self.qb_names = self.get_param_value('qb_names',
+        #                                      self.get_qbs_from_task_list(
+        #                                          self.task_list))
+        #
+        # params = ['ge_freq', 'fit_ge_freq_from_dc_offset',
+        #           'fit_ge_freq_from_flux_pulse_amp',
+        #           'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
+        # for qbn in self.qb_names:
+        #     self.raw_data_dict.update({f"{p}_{qbn}":
+        #                                    self.get_hdf_param_value(
+        #                                        f'Instrument settings/{qbn}', p)
+        #                                for p in params})
+
+    def coupling_strength(self, g_ro, w_p, delta_w):
+        g = np.sqrt(2) * g_ro * sp.special.jv(1, delta_w / (2 * w_p))
+        return g
+
+    # def coupling_strength(g_ro, w_p, harmonic, fs2, fs4, fs6):
+    #     try:
+    #         if harmonic == 'first':
+    #             g = np.sqrt(2)*g_ro*sp.special.jv(1, fs2/(2*w_p))
+    #         elif harmonic == 'second':
+    #             g = np.sqrt(2)*g_ro*(sp.special.jv(2, fs2/(2*w_p)) +
+    #                                  sp.special.jv(1, fs4/(4*w_p)))
+    #         elif harmonic == 'third':
+    #             g = np.sqrt(2)*g_ro*(sp.special.jv(3, fs2/(2*w_p)) +
+    #                                  sp.special.jv(1, fs4/(4*w_p)) *
+    #                                  sp.special.jv(1, fs2/(2*w_p)) +
+    #                                  sp.special.jv(1, fs6/(6*w_p)))
+    #     except:
+    #         raise('Only implemented for fist three harmonics. Provide '
+    #               '"first" (default), "second" or "third" '
+    #               'as an argument.')
+    #     return g
+
+    def prepare_fitting(self):
+        """
+        Prepares the fitting by creating the fit_dicts.
+        Need to fix some things still, but currently on hold since we don't
+        fully understand the dynamics yet
+        """
+        self.fit_dicts = OrderedDict()
+        def pf_function(t, w_p=100e6, g_ro=100e6, kappa=10e6, scaling=1,
+                        #harmonic='first',
+                        # fs2=0, fs4=0, fs6=0
+                        delta_w=100e6,
+                        time_offset=0, pop_offset=0
+                        ):
+            """
+            Calculates the probability to be in the f state for SWAP with the
+            readout resoantor
+            From: 'A Fast and Universal Leakage Reduction Unit',
+                   Sebastian Krinner, (Dated: August 2, 2022)
+            :param t                time:
+            :param w_p              modulation frequency in Hz:
+            :param delta_w          modulation depth:
+            :param g_ro             coupling between qubit and readout resonator
+            :param kappa            linewidth of resonator:
+            :param harmonic         harmonic on which the interaction is done:
+            :param fs2, fs4, fs6    Fourier coefficients of the qubit frequency.
+                                    For small modulation amplitudes fs2 is
+                                    equal to the modulation depth:
+            :return:                probability to be in f state
+            """
+
+            t = t * 1e9 + time_offset * 1e9
+            w_p =  w_p * 1e-9 * 2 * np.pi
+            kappa = kappa * 1e-9 * 2 * np.pi
+            g_ro = g_ro * 1e-9 * 2 * np.pi
+            delta_w = delta_w * 1e-9 * 2 * np.pi
+            # fs2, fs4, fs6 = fs2*1e-9, fs4*1e-9, fs6*1e-9 # Currently we don't
+            # # use the higher order terms but might want to include them later
+
+            g = self.coupling_strength(g_ro, w_p, delta_w)
+
+            # Calculate time dynamics https://doi.org/10.1038/s41467-021-26205-y
+            if kappa == 4 * g:
+                pf = pop_offset + (t < -time_offset) * scaling + \
+                     (t >= -time_offset) * scaling * np.exp(-kappa * t / 2) *\
+                     (1 + kappa * t / 4) ** 2
+            else:
+                M = np.emath.sqrt(16 * g ** 2 - kappa ** 2) / 4
+                pf = pop_offset + (t < -time_offset) * scaling + \
+                     (t >= -time_offset) * scaling * np.exp(-kappa * t / 2) * \
+                     (np.cos(M * t) + kappa / (4 * M) * np.sin(M * t)) ** 2
+
+            return pf
+
+
+        def add_fit_dict(qbn, data, key):
+            if self.num_cal_points != 0:
+                if np.array(data).ndim > 1:
+                    data = np.array([element[:-self.num_cal_points]
+                                     for element in data])
+                else:
+                    data = data[:-self.num_cal_points]
+
+            t = self.proc_data_dict['sweep_points_dict'][qbn][
+                'msmt_sweep_points']
+            try:
+                if 'sweep_points_2D_dict' in self.proc_data_dict:
+                    w_p = self.proc_data_dict['sweep_points_2D_dict'][qbn][
+                        'frequency']
+                else:
+                    w_p = self.get_param_value('task_list')[0][
+                        'flux_pulse_frequency']
+            except KeyError as e:
+                raise e
+
+            kappa = self.get_param_value('kappa', 35e6)
+            fit_kappa = self.get_param_value('fit_kappa', True)
+            g_ro = self.get_param_value('g_ro', 100e6)
+            fit_g_ro = self.get_param_value('fit_g_ro', True)
+            delta_w = self.get_param_value('delta_w', 100e6)
+            fit_delta_w = self.get_param_value('fit_delta_w', True)
+            # self.harmonic = self.get_param_value('harmonic', 'first')
+
+
+            pf_model = lmfit.Model(pf_function, independent_vars=['t'])
+            pf_model.set_param_hint('w_p', value=w_p, min=10e6, max=700e6,
+                                    vary=False)
+            pf_model.set_param_hint('kappa', value=kappa, min= 1e6, max=100e6,
+                                    vary=fit_kappa)
+            pf_model.set_param_hint('g_ro', value=g_ro, min=10e6, max=300e6,
+                                    vary=fit_g_ro)
+            # pf_model.set_param_hint('g', value=6e6, min=1e6, max=30e6,
+            #                         vary=True)
+            pf_model.set_param_hint('delta_w', value=delta_w, min=10e6,
+                                    max=400e6, vary=fit_delta_w)
+            pf_model.set_param_hint('scaling', value=1, min=0, max=1.5)
+            pf_model.set_param_hint('time_offset', value=0,
+                                    min=-10e-9, max=1e-9)
+            pf_model.set_param_hint('pop_offset', value=0, min=-0.05, max=+0.05)
+
+            # if self.harmonic == 'first':
+            #     # pf_model.set_param_hint('harmonic', value='first', vary=False)
+            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6,
+            #                             max=400e6, vary=True)
+            #     pf_model.set_param_hint('fs4', value=0, min=0, max=400e4,
+            #                             vary=False)
+            #     pf_model.set_param_hint('fs6', value=0, min=0, max=400e4,
+            #                             vary=False)
+            # if self.harmonic == 'second':
+            #     # pf_model.set_param_hint('harmonic', value='second', vary=False)
+            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6,
+            #                             max=400e6, vary=True)
+            #     pf_model.set_param_hint('fs4', value=delta_w/10, min=0,
+            #                             max=400e6, vary=True)
+            #     pf_model.set_param_hint('fs6', value=0, min=0, max=400e4,
+            #                             vary=False)
+            # if self.harmonic == 'third':
+            #     # pf_model.set_param_hint('harmonic', value='third', vary=False)
+            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6,
+            #                             max=400e6, vary=True)
+            #     pf_model.set_param_hint('fs4', value=delta_w / 100, min=10e4,
+            #                             max=400e4, vary=True)
+            #     pf_model.set_param_hint('fs6', value=delta_w / 100, min=10e4,
+            #                             max=400e4, vary=True)
+
+            guess_pars = pf_model.make_params()
+            self.set_user_guess_pars(guess_pars)
+
+            self.fit_dicts[key] = {
+                'model': pf_model,
+                'fit_fn': pf_model.func,
+                'fit_xvals': {'t': t},
+                'fit_yvals': {'data': data},
+                'method': 'dual_annealing',
+                'guess_params': guess_pars,
+                'fit_guess': False}
+
+        if self.do_fitting:
+            for task in self.get_param_value('task_list'):
+                qbn = task['qb']
+                if qbn in self.qb_names:
+                    if 'projected_data_dict_corrected' in self.proc_data_dict:
+                        data = self.proc_data_dict[
+                            'projected_data_dict_corrected'][qbn]['pf']
+                    else:
+                        data = self.proc_data_dict['projected_data_dict'][
+                            qbn]['pf']
+
+                    add_fit_dict(qbn=qbn, data=data,
+                                 key=f'leakage_reduction_unit_{qbn}')
+
+    def analyze_fit_results(self):
+        """
+        Analyzes the fit results and stores the relevant parameters in the
+        Possibly need to fix some things still, but currently on hold since
+        we don't fully understand the dynamics yet
+        """
+
+        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
+        for k, fit_dict in self.fit_dicts.items():
+            # k is of the form leakage_reduction_unit_qb1
+            # Replace k with qb1
+            k = k.replace('leakage_reduction_unit_', '')
+            fit_res = fit_dict['fit_res']
+            self.proc_data_dict['analysis_params_dict'][k] = \
+                fit_res.best_values
+            g_ro, delta_w, w_p = fit_res.best_values['g_ro'], \
+                fit_res.best_values['delta_w'], fit_res.best_values['w_p']
+            # g_ro, fs2, fs4, fs6, w_p = fit_res.best_values['g_ro'], \
+            #     fit_res.best_values['fs2'], fit_res.best_values['fs4'], \
+            #     fit_res.best_values['fs6'],fit_res.best_values['w_p']
+            self.proc_data_dict['analysis_params_dict'][k]['g_eff'] = \
+                np.sqrt(2)*g_ro*sp.special.jv(1,delta_w/(2 * w_p))
+            # self.proc_data_dict['analysis_params_dict'][k]['g_eff'] = \
+            #     self.coupling_strength(g_ro, w_p, self.harmonic, fs2, fs4, fs6)
+        self.save_processed_data(key='analysis_params_dict')
+
+    def prepare_plots(self):
+        super().prepare_plots()
+
+        if self.do_fitting and self.metadata['transition_name'] == 'ef':
+            # Fitting is only implemented for f-level at the moment
+            for task in self.get_param_value('task_list'):
+                qbn = task['qb']
+                if qbn in self.qb_names:
+                    # 1D fit plot
+                    base_plot_name = f'Leakage_reduction_unit_fit_{qbn}_pf_1D'
+                    xlabel, xunit = self.get_xaxis_label_unit(qbn)
+                    xvals = self.proc_data_dict['sweep_points_dict'][qbn][
+                        'msmt_sweep_points']
+                    ylabel = self.get_yaxis_label(qb_name=qbn, data_key='f')
+                    yvals = self.proc_data_dict['data_to_fit'][qbn]
+                    if self.num_cal_points != 0:
+                        if np.array(yvals).ndim > 1:
+                            yvals = np.array([element[:-self.num_cal_points]
+                                              for element in yvals][0])
+                        else:
+                            yvals = yvals[:-self.num_cal_points]
+
+                    self.plot_dicts[f'{base_plot_name}_main'] = {
+                        'plotfn': self.plot_line,
+                        'fig_id': base_plot_name,
+                        'xvals': xvals,
+                        'yvals': yvals,
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'ylabel': ylabel,
+                        'title': (self.raw_data_dict['timestamp'] + ' ' +
+                                  self.measurement_strings[qbn]),
+                    }
+                    for k, fit_dict in self.fit_dicts.items():
+                        fit_res = fit_dict['fit_res']
+                    self.plot_dicts[f'{base_plot_name}_fit'] = {
+                        'fig_id': base_plot_name,
+                        'plotfn': self.plot_fit,
+                        'xvals': xvals,
+                        'fit_res': fit_res,
+                        'color': 'r',}
+
+        for task in self.get_param_value('task_list'):
+            qbn = task['qb']
+            # Find operation point(s) for each qubit
+            if 'pulse_length' in self.mospm[qbn] and 'frequency' in \
+                    self.mospm[qbn]:
+                data = self.proc_data_dict['projected_data_dict'][qbn]['pf'][
+                       :,:-self.num_cal_points]
+                pulse_lengths = self.sp.get_values('pulse_length')
+                frequencies = self.sp.get_values('frequency')
+                # Define the boxcar filter kernel to smooth the data which
+                # avoids finding local minima at every point
+                window_size = 5 # Arbitrary choice
+                kernel = np.ones((window_size, window_size)) / (
+                        window_size ** 2)
+                # Apply the boxcar filter using convolution
+                smoothed_data = sp.signal.convolve2d(data, kernel,
+                                                     mode='same',
+                                                     boundary='symm')
+
+                # Apply 2D minimum filter to find local minimas
+                # The size of the filter in time direction is chosen to be 30ns
+                filter_size_time = np.round(2*20e-9/(pulse_lengths[1] -
+                                                   pulse_lengths[0]))
+                # The size of the filter in frequency direction is chosen to
+                # be 20MHz (arbitrary choice)
+                filter_size_freq = np.round(2*10e6/(frequencies[1] -
+                                                    frequencies[0]))
+                filtered = sp.ndimage.minimum_filter(smoothed_data,
+                                                     size=(filter_size_freq,
+                                                           filter_size_time),
+                                                     mode='mirror')
+                if self.get_param_value('find_optimal_OPs', True):
+                    # Find local minima indices
+                    local_minima_indices = np.where(smoothed_data == filtered)
+
+                    # Find the pulse_lengths and frequencies corresponding to the
+                    # minimum value(s)
+                    pulse_lengths_OP = pulse_lengths[local_minima_indices[1]]
+                    frequencies_OP = frequencies[local_minima_indices[0]]
+
+                else:
+                    # Find the operation point for a given pulse length by
+                    # finding the minimum of the data for this pulse length
+                    target_pulse_length = self.get_param_value(
+                        'target_pulse_length')
+                    if target_pulse_length is None:
+                        warnings.warn('Target_pulse_length must be '
+                                         'specified if find_optimal_OPs is '
+                                         'False. Using 50ns as default.')
+                        target_pulse_length = 50e-9
+                    pulse_length_index = np.argmin(np.abs(
+                        pulse_lengths -target_pulse_length))+1
+                    min_idx = np.argmin(smoothed_data[:,
+                                        :pulse_length_index])
+                    frequencies_OP = np.asarray([(frequencies[
+                        min_idx//pulse_length_index])])
+                    pulse_lengths_OP = np.asarray([(pulse_lengths[
+                        min_idx%pulse_length_index])])
+
+
+                # Save the operation points in the analysis_params_dict
+                if isinstance(pulse_lengths_OP, float):
+                    operation_points = [(pulse_lengths_OP, frequencies_OP)]
+                else:
+                    operation_points = [(pulse_lengths_OP[i], frequencies_OP[i])
+                                    for i in range(len(pulse_lengths_OP))]
+                if 'analysis_params_dict' not in self.proc_data_dict:
+                    self.proc_data_dict['analysis_params_dict'] = {}
+                if qbn not in self.proc_data_dict['analysis_params_dict']:
+                    self.proc_data_dict['analysis_params_dict'][qbn] = {}
+                self.proc_data_dict['analysis_params_dict'][qbn][
+                    'operation_points'] = operation_points
+
+                # Plot the data on the 2D plot
+                # TODO: could consider also plotting the smoothed data
+                fig_id_OP = f'Leakage_reduction_unit_OPs_{qbn}'
+                fig_id_OP_smooth = f'Leakage_reduction_unit_OPs_smooth_{qbn}'
+                self.plot_dicts[f'Leakage_reduction_unit_2D_{qbn}'] = {
+                    'plotfn': self.plot_colorxy,
+                    'fig_id': fig_id_OP,
+                    'xvals': pulse_lengths*1e9,
+                    'yvals': frequencies/1e6,
+                    'zvals': data,
+                    'xlabel': 'Pulse length',
+                    'xunit': 'ns',
+                    'ylabel': 'Frequency',
+                    'yunit': 'MHz',
+                    'colorbar': True,
+                    'zrange': self.get_param_value('zrange', None),
+                    'clabel': self.get_yaxis_label(qb_name=qbn, data_key='f'),
+                    'title': (self.raw_data_dict['timestamp'] + ' ' +
+                              f'Leakage_reduction_unit_ef_{qbn}' + '\n' +
+                              'Operation points')
+                }
+                # Plot the operation points on the same plot
+                self.plot_dicts[f'Leakage_reduction_unit_OPs_{qbn}'] = {
+                    'plotfn': self.plot_line,
+                    'linestyle': '',
+                    'marker': 'o',
+                    'color': 'red',
+                    'fig_id': fig_id_OP,
+                    'xvals': pulse_lengths_OP*1e9,
+                    'yvals': frequencies_OP/1e6,
+                }
+
+                textstr = ''
+                if isinstance(pulse_lengths_OP, float):
+                    pulse_lengths_OP = [pulse_lengths_OP]
+                    frequencies_OP = [frequencies_OP]
+                for k in range(len(pulse_lengths_OP)):
+                    textstr += ('  $t_\mathrm{LRU}$ = '+'{:.1f} ns'.format(
+                        pulse_lengths_OP[k]*1e9)  + '$\quad$' +
+                                '$f_\mathrm{LRU}$ = '+'{:.1f} MHz'.format(
+                        frequencies_OP[k]/1e6))
+                    textstr += '\n' if k < len(pulse_lengths_OP)-1 else ''
+
+                self.plot_dicts['OP'] = {
+                    'fig_id': fig_id_OP,
+                    'ypos': -0.2,
+                    'xpos': 0,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': textstr}
+
+                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'] = \
+                    deepcopy(
+                        self.plot_dicts[f'Leakage_reduction_unit_2D_{qbn}'])
+                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'][
+                    'zvals'] = smoothed_data
+                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'][
+                    'fig_id'] = fig_id_OP_smooth
+
+                # Plot the operation points on the same plot
+                self.plot_dicts[f'Leakage_reduction_unit_OPs_smooth_{qbn}'] = \
+                    deepcopy(
+                        self.plot_dicts[f'Leakage_reduction_unit_OPs_{qbn}'])
+                self.plot_dicts[f'Leakage_reduction_unit_OPs_smooth_{qbn}'][
+                    'fig_id'] = fig_id_OP_smooth
+
+                self.plot_dicts['OP_smooth'] = deepcopy(
+                    self.plot_dicts['OP'])
+                self.plot_dicts['OP_smooth']['fig_id'] = fig_id_OP_smooth
+
+
 class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     """
     Analysis class for the DriveAmpCalib measurement.
@@ -14031,417 +14436,3 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             'colors': 'gray',
         }
         return best_val
-
-class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
-    def extract_data(self):
-        super().extract_data()
-
-        # Probably not needed anymore but keep it for now to avoid
-        # re-implmenting it if needed. Was used to calculate fit parameters
-        # self.task_list = self.get_param_value('task_list')
-        # self.qb_names = self.get_param_value('qb_names',
-        #                                      self.get_qbs_from_task_list(
-        #                                          self.task_list))
-        #
-        # params = ['ge_freq', 'fit_ge_freq_from_dc_offset',
-        #           'fit_ge_freq_from_flux_pulse_amp',
-        #           'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
-        # for qbn in self.qb_names:
-        #     self.raw_data_dict.update({f"{p}_{qbn}":
-        #                                    self.get_hdf_param_value(
-        #                                        f'Instrument settings/{qbn}', p)
-        #                                for p in params})
-
-    def coupling_strength(self, g_ro, w_p, delta_w):
-        g = np.sqrt(2) * g_ro * sp.special.jv(1, delta_w / (2 * w_p))
-        return g
-
-    # def coupling_strength(g_ro, w_p, harmonic, fs2, fs4, fs6):
-    #     try:
-    #         if harmonic == 'first':
-    #             g = np.sqrt(2)*g_ro*sp.special.jv(1, fs2/(2*w_p))
-    #         elif harmonic == 'second':
-    #             g = np.sqrt(2)*g_ro*(sp.special.jv(2, fs2/(2*w_p)) +
-    #                                  sp.special.jv(1, fs4/(4*w_p)))
-    #         elif harmonic == 'third':
-    #             g = np.sqrt(2)*g_ro*(sp.special.jv(3, fs2/(2*w_p)) +
-    #                                  sp.special.jv(1, fs4/(4*w_p)) *
-    #                                  sp.special.jv(1, fs2/(2*w_p)) +
-    #                                  sp.special.jv(1, fs6/(6*w_p)))
-    #     except:
-    #         raise('Only implemented for fist three harmonics. Provide '
-    #               '"first" (default), "second" or "third" '
-    #               'as an argument.')
-    #     return g
-
-    def prepare_fitting(self):
-        """
-        Prepares the fitting by creating the fit_dicts.
-        Need to fix some things still, but currently on hold since we don't
-        fully understand the dynamics yet
-        """
-        self.fit_dicts = OrderedDict()
-        def pf_function(t, w_p=100e6, g_ro=100e6, kappa=10e6, scaling=1,
-                        #harmonic='first',
-                        # fs2=0, fs4=0, fs6=0
-                        delta_w=100e6,
-                        time_offset=0, pop_offset=0
-                        ):
-            """
-            Calculates the probability to be in the f state for SWAP with the
-            readout resoantor
-            From: 'A Fast and Universal Leakage Reduction Unit',
-                   Sebastian Krinner, (Dated: August 2, 2022)
-            :param t                time:
-            :param w_p              modulation frequency in Hz:
-            :param delta_w          modulation depth:
-            :param g_ro             coupling between qubit and readout resonator
-            :param kappa            linewidth of resonator:
-            :param harmonic         harmonic on which the interaction is done:
-            :param fs2, fs4, fs6    Fourier coefficients of the qubit frequency.
-                                    For small modulation amplitudes fs2 is
-                                    equal to the modulation depth:
-            :return:                probability to be in f state
-            """
-
-            t = t * 1e9 + time_offset * 1e9
-            w_p =  w_p * 1e-9 * 2 * np.pi
-            kappa = kappa * 1e-9 * 2 * np.pi
-            g_ro = g_ro * 1e-9 * 2 * np.pi
-            delta_w = delta_w * 1e-9 * 2 * np.pi
-            # fs2, fs4, fs6 = fs2*1e-9, fs4*1e-9, fs6*1e-9 # Currently we don't
-            # # use the higher order terms but might want to include them later
-
-            g = self.coupling_strength(g_ro, w_p, delta_w)
-
-            # Calculate time dynamics https://doi.org/10.1038/s41467-021-26205-y
-            if kappa == 4 * g:
-                pf = pop_offset + (t < -time_offset) * scaling + \
-                     (t >= -time_offset) * scaling * np.exp(-kappa * t / 2) *\
-                     (1 + kappa * t / 4) ** 2
-            else:
-                M = np.emath.sqrt(16 * g ** 2 - kappa ** 2) / 4
-                pf = pop_offset + (t < -time_offset) * scaling + \
-                     (t >= -time_offset) * scaling * np.exp(-kappa * t / 2) * \
-                     (np.cos(M * t) + kappa / (4 * M) * np.sin(M * t)) ** 2
-
-            return pf
-
-
-        def add_fit_dict(qbn, data, key):
-            if self.num_cal_points != 0:
-                if np.array(data).ndim > 1:
-                    data = np.array([element[:-self.num_cal_points]
-                                     for element in data])
-                else:
-                    data = data[:-self.num_cal_points]
-
-            t = self.proc_data_dict['sweep_points_dict'][qbn][
-                'msmt_sweep_points']
-            try:
-                if 'sweep_points_2D_dict' in self.proc_data_dict:
-                    w_p = self.proc_data_dict['sweep_points_2D_dict'][qbn][
-                        'frequency']
-                else:
-                    w_p = self.get_param_value('task_list')[0][
-                        'flux_pulse_frequency']
-            except KeyError as e:
-                raise e
-
-            kappa = self.get_param_value('kappa', 35e6)
-            fit_kappa = self.get_param_value('fit_kappa', True)
-            g_ro = self.get_param_value('g_ro', 100e6)
-            fit_g_ro = self.get_param_value('fit_g_ro', True)
-            delta_w = self.get_param_value('delta_w', 100e6)
-            fit_delta_w = self.get_param_value('fit_delta_w', True)
-            # self.harmonic = self.get_param_value('harmonic', 'first')
-
-
-            pf_model = lmfit.Model(pf_function, independent_vars=['t'])
-            pf_model.set_param_hint('w_p', value=w_p, min=10e6, max=700e6,
-                                    vary=False)
-            pf_model.set_param_hint('kappa', value=kappa, min= 1e6, max=100e6,
-                                    vary=fit_kappa)
-            pf_model.set_param_hint('g_ro', value=g_ro, min=10e6, max=300e6,
-                                    vary=fit_g_ro)
-            # pf_model.set_param_hint('g', value=6e6, min=1e6, max=30e6,
-            #                         vary=True)
-            pf_model.set_param_hint('delta_w', value=delta_w, min=10e6,
-                                    max=400e6, vary=fit_delta_w)
-            pf_model.set_param_hint('scaling', value=1, min=0, max=1.5)
-            pf_model.set_param_hint('time_offset', value=0,
-                                    min=-10e-9, max=1e-9)
-            pf_model.set_param_hint('pop_offset', value=0, min=-0.05, max=+0.05)
-
-            # if self.harmonic == 'first':
-            #     # pf_model.set_param_hint('harmonic', value='first', vary=False)
-            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6,
-            #                             max=400e6, vary=True)
-            #     pf_model.set_param_hint('fs4', value=0, min=0, max=400e4,
-            #                             vary=False)
-            #     pf_model.set_param_hint('fs6', value=0, min=0, max=400e4,
-            #                             vary=False)
-            # if self.harmonic == 'second':
-            #     # pf_model.set_param_hint('harmonic', value='second', vary=False)
-            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6,
-            #                             max=400e6, vary=True)
-            #     pf_model.set_param_hint('fs4', value=delta_w/10, min=0,
-            #                             max=400e6, vary=True)
-            #     pf_model.set_param_hint('fs6', value=0, min=0, max=400e4,
-            #                             vary=False)
-            # if self.harmonic == 'third':
-            #     # pf_model.set_param_hint('harmonic', value='third', vary=False)
-            #     pf_model.set_param_hint('fs2', value=delta_w, min=10e6,
-            #                             max=400e6, vary=True)
-            #     pf_model.set_param_hint('fs4', value=delta_w / 100, min=10e4,
-            #                             max=400e4, vary=True)
-            #     pf_model.set_param_hint('fs6', value=delta_w / 100, min=10e4,
-            #                             max=400e4, vary=True)
-
-            guess_pars = pf_model.make_params()
-            self.set_user_guess_pars(guess_pars)
-
-            self.fit_dicts[key] = {
-                'model': pf_model,
-                'fit_fn': pf_model.func,
-                'fit_xvals': {'t': t},
-                'fit_yvals': {'data': data},
-                'method': 'dual_annealing',
-                'guess_params': guess_pars,
-                'fit_guess': False}
-
-        if self.do_fitting:
-            for task in self.get_param_value('task_list'):
-                qbn = task['qb']
-                if qbn in self.qb_names:
-                    if 'projected_data_dict_corrected' in self.proc_data_dict:
-                        data = self.proc_data_dict[
-                            'projected_data_dict_corrected'][qbn]['pf']
-                    else:
-                        data = self.proc_data_dict['projected_data_dict'][
-                            qbn]['pf']
-
-                    add_fit_dict(qbn=qbn, data=data,
-                                 key=f'leakage_reduction_unit_{qbn}')
-
-    def analyze_fit_results(self):
-        """
-        Analyzes the fit results and stores the relevant parameters in the
-        Possibly need to fix some things still, but currently on hold since
-        we don't fully understand the dynamics yet
-        """
-
-        self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for k, fit_dict in self.fit_dicts.items():
-            # k is of the form leakage_reduction_unit_qb1
-            # Replace k with qb1
-            k = k.replace('leakage_reduction_unit_', '')
-            fit_res = fit_dict['fit_res']
-            self.proc_data_dict['analysis_params_dict'][k] = \
-                fit_res.best_values
-            g_ro, delta_w, w_p = fit_res.best_values['g_ro'], \
-                fit_res.best_values['delta_w'], fit_res.best_values['w_p']
-            # g_ro, fs2, fs4, fs6, w_p = fit_res.best_values['g_ro'], \
-            #     fit_res.best_values['fs2'], fit_res.best_values['fs4'], \
-            #     fit_res.best_values['fs6'],fit_res.best_values['w_p']
-            self.proc_data_dict['analysis_params_dict'][k]['g_eff'] = \
-                np.sqrt(2)*g_ro*sp.special.jv(1,delta_w/(2 * w_p))
-            # self.proc_data_dict['analysis_params_dict'][k]['g_eff'] = \
-            #     self.coupling_strength(g_ro, w_p, self.harmonic, fs2, fs4, fs6)
-        self.save_processed_data(key='analysis_params_dict')
-
-    def prepare_plots(self):
-        super().prepare_plots()
-
-        if self.do_fitting and self.metadata['transition_name'] == 'ef':
-            # Fitting is only implemented for f-level at the moment
-            for task in self.get_param_value('task_list'):
-                qbn = task['qb']
-                if qbn in self.qb_names:
-                    # 1D fit plot
-                    base_plot_name = f'Leakage_reduction_unit_fit_{qbn}_pf_1D'
-                    xlabel, xunit = self.get_xaxis_label_unit(qbn)
-                    xvals = self.proc_data_dict['sweep_points_dict'][qbn][
-                        'msmt_sweep_points']
-                    ylabel = self.get_yaxis_label(qb_name=qbn, data_key='f')
-                    yvals = self.proc_data_dict['data_to_fit'][qbn]
-                    if self.num_cal_points != 0:
-                        if np.array(yvals).ndim > 1:
-                            yvals = np.array([element[:-self.num_cal_points]
-                                              for element in yvals][0])
-                        else:
-                            yvals = yvals[:-self.num_cal_points]
-
-                    self.plot_dicts[f'{base_plot_name}_main'] = {
-                        'plotfn': self.plot_line,
-                        'fig_id': base_plot_name,
-                        'xvals': xvals,
-                        'yvals': yvals,
-                        'xlabel': xlabel,
-                        'xunit': xunit,
-                        'ylabel': ylabel,
-                        'title': (self.raw_data_dict['timestamp'] + ' ' +
-                                  self.measurement_strings[qbn]),
-                    }
-                    for k, fit_dict in self.fit_dicts.items():
-                        fit_res = fit_dict['fit_res']
-                    self.plot_dicts[f'{base_plot_name}_fit'] = {
-                        'fig_id': base_plot_name,
-                        'plotfn': self.plot_fit,
-                        'xvals': xvals,
-                        'fit_res': fit_res,
-                        'color': 'r',}
-
-        for task in self.get_param_value('task_list'):
-            qbn = task['qb']
-            # Find operation point(s) for each qubit
-            if 'pulse_length' in self.mospm[qbn] and 'frequency' in \
-                    self.mospm[qbn]:
-                data = self.proc_data_dict['projected_data_dict'][qbn]['pf'][
-                       :,:-self.num_cal_points]
-                pulse_lengths = self.sp.get_values('pulse_length')
-                frequencies = self.sp.get_values('frequency')
-                # Define the boxcar filter kernel to smooth the data which
-                # avoids finding local minima at every point
-                window_size = 5 # Arbitrary choice
-                kernel = np.ones((window_size, window_size)) / (
-                        window_size ** 2)
-                # Apply the boxcar filter using convolution
-                smoothed_data = sp.signal.convolve2d(data, kernel,
-                                                     mode='same',
-                                                     boundary='symm')
-
-                # Apply 2D minimum filter to find local minimas
-                # The size of the filter in time direction is chosen to be 30ns
-                filter_size_time = np.round(2*20e-9/(pulse_lengths[1] -
-                                                   pulse_lengths[0]))
-                # The size of the filter in frequency direction is chosen to
-                # be 20MHz (arbitrary choice)
-                filter_size_freq = np.round(2*10e6/(frequencies[1] -
-                                                    frequencies[0]))
-                filtered = sp.ndimage.minimum_filter(smoothed_data,
-                                                     size=(filter_size_freq,
-                                                           filter_size_time),
-                                                     mode='mirror')
-                if self.get_param_value('find_optimal_OPs', True):
-                    # Find local minima indices
-                    local_minima_indices = np.where(smoothed_data == filtered)
-
-                    # Find the pulse_lengths and frequencies corresponding to the
-                    # minimum value(s)
-                    pulse_lengths_OP = pulse_lengths[local_minima_indices[1]]
-                    frequencies_OP = frequencies[local_minima_indices[0]]
-
-                else:
-                    # Find the operation point for a given pulse length by
-                    # finding the minimum of the data for this pulse length
-                    target_pulse_length = self.get_param_value(
-                        'target_pulse_length')
-                    if target_pulse_length is None:
-                        warnings.warn('Target_pulse_length must be '
-                                         'specified if find_optimal_OPs is '
-                                         'False. Using 50ns as default.')
-                        target_pulse_length = 50e-9
-                    pulse_length_index = np.argmin(np.abs(
-                        pulse_lengths -target_pulse_length))+1
-                    min_idx = np.argmin(smoothed_data[:,
-                                        :pulse_length_index])
-                    frequencies_OP = np.asarray([(frequencies[
-                        min_idx//pulse_length_index])])
-                    pulse_lengths_OP = np.asarray([(pulse_lengths[
-                        min_idx%pulse_length_index])])
-
-
-                # Save the operation points in the analysis_params_dict
-                if isinstance(pulse_lengths_OP, float):
-                    operation_points = [(pulse_lengths_OP, frequencies_OP)]
-                else:
-                    operation_points = [(pulse_lengths_OP[i], frequencies_OP[i])
-                                    for i in range(len(pulse_lengths_OP))]
-                if 'analysis_params_dict' not in self.proc_data_dict:
-                    self.proc_data_dict['analysis_params_dict'] = {}
-                if qbn not in self.proc_data_dict['analysis_params_dict']:
-                    self.proc_data_dict['analysis_params_dict'][qbn] = {}
-                self.proc_data_dict['analysis_params_dict'][qbn][
-                    'operation_points'] = operation_points
-
-                # Plot the data on the 2D plot
-                # TODO: could consider also plotting the smoothed data
-                fig_id_OP = f'Leakage_reduction_unit_OPs_{qbn}'
-                fig_id_OP_smooth = f'Leakage_reduction_unit_OPs_smooth_{qbn}'
-                self.plot_dicts[f'Leakage_reduction_unit_2D_{qbn}'] = {
-                    'plotfn': self.plot_colorxy,
-                    'fig_id': fig_id_OP,
-                    'xvals': pulse_lengths*1e9,
-                    'yvals': frequencies/1e6,
-                    'zvals': data,
-                    'xlabel': 'Pulse length',
-                    'xunit': 'ns',
-                    'ylabel': 'Frequency',
-                    'yunit': 'MHz',
-                    'colorbar': True,
-                    'zrange': self.get_param_value('zrange', None),
-                    'clabel': self.get_yaxis_label(qb_name=qbn, data_key='f'),
-                    'title': (self.raw_data_dict['timestamp'] + ' ' +
-                              f'Leakage_reduction_unit_ef_{qbn}' + '\n' +
-                              'Operation points')
-                }
-                # Plot the operation points on the same plot
-                self.plot_dicts[f'Leakage_reduction_unit_OPs_{qbn}'] = {
-                    'plotfn': self.plot_line,
-                    'linestyle': '',
-                    'marker': 'o',
-                    'color': 'red',
-                    'fig_id': fig_id_OP,
-                    'xvals': pulse_lengths_OP*1e9,
-                    'yvals': frequencies_OP/1e6,
-                }
-
-                textstr = ''
-                if isinstance(pulse_lengths_OP, float):
-                    pulse_lengths_OP = [pulse_lengths_OP]
-                    frequencies_OP = [frequencies_OP]
-                for k in range(len(pulse_lengths_OP)):
-                    textstr += ('  $t_\mathrm{LRU}$ = '+'{:.1f} ns'.format(
-                        pulse_lengths_OP[k]*1e9)  + '$\quad$' +
-                                '$f_\mathrm{LRU}$ = '+'{:.1f} MHz'.format(
-                        frequencies_OP[k]/1e6))
-                    textstr += '\n' if k < len(pulse_lengths_OP)-1 else ''
-
-                self.plot_dicts['OP'] = {
-                    'fig_id': fig_id_OP,
-                    'ypos': -0.2,
-                    'xpos': 0,
-                    'horizontalalignment': 'left',
-                    'verticalalignment': 'top',
-                    'plotfn': self.plot_text,
-                    'text_string': textstr}
-
-                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'] = \
-                    deepcopy(
-                        self.plot_dicts[f'Leakage_reduction_unit_2D_{qbn}'])
-                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'][
-                    'zvals'] = smoothed_data
-                self.plot_dicts[f'Leakage_reduction_unit_2D_smooth_{qbn}'][
-                    'fig_id'] = fig_id_OP_smooth
-
-                # Plot the operation points on the same plot
-                self.plot_dicts[f'Leakage_reduction_unit_OPs_smooth_{qbn}'] = \
-                    deepcopy(
-                        self.plot_dicts[f'Leakage_reduction_unit_OPs_{qbn}'])
-                self.plot_dicts[f'Leakage_reduction_unit_OPs_smooth_{qbn}'][
-                    'fig_id'] = fig_id_OP_smooth
-
-                self.plot_dicts['OP_smooth'] = deepcopy(
-                    self.plot_dicts['OP'])
-                self.plot_dicts['OP_smooth']['fig_id'] = fig_id_OP_smooth
-
-
-
-
-
-
-
-
-
-
