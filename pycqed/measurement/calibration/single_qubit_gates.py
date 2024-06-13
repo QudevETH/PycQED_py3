@@ -5236,20 +5236,20 @@ class f0g1Pitch(SingleQubitGateCalibExperiment):
         return d
 
 class LeakageReductionUnit(SingleQubitGateCalibExperiment):
-    """
-    LRU measurement for finding the amplitude, frequency and pulse length of the LRU.
-    This is a SingleQubitGateCalibExperiment, see docstring there for general information.
+    """LRU calibration experiment.
 
-    :param kw: keyword arguments.
-        Can be used to provide keyword arguments to sweep_n_dim, autorun, and
-        to the parent class.
+    LRU measurement for finding the amplitude, frequency and pulse length of
+    the LRU. This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
 
     The following keys in a task are interpreted by this class in
     addition to the ones recognized by the parent classes:
-        - amplitude
-        - pulse_length
-        - frequency
-        - transition_name
+        - amps (float): Amplitude of the pulse.
+        - freqs (float): Frequency of the pulse.
+
+    The following keyword arguments will be copied as a key to tasks
+    that do not have their own value specified:
+        - num_LRUs (int; default: 1): the number of LRUs
     """
 
     kw_for_sweep_points = {
@@ -5286,21 +5286,21 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
             - amplitude: (float) amplitude of PFM pulse
             - pulse_length: (float) length of PFM pulse
             - frequency: (float) frequency of PFM pulse
-            - prepare_f: (bool) if True, the pulse sequence prepares the f-level
+            - prepare_f: (bool) if True, prepares the f-level
         """
 
         prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
                                              **kw)
 
-        # Add ef pulse if specified; transition_name 'ef' only prepares the e-level
+        # Add ef pulse if specified; transition_name 'ef' only prepares e-level
         ef_pulse = self.block_from_ops(f'ef_pulse',
                                        [f'X180_ef {qb}'])
 
 
         # add modulation pulse
         modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
-                                               [f'PFM{transition_name} {qb}'] * num_LRUs,
-                                               # pulse_modifs=pulse_modifs
+                                               [f'PFM{transition_name} {qb}'] *
+                                               num_LRUs,
                                                )
         # create ParametricValues from param_name in sweep_points
         for sweep_dict in sweep_points:
@@ -5323,7 +5323,8 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
                 pulse_modifs = {'all': {'amplitude': flux_pulse_amplitude_0,
                                     'pulse_length': flux_pulse_length_0,
                                     'frequency': flux_pulse_frequency_0}}
-                modulation_block_0 = self.block_from_ops(f'modulation_pulse_0_{qb}',
+                modulation_block_0 = self.block_from_ops(f'modulation_pulse_0_'
+                                                         f'{qb}',
                                                [f'PFM_ef {qb}'],
                                                pulse_modifs=pulse_modifs
                                                )
