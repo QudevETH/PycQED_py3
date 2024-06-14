@@ -9185,9 +9185,11 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         cmap = plt.get_cmap('tab10')
         show = self.options_dict.get("show", False)
 
-        n_qb_states = len(np.unique(self.cp.get_states(qbn)[qbn]))
-        tab_x = a_tools.truncate_colormap(cmap, 0,
-                                          n_qb_states/10)
+        try:  # try extracting number of states from clf
+            n_qb_states = clf_[qbn][sweep_indx].n_components
+        except Exception:  # extract number of states from cp
+            n_qb_states = len(np.unique(self.cp.get_states(qbn)[qbn]))
+        tab_x = a_tools.truncate_colormap(cmap, 0, n_qb_states/10)
 
         kwargs = {
             "states": list(pdd_ap['means'][qbn][sweep_indx].keys()),
