@@ -32,7 +32,8 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                  sweep_points=None, fixed_params_values=None, **kw):
         self.default_experiment_name += '_opt' if optimize else ''
         try:
-            if optimize:
+            self.optimize = optimize
+            if self.optimize:
                 sweep_points = None
                 if None in [optimizer]:
                     raise ValueError("optimizer not provided")
@@ -54,11 +55,11 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 #     [qb.name for qb in self.meas_objs]),
                 'data_to_fit': {},  # FIXME understand why this is needed
                 'training_settings': optimizer.training_settings,
-                'optimize': optimize,
+                'optimize': self.optimize,
                 'qb_names': self.qb_names,  # FIXME needed?
             })
 
-            if optimize:
+            if self.optimize:
                 self.optimizer = optimizer  # TODO or pass kw and instantiate here?
                 self.sweep_functions = [awg_swf.BlockSoftHardSweep(
                     self,
@@ -234,7 +235,33 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     def run_analysis(self, analysis_class=None, analysis_kwargs=None, **kw):
         if analysis_class is None:
             analysis_class = tda.VariationalAlgorithmAnalysis
-        return super().run_analysis(analysis_class=analysis_class, analysis_kwargs=analysis_kwargs, **kw)
+        return super().run_analysis(analysis_class=analysis_class,
+                                    analysis_kwargs=analysis_kwargs, **kw)
+
+    def run_measurement(self, *args, **kw):
+        super().run_measurement(*args, **kw)
+        if self.optimize:
+            self.save_optimisation_sweep_points()
+
+    def save_optimisation_sweep_points(self):
+        # Create a posteriori sweep points based on the
+        # optimiser data
+        self.sweep_points = sp_mod.SweepPoints()
+        sp_shape = self.optimizer.cost_function_values.shape
+        self.sweep_points.add_sweep_parameter(
+            'optimizer_hard_sweep_index',
+            np.array(range(sp_shape[0])),
+        )
+        self.sweep_points.add_sweep_dimension()
+        self.sweep_points.add_sweep_parameter(
+            'optimizer_soft_sweep_index',
+            np.array(range(sp_shape[1])),
+        )
+        self.MC.save_exp_metadata({
+            'sweep_points': self.sweep_points,
+            'meas_obj_sweep_points_map':  # TODO should this go to QE?
+                self.sweep_points.get_meas_obj_sweep_points_map(self.qubits),
+        })
 
 
 class VariationalAlgorithmCZ(VariationalAlgorithm):
