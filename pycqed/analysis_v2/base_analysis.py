@@ -632,30 +632,6 @@ class BaseDataAnalysis(object):
                             'cost_function_values': 'cost_function_values'
                         })
 
-                        # Create a posteriori sweep points based on the
-                        # optimiser data
-                        # FIXME this should maybe happen somewhere else
-                        from pycqed.measurement import sweep_points as sp_mod
-                        sp = sp_mod.SweepPoints()
-                        sp_shape = raw_data_dict_ts[
-                            'cost_function_values'].shape
-                        sp.add_sweep_parameter(
-                            'hard_sweep_index',
-                            np.array(range(sp_shape[0])),
-                        )
-                        sp.add_sweep_dimension()
-                        sp.add_sweep_parameter(
-                            'soft_sweep_index',
-                            np.array(range(sp_shape[1])),
-                        )
-                        raw_data_dict_ts['exp_metadata']['sweep_points'] = sp
-                        raw_data_dict_ts['exp_metadata'][
-                            'meas_obj_sweep_points_map'] = {
-                            mobjn: ['hard_sweep_index', 'soft_sweep_index']
-                            for mobjn in raw_data_dict_ts['exp_metadata'][
-                                'qb_names']
-                        }
-
                         # extract classical params result
                         if raw_data_dict_ts['exp_metadata']['hybrid']:
                             classical_params_result = data_file[

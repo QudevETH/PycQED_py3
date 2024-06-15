@@ -2919,6 +2919,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def process_data(self):
         super().process_data()
+        # TODO add standard plots only if data match sp
 
         # FIXME: replacing the values of a qubit is a hack, we should
         #  instead create a new entry
@@ -2941,14 +2942,14 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 p_name = p_names[n_non_trainable + id_param]
                 self.add_dummy_qb_data(p_name, optim_param_values[id_param])
                 self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                    p_name, [(':', 'scol')]
+                    p_name, [(':', 'smcol')]
                 )
             self.add_dummy_qb_data(
                 'costfunction',
                 cost_func,
             )
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'costfunction', [(':', 'scol')]
+                'costfunction', [(':', 'smcol')]
             )
 
             # # logical branch for hybrid training
@@ -2963,21 +2964,32 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             #     self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
         else:
             # sweep mode data processing
+            self.cpp_results = {}
             shots = self._get_binary_shots_array()
+            freqs, bitstrings_labels = self.cpp_histogram(shots)
+            # TODO comments
+            # freqs shape: (bitstring, hard sweep, soft sweep)
+            # targets shape: (n_non_trainable_params,)
+            # targets_axis=2 means targets correspond to the soft_sweep (sp[1])
+            # TODO wrap in a method if these lines are always used together?
+            self.cpp_results.update(
+                {b: f for b, f in zip(bitstrings_labels, freqs)})
+            targets = self.sp[1].get('targets', [None])[0]
+            weights = self.cpp_opt_bxe_weights(
+                freqs, targets, fms=self.get_param_value('fms', False))
+            output, cost = self.cpp_bxe_output(freqs, weights)
+            self.cpp_results.update({
+                'output': output,
+                'cost': cost,
+            })
 
-            self.cpp_outputs = {}
             for cpp in [
                 'cpp_stabilizers',
-                'cpp_histogram',
-                'cpp_cost_function',
             ]:
                 try:
                     func = getattr(self, cpp)
-                    self.cpp_outputs.update(
+                    self.cpp_results.update(
                         func(shots,
-                        sp=self.sp,
-                        fms=self.get_param_value('fms', False),
-                        weights=self.get_param_value('weights'),
                     ))
                     print(f"{cpp} completed")
                 except Exception as e:
@@ -2986,7 +2998,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     else:
                         log.warning(f"{cpp} failed")
 
-            for k, v in self.cpp_outputs.items():
+            for k, v in self.cpp_results.items():
+                # FIXME replace by actual plotting
                 # FIXME: define the sweep points in 1D case
                 self.add_dummy_qb_data(
                     k, v, sp_name=list(self.sp[0].keys())[0])
