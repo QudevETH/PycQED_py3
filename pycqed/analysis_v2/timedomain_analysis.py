@@ -796,6 +796,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         hard_sweep_params = self.get_param_value('hard_sweep_params')
         if self.sp is not None:
             self.mospm = self.get_param_value('meas_obj_sweep_points_map')
+            for k, v in self.sp.get_meas_obj_sweep_points_map(
+                    self.qb_names).items():
+                self.mospm.setdefault(k, v)
             main_sp = self.get_param_value('main_sp')
             if self.mospm is None:
                 raise ValueError('When providing "sweep_points", '
