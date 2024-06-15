@@ -2099,6 +2099,9 @@ class MeasurementControl(Instrument):
                         'fopt':  result[1]}
         else:
             res_dict = {'opt':  result}
+        if 'sweep_points' in result:
+            self.save_exp_metadata({
+                'sweep_points': result['sweep_points']})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
     def save_instrument_settings(self, data_object=None, mode='xb', *args):
