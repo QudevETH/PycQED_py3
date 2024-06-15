@@ -21,7 +21,7 @@ from pycqed.analysis_v2.readout_analysis import \
     Singleshot_Readout_Analysis_Qutrit as SSROQutrit
 import pycqed.analysis_v2.tomography_qudev as tomo
 from pycqed.analysis.tools.plotting import SI_val_to_msg_str
-from copy import deepcopy
+from copy import copy, deepcopy
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
@@ -2972,45 +2972,61 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # targets shape: (n_non_trainable_params,)
             # targets_axis=2 means targets correspond to the soft_sweep (sp[1])
             # TODO wrap in a method if these lines are always used together?
-            self.cpp_results.update(
-                {b: f for b, f in zip(bitstrings_labels, freqs)})
-            targets = self.sp[1].get('targets', [None])[0]
-            weights = self.cpp_opt_bxe_weights(
-                freqs, targets, fms=self.get_param_value('fms', False))
-            output, cost = self.cpp_bxe_output(freqs, weights)
+            # self.cpp_results.update(
+            #     {b: f for b, f in zip(bitstrings_labels, freqs)})
+
+            targets = None
+            targets_axis = self.sp.find_parameter('targets')
+            sp_no_targets = copy(self.sp)
+            weights = self.get_param_value('weights')
+            if targets_axis is not None:
+                targets = self.sp['targets']
+                sp_no_targets.pop(targets_axis)
+                weights = self.cpp_opt_bxe_weights(
+                    freqs, targets,
+                    targets_axis_sp=targets_axis,  # 1 is for bitstring dim
+                    fms=self.get_param_value('fms', False))
+            output, cost = self.cpp_bxe_output(
+                freqs, weights,
+                targets=targets, targets_axis_sp=targets_axis,
+            )
             self.cpp_results.update({
-                'output': output,
-                'cost': cost,
+                'output': (output, self.sp),
+                'cost': (cost, self.sp),
+                'training_set_cost': (
+                    np.mean(cost, axis=targets_axis) if targets_axis else cost,
+                    sp_no_targets),
+                'weights': (weights, self.sp),  # plotting won't work
             })
-
-            for cpp in [
-                'cpp_stabilizers',
-            ]:
-                try:
-                    func = getattr(self, cpp)
-                    self.cpp_results.update(
-                        func(shots,
-                    ))
-                    print(f"{cpp} completed")
-                except Exception as e:
-                    if self.raise_exceptions:
-                        raise e
-                    else:
-                        log.warning(f"{cpp} failed")
-
-            for k, v in self.cpp_results.items():
-                # FIXME replace by actual plotting
-                # FIXME: define the sweep points in 1D case
+            # TODO decide in a smarter way what should be plotted
+            for key in ['output', 'cost', 'training_set_cost']:
+                values, sp = self.cpp_results[key]
                 self.add_dummy_qb_data(
-                    k, v, sp_name=list(self.sp[0].keys())[0])
-            # cpp_output = va.classical_postprocessing()
+                    key, values, sp)
+
+            # for cpp in [
+            #     # 'cpp_stabilizers',
+            # ]:
+            #     try:
+            #         func = getattr(self, cpp)
+            #         self.cpp_results.update(
+            #             func(shots,
+            #         ))
+            #         print(f"{cpp} completed")
+            #     except Exception as e:
+            #         if self.raise_exceptions:
+            #             raise e
+            #         else:
+            #             log.warning(f"{cpp} failed")
+
             # for qb_name in self.qb_names:
             #     del self.proc_data_dict['projected_data_dict'][qb_name]
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                 'output', [(':', 'srow')]
             )
-        for qb_name in self.qb_names:
-            del self.proc_data_dict['projected_data_dict'][qb_name]
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'cost', [('0:0', 'mrow')]
+            )
 
     def _get_binary_shots_array(self, pk=True):
         shots = self.proc_data_dict['single_shots_per_qb_thresholded']
@@ -3040,35 +3056,33 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 pickle.dump(shots, f)
         return shots
 
-    def add_dummy_qb_data(self, key, values, sp_name=None, sp_values=None):
-        # set appropriate values and sweep points for plotting
-        if sp_values is None and len(values.shape) != len(self.sp.length()):
-            # This is the case if sp are 2D but values are a 1D slice
-            sp_values = self.sp[sp_name]
-        if sp_values is None:
-            # Directly use existing sweep points
-            self.proc_data_dict['sweep_points_dict'][key] =\
-                self.proc_data_dict['sweep_points_dict'][self.qb_names[0]]
-            if 'sweep_points_2D_dict' in self.proc_data_dict:
-                self.proc_data_dict['sweep_points_2D_dict'][key] =\
-                    self.proc_data_dict['sweep_points_2D_dict'][
-                        self.qb_names[0]]
-        else:
-            # Sweep points don't exist yet: need to be created from sp_values
-            self.proc_data_dict['sweep_points_dict'][key] = {
-                'sweep_points': sp_values,
-                'param_names': [sp_name],
-                'msmt_sweep_points': sp_values,
-                'cal_points_sweep_points': []
-            }
-            if 'sweep_points_2D_dict' in self.proc_data_dict:
-                self.proc_data_dict['sweep_points_2D_dict'][key] = {
-                    'dummy': [0]
-                }
-        values = values.T  # See horrible FIXME about self.proc_data_dict
-        self.proc_data_dict['projected_data_dict'][key] = {
-            key: values,
+    def add_dummy_qb_data(self, key, values, sp):
+        if values is None or len(values.shape)>2:
+            return
+        # FIXME this is ugly, but I don't understand how these
+        #  sweep_points_dict should relate the the actual sp in general
+        # set appropriate values and create sweep points for plotting
+        sp_name_1D = sp.get_parameters(0)[0]
+        self.proc_data_dict['sweep_points_dict'][key] = {
+            'sweep_points': sp[sp_name_1D],
+            'param_names': [sp_name_1D],
+            # 'msmt_sweep_points': sp[sp_name_1D],
+            'cal_points_sweep_points': []
         }
+        # TODO see if this is needed for 1D measurements
+        if 'sweep_points_2D_dict' in self.proc_data_dict:
+            self.proc_data_dict['sweep_points_2D_dict'][key] = {
+                'dummy': [0]
+            }
+        if len(sp) > 1:
+            if 'sweep_points_2D_dict' not in self.proc_data_dict:
+                self.proc_data_dict['sweep_points_2D_dict'] = {}
+            sp_name_2D = sp.get_parameters(1)[0]
+            self.proc_data_dict['sweep_points_2D_dict'][key] = {
+                sp_name_2D: sp[sp_name_2D]
+            }
+        values = values.T  # See horrible FIXME about self.proc_data_dict
+        self.proc_data_dict['projected_data_dict'][key] = values
 
     @staticmethod
     def cpp_stabilizers(shots, **kw):
@@ -3109,7 +3123,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             'stabx3': stabx(shots)[3]
         }
 
-
     # shot to freq
     @staticmethod
     def cpp_histogram(shots):
@@ -3139,97 +3152,132 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freqs = freqs.reshape((2 ** shape[0], *shape[2:]))
         bitstrings_labels = [
             format(i, f'0{shape[0]}b') for i in range(2**shape[0])]
-        return {b: f for b, f in zip(bitstrings_labels, freqs)}
+        return freqs, bitstrings_labels
 
     @staticmethod
-    def cpp_cost_function(shots, sp, fms=False, weights=None):
-        # targets must correspond to the soft_sweep, so sp[1]
-        # FIXME: make the following line compatible with training mode,
-        #  where targets are passed directly
-        freqs = VariationalAlgorithmAnalysis.cpp_histogram(shots)
-        freqs = np.array(list(freqs.values()))
-        # freqs shape: (n_state, hard sweep, soft sweep)
-        # targets shape: (n_non_trainable_params,)
-        targets = sp[1].get('targets', [None])[0]  # TODO clean up
+    def cpp_opt_bxe_weights(freqs, targets, state_axis=0, targets_axis_sp=1,
+                            fms=False):
+        # Assumptions:
+        # freqs.shape = (n_states, ..., n_targets, ...)
+        # n_states corresponds to dimension state_axis
+        # n_targets corresponds to dimension targets_axis_sp among the other
+        # dims (meaning targets_axis_sp + 1 if state_axis < targets_axis_sp)
+        shape = freqs.shape
+        targets_axis = targets_axis_sp + (
+            1 if state_axis < targets_axis_sp else 0)
         # if fms == True, we take the fully mixed state as the training data
         # labelled by 0
-        shape = freqs.shape
-        if targets is not None:
-            if np.all(targets == 1):
-                fms = True
-        if fms and targets is not None:
+        targets = np.array(targets)
+        if len(targets.shape) == 1:
+            # Ensures that targets has the same shape as freqs, if they were
+            # currently 1D
+            # This expansion makes reading a bit harder but makes coding easier
+            targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
+                targets, shape, current_axes=[targets_axis])
+        else:
+            # In this case one should ensure that targets only vary along
+            # targets_axis, else the logic of this method won't make sense
+            raise NotImplementedError("Targets must be 1D!")
+        if np.all(targets == 1):
+            # There is no target 0: add a fully mixed state as target 0
+            shape_fms = shape
+            shape_fms[targets_axis] = 1  # Add one target, along targets_axis
+            freqs = np.concatenate(
+                (freqs, np.ones(shape_fms)/shape[state_axis]),
+                axis=targets_axis)
+            # Amounts to np.concatenate((targets, [0])) for 1D targets
+            targets = np.concatenate(
+                (targets, np.zeros(shape_fms)),
+                axis=targets_axis)
+        elif fms:
             # Replace all states (soft dim) with target==0 by a mixed state
-            if not all(targets == 1):
-                freqs[:, :, targets == 0] = np.ones(
-                    [*shape[:2], sum(targets == 0)]) / shape[0]
-            else:
-                freqs = np.concatenate((freqs, np.ones(
-                    [*shape[:2], 1]) / shape[0]), axis=2)
-                targets = np.concatenate((targets, [0]))
-        shape = freqs.shape
-        output = np.zeros(shape[1:])  # (hard, soft)
+            # Using the fact that targets has the same shape as freqs
+            freqs[targets == 0] = 1/shape[state_axis]  # Uniform probs
 
         epsilon_stable = 1e-10  # small parameter to avoid division by zero
-
-        # JS_divergence = np.log(2) * np.ones(shape[1:])  # (hard, soft)
-        if weights is None:  # (hard, n_bs)
-            weights_opt = 0.5 * np.ones([shape[1], shape[0]])
-        else:
-            weights_opt = weights  # TODO could expand to 2D if 1D only
-        cost_func = np.zeros(shape[1])  # (hard)
-
-        # loop over hard_sweep, also the number of evaluation points
-        for i in range(shape[1]):
-            # the following part assumes that the second dimension is used
-            # for non-trainable parameter to prepare different states in the
-            # training set. freqs shape:
-            # (states, hard_sweep, soft_sweep) ~ (states, train, non_train)
-            # freq1/0 shape: (states,)
-            if targets is not None:
-                freq1 = freqs[:, i, :] @ targets / np.sum(targets)
-                freq0 = freqs[:, i, :] @ (1 - targets) / np.sum(1 - targets)
-                if weights is None:
-                    weights_opt[i] = freq1 / (freq0 + freq1 + epsilon_stable)
-                # JS_divergence[i] += 0.5 * np.log(
-                #     weights_opt[i] + epsilon_stable) @ freqs[:, i, :]
-                # JS_divergence[i] += 0.5 * np.log(
-                #     1 - weights_opt[i] + epsilon_stable) @ freq0
-                cost_func[i] -= 0.5 * np.log(
-                    weights_opt[i] + epsilon_stable) @ freq1
-                cost_func[i] -= 0.5 * np.log(
-                    1 - weights_opt[i] + epsilon_stable) @ freq0
-            output[i] = weights_opt[i] @ freqs[:, i, :]
-        return {
-            'output': output,
-            'costfunction': cost_func,
-            'weightsopt': weights_opt,
-            # 'JSdivergence': JS_divergence,
-        }
+        freq1 = np.sum(freqs * targets, axis=targets_axis) /\
+                np.sum(targets, axis=targets_axis)
+        freq0 = np.sum(freqs * (1 - targets), axis=targets_axis) /\
+            np.sum(1 - targets, axis=targets_axis)
+        weights_opt = freq1 / (freq0 + freq1 + epsilon_stable)
+        # Ensure that weights have the same shape as the measured data,
+        # including the targets axis
+        weights_opt = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
+            weights_opt, shape, new_axes=[targets_axis])
+        return weights_opt
 
     @staticmethod
-    def cpp_output(freqs, weights, axis=0):
+    def cpp_bxe_output(freqs, weights, state_axis=0,
+                       targets=None, targets_axis_sp=None,  # optional
+                       ):
         # Basic idea: 1D weights dot ND freqs -> ND output
         # This method additionally allows ND weights (swept over all dims>0)
-        assert isinstance(axis, int)
+        assert isinstance(state_axis, int)
         if isinstance(weights, dict):
             raise NotImplementedError
             # TODO extract weights from timestamps
             #  (with slicing)
         assert isinstance(weights, np.ndarray)
-        shape = freqs.shape
         if len(weights.shape) == 1:
-            # Broadcast 'weights' to an ND array of dims given by 'shape'
-            # assuming that the current 1D array corresponds to dim 'axis'
-            new_axes = list(range(len(shape)))
-            new_axes.pop(axis)
+            weights = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
+                weights, freqs.shape, current_axes=[state_axis])
+        output = np.sum(weights * freqs, axis=state_axis)  # dot products
+
+        # JS_divergence = np.log(2) * np.ones(shape[1:])  # (hard, soft)
+        # JS_divergence[i] += 0.5 * np.log(
+        #     weights_opt[i] + epsilon_stable) @ freqs[:, i, :]
+        # JS_divergence[i] += 0.5 * np.log(
+        #     1 - weights_opt[i] + epsilon_stable) @ freq0
+        if targets is not None:
+            targets = np.array(targets)
+            targets_axis = targets_axis_sp + (
+                1 if state_axis < targets_axis_sp else 0)
+            if len(targets.shape) == 1:
+                targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
+                    targets, freqs.shape, current_axes=[targets_axis])
+            epsilon_stable = 1e-10  # small parameter to avoid division by zero
+            freq1 = freqs * targets  # Don't sum over targets here
+            freq0 = freqs * (1 - targets)
+            cost_func = -(
+                    np.log(weights + epsilon_stable) * freq1 +
+                    np.log(1 - weights + epsilon_stable) * freq0
+            )
+            cost_func = np.sum(cost_func, axis=state_axis)
+        else:
+            cost_func = None
+        return output, cost_func
+
+    @staticmethod
+    def cpp_bxe_cost_function(shots, targets):
+        freqs, _ = VariationalAlgorithmAnalysis.cpp_histogram(shots)
+        # freqs shape: (bitstring, hard sweep, soft sweep)
+        # targets shape: (n_non_trainable_params,)
+        # targets_axis_sp=1 means targets correspond to the soft_sweep (sp[1])
+        weights = VariationalAlgorithmAnalysis.cpp_bxe_weights(
+            freqs, targets=targets, targets_axis_sp=1)
+        output, cost = VariationalAlgorithmAnalysis.cpp_bxe_output(
+            freqs, weights=weights, targets=targets, targets_axis_sp=1)
+        return cost
+
+    @staticmethod
+    def _expand_to_ND_from_axis(current_array, new_shape,
+                                current_axes=None, new_axes=None):
+        # Broadcast array to a bigger array of dims given by 'new_shape',
+        # assuming that 'current_array' corresponds to 'current_axes' within
+        # the new array. Disregards order of 'current_axes'. TODO new_axes
+        # TODO if the dimensions already match, only the lengths are increased
+        if len(current_array.shape) == len(new_shape):
+            new_array = current_array
+        else:
+            if new_axes is None:
+                new_axes = list(range(len(new_shape)))
+                for axis in current_axes:
+                    new_axes.pop(axis)
             # Create all new_axes, with length 1
-            weights = np.expand_dims(weights, axis=new_axes)
-            # Extend new_axes dims so they match the shape of freqs
-            weights = np.broadcast_to(weights, shape)
-        output = np.sum(weights * freqs, axis=axis)  # dot product along axis
-        return {
-            'output': output,
-        }
+            new_array = np.expand_dims(current_array, axis=new_axes)
+        # Extend new_axes dims so they match 'shape'
+        new_array = np.broadcast_to(new_array, new_shape)
+        return new_array
 
     def cpp_auto_collapse_to_1D_whatever(self, shots, sp):  # TODO
         # -> (n_shots, soft_sweep, hard_sweep, soft_label, hard_label)

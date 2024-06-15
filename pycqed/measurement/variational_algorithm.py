@@ -621,8 +621,7 @@ class VQAOptimizer:
         #     costs = np.array(costs)
 
         # batch_shape = (sets_trainable, sets_non_trainable)
-        costs = vaa.cpp_cost_function(data, targets)['costfunction'].reshape(
-            (-1, 1))
+        costs = self.cost_function(data, targets).reshape((-1, 1))  # TODO
         # cost must be 2D list of values for EGO to work
         # [[value_1], [value_2], ... [value_n_trainable]]
         self.optim_param_values.append(np.atleast_2d(params))
@@ -810,7 +809,7 @@ class VQAOptimizer:
         if callable(cost_function):
             self.cost_function = cost_function
         elif cost_function == 'binary_cross_entropy':
-            self.cost_function = vaa.cpp_cost_function
+            self.cost_function = vaa.cpp_bxe_cost_function
         elif isinstance(cost_function, str):
             self.cost_function = getattr(self, cost_function)
         else:
