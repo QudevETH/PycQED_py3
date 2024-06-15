@@ -321,6 +321,20 @@ class QCNN4(VariationalAlgorithm):
 
         Short name for convenience when using in an op code
         """
+        # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 2
+        # h_index = 21, prepare TP state with explicit parameters below
+        # h_index = 22, prepare |0000> state by setting all params to 0
+        if h_index == 21:
+            gs_prep_param = np.array([0,np.pi/2,np.pi/2,0,\
+                       np.pi,\
+                       -np.pi/2,0,np.pi/2,-np.pi/2,\
+                       np.pi,\
+                        np.pi,\
+                       -np.pi,np.pi/2,-np.pi/2,0]) * 180 / np.pi
+            return gs_prep_param[param_index]
+        elif h_index == 22:
+            gs_prep_param = np.zeros(15)
+            return gs_prep_param[param_index]
         if not hasattr(self, 'prep_params_vs_h'):
             if self.prep_params_filename is None:
                 raise ValueError("self.prep_params_filename is None!")
