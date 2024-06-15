@@ -26,6 +26,10 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     """
 
     default_experiment_name = 'VariationalAlgorithm'
+    # Sp will be stored at the end by MC from the result of the optimiser
+    # Apparently if MC stores them once at the beginning in MC.run,
+    # this prevents them from being overriden in the file
+    _metadata_params = {'cal_points', 'channel_map', 'meas_objs'}
 
     def __init__(self, optimize=True, optimizer=None,
                  classified=False, df_name='int_log_det',
@@ -237,31 +241,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             analysis_class = tda.VariationalAlgorithmAnalysis
         return super().run_analysis(analysis_class=analysis_class,
                                     analysis_kwargs=analysis_kwargs, **kw)
-
-    def run_measurement(self, *args, **kw):
-        super().run_measurement(*args, **kw)
-        if self.optimize:
-            self.save_optimisation_sweep_points()
-
-    def save_optimisation_sweep_points(self):
-        # Create a posteriori sweep points based on the
-        # optimiser data
-        self.sweep_points = sp_mod.SweepPoints()
-        sp_shape = self.optimizer.cost_function_values.shape
-        self.sweep_points.add_sweep_parameter(
-            'optimizer_hard_sweep_index',
-            np.array(range(sp_shape[0])),
-        )
-        self.sweep_points.add_sweep_dimension()
-        self.sweep_points.add_sweep_parameter(
-            'optimizer_soft_sweep_index',
-            np.array(range(sp_shape[1])),
-        )
-        self.MC.save_exp_metadata({
-            'sweep_points': self.sweep_points,
-            'meas_obj_sweep_points_map':  # TODO should this go to QE?
-                self.sweep_points.get_meas_obj_sweep_points_map(self.qubits),
-        })
 
 
 class VariationalAlgorithmCZ(VariationalAlgorithm):
@@ -553,7 +532,7 @@ class VQAOptimizer:
         self._set_cost_function(cost_function)
         self.training_settings = training_settings
         self.measurement_function = None
-        # FIXME maybe this should not be called sweep_points
+        self.sweep_points = None
         self.optim_param_values = []
         self.cost_function_values = []
         self.hybrid = hybrid
@@ -574,18 +553,22 @@ class VQAOptimizer:
             log.warning(
                 'Caught a KeyboardInterrupt and there is unsaved data. '
                 'Trying clean exit to save data.')
-        cf = np.concatenate(self.cost_function_values, axis=1)
+        self.cost_function_values = np.concatenate(
+            self.cost_function_values, axis=1)
         # cf.shape: (n sets of train. pars (hard), n batches (soft))
-        pv = np.array(self.optim_param_values)
-        pv = np.swapaxes(pv, 0, 2)
+        self.optim_param_values = np.array(self.optim_param_values)
+        self.optim_param_values = np.swapaxes(
+            self.optim_param_values, 0, 2)  # TODO clean up?
         # pv.shape: (
         #   n trainable parameters,
         #   n sets of trainable parameters (hard),
         #   n batches (soft)
         # )
+        self.create_sweep_points()
         result_dict = {
-            'optim_param_values': pv,
-            'cost_function_values': cf,
+            'optim_param_values': self.optim_param_values,
+            'cost_function_values': self.cost_function_values,
+            'sweep_points': self.sweep_points,
         }
         if self.hybrid:
             result_dict.update({
@@ -723,6 +706,20 @@ class VQAOptimizer:
         params_values = params_values.reshape(-1, params_values.shape[-1])
         return params_values, batch_shape, out_targets
 
+    def create_sweep_points(self):
+        # Create a posteriori sweep points based on the optimisation run
+        self.sweep_points = sp_mod.SweepPoints()
+        sp_shape = self.cost_function_values.shape
+        self.sweep_points.add_sweep_parameter(
+            'optimizer_hard_sweep_index',
+            np.array(range(sp_shape[0])),
+        )
+        self.sweep_points.add_sweep_dimension()
+        self.sweep_points.add_sweep_parameter(
+            'optimizer_soft_sweep_index',
+            np.array(range(sp_shape[1])),
+        )
+
     def _set_classical_optimizer_function(self,
                                           classical_optimizer_function_name,
                                           classical_optimizer_kw):
@@ -770,7 +767,6 @@ class VQAOptimizer:
                     angles_ev = np.zeros([Nsteps + 1, length])
                     angles_ev[0] = angles_init  # initial guess
 
-
                     for i in range(Nsteps):
                         seed = sigma * np.random.randn(npop-1, length)
                         # TODO comment
@@ -791,15 +787,6 @@ class VQAOptimizer:
                         angles_ev[i + 1] = angles_ev[i] - gradient
                         print(f'iteration: {i}/{Nsteps}', ', cost:',
                               np.mean(cost))
-
-                    class res:
-                        fun = min_cost
-                        fun_i = cost_ev
-                        x = min_angles
-                        nit = Nsteps
-                        nfev = Nsteps * npop
-
-                    return res
                 self.optimizer_function = _evolutionary_strategy
                 self.optimizer_kw = optimizer_kw
         if self.optimizer_function is None:
