@@ -2919,6 +2919,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def process_data(self):
         super().process_data()
+        log.warning('TODO')
+        return
         # TODO add standard plots only if data match sp
 
         # FIXME: replacing the values of a qubit is a hack, we should
@@ -3180,7 +3182,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             raise NotImplementedError("Targets must be 1D!")
         if np.all(targets == 1):
             # There is no target 0: add a fully mixed state as target 0
-            shape_fms = shape
+            shape_fms = list(shape)
             shape_fms[targets_axis] = 1  # Add one target, along targets_axis
             freqs = np.concatenate(
                 (freqs, np.ones(shape_fms)/shape[state_axis]),
@@ -3253,10 +3255,14 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # freqs shape: (bitstring, hard sweep, soft sweep)
         # targets shape: (n_non_trainable_params,)
         # targets_axis_sp=1 means targets correspond to the soft_sweep (sp[1])
-        weights = VariationalAlgorithmAnalysis.cpp_bxe_weights(
+        # TODO allow other targets_axis_sp
+        weights = VariationalAlgorithmAnalysis.cpp_opt_bxe_weights(
             freqs, targets=targets, targets_axis_sp=1)
+        # TODO the only difference with the other call to this method is
+        #  taking the mean. Unify this?
         output, cost = VariationalAlgorithmAnalysis.cpp_bxe_output(
             freqs, weights=weights, targets=targets, targets_axis_sp=1)
+        cost = np.mean(cost, axis=1)
         return cost
 
     @staticmethod
