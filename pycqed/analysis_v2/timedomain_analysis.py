@@ -2529,6 +2529,12 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     # plot slices of the 2D projected data
                     self.prepare_projected_1d_slices_plots(
                         fig_name, corr_data, qb_name, slice_idxs_list,
+                        data_label='',
+                        # FIXME this might not be the best default value
+                        #  (might conflict with whatever mess happens in
+                        #  get_yaxis_label). Improve once a use case comes up.
+                        data_axis_label=qb_name,
+                    )
 
     def prepare_projected_1d_slices_plots(self, fig_name, data, qb_name,
                                           slice_idxs_list, title_suffix='',
