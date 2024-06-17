@@ -65,6 +65,8 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
             if self.optimize:
                 self.optimizer = optimizer  # TODO or pass kw and instantiate here?
+                # TODO maybe just pass the number of parameters
+                self.optimizer.training_settings['params'] = self.params
                 self.sweep_functions = [awg_swf.BlockSoftHardSweep(
                     self,
                     self.params,
@@ -538,6 +540,7 @@ class VQAOptimizer:
         self.optim_param_values = []
         self.cost_function_values = []
         self.hybrid = hybrid
+        self.iterations = 0
         if self.hybrid:
             self._set_classical_optimizer_function(
                 classical_optimizer_function_name, classical_optimizer_kw)
@@ -547,6 +550,9 @@ class VQAOptimizer:
     def __call__(self, fun, **kw):
         # in MeasurementControl.measure_soft_adaptive:
         # self.adaptive_function(self.optimization_function, **self.af_pars)
+        if self.iterations:
+            log.warning("Reusing an optimizer which has previously run! "
+                        "We should first reset all relevant parameters here.")
         self.measurement_function = fun
         try:
             self.optimizer_function(self._full_circuit,
@@ -571,6 +577,8 @@ class VQAOptimizer:
             'optim_param_values': self.optim_param_values,
             'cost_function_values': self.cost_function_values,
             'sweep_points': self.sweep_points,
+            'batch_shape': np.array(self.batch_shape),
+            'targets': self.targets,
         }
         if self.hybrid:
             result_dict.update({
@@ -582,6 +590,7 @@ class VQAOptimizer:
     def _full_circuit(self, params):
         all_params, batch_shape, targets = self.get_batch_params(params)
         data = self.measurement_function(all_params)
+        self.iterations += 1
         data = np.array([
             data[key].reshape((-1, *batch_shape, 3)) for key in data.keys()
         ])
@@ -611,6 +620,8 @@ class VQAOptimizer:
         # [[value_1], [value_2], ... [value_n_trainable]]
         self.optim_param_values.append(np.atleast_2d(params))
         self.cost_function_values.append(costs)  # Will be concatenated
+        self.batch_shape = batch_shape
+        self.targets = targets
         return costs
 
     # def _classical_training(self, data_batch, targets):
@@ -668,7 +679,7 @@ class VQAOptimizer:
             trainable_params_values: TODO
 
         training_settings = {  TODO should these belong to the QE?
-            'params': [''],  TODO unused
+            'params': [''],
             'trainable_params': int,  # Could be generalised to a list of
             bool of the same length as 'params'. For now, this method
             assumes that params are ordered (non trainable then trainable).
@@ -687,6 +698,13 @@ class VQAOptimizer:
         if non_trainable_params_values is None:
             non_trainable_params_values = [[]]
         trainable_params_values = np.atleast_2d(trainable_params_values)
+        if (trainable_params_values.shape[-1] !=
+                len(self.training_settings['params'])):
+            raise ValueError(
+                "The optimiser requested trainable_params_values with shape "
+                f"{trainable_params_values.shape}. This is incompatible with "
+                f"{len(self.training_settings['params'])} gate parameters "
+                f"in the circuit.")
         out_targets = self.training_settings['out_targets']
         params_values = np.array([
             [
@@ -711,15 +729,14 @@ class VQAOptimizer:
     def create_sweep_points(self):
         # Create a posteriori sweep points based on the optimisation run
         self.sweep_points = sp_mod.SweepPoints()
-        sp_shape = self.cost_function_values.shape
         self.sweep_points.add_sweep_parameter(
             'optimizer_hard_sweep_index',
-            np.array(range(sp_shape[0])),
+            np.array(range(np.prod(self.batch_shape))),
         )
         self.sweep_points.add_sweep_dimension()
         self.sweep_points.add_sweep_parameter(
             'optimizer_soft_sweep_index',
-            np.array(range(sp_shape[1])),
+            np.array(range(self.iterations)),
         )
 
     def _set_classical_optimizer_function(self,

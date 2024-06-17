@@ -2919,51 +2919,88 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def process_data(self):
         super().process_data()
-        log.warning('TODO')
-        return
-        # TODO add standard plots only if data match sp
 
-        # FIXME: replacing the values of a qubit is a hack, we should
-        #  instead create a new entry
         if 'slice_idxs_1d_proj_plot' not in self.options_dict:
             self.options_dict['slice_idxs_1d_proj_plot'] = {}
         if self.get_param_value('optimize'):
-            # TODO one could recalculate the cost function from shots instead
-            cost_func = self.raw_data_dict['cost_function_values']
-            optim_param_values = self.raw_data_dict['optim_param_values']
-            # shape = (
-            #   n trainable params in the quantum circuit
-            #   n sets of trainable params per batch (hard)
-            #   n batches (soft),
+            # # TODO maybe check equality with recomputed cost
+            # cost_func = self.raw_data_dict['cost_function_values']
+            # optim_param_values = self.raw_data_dict['optim_param_values']
+            # # shape = (
+            # #   n trainable params in the quantum circuit
+            # #   n sets of trainable params per batch (hard)
+            # #   n batches (soft),
+            # # )
+            # # Create a 1 D plot (n batches * n sets per batch) for each param
+            # p_names = self.get_param_value('optim_param_names')
+            # n_non_trainable = len(p_names) - self.get_param_value(
+            #     'training_settings')['trainable_params']
+            # for id_param in range(optim_param_values.shape[0]):
+            #     p_name = p_names[n_non_trainable + id_param]
+            #     self.add_dummy_qb_data(p_name, optim_param_values[id_param])
+            #     self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+            #         p_name, [(':', 'smcol')]
+            #     )
+            # self.add_dummy_qb_data(
+            #     'costfunction',
+            #     cost_func,
             # )
-            # Create a 1 D plot (n batches * n sets per batch) for each param
-            p_names = self.get_param_value('optim_param_names')
-            n_non_trainable = len(p_names) - self.get_param_value(
-                'training_settings')['trainable_params']
-            for id_param in range(optim_param_values.shape[0]):
-                p_name = p_names[n_non_trainable + id_param]
-                self.add_dummy_qb_data(p_name, optim_param_values[id_param])
-                self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                    p_name, [(':', 'smcol')]
-                )
-            self.add_dummy_qb_data(
-                'costfunction',
-                cost_func,
-            )
-            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'costfunction', [(':', 'smcol')]
+            # self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+            #     'costfunction', [(':', 'smcol')]
+            # )
+            #
+            # # # logical branch for hybrid training
+            # # if self.get_param_value('hybrid'):
+            # #     self.proc_data_dict['projected_data_dict'] \
+            # #         [self.qb_names[0]].update(
+            # #             {'classical_params_result': self.raw_data_dict[
+            # #                 'classical_params_result']})
+            # # for useless_qb in self.qb_names[1:]:
+            # #     del self.proc_data_dict['projected_data_dict'][useless_qb]
+            # # self.proc_data_dict['sweep_points_dict'][
+            # #     self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
+
+
+            self.cpp_results = {}
+            shots = self._get_binary_shots_array()
+            freqs, bitstrings_labels = self.cpp_histogram(shots)
+            # freqs shape: (bitstring, hard sweep, soft sweep)
+
+            freqs.reshape(
+                [freqs.shape[0]] +
+                list(self.raw_data_dict['optimizer']['batch_shape']) +
+                [self.sp.length(1)]
             )
 
-            # # logical branch for hybrid training
-            # if self.get_param_value('hybrid'):
-            #     self.proc_data_dict['projected_data_dict'] \
-            #         [self.qb_names[0]].update(
-            #             {'classical_params_result': self.raw_data_dict[
-            #                 'classical_params_result']})
-            # for useless_qb in self.qb_names[1:]:
-            #     del self.proc_data_dict['projected_data_dict'][useless_qb]
-            # self.proc_data_dict['sweep_points_dict'][
-            #     self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
+            # TODO assume that targets correspond to dim 1 of batch_shape
+            targets = None
+            targets_axis = self.sp.find_parameter('targets')
+            sp_no_targets = copy(self.sp)
+            weights = self.get_param_value('weights')
+            if targets_axis is not None:
+                targets = self.sp['targets']
+                sp_no_targets.pop(targets_axis)
+                weights = self.cpp_opt_bxe_weights(
+                    freqs, targets,
+                    targets_axis_sp=targets_axis,  # 1 is for bitstring dim
+                    fms=self.get_param_value('fms', False))
+            output, cost = self.cpp_bxe_output(
+                freqs, weights,
+                targets=targets, targets_axis_sp=targets_axis,
+            )
+            self.cpp_results.update({
+                'output': (output, self.sp),
+                'cost': (cost, self.sp),
+                'training_set_cost': (
+                    np.mean(cost, axis=targets_axis) if targets_axis else cost,
+                    sp_no_targets),
+                'weights': (weights, self.sp),  # plotting won't work
+            })
+            # TODO decide in a smarter way what should be plotted
+            for key in ['output', 'cost', 'training_set_cost']:
+                values, sp = self.cpp_results[key]
+                self.add_dummy_qb_data(
+                    key, values, sp)
         else:
             # sweep mode data processing
             self.cpp_results = {}

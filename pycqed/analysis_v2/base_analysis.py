@@ -618,32 +618,41 @@ class BaseDataAnalysis(object):
                 # the classifier.
                 if 'exp_metadata' in params_dict:
                     if raw_data_dict_ts['exp_metadata'].get('optimize'):
-                        # extract param values during optimisation
-                        raw_data_dict_ts['optim_param_values'] = np.array(
-                            data_file['Optimization_result']['opt'][
-                                'optim_param_values'])
-                        # extract cost function values
-                        raw_data_dict_ts['cost_function_values'] = np.array(
-                            data_file['Optimization_result']['opt'][
-                                'cost_function_values'])
-                        # FIXME: why update params_dict
-                        self.params_dict.update({
-                            'optim_param_values': 'optim_param_values',
-                            'cost_function_values': 'cost_function_values'
-                        })
+                        raw_data_dict_ts['optimizer'] = dict()
+                        for k, v in dict(data_file['Optimization_result'][
+                                            'opt']).items():
+                            # FIXME
+                            if k == 'sweep_points':
+                                continue  # already in metadata
+                            raw_data_dict_ts['optimizer'][k] = np.array(v)
 
-                        # extract classical params result
-                        if raw_data_dict_ts['exp_metadata']['hybrid']:
-                            classical_params_result = data_file[
-                                'Optimization_result']['opt'].attrs[
-                                'classical_params_result']
-                            raw_data_dict_ts['classical_params_result'] = \
-                                np.array(eval(classical_params_result))
-                            # FIXME: why update params_dict
-                            self.params_dict.update({
-                                'classical_params_result':
-                                    'classical_params_result',
-                            })
+                        #
+                        # # extract param values during optimisation
+                        # raw_data_dict_ts['optim_param_values'] = np.array(
+                        #     data_file['Optimization_result']['opt'][
+                        #         'optim_param_values'])
+                        # # extract cost function values
+                        # raw_data_dict_ts['cost_function_values'] = np.array(
+                        #     data_file['Optimization_result']['opt'][
+                        #         'cost_function_values'])
+                        # # FIXME: why update params_dict
+                        # self.params_dict.update({
+                        #     'optim_param_values': 'optim_param_values',
+                        #     'cost_function_values': 'cost_function_values'
+                        # })
+                        #
+                        # # extract classical params result
+                        # if raw_data_dict_ts['exp_metadata']['hybrid']:
+                        #     classical_params_result = data_file[
+                        #         'Optimization_result']['opt'].attrs[
+                        #         'classical_params_result']
+                        #     raw_data_dict_ts['classical_params_result'] = \
+                        #         np.array(eval(classical_params_result))
+                        #     # FIXME: why update params_dict
+                        #     self.params_dict.update({
+                        #         'classical_params_result':
+                        #             'classical_params_result',
+                        #     })
 
                 a_tools.close_files([data_file])
                 raw_data_dict.append(raw_data_dict_ts)
