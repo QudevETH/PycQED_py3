@@ -214,7 +214,7 @@ class MeasureSSRO(CalibBuilder):
         
         Implements the logic to ensure that the acq_length is swept with the
         ro_length and that the acq_lengths per instr_acq are identical. It
-        also checks, that the maximal acquisition length is not surpassed.
+        also ensures, that the maximal acquisition length is not surpassed.
 
         Args:
             acq_length_sweep_auto_margin (float): If the acquisition length is
@@ -226,107 +226,86 @@ class MeasureSSRO(CalibBuilder):
         for acq_dev_name, tasks in self.grouped_tasks.items():
             if not len(tasks):
                 continue
-            print(acq_dev_name)
-            print(tasks)
+
             acq_dev = self.dev.find_instrument(acq_dev_name)
             max_acq_length = (acq_dev.acq_weights_n_samples /
                               acq_dev.acq_sampling_rate)
-            print(f"max_acq_length={max_acq_length}")
             set_acq_length = max([self.get_qubit(t).acq_length() for t in tasks])
-            print(f"set_acq_length: {set_acq_length}")
 
             # if one or more qbs sweeps the acq_length, then the max acq_length
             # of the qbs is used
 
-
-            ro_len_sweeps = []
-            n_rolen_swept_acqlen_not = 0
-            for t in tasks:
-                sp = t['sweep_points']
-                if sp.find_parameter('pulse_length') is not None:
-                    ro_len_sweeps.append((sp, t['qb']))
-                    if sp.find_parameter('acq_length') is None:
-                        n_rolen_swept_acqlen_not += 1
-
-            acq_len_sp_list = np.array([  # list tasks that sweep acq_length
+            acq_len_sweeps = np.array([  # list of all acq_length sweeps
                 t['sweep_points']['acq_length'] for t in tasks
                 if t['sweep_points'].find_parameter('acq_length') is not None])
+            ro_len_sweeps = np.array([  # list of all ro_length sweeps
+                t['sweep_points']['pulse_length'] for t in tasks
+                if t['sweep_points'].find_parameter('pulse_length') is not None])
 
-            print(f"n_rolen_swept_acqlen_not {n_rolen_swept_acqlen_not}")
-            print(f"ro_len_sweeps {ro_len_sweeps}")
+            # to be filled if there is a ro_ or acq_length is swept
+            acq_len_sweep = None
 
-            if len(acq_len_sp_list) != 0 and n_rolen_swept_acqlen_not != 0:
-                # case 1: some/all qbs from acq_dev have acq_len swept:
-                # choose acq_len sweep points from qb where acq_len is swept
-                if np.any(acq_len_sp_list > max_acq_length):
+            if len(acq_len_sweeps != 0):  # at least one acq_length sweep
+                if not all([np.all(acq_len_sweeps[0] == s)
+                            for s in acq_len_sweeps]):
+                    # different acqlen sweeps set, taking max.
+                    log.warning(f"The acq_length sweep points are not the "
+                                f"same for all qubits using {acq_dev_name}. "
+                                f"Taking maximum over qbs.")
+                acq_len_sweep = np.max(acq_len_sweeps, axis=0)
+                if np.any(acq_len_sweep > max_acq_length):
                     log.warning(f"RO pulse lengths for qbs of {acq_dev_name} "
                                 f"are longer than the maximal acquisition "
                                 f"length of {max_acq_length:.3g}s.")
-                acq_len_sweep = np.min(
-                    [np.max(acq_len_sp_list, axis=0),
-                     np.ones_like(acq_len_sp_list[0]) * max_acq_length], axis=0)
-            if len(acq_len_sp_list) == 0 and n_rolen_swept_acqlen_not != 0:
-                # case 2: acq_len not swept of acq_dev.
-                max_ro_lengths = np.max(
-                    np.array([sp.get_values('pulse_length')
-                              for sp, _ in ro_len_sweeps]), axis=0)
-                print(f"max_ro_lengths: {max_ro_lengths}")
+            elif len(ro_len_sweeps != 0):
+                # at least one ro_length swept with no acq_length sweeps
+                max_ro_lengths = np.max(ro_len_sweeps, axis=0)
 
+                acq_len_sweep = np.max(  # lower bound with ro_length
+                    [np.ones_like(max_ro_lengths) * set_acq_length,
+                     max_ro_lengths + acq_length_sweep_auto_margin], axis=0)
+
+                if np.any(acq_len_sweep > set_acq_length):
+                    # changed acq_length from default value
+                    log.warning(f" {acq_dev_name}: Some/all readout RO pulse "
+                                f"lengths are swept while the acquisition length "
+                                f"is not. Automatically sweeping acquisition "
+                                f"length from {acq_len_sweep[0]:.3g}s to "
+                                f"{acq_len_sweep[-1]:.3g}s.")
                 if np.any(max_ro_lengths > max_acq_length):
                     log.warning(f"RO pulse lengths for qbs of {acq_dev_name} "
                                 f"are longer than the maximal acquisition "
-                                f"length of {max_acq_length:.3g}s.")
+                                f"length of {max_acq_length:.3g}s. Clipping "
+                                f"acquisition length at maximum.")
 
-                acq_len_sweep = np.max(  # lower bound acq_length by ro_length
-                    [np.ones_like(max_ro_lengths) * set_acq_length,
-                     max_ro_lengths + acq_length_sweep_auto_margin], axis=0)
-                acq_len_sweep = np.min(  # upper bound acq_length by max_acqlen
+            if acq_len_sweep is not None:  # last checks and update tasks
+                acq_len_sweep = np.min(  # upper bound with max_acq_length
                     [acq_len_sweep,
-                     np.ones_like(max_ro_lengths) * max_acq_length], axis=0)
-                log.warning(f" {acq_dev_name}: Some/all readout pulse lengths "
-                            f"are swept while the acquisition length is "
-                            f"not. Automatically sweeping acquisition "
-                            f"length from {acq_len_sweep[0]:.3g}s to "
-                            f"{acq_len_sweep[-1]:.3g}s.")
-                print(f"acq_len_sweep {acq_len_sweep}")
-            if len(acq_len_sp_list) == 0 and n_rolen_swept_acqlen_not == 0:
-                # case 3: acq_len and ro_len not swept: nothing to do.
-                continue
+                     np.ones_like(acq_len_sweep) * max_acq_length], axis=0)
 
-            # set/create sweep points for acq_length for cases 2 and 3
-            for t in tasks:
-                sp = t['sweep_points']
-                if sp.find_parameter('pulse_length') is not None:
-                    ro_len_sweeps.append((sp, t['qb']))
-                sp.add_sweep_parameter('acq_length', acq_len_sweep, 's',
-                                       dimension=1,
-                                       label='acquisition length (auto)')
+                if np.any(acq_len_sweep/max_acq_length < 1e-10):
+                    raise ValueError(f"Choose non-zero acquisition length. "
+                                     f"Encountered 0 in {acq_dev_name} with "
+                                     f"acquisition lengths {acq_len_sweep}.")
 
-            # updating acq_len_sp_list
-            acq_len_sp_list = np.array([
-                t['sweep_points']['acq_length'] for t in tasks
-                if t['sweep_points'].find_parameter('acq_length') is not None
-            ])
-            print(acq_len_sp_list)
-            if (acq_len_sp_list == 0).any():
-                raise ValueError(f"Choose non-zero acquisition length. "
-                                 f"Encountered 0 in acq_dev {acq_dev_name} with "
-                                 f"acquisition lengths {acq_len_sp_list}")
-            # check that all acq_lens are the same for the qbs of the acq_dev
-            if not all([np.mean(abs(lengths - acq_len_sp_list[0]) / acq_len_sp_list[0])
-                        < 1e-10 for lengths in acq_len_sp_list]):
-                raise ValueError(
-                    "The acq_length sweep points must be the same for all "
-                    "qubits using the same acquisition device, but this is "
-                    f"not the case for {acq_dev_name}.")
-            sf = swf.AcquisitionLengthSweep(
-                lambda s=self, a=acq_dev_name: s.get_detector_function(a))
-            # only add acq_length sweep fcn to the first qb of every acq_dev
-            self.sweep_functions_dict.update({
-                tasks[0]['prefix'] + 'acq_length': sf})
-            self.sweep_functions_dict.update({
-                task['prefix'] + 'acq_length': None
-                for task in tasks[1:]})
+                for t in tasks:
+                    sp = t['sweep_points']
+                    if sp.find_parameter('acq_length') is None:
+                        sp.add_sweep_parameter('acq_length', acq_len_sweep,
+                                               's', dimension=1,
+                                               label='acq length (auto)')
+                    else:
+                        sp.update_property(['acq_length', ],
+                                           values=[acq_len_sweep, ])
+
+                sf = swf.AcquisitionLengthSweep(
+                    lambda s=self, a=acq_dev_name: s.get_detector_function(a))
+                # only add acq_length sweep func to first qb of every acq_dev
+                self.sweep_functions_dict.update({
+                    tasks[0]['prefix'] + 'acq_length': sf})
+                self.sweep_functions_dict.update({
+                    task['prefix'] + 'acq_length': None
+                    for task in tasks[1:]})
 
     def get_detector_function(self, acq_dev):
         """Returns the detector function of the corresponding acq_dev.
