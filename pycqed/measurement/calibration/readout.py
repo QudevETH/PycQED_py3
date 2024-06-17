@@ -268,11 +268,12 @@ class MeasureSSRO(CalibBuilder):
 
                 if np.any(acq_len_sweep > set_acq_length):
                     # changed acq_length from default value
+                    t1 = min(acq_len_sweep[0], max_acq_length)
+                    t2 = min(acq_len_sweep[-1], max_acq_length)
                     log.warning(f" {acq_dev_name}: Some/all readout RO pulse "
                                 f"lengths are swept while the acquisition length "
                                 f"is not. Automatically sweeping acquisition "
-                                f"length from {acq_len_sweep[0]:.3g}s to "
-                                f"{acq_len_sweep[-1]:.3g}s.")
+                                f"length from {t1:.3g}s to {t2:.3g}s.")
                 if np.any(max_ro_lengths > max_acq_length):
                     log.warning(f"RO pulse lengths for qbs of {acq_dev_name} "
                                 f"are longer than the maximal acquisition "
