@@ -160,14 +160,15 @@ class MultiTaskingExperiment(QuantumExperiment):
         Implements the shortcut where just specifying `qubits` will generate a
         task_list and a list of the qubit names.
         """
+        if qubits is not None and not isinstance(qubits, list):
+            qubits = [qubits]
+
         # generate task_list
         if task_list is None:
             if qubits is None:
                 raise ValueError('Please provide either '
                                  '"qubits" or "task_list"')
             # Create task_list from qubits
-            if not isinstance(qubits, list):
-                qubits = [qubits]
             task_list = [{'qb': qb.name} for qb in qubits]
         for task in task_list:
             if 'qb' in task and not isinstance(task['qb'], str):
