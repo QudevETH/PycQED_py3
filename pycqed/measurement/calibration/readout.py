@@ -208,6 +208,7 @@ class MeasureSSRO(CalibBuilder):
         return self.get_qubits(task['qb'])[0][0]
 
     def _resolve_acq_length_sweep_points(self,
+                                         create_auto_acq_length_sweep=True,
                                          acq_length_sweep_auto_margin=200e-9,
                                          **kw):
         """Creates and resolves the acquisition length sweeps
@@ -257,7 +258,7 @@ class MeasureSSRO(CalibBuilder):
                     log.warning(f"RO pulse lengths for qbs of {acq_dev_name} "
                                 f"are longer than the maximal acquisition "
                                 f"length of {max_acq_length:.3g}s.")
-            elif len(ro_len_sweeps != 0):
+            elif len(ro_len_sweeps != 0) and create_auto_acq_length_sweep:
                 # at least one ro_length swept with no acq_length sweeps
                 max_ro_lengths = np.max(ro_len_sweeps, axis=0)
 
