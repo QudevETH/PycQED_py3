@@ -91,6 +91,8 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 })
             else:
                 self.exp_metadata.update({
+                    # add sweep_points here (removed from _metadata_params)
+                    'sweep_points': self.sweep_points,
                     'meas_obj_sweep_points_map':
                         self.sweep_points.get_meas_obj_sweep_points_map(
                             [qb.name for qb in self.meas_objs]),
