@@ -651,11 +651,7 @@ class OptimalWeights(CalibBuilder):
             log.info(f'Updating qubit weights of {qb.name}.')
             weights = self.analysis.proc_data_dict['analysis_params_dict'][
                 'optimal_weights'][qb.name]
-            if np.ndim(weights) == 1:
-                # single channel
-                qb.acq_weights_I(weights.real)
-                qb.acq_weights_Q(weights.imag)
-            elif np.ndim(weights) == 2 and len(weights) == 1:
+            if np.ndim(weights) == 2 and len(weights) == 1:
                 # single channels
                 qb.acq_weights_I(weights[0].real)
                 qb.acq_weights_Q(weights[0].imag)
@@ -666,7 +662,7 @@ class OptimalWeights(CalibBuilder):
                 qb.acq_weights_I2(weights[1].real)
                 qb.acq_weights_Q2(weights[1].imag)
             else:
-                log.warning(f"{qb.name}: Number of weight vectors > 2: "
+                log.warning(f"{qb.name}: Number of weight vectors != 2: "
                             f"{len(weights)}. Cannot update weights "
                             f"automatically.")
             qb.acq_weights_basis(

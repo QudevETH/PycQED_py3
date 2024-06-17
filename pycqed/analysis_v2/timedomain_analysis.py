@@ -8166,14 +8166,12 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ro_mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
 
         if np.ndim(basis) == 1:
-            basis = self._filter_timetrace(
-                basis, ro_freq, ro_mod_freq, sampling_rate, filter_func)
-        else:
-            assert np.ndim(basis) == 2, "Basis arr should only be 2D."
-            for i in range(len(basis)):
-                basis[i] = self._filter_timetrace(
-                    basis[i], ro_freq, ro_mod_freq, sampling_rate,
-                    filter_func)
+            basis = [basis]
+        assert np.ndim(basis) == 2, "Basis arr should only be 2D."
+        for i in range(len(basis)):
+            basis[i] = self._filter_timetrace(
+                basis[i], ro_freq, ro_mod_freq, sampling_rate,
+                filter_func)
         return basis
 
     @staticmethod
