@@ -321,8 +321,12 @@ class QCNN4(VariationalAlgorithm):
         if not hasattr(self, 'prep_params_vs_h'):
             if self.prep_params_filename is None:
                 raise ValueError("self.prep_params_filename is None!")
-            with h5py.File(self.prep_params_filename, 'r') as fileObject:
-                self.prep_params_vs_h = np.array(fileObject['angles_opt'])*180/np.pi
+            try:
+                with h5py.File(self.prep_params_filename, 'r') as fileObject:
+                    self.prep_params_vs_h = np.array(fileObject['angles_opt'])*180/np.pi
+            except FileNotFoundError:
+                log.warning("Can't find prep params file! Using zeros instead")
+                self.prep_params_vs_h = np.zeros((21, 15))
         param_index = [3,0,1,2,4,8,5,6,7,9,10,14,11,12,13][param_index]
         h_index = int(round(h_index))
         return self.prep_params_vs_h[h_index, param_index]
