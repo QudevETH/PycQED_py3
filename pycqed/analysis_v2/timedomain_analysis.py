@@ -3307,8 +3307,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                                 current_axes=None, new_axes=None):
         # Broadcast array to a bigger array of dims given by 'new_shape',
         # assuming that 'current_array' corresponds to 'current_axes' within
-        # the new array. Disregards order of 'current_axes'. TODO new_axes
-        # TODO if the dimensions already match, only the lengths are increased
+        # the new array. Disregards order of 'current_axes'.
+        # new_axes are the new axes to be added to match 'new_shape' (these
+        # can also be passed directly.
+        # If the numbers of dimensions already match, only the lengths are
+        # increased
         if len(current_array.shape) == len(new_shape):
             new_array = current_array
         else:
