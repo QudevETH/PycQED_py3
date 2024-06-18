@@ -3597,6 +3597,15 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
                 amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
                     qubit.name]['correct_amplitude']
                 qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+                # Correct the relative scaling of the pi/2 pulse such that
+                # its amplitude stays constant even though the pi amp changed
+                amp180_sc = self.analysis.proc_data_dict[
+                    'analysis_params_dict'][qubit.name][
+                    'correct_scalings_mean']
+                curr_90_sc = qubit.get(
+                    f'{task["transition_name_input"]}_amp90_scale')
+                qubit.set(f'{task["transition_name_input"]}_amp90_scale',
+                          curr_90_sc / amp180_sc)
             elif ideal_sc == 0.5:
                 # pi/2 pulse amp calibration
                 amp90_sc = self.analysis.proc_data_dict['analysis_params_dict'][
