@@ -9289,7 +9289,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             for cw, state in mapping.items():
                 main_ax.annotate("0b{:02b}".format(cw) + f":{state}",
                                  ax_frac[cw], xycoords='axes fraction')
-            fig_key = f'{qbn}_{self.classif_method}_classifier_{dk}' \
+            fig_key = f'{qbn}_classifier_{self.classif_method}_{dk}' \
                       f'{f"_sp_{sweep_indx}" if slice_title is not None else ""}'
             self.figs[fig_key] = fig
         if show:
