@@ -295,9 +295,6 @@ class BaseDataAnalysis(object):
                         # make the plots
                         self.plot(key_list='auto')
 
-                if self.options_dict.get('save_figs', False):
-                    self.save_figures(close_figs=self.options_dict.get(
-                        'close_figs', False))
             self._raise_warning()
         except Exception as e:
             if self.raise_exceptions:
@@ -1099,8 +1096,7 @@ class BaseDataAnalysis(object):
 
     def save_figures(self, savedir: str = None, savebase: str = None,
                      tag_tstamp: bool = True, dpi: int = 300,
-                     fmt: str = 'png', key_list: list = 'auto',
-                     close_figs: bool = True):
+                     fmt: str = 'png', key_list: list = 'auto'):
 
         if savedir is None:
             if isinstance(self.raw_data_dict, tuple):
@@ -1134,18 +1130,12 @@ class BaseDataAnalysis(object):
             print('Saving figures to %s' % savedir)
 
         for key in key_list:
+            savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
+            self.figs[key].savefig(savename, bbox_inches='tight',
+                                   format=fmt, dpi=dpi)
             if self.presentation_mode:
-                savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.' + fmt)
-                self.figs[key].savefig(savename, bbox_inches='tight',
-                                       format=fmt, dpi=dpi)
                 savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.svg')
                 self.figs[key].savefig(savename, bbox_inches='tight', format='svg')
-            else:
-                savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
-                self.figs[key].savefig(savename, bbox_inches='tight',
-                                       format=fmt, dpi=dpi)
-        if close_figs:
-            self.close_figs(key_list)
 
     def close_figs(self, key_list='auto'):
         """Closes specified figures.
@@ -1465,15 +1455,21 @@ class BaseDataAnalysis(object):
             fig_id (str): figure id from `self.plot_dicts`. If passed only
                 specified figure will be plotted.
         """
-        self._prepare_for_plot(key_list, axs_dict, no_label)
-        if presentation_mode is None:
-            presentation_mode = self.presentation_mode
-        if transparent_background is None:
-            transparent_background = self.transparent_background
-        if presentation_mode:
-            self.plot_for_presentation(self.key_list, transparent_background)
-        else:
-            self._plot(self.key_list, transparent_background, fig_id=fig_id)
+
+        key_list = self._get_key_list(key_list)
+        plot_dicts = {k: p for k, p in self.plot_dicts.items()
+                      if k in key_list}
+        unique_fig_names = set(p['fig_id'] for k, p in plot_dicts.items())
+        for unique_fig_name in unique_fig_names:
+            fig_key_list = [k for k, p in plot_dicts.items()
+                            if p['fig_id'] == unique_fig_name]
+            self._prepare_for_plot(fig_key_list, axs_dict, no_label,
+                                   presentation_mode)
+            self._plot(fig_key_list, transparent_background, fig_id=fig_id)
+            if self.options_dict['save_figs']:
+                self.save_figures(key_list=[unique_fig_name])
+            if self.options_dict['close_figs']:
+                self.close_figs(key_list=[unique_fig_name])
 
     def plot_for_gui(self, fig_id: str) -> Tuple[Figure, Union[Axes, np.array]]:
         """Prepares and creates a plot for GUI and returns one figure and axes.
@@ -1488,8 +1484,10 @@ class BaseDataAnalysis(object):
             tuple: with `Figure` and either `Axes` or `np.array` with
                 multiple `Axes`.
         """
-        self._prepare_for_plot(key_list='auto')
-        self._plot(key_list=self.key_list, fig_id=fig_id)
+        key_list = self._get_key_list()
+        # FIXME calling this for fig_id only might be faster, as in plot()
+        self._prepare_for_plot(key_list=key_list)
+        self._plot(key_list=key_list, fig_id=fig_id)
 
         figure = None
         if isinstance(self.axs[fig_id], Axes):
@@ -1504,7 +1502,17 @@ class BaseDataAnalysis(object):
 
         return figure, self.axs[fig_id]
 
-    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
+    def _get_key_list(self, key_list='auto'):
+        if key_list == 'auto':
+            key_list = self.auto_keys
+        if key_list is None:
+            key_list = self.plot_dicts.keys()
+        if type(key_list) is str:
+            key_list = [key_list]
+        return key_list
+
+    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False,
+                          presentation_mode=None):
         """
         Goes over the entries in self.plot_dict specified by key_list, and
         prepares them for plotting. If key_list is None, the keys of
@@ -1518,13 +1526,6 @@ class BaseDataAnalysis(object):
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
-        if key_list == 'auto':
-            key_list = self.auto_keys
-        if key_list is None:
-            key_list = self.plot_dicts.keys()
-        if type(key_list) is str:
-            key_list = [key_list]
-        self.key_list = key_list
 
         for key in key_list:
             # go over all the plot_dicts
@@ -1534,6 +1535,11 @@ class BaseDataAnalysis(object):
             # Use the key of the plot_dict if no ax_id is specified
             pdict['fig_id'] = pdict.get('fig_id', key)
             pdict['ax_id'] = pdict.get('ax_id', None)
+
+            if presentation_mode is None:
+                presentation_mode = self.presentation_mode
+            if presentation_mode:
+                pdict['title'] = None
 
             if isinstance(pdict['ax_id'], str):
                 pdict['fig_id'] = pdict['ax_id']
@@ -1586,7 +1592,7 @@ class BaseDataAnalysis(object):
                 for ax_name, formatter in fmt.items():
                     getattr(ax, ax_name).set_major_formatter(formatter)
 
-    def _plot(self, key_list, transparent_background=False, fig_id=None):
+    def _plot(self, key_list, transparent_background=None, fig_id=None):
         """Creates the figures specified by key_list.
 
         Args:
@@ -1659,6 +1665,8 @@ class BaseDataAnalysis(object):
                 raise ValueError(
                     '"{}" is not a valid plot function'.format(plotfn))
 
+            if transparent_background is None:
+                transparent_background = self.transparent_background
             if transparent_background and 'fig_id' in pdict:
                 # transparent background around axes for presenting data
                 self.figs[pdict['fig_id']].patch.set_alpha(0)
@@ -1689,19 +1697,6 @@ class BaseDataAnalysis(object):
                 if (type(pdict['xvals'][0]) is datetime.datetime and
                         key in self.axs.keys()):
                     self.axs[key].figure.autofmt_xdate()
-
-    def plot_for_presentation(self, key_list=None, transparent_background=True):
-        """
-        Prepares and produces plots for presentation.
-        Args.
-            key_list (list): list of keys in self.plot_dicts
-        """
-        if key_list is None:
-            key_list = list(self.plot_dicts.keys())
-        for key in key_list:
-            self.plot_dicts[key]['title'] = None
-
-        self._plot(key_list, transparent_background)
 
     def plot_bar(self, pdict, axs):
         pfunc = getattr(axs, pdict.get('func', 'bar'))

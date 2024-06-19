@@ -195,17 +195,6 @@ class SpectroscopyOld(ba.BaseDataAnalysis):
                                       'zvals': proc_data_dict['plot_amp'],
                                       }
 
-    def plot_for_presentation(self, key_list=None, no_label=False):
-        super().plot_for_presentation(
-            key_list=key_list, no_label=no_label)
-        for key in key_list:
-            pdict = self.plot_dicts[key]
-            if key == 'amp':
-                if pdict['plotfn'] == self.plot_line:
-                    ymin, ymax = 0, 1.2 * np.max(np.ravel(pdict['yvals']))
-                    self.axs[key].set_ylim(ymin, ymax)
-                    self.axs[key].set_ylabel('Transmission amplitude (V rms)')
-
 
 class ResonatorSpectroscopy(SpectroscopyOld):
     def __init__(self, t_start,

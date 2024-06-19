@@ -9150,6 +9150,10 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             else:
                 self.plot_multiplexed_plots(**kwargs)
 
+        if self.options_dict['save_figs']:
+            self.save_figures(key_list='auto')  # All figures created above
+        if self.options_dict['close_figs']:
+            self.close_figs(key_list='auto')
         # plots fidelity trend plot
         super().plot(**kwargs)
 
