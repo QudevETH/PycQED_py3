@@ -65,8 +65,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
             if self.optimize:
                 self.optimizer = optimizer  # TODO or pass kw and instantiate here?
-                # TODO maybe just pass the number of parameters
-                self.optimizer.training_settings['params'] = self.params
                 self.sweep_functions = [awg_swf.BlockSoftHardSweep(
                     self,
                     self.params,
@@ -702,13 +700,6 @@ class VQAOptimizer:
         if non_trainable_params_values is None:
             non_trainable_params_values = [[]]
         trainable_params_values = np.atleast_2d(trainable_params_values)
-        if (trainable_params_values.shape[-1] !=
-                len(self.training_settings['params'])):
-            raise ValueError(
-                "The optimiser requested trainable_params_values with shape "
-                f"{trainable_params_values.shape}. This is incompatible with "
-                f"{len(self.training_settings['params'])} gate parameters "
-                f"in the circuit.")
         out_targets = self.training_settings['out_targets']
         params_values = np.array([
             [
