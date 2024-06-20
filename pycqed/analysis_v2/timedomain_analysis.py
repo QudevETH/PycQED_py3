@@ -2905,167 +2905,86 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
 class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
-    def extract_data(self):
-        # if not hasattr(self, 'params_dict'):
-        #     self.params_dict = OrderedDict()
-        # assume always training, because self.get_param_value('optimize')
-        # is only available after extract_data()
-        # self.params_dict.update(
-        #         {'optimization_sweep_points': 'optimization_sweep_points',
-        #          'cost_function_values': 'cost_function_values',
-        #          'classical_params_result': 'classical_params_result',
-        #          })
-        super().extract_data()
-
     def process_data(self):
         super().process_data()
 
         if 'slice_idxs_1d_proj_plot' not in self.options_dict:
             self.options_dict['slice_idxs_1d_proj_plot'] = {}
+
+        self.cpp_results = {}
+        shots = self._get_binary_shots_array()
+        freqs, bitstrings_labels = self.cpp_histogram(shots)
+        # shape: (bitstring, hard sweep, soft sweep)
+        weights = self.get_param_value('weights')
+        cost_sp = deepcopy(self.sp)
         if self.get_param_value('optimize'):
-            # # TODO maybe check equality with recomputed cost
-            # cost_func = self.raw_data_dict['cost_function_values']
-            # optim_param_values = self.raw_data_dict['optim_param_values']
-            # # shape = (
-            # #   n trainable params in the quantum circuit
-            # #   n sets of trainable params per batch (hard)
-            # #   n batches (soft),
-            # # )
-            # # Create a 1 D plot (n batches * n sets per batch) for each param
-            # p_names = self.get_param_value('optim_param_names')
-            # n_non_trainable = len(p_names) - self.get_param_value(
-            #     'training_settings')['trainable_params']
-            # for id_param in range(optim_param_values.shape[0]):
-            #     p_name = p_names[n_non_trainable + id_param]
-            #     self.add_dummy_qb_data(p_name, optim_param_values[id_param])
-            #     self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-            #         p_name, [(':', 'smcol')]
-            #     )
-            # self.add_dummy_qb_data(
-            #     'costfunction',
-            #     cost_func,
-            # )
-            # self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-            #     'costfunction', [(':', 'smcol')]
-            # )
-            #
-            # # # logical branch for hybrid training
-            # # if self.get_param_value('hybrid'):
-            # #     self.proc_data_dict['projected_data_dict'] \
-            # #         [self.qb_names[0]].update(
-            # #             {'classical_params_result': self.raw_data_dict[
-            # #                 'classical_params_result']})
-            # # for useless_qb in self.qb_names[1:]:
-            # #     del self.proc_data_dict['projected_data_dict'][useless_qb]
-            # # self.proc_data_dict['sweep_points_dict'][
-            # #     self.qb_names[0]]['sweep_points'] = np.arange(len(cost_func))
-
-
-            self.cpp_results = {}
-            shots = self._get_binary_shots_array()
-            freqs, bitstrings_labels = self.cpp_histogram(shots)
-            # freqs shape: (bitstring, hard sweep, soft sweep)
-
-            freqs.reshape(
+            # training mode
+            targets = self.raw_data_dict['optimizer']['targets']
+            # shape: (bitstring, n_batch_size * n_targets, n_iter)  # TODO
+            freqs = freqs.reshape(
                 [freqs.shape[0]] +
                 list(self.raw_data_dict['optimizer']['batch_shape']) +
                 [self.sp.length(1)]
             )
-
-            # TODO assume that targets correspond to dim 1 of batch_shape
-            targets = None
-            targets_axis = self.sp.find_parameter('targets')
-            sp_no_targets = copy(self.sp)
-            weights = self.get_param_value('weights')
-            if targets_axis is not None:
-                targets = self.sp['targets']
-                sp_no_targets.pop(targets_axis)
-                weights = self.cpp_opt_bxe_weights(
-                    freqs, targets,
-                    targets_axis_sp=targets_axis,  # 1 is for bitstring dim
-                    fms=self.get_param_value('fms', False))
-            output, cost = self.cpp_bxe_output(
-                freqs, weights,
-                targets=targets, targets_axis_sp=targets_axis,
+            # shape: (bitstring, n_batch_size, n_targets, n_iter)
+            # line below based on the assumption that param batch has a
+            # shape of (n_batch_size, n_targets)
+            targets_axis_sp = 1
+            cost_sp = self._cost_sp(len(targets))
+            # special settings to plot slices of cost function
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'training_set_cost', [(':', 'smcol')]
             )
-            self.cpp_results.update({
-                'output': (output, self.sp),
-                'cost': (cost, self.sp),
-                'training_set_cost': (
-                    np.mean(cost, axis=targets_axis) if targets_axis else cost,
-                    sp_no_targets),
-                'weights': (weights, self.sp),  # plotting won't work
-            })
-            # TODO decide in a smarter way what should be plotted
-            for key in ['output', 'cost', 'training_set_cost']:
-                values, sp = self.cpp_results[key]
-                self.add_dummy_qb_data(
-                    key, values, sp)
+        elif self.sp.find_parameter('targets') is not None:
+            # sweep mode with targets
+            targets_axis_sp = self.sp.find_parameter('targets')
+            targets = self.sp['targets']
+            cost_sp.pop(targets_axis_sp)
         else:
-            # sweep mode data processing
-            self.cpp_results = {}
-            shots = self._get_binary_shots_array()
-            freqs, bitstrings_labels = self.cpp_histogram(shots)
-            # TODO comments
-            # freqs shape: (bitstring, hard sweep, soft sweep)
-            # targets shape: (n_non_trainable_params,)
-            # targets_axis=2 means targets correspond to the soft_sweep (sp[1])
-            # TODO wrap in a method if these lines are always used together?
-            # self.cpp_results.update(
-            #     {b: f for b, f in zip(bitstrings_labels, freqs)})
-
+            # sweep mode without targets
+            assert weights is not None, 'Pass at least weights or targets'
             targets = None
-            targets_axis = self.sp.find_parameter('targets')
-            sp_no_targets = copy(self.sp)
-            weights = self.get_param_value('weights')
-            if targets_axis is not None:
-                targets = self.sp['targets']
-                sp_no_targets.pop(targets_axis)
-                weights = self.cpp_opt_bxe_weights(
-                    freqs, targets,
-                    targets_axis_sp=targets_axis,  # 1 is for bitstring dim
-                    fms=self.get_param_value('fms', False))
-            output, cost = self.cpp_bxe_output(
-                freqs, weights,
-                targets=targets, targets_axis_sp=targets_axis,
-            )
-            self.cpp_results.update({
-                'output': (output, self.sp),
-                'cost': (cost, self.sp),
-                'training_set_cost': (
-                    np.mean(cost, axis=targets_axis) if targets_axis else cost,
-                    sp_no_targets),
-                'weights': (weights, self.sp),  # plotting won't work
-            })
-            # TODO decide in a smarter way what should be plotted
-            for key in ['output', 'cost', 'training_set_cost']:
-                values, sp = self.cpp_results[key]
-                self.add_dummy_qb_data(
-                    key, values, sp)
+            # targets_axis_sp also determines the plot type of output
+            # 0 as default here makes this compatible with both 1D and 2D sweep
+            targets_axis_sp = 0
+        # main data processing
+        if weights is None:
+            weights = self.cpp_opt_bxe_weights(
+                freqs, targets,
+                targets_axis_sp=targets_axis_sp,
+                fms=self.get_param_value('fms', False))
+        output, cost = self.cpp_bxe_output(
+            freqs, weights,
+            targets=targets, targets_axis_sp=targets_axis_sp,
+        )
+        # TODO reshape output when needed, and check plots
+        self.cpp_results.update({
+            'output': (output, self.sp),
+            'cost': (cost, self.sp),
+            'training_set_cost': (
+                cost if cost is None else np.mean(cost, axis=targets_axis_sp)
+                , cost_sp),
+            'weights': (weights, 'noplot'),  # plotting won't work
+        })
+        for key, (values, sp) in self.cpp_results.items():
+            self.add_dummy_qb_data(key, values, sp)
+        plot_type = ['col', 'row']
+        self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+            'output', [(':', 's' + plot_type[targets_axis_sp])]
+        )
+        self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+            'cost', [(':', 'sm' + plot_type[targets_axis_sp])]
+        )
 
-            # for cpp in [
-            #     # 'cpp_stabilizers',
-            # ]:
-            #     try:
-            #         func = getattr(self, cpp)
-            #         self.cpp_results.update(
-            #             func(shots,
-            #         ))
-            #         print(f"{cpp} completed")
-            #     except Exception as e:
-            #         if self.raise_exceptions:
-            #             raise e
-            #         else:
-            #             log.warning(f"{cpp} failed")
-
-            # for qb_name in self.qb_names:
-            #     del self.proc_data_dict['projected_data_dict'][qb_name]
-            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'output', [(':', 'srow')]
-            )
-            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'cost', [('0:0', 'mrow')]
-            )
+    def _cost_sp(self, len_targets):
+        hard_sweep, _ = self.sp.length()
+        cost_sp = deepcopy(self.sp)
+        cost_sp[0]['optimizer_hard_sweep_index'] = (
+            np.arange(hard_sweep // len_targets),
+            '',
+            'optimizer_hard_sweep_index'
+        )
+        return cost_sp
 
     def _get_binary_shots_array(self, pk=True):
         shots = self.proc_data_dict['single_shots_per_qb_thresholded']
@@ -3096,7 +3015,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return shots
 
     def add_dummy_qb_data(self, key, values, sp):
-        if values is None or len(values.shape)>2:
+        if sp == 'noplot':
             return
         # FIXME this is ugly, but I don't understand how these
         #  sweep_points_dict should relate the the actual sp in general
@@ -3202,8 +3121,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # n_targets corresponds to dimension targets_axis_sp among the other
         # dims (meaning targets_axis_sp + 1 if state_axis < targets_axis_sp)
         shape = freqs.shape
-        targets_axis = targets_axis_sp + (
-            1 if state_axis < targets_axis_sp else 0)
+        assert state_axis == 0, "Else the next line should be generalised"
+        targets_axis = targets_axis_sp + 1
         # if fms == True, we take the fully mixed state as the training data
         # labelled by 0
         targets = np.array(targets)
@@ -3239,6 +3158,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freq0 = np.sum(freqs * (1 - targets), axis=targets_axis) /\
             np.sum(1 - targets, axis=targets_axis)
         weights_opt = freq1 / (freq0 + freq1 + epsilon_stable)
+        # weights_opt: (n_states, batch_size), n_iter)
         # Ensure that weights have the same shape as the measured data,
         # including the targets axis
         weights_opt = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
@@ -3269,8 +3189,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         #     1 - weights_opt[i] + epsilon_stable) @ freq0
         if targets is not None:
             targets = np.array(targets)
-            targets_axis = targets_axis_sp + (
-                1 if state_axis < targets_axis_sp else 0)
+            assert state_axis == 0, "Else the next line should be generalised"
+            targets_axis = targets_axis_sp + 1
             if len(targets.shape) == 1:
                 targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
                     targets, freqs.shape, current_axes=[targets_axis])
@@ -3299,7 +3219,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         #  taking the mean. Unify this?
         output, cost = VariationalAlgorithmAnalysis.cpp_bxe_output(
             freqs, weights=weights, targets=targets, targets_axis_sp=1)
-        cost = np.mean(cost, axis=1)
+        cost = np.mean(cost, axis=1)  # Average over targets
         return cost
 
     @staticmethod
