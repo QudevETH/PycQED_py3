@@ -2957,13 +2957,15 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             freqs, weights,
             targets=targets, targets_axis_sp=targets_axis_sp,
         )
-        # TODO reshape output when needed, and check plots
+        training_set_cost = cost if cost is None\
+            else np.mean(cost, axis=targets_axis_sp)
+        # only has an effect in the training mode
+        output = output.reshape(self.sp.length())
+        cost = cost.reshape(self.sp.length())
         self.cpp_results.update({
             'output': (output, self.sp),
             'cost': (cost, self.sp),
-            'training_set_cost': (
-                cost if cost is None else np.mean(cost, axis=targets_axis_sp)
-                , cost_sp),
+            'training_set_cost': (training_set_cost, cost_sp),
             'weights': (weights, 'noplot'),  # plotting won't work
         })
         for key, (values, sp) in self.cpp_results.items():
