@@ -2554,9 +2554,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             **kw: passed to prepare_projected_data_plot
         """
         for slice_idxs in slice_idxs_list:
-            idxs, axis, xvals, xlabel, xunit, sim = self.get_1d_slice_params(
-                qb_name, slice_idxs)
-            for idx in idxs:
+            idxs, idxs_kw, axis, xvals, xlabel, xunit, sim =\
+                self.get_1d_slice_params(qb_name, slice_idxs)
+            for idx, idx_kw in zip(idxs, idxs_kw):
                 if idx == 'mean':
                     data_slice = np.mean(data, axis=axis).flatten()
                 else:
@@ -2572,14 +2572,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     title_suffix=ts_slice, TwoD=False,
                     plot_name_suffix=plot_name_suffix,
                     xlabel=xlabel, xunit=xunit,
-                    plot_cal_points=axis == 0, **kw)
+                    color=color,
+                    plot_cal_points=axis == 0, **kw, **idx_kw)
 
     def prepare_projected_data_plot(
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
             do_legend_cal_states=True, TwoD=None, yrange=None,
-            linestyle=None, xlabel=None, xunit=None):
+            linestyle=None, xlabel=None, xunit=None, color=None):
         """
         Prepares one projected data plot, typically one of the keys in
         proc_data_dict['projected_data_dict'].
@@ -2784,6 +2785,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'setlabel': data_label,
                 'title': title,
                 'linestyle': linestyle,
+                'color': color,
                 'do_legend': do_legend_data and len(data_label),
                 'legend_bbox_to_anchor': (1, 0.5),
                 'legend_pos': 'center left'}
@@ -2930,10 +2932,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                   int(idxs.split(':')[-1])))
         else:
             idxs = [idxs]
+        idxs_kw = [{}] * len(idxs)
         if add_mean:
             idxs.append('mean')
+            idxs_kw.append(dict(
+                linestyle='-',
+                color='k',
+            ))
 
-        return idxs, axis, xvals, xlabel, xunit, simultaneous
+        return idxs, idxs_kw, axis, xvals, xlabel, xunit, simultaneous
 
     def get_first_sweep_param(self, qbn=None, dimension=0):
         """
