@@ -1459,10 +1459,16 @@ class BaseDataAnalysis(object):
         key_list = self._get_key_list(key_list)
         plot_dicts = {k: p for k, p in self.plot_dicts.items()
                       if k in key_list}
-        unique_fig_names = set(p['fig_id'] for k, p in plot_dicts.items())
+        # fig_id defaults to k to match the behaviour of _prepare_for_plot
+        # FIXME A slightly cleaner solution would be to call _prepare_for_plot
+        #  earlier so fig_id always exists. This would need refactoring
+        #  _prepare_for_plot so it only edits the pdicts, and move creating
+        #  figures to _plot.
+        unique_fig_names = set(p.get('fig_id', k)
+                               for k, p in plot_dicts.items())
         for unique_fig_name in unique_fig_names:
             fig_key_list = [k for k, p in plot_dicts.items()
-                            if p['fig_id'] == unique_fig_name]
+                            if p.get('fig_id', k) == unique_fig_name]
             self._prepare_for_plot(fig_key_list, axs_dict, no_label,
                                    presentation_mode)
             self._plot(fig_key_list, transparent_background, fig_id=fig_id)
