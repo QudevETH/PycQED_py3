@@ -703,8 +703,8 @@ class VQAOptimizer:
         out_targets = self.training_settings['out_targets']
         params_values = np.array([
             [
-                np.append(vf, vt)
-                for vf in non_trainable_params_values
+                np.append(vnt, vt)
+                for vnt in non_trainable_params_values
             ] for vt in trainable_params_values
         ])
         # Shape at this point: (
