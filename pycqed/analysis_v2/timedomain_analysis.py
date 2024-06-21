@@ -2916,10 +2916,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freqs, bitstrings_labels = self.cpp_histogram(shots)
         # shape: (bitstring, hard sweep, soft sweep)
         weights = self.get_param_value('weights')
-        cost_sp = deepcopy(self.sp)
         if self.get_param_value('optimize'):
             # training mode
-            targets = self.raw_data_dict['optimizer']['targets']
+            targets = self.get_param_value(
+                'targets', self.raw_data_dict['optimizer']['targets'])
             # shape: (bitstring, n_batch_size * n_targets, n_iter)  # TODO
             freqs = freqs.reshape(
                 [freqs.shape[0]] +
@@ -2930,7 +2930,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # line below based on the assumption that param batch has a
             # shape of (n_batch_size, n_targets)
             targets_axis_sp = 1
-            cost_sp = self._cost_sp(len(targets))
             # special settings to plot slices of cost function
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                 'training_set_cost', [(':', 'smcol')]
@@ -2938,8 +2937,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         elif self.sp.find_parameter('targets') is not None:
             # sweep mode with targets
             targets_axis_sp = self.sp.find_parameter('targets')
-            targets = self.sp['targets']
-            cost_sp.pop(targets_axis_sp)
+            targets = self.get_param_value(
+                'targets', self.sp['targets'])
         else:
             # sweep mode without targets
             assert weights is not None, 'Pass at least weights or targets'
@@ -2953,19 +2952,21 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 freqs, targets,
                 targets_axis_sp=targets_axis_sp,
                 fms=self.get_param_value('fms', False))
-        output, cost = self.cpp_bxe_output(
+        output, cost, training_set_cost = self.cpp_bxe_output(
             freqs, weights,
             targets=targets, targets_axis_sp=targets_axis_sp,
         )
-        training_set_cost = cost if cost is None\
-            else np.mean(cost, axis=targets_axis_sp)
+        training_set_cost_sp = self._adjust_sp_length(
+            self.sp, training_set_cost)
         # only has an effect in the training mode
         output = output.reshape(self.sp.length())
         cost = cost.reshape(self.sp.length())
         self.cpp_results.update({
             'output': (output, self.sp),
             'cost': (cost, self.sp),
-            'training_set_cost': (training_set_cost, cost_sp),
+            'real_time_cost': (self.raw_data_dict['optimizer']['cost_function_values'],
+                               training_set_cost_sp),
+            'training_set_cost': (training_set_cost, training_set_cost_sp),
             'weights': (weights, 'noplot'),  # plotting won't work
         })
         for key, (values, sp) in self.cpp_results.items():
@@ -2978,15 +2979,19 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             'cost', [(':', 'sm' + plot_type[targets_axis_sp])]
         )
 
-    def _cost_sp(self, len_targets):
-        hard_sweep, _ = self.sp.length()
-        cost_sp = deepcopy(self.sp)
-        cost_sp[0]['optimizer_hard_sweep_index'] = (
-            np.arange(hard_sweep // len_targets),
-            '',
-            'optimizer_hard_sweep_index'
-        )
-        return cost_sp
+    def _adjust_sp_length(self, sp, data=None):
+        if data is None:
+            return sp
+        sp = copy(sp)
+        shape = data.shape
+        # This could be generalised to e.g. create 1D sp if data is 1D
+        assert len(sp.length()) == len(shape)
+        for i, new_length in enumerate(shape):
+            sp[i] = {
+                k: (np.array(range(new_length)), v[1], v[2])
+                for k, v in sp[i].items()
+            }
+        return sp
 
     def _get_binary_shots_array(self, pk=True):
         shots = self.proc_data_dict['single_shots_per_qb_thresholded']
@@ -3199,14 +3204,17 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             epsilon_stable = 1e-10  # small parameter to avoid division by zero
             freq1 = freqs * targets  # Don't sum over targets here
             freq0 = freqs * (1 - targets)
-            cost_func = -(
-                    np.log(weights + epsilon_stable) * freq1 +
-                    np.log(1 - weights + epsilon_stable) * freq0
+            cost = -(
+                np.log(weights + epsilon_stable) * freq1 +
+                np.log(1 - weights + epsilon_stable) * freq0
             )
-            cost_func = np.sum(cost_func, axis=state_axis)
+            cost = np.sum(cost, axis=state_axis)
+            # Average over targets
+            training_set_cost = np.mean(cost, axis=targets_axis_sp)
         else:
-            cost_func = None
-        return output, cost_func
+            cost = None
+            training_set_cost = None
+        return output, cost, training_set_cost
 
     @staticmethod
     def cpp_bxe_cost_function(shots, targets):
@@ -3219,10 +3227,9 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             freqs, targets=targets, targets_axis_sp=1)
         # TODO the only difference with the other call to this method is
         #  taking the mean. Unify this?
-        output, cost = VariationalAlgorithmAnalysis.cpp_bxe_output(
+        _, _, training_set_cost = VariationalAlgorithmAnalysis.cpp_bxe_output(
             freqs, weights=weights, targets=targets, targets_axis_sp=1)
-        cost = np.mean(cost, axis=1)  # Average over targets
-        return cost
+        return training_set_cost
 
     @staticmethod
     def _expand_to_ND_from_axis(current_array, new_shape,

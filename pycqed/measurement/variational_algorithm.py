@@ -564,7 +564,7 @@ class VQAOptimizer:
                 'Caught a KeyboardInterrupt and there is unsaved data. '
                 'Trying clean exit to save data.')
         self.cost_function_values = np.concatenate(
-            self.cost_function_values, axis=1)
+            self.cost_function_values, axis=1)  # TODO very confusing
         # cf.shape: (n sets of train. pars (hard), n batches (soft))
         self.optim_param_values = np.array(self.optim_param_values)
         self.optim_param_values = np.swapaxes(
@@ -687,7 +687,7 @@ class VQAOptimizer:
             assumes that params are ordered (non trainable then trainable).
             This is used in the list comprehension.
             'non_trainable_params_values': [[x0, x1 ...] ...],
-            'out_targets': [y ...],  # corresponding target outputs
+            'targets': [y ...],  # corresponding target outputs
             TODO unused. Use, and generate random choice if None?
             'trainable_params_init_values': [x0, x1 ...],
         }
@@ -695,12 +695,18 @@ class VQAOptimizer:
         Returns:
 
         """
-        non_trainable_params_values = self.training_settings.get(
-            'non_trainable_params_values')
-        if non_trainable_params_values is None:
-            non_trainable_params_values = [[]]
         trainable_params_values = np.atleast_2d(trainable_params_values)
-        out_targets = self.training_settings['out_targets']
+        non_trainable_params_values = self.training_settings.get(
+            'non_trainable_params_values', [[]])
+        non_trainable_params_values = np.atleast_2d(
+            non_trainable_params_values)
+        targets = np.array(self.training_settings['targets'])
+        assert len(targets.shape) == 1, "targets is expected to be 1D"
+        assert targets.shape[0] == non_trainable_params_values.shape[0], \
+            ("Inconsistent shape of targets and non_trainable_params_values! "
+             "While the measurement should run, this might indicate that the"
+             "measurement has not been configured properly. For now we "
+             "prevent this possibility to keep things simple.")
         params_values = np.array([
             [
                 np.append(vnt, vt)
@@ -719,7 +725,7 @@ class VQAOptimizer:
         # in the experiment (single sweep). The last dimension just
         # corresponds to the number of params, which are swept jointly.
         params_values = params_values.reshape(-1, params_values.shape[-1])
-        return params_values, batch_shape, out_targets
+        return params_values, batch_shape, targets
 
     def create_sweep_points(self):
         # Create a posteriori sweep points based on the optimisation run
