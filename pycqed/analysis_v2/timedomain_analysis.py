@@ -2573,7 +2573,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     title_suffix=ts_slice, TwoD=False,
                     plot_name_suffix=plot_name_suffix,
                     xlabel=xlabel, xunit=xunit,
-                    color=color,
                     plot_cal_points=axis == 0, **kw, **idx_kw)
 
     def prepare_projected_data_plot(
