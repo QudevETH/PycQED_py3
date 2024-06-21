@@ -2461,6 +2461,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
              default_options
         """
         plot_proj_data = self.get_param_value('plot_proj_data', True)
+        if not plot_proj_data:
+            return
         select_split = self.get_param_value('select_split')
         fig_name_suffix = self.get_param_value('fig_name_suffix', '')
         title_suffix = self.get_param_value('title_suffix', '')
@@ -2501,16 +2503,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                            data_key)
                     tf = f'{data_key}_{title_suf}' if \
                         len(title_suf) else data_key
-                    if plot_proj_data:
-                        # standard projected data plot
-                        self.prepare_projected_data_plot(
-                            fn, data, qb_name=qb_name,
-                            data_label=data_label,
-                            title_suffix=tf,
-                            plot_name_suffix=plot_name_suffix,
-                            fig_name_suffix=fig_name_suffix,
-                            data_axis_label=data_axis_label,
-                            plot_cal_points=plot_cal_points)
+
+                    # standard projected data plot
+                    self.prepare_projected_data_plot(
+                        fn, data, qb_name=qb_name,
+                        data_label=data_label,
+                        title_suffix=tf,
+                        plot_name_suffix=plot_name_suffix,
+                        fig_name_suffix=fig_name_suffix,
+                        data_axis_label=data_axis_label,
+                        plot_cal_points=plot_cal_points)
                     if TwoD and len(slice_idxs_list) > 0:
                         # plot slices of the 2D projected data
                         self.prepare_projected_1d_slices_plots(
@@ -2520,11 +2522,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             data_axis_label=data_axis_label)
             else:
                 fig_name = 'projected_plot_' + qb_name
-                if plot_proj_data:
-                    # standard projected data plot
-                    self.prepare_projected_data_plot(
-                        fig_name, corr_data, qb_name=qb_name,
-                        plot_cal_points=(not TwoD))
+                # standard projected data plot
+                self.prepare_projected_data_plot(
+                    fig_name, corr_data, qb_name=qb_name,
+                    plot_cal_points=(not TwoD))
                 if TwoD and len(slice_idxs_list) > 0:
                     # plot slices of the 2D projected data
                     self.prepare_projected_1d_slices_plots(
