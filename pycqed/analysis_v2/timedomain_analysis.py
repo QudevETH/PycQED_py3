@@ -2916,38 +2916,41 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freqs, bitstrings_labels = self.cpp_histogram(shots)
         # shape: (bitstring, hard sweep, soft sweep)
         weights = self.get_param_value('weights')
+        targets = None
+        targets_axis_sp = None
         if self.get_param_value('optimize'):
             # training mode
             targets = self.get_param_value(
                 'targets', self.raw_data_dict['optimizer']['targets'])
-            # shape: (bitstring, n_batch_size * n_targets, n_iter)  # TODO
+            # line below based on the assumption that param batch has a
+            # shape of (n_batch_size, n_targets)
+            targets_axis_sp = 1
+            # shape: (bitstring, n_sets_trainable_pars * n_targets, n_iter)
             freqs = freqs.reshape(
                 [freqs.shape[0]] +
                 list(self.raw_data_dict['optimizer']['batch_shape']) +
                 [self.sp.length(1)]
             )
-            # shape: (bitstring, n_batch_size, n_targets, n_iter)
-            # line below based on the assumption that param batch has a
-            # shape of (n_batch_size, n_targets)
-            targets_axis_sp = 1
+            # shape: (bitstring, n_sets_trainable_pars, n_targets, n_iter)
             # special settings to plot slices of cost function
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                 'training_set_cost', [(':', 'smcol')]
+            )
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'output', [(':', 'scol')]
+            )
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'cost', [(':', 'smcol')]
             )
         elif self.sp.find_parameter('targets') is not None:
             # sweep mode with targets
             targets_axis_sp = self.sp.find_parameter('targets')
             targets = self.get_param_value(
                 'targets', self.sp['targets'])
-        else:
-            # sweep mode without targets
-            assert weights is not None, 'Pass at least weights or targets'
-            targets = None
-            # targets_axis_sp also determines the plot type of output
-            # 0 as default here makes this compatible with both 1D and 2D sweep
-            targets_axis_sp = 0
+
         # main data processing
         if weights is None:
+            assert targets is not None, 'Pass at least weights or targets'
             weights = self.cpp_opt_bxe_weights(
                 freqs, targets,
                 targets_axis_sp=targets_axis_sp,
@@ -2956,6 +2959,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             freqs, weights,
             targets=targets, targets_axis_sp=targets_axis_sp,
         )
+        # FIXME this atleast_2d is mostly because of _adjust_sp_length
+        training_set_cost = np.atleast_2d(training_set_cost)
         training_set_cost_sp = self._adjust_sp_length(
             self.sp, training_set_cost)
         # only has an effect in the training mode
@@ -2964,20 +2969,14 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         self.cpp_results.update({
             'output': (output, self.sp),
             'cost': (cost, self.sp),
-            'real_time_cost': (self.raw_data_dict['optimizer']['cost_function_values'],
-                               training_set_cost_sp),
+            'real_time_cost': (
+                self.raw_data_dict.get('optimizer', {}).get(
+                    'cost_function_values'), training_set_cost_sp),
             'training_set_cost': (training_set_cost, training_set_cost_sp),
             'weights': (weights, 'noplot'),  # plotting won't work
         })
         for key, (values, sp) in self.cpp_results.items():
             self.add_dummy_qb_data(key, values, sp)
-        plot_type = ['col', 'row']
-        self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-            'output', [(':', 's' + plot_type[targets_axis_sp])]
-        )
-        self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-            'cost', [(':', 'sm' + plot_type[targets_axis_sp])]
-        )
 
     def _adjust_sp_length(self, sp, data=None):
         if data is None:
@@ -3022,7 +3021,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return shots
 
     def add_dummy_qb_data(self, key, values, sp):
-        if sp == 'noplot':
+        if sp == 'noplot' or values is None:
             return
         # FIXME this is ugly, but I don't understand how these
         #  sweep_points_dict should relate the the actual sp in general

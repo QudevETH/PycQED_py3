@@ -228,6 +228,8 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         # data shape: {qb.name: flattened three state readout}
         data = {qb.name: np.array([v for v in pp.data_dict[qb.name][
             'classify_gm'].values()]).T for qb in meas_objs}
+        # Transpose: to have the 3 states as last dimension
+        # TODO write exact shape of the data here
         return data
 
     def _prepare_sequences(self, sequences=None, sequence_function=None,
@@ -704,7 +706,7 @@ class VQAOptimizer:
         assert len(targets.shape) == 1, "targets is expected to be 1D"
         assert targets.shape[0] == non_trainable_params_values.shape[0], \
             ("Inconsistent shape of targets and non_trainable_params_values! "
-             "While the measurement should run, this might indicate that the"
+             "While the measurement should run, this might indicate that the "
              "measurement has not been configured properly. For now we "
              "prevent this possibility to keep things simple.")
         params_values = np.array([
