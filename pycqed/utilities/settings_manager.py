@@ -514,4 +514,4 @@ def convert_settings_to_hdf(timestamp: str):
                                           ext=ext[1:])
         fn = fn[:-len(ext)] + '.hdf'
     with h5py.File(fn, 'a') as hdf_file:
-        MeasurementControl._save_station_in_hdf(hdf_file, station)
+        MeasurementControl.save_station_in_hdf(hdf_file, station)
