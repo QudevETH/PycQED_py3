@@ -2103,14 +2103,14 @@ class MeasurementControl(Instrument):
                   datadir=self.datadir(),
                   timestamp=self.last_timestamp(),
                                        auto_increase=False) as data_object:
-                    MeasurementControl._save_station_in_hdf(data_object,
+                    MeasurementControl.save_station_in_hdf(data_object,
                                                             self.station)
             else:
                 # hdf file was already opened and does not need to be
                 # closed at the end, because save_instrument_settings was
                 # called inside a context manager and may be used
                 # after calling save_instrument_settings (e.g. MC.run())
-                MeasurementControl._save_station_in_hdf(data_object,
+                MeasurementControl.save_station_in_hdf(data_object,
                                                         self.station)
 
         else:
@@ -2144,7 +2144,7 @@ class MeasurementControl(Instrument):
             dumper.dump(mode=mode)
 
     @staticmethod
-    def _save_station_in_hdf(data_object, station, snapshot_kwargs=None):
+    def save_station_in_hdf(data_object, station, snapshot_kwargs=None):
         '''
         Writes snapshot of station in HDF5-data object.
         Args:
