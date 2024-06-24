@@ -166,7 +166,7 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
-            'preparation_params': self.get_prep_params(),
+            'reset_params': self.get_reset_params(),
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
@@ -1141,8 +1141,6 @@ class CPhase(CalibBuilder):
                 self.label = self.experiment_name
             if self.classified:
                 self.label += '_classified'
-            if 'active' in self.get_prep_params()['preparation_type']:
-                self.label += '_reset'
             for t in self.task_list:
                 self.label += f"_{t['qbl']}{t['qbr']}"
                 num_cz_gates = t.get('num_cz_gates', 1)
@@ -1592,8 +1590,12 @@ class DynamicPhase(CalibBuilder):
                 op = task['op_code']
             self.dyn_phases[op] = {}
             for qb_name in task['qubits_to_measure']:
+                # The analysis returns the phase p acquired by the qb.
+                # Cancelling this phase requires a Z gate with angle -p,
+                # meaning basis_rotation=-p. Here, in order to allow setting
+                # basis_rot_par(dp) in run_update below, we set dp={qbn: -p}
                 self.dyn_phases[op][qb_name] = \
-                    (self.dynamic_phase_analysis.proc_data_dict[
+                    -(self.dynamic_phase_analysis.proc_data_dict[
                         'analysis_params_dict'][f"dynamic_phase_{qb_name}"][
                         'val'] * 180 / np.pi)[0]
         if self.parent is not None:
@@ -1957,3 +1959,497 @@ class Chevron(CalibBuilder):
             }
         })
         return d
+
+
+class f0g1PitchCatch(CalibBuilder):
+    """Calibration of the delay between f0g1 pitch and catch"""
+
+    task_mobj_keys = ["qbA", "qbB"]
+    default_experiment_name = "f0g1PitchCatch"
+
+    @assert_not_none("task_list")
+    def __init__(self, task_list, sweep_points=None, **kw):
+        try:
+            # call the super class
+            super().__init__(task_list, sweep_points=sweep_points, **kw)
+
+            # Preprocess sweep points and tasks before creating the sequences
+            self.preprocessed_task_list = self.preprocess_task_list(**kw)
+
+            # the block alignments are for: prepended pulses, initial
+            # rotations, flux pulse
+            self.sequences, self.mc_points = self.parallel_sweep(
+                self.preprocessed_task_list,
+                self.sweep_block,
+                block_align=["end", "end", "end"],
+                **kw,
+            )
+
+            self.autorun(**kw)  # run measurement & analysis if requested in kw
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qbA, qbB, sweep_points, prepend_pulse_dicts=None, **kw):
+        """ "
+        Sweep the delay between the f0g1Pitch and f0g1Catch
+        :param qbA: (str) the name of qubit A
+        :param qbB: (str) the name of the qubit B
+        :param sweep_points: the sweep points containing a parameter delay
+            in dimension 1
+        :param prepend_pulse_dicts: (dict) prepended pulses, see
+            block_from_pulse_dicts
+        :param kw:
+        """
+        # create prepended pulses (pb)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
+
+        block = self.block_from_ops(
+            "f0g1 pulses",
+            [f"X180 {qbA}", f"X180_ef {qbA}", f"f0g1 {qbA}", f"f0g1_catch {qbB}"],
+        )
+
+        block.pulses[3]["pulse_delay"] = ParametricValue("delay")
+        # block.pulses[3]['timeReverse'] = True
+        block.pulses[3]["ref_point"] = "start"
+
+        if prepend_pulse_dicts is not None:
+            pb = self.block_from_pulse_dicts(prepend_pulse_dicts, block_name="prepend")
+            b = self.sequential_blocks("final_with_prepend", [pb, block])
+            return b
+        return block
+
+    def guess_label(self, **kw):
+        """
+        label for the experiment
+        """
+        if self.label is None:
+            self.label = self.experiment_name
+            for t in self.task_list:
+                self.label += f"_{t['qbA']}{t['qbB']}"
+
+    def get_meas_objs_from_task(self, task):
+        """
+        Returns a list of all measure objects of a task. In case of
+        f0g1PitchCatch, this list includes qbA and qbB.
+        :param task: a task dictionary
+        :return: list of qubit objects (if available) or names
+        """
+
+        qbs = self.get_qubits([task["qbA"], task["qbB"]])
+        return qbs[0] if qbs[0] is not None else qbs[1]
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # first we call the super function
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        # then we call the class defined for this analysis: 'f0g1PitchCatchAnalysis'
+        self.analysis = tda.f0g1PitchCatchAnalysis(
+            qb_names=self.get_qubits()[1], t_start=self.timestamp, **analysis_kwargs
+        )
+
+    def run_update(self, **kw):
+        # here we update the values found: 'f0g1_delay' and 'f0g1_delay_error'
+
+        delay = self.analysis.proc_data_dict["delay_fit"]
+        delay_error = self.analysis.proc_data_dict["delay_fit_error"]
+
+        # the delay A -> B is not supposed to be the same that the delay B -> A
+        # so we store the delay A -> B only in qubit B
+        self.meas_objs[1].set("f0g1_delay", delay * 1e-9)  # udpate f0g1_delay
+        self.meas_objs[1].set(
+            "f0g1_delay_error", delay_error * 1e-9
+        )  # udpate f0g1_delay_error
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d["kwargs"][MultiTaskingExperiment.__name__]["cal_states"] = (str, "gef")
+        d["task_list_fields"].update(
+            {
+                f0g1PitchCatch.__name__: odict(
+                    {
+                        "qbA": ((Qubit, "single_select"), None),
+                        "qbB": ((Qubit, "single_select"), None),
+                    }
+                )
+            }
+        )
+        d["sweeping_parameters"].update(
+            {
+                f0g1PitchCatch.__name__: {
+                    0: {
+                        "delay": "s",
+                    }
+                }
+            }
+        )
+        return d
+
+
+class f0g1PitchDetuningCalib(CalibBuilder):
+    """
+    f0g1 pitch and catch detuning calibration: gets the appropriate detuning
+    for the f0g1 pulses
+    The user can choose between a 2D sweep of the detuning of pitch and catch
+    separately, or a 1D sweep of the detuning of catch only.
+    """
+
+    task_mobj_keys = ["qbA", "qbB"]
+    default_experiment_name = "f0g1DetuningCalib"
+    kw_for_task_keys = ["detuning_type"]
+
+    @assert_not_none("task_list")
+    def __init__(self, task_list, sweep_points=None, **kw):
+        try:
+            # call the super class
+            super().__init__(task_list, sweep_points=sweep_points, **kw)
+
+            # Preprocess sweep points and tasks before creating the sequences
+            self.preprocessed_task_list = self.preprocess_task_list(**kw)
+
+            self.sweep_2D = len(self.task_list[0]["sweep_points"]) > 1
+            # the block alignments are for: prepended pulses, initial
+            # rotations, flux pulse
+            self.sequences, self.mc_points = self.parallel_sweep(
+                self.preprocessed_task_list,
+                self.sweep_block,
+                block_align=["end", "end", "end"],
+                **kw,
+            )
+
+            self.autorun(**kw)  # run measurement & analysis if requested in kw
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qbA, qbB, sweep_points, prepend_pulse_dicts=None, **kw):
+        """ "
+        Sweep the frequency of f0g1Pitch and f0g1Catch
+        :param qbA: (str) the name of qubit A
+        :param qbB: (str) the name of the qubit B
+        :param sweep_points: the sweep points containing either both frequencies
+        for qbA qnd qbB in case of a 2D sweep, or the detuning of qbB compared
+        to the frequency of qbA in case of a 1D sweep.
+        :param prepend_pulse_dicts: (dict) prepended pulses, see
+            block_from_pulse_dicts
+        :param kw:
+        """
+        # create prepended pulses (pb)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
+        qubitA, qubitB = self.get_meas_objs_from_task(self.preprocessed_task_list[0])
+
+        block = self.block_from_ops(
+            "f0g1 pulses",
+            [f"X180 {qbA}", f"X180_ef {qbA}", f"f0g1 {qbA}", f"f0g1_catch {qbB}"],
+        )
+
+        if self.sweep_2D:
+            block.pulses[2][kw["detuning_type"]] = ParametricValue("Pitch detuning")
+            block.pulses[3][kw["detuning_type"]] = ParametricValue("Catch detuning")
+            # block.pulses[2]['driveDetScale'] = ParametricValue('Pitch detuning')
+            # block.pulses[3]['driveDetScale'] = ParametricValue('Catch detuning')
+        else:
+            block.pulses[3][kw["detuning_type"]] = ParametricValue("detuning")
+            block.pulses[3][kw["detuning_type"]] = ParametricValue("detuning")
+
+        # add to f0g1 catch the delay already calibrated in the parameters of
+        # qbB
+        block.pulses[3]["pulse_delay"] = qubitB.f0g1_delay()
+        block.pulses[3]["ref_point"] = "start"
+
+        if prepend_pulse_dicts is not None:
+            pb = self.block_from_pulse_dicts(prepend_pulse_dicts, block_name="prepend")
+            b = self.sequential_blocks("final_with_prepend", [pb, block])
+            return b
+        return block
+
+    def guess_label(self, **kw):
+        """
+        label for the experiment
+        """
+        if self.label is None:
+            self.label = self.experiment_name
+            for t in self.task_list:
+                self.label += f"_{t['qbA']}{t['qbB']}"
+
+    def get_meas_objs_from_task(self, task):
+        """
+        Returns a list of all measure objects of a task. In case of
+        f0g1DetuningCalib, this list includes qbA and qbB.
+        :param task: a task dictionary
+        :return: list of qubit objects (if available) or names
+        """
+
+        qbs = self.get_qubits([task["qbA"], task["qbB"]])
+        return qbs[0] if qbs[0] is not None else qbs[1]
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # here we run the analysis
+        # first we call the super function
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        # then we call the class defined for this analysis:
+        # 'f0g1PitchDetuningAnalysis'
+        self.analysis = tda.f0g1DetuningAnalysis(
+            qb_names=self.get_qubits()[1], t_start=self.timestamp, **analysis_kwargs
+        )
+
+    def run_update(self, **kw):
+        # here we update 'f0g1_frequency' of qbB according to the fitted detuning
+        # if a fitting occured
+
+        if self.sweep_2D:
+            print("Fitting not implemented - Could not update the frequency")
+        else:
+            detuning = self.analysis.proc_data_dict["detuning_fit"]
+            detuning_error = self.analysis.proc_data_dict["detuning_fit_error"]
+            qbB = self.meas_objs[1]
+            qbB.set("f0g1_driveDetScale", detuning)
+            print("f0g1 catch detuning error = ", detuning_error)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d["kwargs"][MultiTaskingExperiment.__name__]["cal_states"] = (str, "gef")
+        d["task_list_fields"].update(
+            {
+                f0g1PitchDetuningCalib.__name__: odict(
+                    {
+                        "qbA": ((Qubit, "single_select"), None),
+                        "qbB": ((Qubit, "single_select"), None),
+                    }
+                )
+            }
+        )
+        if self.sweep_2D:
+            d["sweeping_parameters"].update(
+                {
+                    f0g1PitchDetuningCalib.__name__: {
+                        0: {
+                            "Pitch detuning": "Hz",
+                        },
+                        1: {
+                            "Catch detuning": "Hz",
+                        },
+                    }
+                }
+            )
+        else:
+            d["sweeping_parameters"].update({f0g1PitchDetuningCalib.__name__: {0: {"detuning": "Hz"}}})
+        return d
+
+
+class f0g1BandwidthCalib(CalibBuilder):
+    """
+    f0g1 pitch and catch bandwidth calibration: gets the appropriate
+    bandwidth for the f0g1 pulses.
+    This calibration consists of a 2D sweep between the kappa of pitch and
+    catch
+    """
+
+    task_mobj_keys = ["qbA", "qbB"]
+    default_experiment_name = "f0g1BandwidthCalib"
+
+    @assert_not_none("task_list")
+    def __init__(self, task_list, sweep_points=None, **kw):
+        try:
+            # call the super class
+            super().__init__(task_list, sweep_points=sweep_points, **kw)
+
+            # Preprocess sweep points and tasks before creating the sequences
+            self.preprocessed_task_list = self.preprocess_task_list(**kw)
+
+            # the block alignments are for: prepended pulses, initial
+            # rotations, flux pulse
+            self.sequences, self.mc_points = self.parallel_sweep(
+                self.preprocessed_task_list,
+                self.sweep_block,
+                block_align=["end", "end", "end"],
+                **kw,
+            )
+
+            self.autorun(**kw)  # run measurement & analysis if requested in kw
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qbA, qbB, sweep_points, prepend_pulse_dicts=None, **kw):
+        """ "
+        Sweep the frequency of f0g1Pitch and f0g1Catch
+        :param qbA: (str) the name of qubit A
+        :param qbB: (str) the name of the qubit B
+        :param sweep_points: the sweep points containing both bandwidth
+        for qbA qnd qbB (2D sweep)
+        :param prepend_pulse_dicts: (dict) prepended pulses, see
+            block_from_pulse_dicts
+        :param kw:
+        """
+        # create prepended pulses (pb)
+        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
+        qubitA, qubitB = self.get_meas_objs_from_task(self.preprocessed_task_list[0])
+
+        block = self.block_from_ops(
+            "f0g1 pulses",
+            [f"X180 {qbA}", f"X180_ef {qbA}", f"f0g1 {qbA}", f"f0g1_catch {qbB}"],
+        )
+
+        block.pulses[2]["kappa"] = ParametricValue("Pitch bandwidth")
+        block.pulses[3]["kappa"] = ParametricValue("Catch bandwidth")
+
+        # add to f0g1 catch the delay already calibrated in the parameters of
+        # qbB
+        block.pulses[3]["pulse_delay"] = qubitB.f0g1_delay()
+        block.pulses[3]["ref_point"] = "start"
+
+        if prepend_pulse_dicts is not None:
+            pb = self.block_from_pulse_dicts(prepend_pulse_dicts, block_name="prepend")
+            b = self.sequential_blocks("final_with_prepend", [pb, block])
+            return b
+        return block
+
+    def guess_label(self, **kw):
+        """
+        label for the experiment
+        """
+        if self.label is None:
+            self.label = self.experiment_name
+            for t in self.task_list:
+                self.label += f"_{t['qbA']}{t['qbB']}"
+
+    def get_meas_objs_from_task(self, task):
+        """
+        Returns a list of all measure objects of a task. In case of
+        f0g1DetuningCalib, this list includes qbA and qbB.
+        :param task: a task dictionary
+        :return: list of qubit objects (if available) or names
+        """
+
+        qbs = self.get_qubits([task["qbA"], task["qbB"]])
+        return qbs[0] if qbs[0] is not None else qbs[1]
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # here we run the analysis
+        # first we call the super function
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        # then we call the class defined for this analysis:
+        # 'f0g1PitchDetuningAnalysis'
+        self.analysis = tda.f0g1BandwidthAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp, **analysis_kwargs
+        )
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d["kwargs"][MultiTaskingExperiment.__name__]["cal_states"] = (str, "gef")
+        d["task_list_fields"].update(
+            {
+                f0g1BandwidthCalib.__name__: odict(
+                    {
+                        "qbA": ((Qubit, "single_select"), None),
+                        "qbB": ((Qubit, "single_select"), None),
+                    }
+                )
+            }
+        )
+        d["sweeping_parameters"].update(
+            {
+                f0g1BandwidthCalib.__name__: {
+                    0: {
+                        "Pitch bandwidth": "Hz",
+                    },
+                    1: {
+                        "Catch bandwidth": "Hz",
+                    },
+                }
+            }
+        )
+
+
+class LeakageAmplification(Chevron):
+    """
+    Leakage measurement for several successive CZ gates.
+
+    Measures the final population in the f level of the high-frequency
+    qubit, after num_cz_gates successive, identical gates.
+    Due to the coherent nature of the leakage, this typically creates
+    interference fringes. In order to reach constructive interferences,
+    one can sweep the delay (e.g. buffer) between pulses as one of the two
+    sweep dimensions.
+
+    Args:
+        sweep_param_1D (str): Name of a pulse attribute to sweep as first
+            sweep dimension.
+        sweep_param_2D (str): Name of a pulse attribute to sweep as second
+            sweep dimension.
+        sweep_range_dict (dict): Dictionary of the form
+    """
+
+    kw_for_task_keys = ['num_cz_gates', 'cphase']
+    default_experiment_name = f'Leakage_amplification'
+
+    def preprocess_task(self, task, global_sweep_points, sweep_points=None,
+                        **kw):
+        task = super().preprocess_task(task, global_sweep_points,
+                                       sweep_points, **kw)
+        cz_pulse_name = task.get('cz_pulse_name', 'CZ')
+        if (cphase := task.get('cphase')) is not None:
+            cz_pulse_name = cz_pulse_name + str(cphase)
+            task['cz_pulse_name'] = cz_pulse_name
+        sp = task['sweep_points']
+        for dim, p in enumerate(sp.get_parameters()):
+            # The gate sequence consists of num_cz_gates gates.
+            # The following code creates the following pulse_off sweep points
+            # for each gate (note that pulse_off=0 means the gate is
+            # applied, while pulse_off=1 means that it is not applied):
+            #       0 | 1 1 1     1      1 0
+            #       1 | 1 1 1     1      0 0
+            #       2 | 1 1 1     1      0 0
+            #      ...|
+            # gate  i | 1 1 1   i+j<n    0 0
+            #      ...|
+            #      n-2| 1 1 0     0      0 0
+            #      n-1| 1 0 0     0      0 0
+            #         ------------------------
+            #           0 1 2 ... j ... n-1 n
+            #              sweep points
+            # While the above example uses sweep points equal to
+            # [0, 1, ... n], they can be any array of int [j1, j2...].
+            # The total number of gates (indexed by i) is fixed.
+            if p == 'num_cz_gates':
+                # Update processed task
+                for i in range(task[p]):
+                    # The following line finds the corresponding op_code,
+                    # taking into account possible modifications in
+                    # cz_pulse_name, see higher in this method.
+                    op_code = f"{cz_pulse_name} {task['qbc']} {task['qbt']}"
+                    # Note that, contrary to normal processed tasks,
+                    # these sweep points do not have a prefix. However the
+                    # op_code does uniquely identify them with the qubit names.
+                    sp.add_sweep_parameter(
+                        param_name=f'attr=pulse_off, op_code={op_code}, '
+                                   f'occurrence={i}',
+                        values=np.array([i+j<task['num_cz_gates']
+                                         for j in sp[p]]),
+                        unit='',
+                        label='Number of CZ gates',
+                        dimension=dim,
+                    )
+                # Update sweep points accordingly
+                global_sweep_points[dim].update(sp[dim])
+        return task
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.LeakageAmplificationAnalysis(
+            qb_names=self.meas_obj_names,
+            t_start=self.timestamp, **analysis_kwargs)
+        return self.analysis

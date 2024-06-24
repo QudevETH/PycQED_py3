@@ -219,7 +219,7 @@ def n_qubit_ref_all_seq(qubit_names, operation_dict, upload=True,
 def ramsey_add_pulse_seq_active_reset(
         times, measured_qubit_name, pulsed_qubit_name,
         operation_dict, cal_points, n=1, artificial_detunings = 0,
-        upload=True, for_ef=False, last_ge_pulse=False, prep_params=dict()):
+        upload=True, for_ef=False, last_ge_pulse=False, reset_params=None):
     '''
      Azz sequence:  Ramsey on measured_qubit
                     pi-pulse on pulsed_qubit
@@ -274,12 +274,13 @@ def ramsey_add_pulse_seq_active_reset(
     swept_pulses_with_prep = \
         [add_preparation_pulses(p, operation_dict,
                                 [pulsed_qubit_name, measured_qubit_name],
-                                **prep_params)
+                                reset_params=reset_params)
          for p in swept_pulses]
     seq = pulse_list_list_seq(swept_pulses_with_prep, seq_name, upload=False)
 
     # add calibration segments
-    seq.extend(cal_points.create_segments(operation_dict, **prep_params))
+    seq.extend(cal_points.create_segments(operation_dict,
+                                          reset_params=reset_params))
 
     # reuse sequencer memory by repeating readout pattern
     seq.repeat_ro(f"RO {measured_qubit_name}", operation_dict)
@@ -310,8 +311,7 @@ def generate_mux_ro_pulse_list(qubit_names, operation_dict, element_name='RO',
 
 def interleaved_pulse_list_equatorial_seg(
         qubit_names, operation_dict, interleaved_pulse_list, phase, 
-        pihalf_spacing=None, prep_params=None, segment_name='equatorial_segment'):
-    prep_params = {} if prep_params is None else prep_params
+        pihalf_spacing=None, reset_params=None, segment_name='equatorial_segment'):
     pulse_list = []
     for notfirst, qbn in enumerate(qubit_names):
         pulse_list.append(deepcopy(operation_dict['X90 ' + qbn])) 
@@ -329,24 +329,26 @@ def interleaved_pulse_list_equatorial_seg(
             pulse_list[-1]['ref_point'] = 'start'
             pulse_list[-1]['pulse_delay'] = pihalf_spacing
     pulse_list += generate_mux_ro_pulse_list(qubit_names, operation_dict)
-    pulse_list = add_preparation_pulses(pulse_list, operation_dict, qubit_names, **prep_params)
+    pulse_list = add_preparation_pulses(pulse_list, operation_dict, qubit_names,
+                                        reset_params=reset_params)
     return segment.Segment(segment_name, pulse_list)
 
 
 def interleaved_pulse_list_list_equatorial_seq(
         qubit_names, operation_dict, interleaved_pulse_list_list, phases, 
-        pihalf_spacing=None, prep_params=None, cal_points=None,
+        pihalf_spacing=None, reset_params=None, cal_points=None,
         sequence_name='equatorial_sequence', upload=True):
-    prep_params = {} if prep_params is None else prep_params
     seq = sequence.Sequence(sequence_name)
     for i, interleaved_pulse_list in enumerate(interleaved_pulse_list_list):
         for j, phase in enumerate(phases):
             seg = interleaved_pulse_list_equatorial_seg(
                 qubit_names, operation_dict, interleaved_pulse_list, phase,
-                pihalf_spacing=pihalf_spacing, prep_params=prep_params, segment_name=f'segment_{i}_{j}')
+                pihalf_spacing=pihalf_spacing, reset_params=reset_params,
+                segment_name=f'segment_{i}_{j}')
             seq.add(seg)
     if cal_points is not None:
-        seq.extend(cal_points.create_segments(operation_dict, **prep_params))
+        seq.extend(cal_points.create_segments(operation_dict,
+                                              reset_params=reset_params))
     if upload:
         ps.Pulsar.get_instance().program_awgs(seq)
     return seq, np.arange(seq.n_acq_elements())
@@ -354,7 +356,7 @@ def interleaved_pulse_list_list_equatorial_seq(
 
 def measurement_induced_dephasing_seq(
         measured_qubit_names, dephased_qubit_names, operation_dict, 
-        ro_amp_scales, phases, pihalf_spacing=None, prep_params=None,
+        ro_amp_scales, phases, pihalf_spacing=None, reset_params=None,
         cal_points=None, upload=True, sequence_name='measurement_induced_dephasing_seq'):
     interleaved_pulse_list_list = []
     for i, ro_amp_scale in enumerate(ro_amp_scales):
@@ -367,13 +369,13 @@ def measurement_induced_dephasing_seq(
         interleaved_pulse_list_list.append(interleaved_pulse_list)
     return interleaved_pulse_list_list_equatorial_seq(
         dephased_qubit_names, operation_dict, interleaved_pulse_list_list, 
-        phases, pihalf_spacing=pihalf_spacing, prep_params=prep_params,
+        phases, pihalf_spacing=pihalf_spacing, reset_params=reset_params,
         cal_points=cal_points, sequence_name=sequence_name, upload=upload)
 
 
 def drive_cancellation_seq(
         drive_op_code, ramsey_qubit_names, operation_dict,
-        sweep_points, n_pulses=1, pihalf_spacing=None, prep_params=None,
+        sweep_points, n_pulses=1, pihalf_spacing=None, reset_params=None,
         cal_points=None, upload=True, sequence_name='drive_cancellation_seq'):
     """
     Sweep pulse cancellation parameters and measure Ramsey on qubits the
@@ -420,14 +422,14 @@ def drive_cancellation_seq(
     return interleaved_pulse_list_list_equatorial_seq(
         ramsey_qubit_names, operation_dict, interleaved_pulse_list_list,
         sweep_points[1]['phase'][0], pihalf_spacing=pihalf_spacing,
-        prep_params=prep_params, cal_points=cal_points,
+        reset_params=reset_params, cal_points=cal_points,
         sequence_name=sequence_name, upload=upload)
 
 
 def fluxline_crosstalk_seq(target_qubit_name, crosstalk_qubits_names,
                            crosstalk_qubits_amplitudes, sweep_points,
                            operation_dict, crosstalk_fluxpulse_length,
-                           target_fluxpulse_length, prep_params,
+                           target_fluxpulse_length, reset_params,
                            cal_points, upload=True,
                            sequence_name='fluxline_crosstalk_seq'):
     """
@@ -451,7 +453,7 @@ def fluxline_crosstalk_seq(target_qubit_name, crosstalk_qubits_names,
         target_fluxpulse_length: length of the flux pulse on the target qubit.
         crosstalk_fluxpulse_length: length of the flux pulses on the crosstalk
             qubits
-        prep_params: Perparation parameters dictionary specifying the type
+        reset_params: Perparation parameters dictionary specifying the type
             of state preparation.
         cal_points: CalibrationPoints object determining the used calibration
             points
@@ -499,5 +501,5 @@ def fluxline_crosstalk_seq(target_qubit_name, crosstalk_qubits_names,
     return interleaved_pulse_list_list_equatorial_seq(
         crosstalk_qubits_names, operation_dict, interleaved_pulse_list_list,
         sweep_points[0]['phase'][0], pihalf_spacing=pihalf_spacing,
-        prep_params=prep_params, cal_points=cal_points,
+        reset_params=reset_params, cal_points=cal_points,
         sequence_name=sequence_name, upload=upload)
