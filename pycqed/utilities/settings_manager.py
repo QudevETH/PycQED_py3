@@ -487,11 +487,13 @@ def get_station_from_file(timestamp=None, folder=None, filepath=None,
 
 def convert_settings_to_hdf(timestamp: str):
     """
-    Creates/writes settings in hdf-file from a file specified by timestamp.
+    Creates/writes settings to a hdf5-file specified by a timestamp.
     Write the instrument settings into the preexisting hdf-file with the
     same timestamp from any settings file supported by the settings manager.
     If the hdf-file does not exist, it creates a hdf-file with the same
     filename as the settings file.
+    This serves as a helper to ensure compatibility with user-notebooks which
+    rely on instrument settings being stored in hdf5-files.
 
     Args:
         timestamp(str): Timestamp of the settings file.
