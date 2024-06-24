@@ -2150,6 +2150,7 @@ class MeasurementControl(Instrument):
         Args:
             data_object (h5py.File): opened HDF5 data file
             station (Station): QCodes or mock_qcodes_interface station object
+            snapshot_kwargs (**): optional snapshot parameters
         '''
         import numpy
         import sys
