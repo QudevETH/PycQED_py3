@@ -1130,7 +1130,11 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
     def get_operation_dict(self, operation_dict=None):
         operation_dict = super().get_operation_dict(operation_dict)
         operation_dict['Spec ' + self.name]['operation_type'] = 'Other'
-        operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
+        if operation_dict['Acq ' + self.name]['pulse_type'].endswith(
+                'WithFlux'):
+            # removes flux pulse for acquisition operation
+            operation_dict['Acq ' + self.name]['pulse_type'] = (
+                operation_dict)['Acq ' + self.name]['pulse_type'][:-8]
 
         if "f0g1" in self.transition_names:
             self._add_f0g1_to_operation_dict(operation_dict)
