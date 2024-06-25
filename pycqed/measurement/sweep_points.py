@@ -298,7 +298,7 @@ class SweepPoints(list):
         """
 
         # Ensure measurement_objects is a list
-        if isinstance(measurement_objects, list):
+        if isinstance(measurement_objects, (list, tuple)):
             measurement_objects = copy(measurement_objects)
         else:
             measurement_objects = [measurement_objects]
