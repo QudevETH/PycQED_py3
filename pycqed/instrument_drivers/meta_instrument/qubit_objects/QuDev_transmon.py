@@ -1791,6 +1791,12 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             ma (:py:class:~'pycqed.timedomain_analysis.MixerCarrierAnalysis'): 
                 The MixerCarrierAnalysis object.
         """
+        log.warning("This function (calibrate_drive_mixer_carrier_model) is "
+                    "deprecated and will be removed in a future MR. Use the "
+                    "quantum experiment "
+                    "pycqed.measurement.calibration.mixer.MixerCarrier "
+                    "instead. See docstring of the quantum experiment for "
+                    "further information.")
         MC = self.instr_mc.get_instr()
         if meas_grid is None:
             if len(limits) != 4:
@@ -2025,6 +2031,12 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             ma (:py:class:~'pycqed.timedomain_analysis.MixerSkewnessAnalysis'): 
                 The MixerSkewnessAnalysis object.
         """
+        log.warning("This function (calibrate_drive_mixer_skewness_model) is "
+                    "deprecated and will be removed in a future MR. Use the "
+                    "quantum experiment "
+                    "pycqed.measurement.calibration.mixer.MixerSkewness "
+                    "instead. See docstring of the quantum experiment for "
+                    "further information.")
         if meas_grid is None:
             if len(limits) != 4:
                 log.error('Input variable `limits` in function call '
