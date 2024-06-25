@@ -190,7 +190,6 @@ class ZIPulsarMixin:
                     f", {wave_index});"
                 )
                 defined_wave_indices[wave_index] = wave
-
         return wave_definition
 
     @staticmethod
@@ -264,13 +263,15 @@ class ZIPulsarMixin:
         if w1 is None and w2 is not None and use_hack and not placeholder_wave:
             # This hack is needed due to a bug on the HDAWG.
             # Remove this if case once the bug is fixed.
-            return [f"setWaveDIO({codeword}, zeros(1) + marker(1, 0), {w2});"]
+            return [f"assignWaveIndex(zeros(1) + marker(1, 0),{w2},"
+                    f"{codeword});"]
+
         elif w1 is None and w2 is not None and use_hack and placeholder_wave:
-            return [f"setWaveDIO({codeword}, {w2}_but_zero, {w2});"]
+            return [f"assignWaveIndex({w2}_but_zero, {w2},{codeword});"]
         elif not (w1 is None and w2 is None):
-            return ["setWaveDIO({}, {});".format(codeword,
+            return ["assignWaveIndex({}, {});".format(
                         self._zi_wavename_pair_to_argument(
-                            w1, w2, internal_mod=internal_mod))]
+                            w1, w2, internal_mod=internal_mod),codeword)]
         else:
             return []
 
@@ -319,6 +320,7 @@ class ZIPulsarMixin:
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append("playWaveDIO();")
+            
         elif command_table_index is not None:
             playback_string.append(f"executeTableEntry({command_table_index});")
         else:
@@ -513,6 +515,16 @@ class ZIGeneratorModule:
         "}}\n"
     )
 
+    COMMAND_TABLE_MAX_SIZE = 4096
+    """Specifies the maximum number of the command tables of the generator 
+    module."""
+    
+    #NOTE: the internal shift is limited to 1024, thus the commands for reset, 
+    ## ff and decoder need to be in the first 1024 command table entries. 
+    FEEDBACK_ENTRIES_START_INDEX = 0  
+    NORMAL_ENTRIES_START_INDEX = 84
+    """Specifies the first command table entry for saving the decoder waveforms."""
+
     def __init__(
             self,
             awg,
@@ -614,6 +626,7 @@ class ZIGeneratorModule:
 
         self._negate_q = False
         """Whether to flip the sign of the Q channel waveform."""
+
 
         self._generate_channel_ids(awg_nr=awg_nr)
         self._reset_has_waveform_flags()
@@ -1033,7 +1046,8 @@ class ZIGeneratorModule:
                 self._playback_strings += \
                     ZIPulsarMixin.zi_playback_string_loop_end(metadata)
                 continue
-
+            codeword_type = None
+            # TODO: enforce only same -fb codewords in Element..
             for cw in awg_sequence_element:
                 if cw == 'no_codeword':
                     if nr_cw != 0:
@@ -1105,6 +1119,7 @@ class ZIGeneratorModule:
 
                 self._wave_idx_lookup[element][cw] = None
                 reuse_definition = False
+                # generate or retrieve waveform_idx
                 if self._use_placeholder_waves or self._use_command_table:
                     # If the wave is already assigned an index, we will point
                     # the wave to the existing index and skip the rest of wave
@@ -1113,6 +1128,8 @@ class ZIGeneratorModule:
                         self._wave_idx_lookup[element][cw] = [
                             i for i, v in self._defined_waves[1].items()
                             if v == wave][0]
+                        # assert len([i for i, v in self._defined_waves[1].items()if v == wave]==1, \
+                        #     f'More than one waveform defined in waveform table for {element}.')
                         reuse_definition = True
                     else:
                         self._wave_idx_lookup[element][cw] = next_wave_idx
@@ -1130,34 +1147,61 @@ class ZIGeneratorModule:
                         )
 
                     scaling_factor = metadata.get("scaling_factor", dict())
-                    entry_index = len(self._command_table)
+                    # entry_index = len(self._command_table)
+                    
                     amplitude = self._extract_command_table_amplitude(
                         scaling_factor=scaling_factor
                     )
                     phase=metadata.get('mod_config', {})\
                         .get(self.i_channel_name, {}).get("phase", 0)
 
+
+                    # Find entry index
                     entry = self._generate_command_table_entry(
-                        entry_index=entry_index,
+                        entry_index=0,
                         wave_index=self._wave_idx_lookup[element][cw],
                         amplitude=amplitude,
                         phase=phase,
                     )
                     update_entry = True
 
+                    entry_index = self.NORMAL_ENTRIES_START_INDEX
+                    
                     # Check if the same entry already exists in the command
                     # table. If so, the existing entry will be reused and the
                     # new entry will not be uploaded.
-                    for existing_entry in self._command_table:
-                        if self._compare_command_table_entry(
-                            entry,
-                            existing_entry
-                        ):
-                            entry_index = existing_entry["index"]
-                            update_entry = False
+                    # command table entries reserved for
+                    # non-feedback pulses.
+                    if cw == 'no_codeword':
+                        i_start = self.NORMAL_ENTRIES_START_INDEX
+                        i_end = self.COMMAND_TABLE_MAX_SIZE
+                        codeword_type = 'no_codeword'
+
+                        for existing_entry in self._command_table:
+                            if i_start <= existing_entry["index"] < i_end:
+                                if self._compare_command_table_entry(
+                                        entry,
+                                        existing_entry
+                                ):
+                                    entry_index = existing_entry["index"]
+                                    update_entry = False
+                                    break
+                                else:
+                                    entry_index += 1
+
+                        if entry_index >= i_end:
+                            raise RuntimeError(
+                                f"On {self.awg.name} generator module "
+                                f"{self._awg_nr}: command table memory overflow. "
+                                f"Please check if you have defined too many "
+                                f"different waveforms or allocated too few space "
+                                f"for feedback or non-feedback pulses."
+                            )
+                    
 
                     # records mapping between element-codeword and entry index
                     self._command_table_lookup[element] = entry_index
+                    entry["index"] = entry_index
                     if update_entry:
                         self._command_table.append(entry)
 
