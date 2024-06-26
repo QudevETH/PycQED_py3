@@ -22,6 +22,7 @@ cache:
     - .cache/apt
 
 # This is necessary to be able to copy the doc via SSH
+# FIXME: This part will move to Docker in Jul.2024
 before_script:
   # Dependencies for GUI
   - apt-get update && apt-get install libgl1 -y
@@ -43,6 +44,23 @@ before_script:
   - ssh-keyscan $GIT_LAB_ADDRESS >> ~/.ssh/known_hosts
   - ssh-keyscan $DOC_URL >> ~/.ssh/known_hosts
   - chmod 644 ~/.ssh/known_hosts
+
+# Build the documentation, and copy it to the documentation webshare
+pages:
+  script:
+    - cd docs
+    - make html
+    # Using ${CI_PROJECT_PATH:6} to trim "qudev/" at beginning of the path
+    - DOC_UPLOAD_FOLDER=${CI_PROJECT_PATH:6}/$CI_COMMIT_BRANCH
+    - ssh ${DOC_USER}@${DOC_URL} "mkdir -p public/$DOC_UPLOAD_FOLDER"
+    - ssh ${DOC_USER}@${DOC_URL} "rm -rf public/$DOC_UPLOAD_FOLDER/*"
+    - scp -r ./build/html/* "${DOC_USER}@${DOC_URL}:public/$DOC_UPLOAD_FOLDER"
+    - echo "Documentation accessible at https://$DOC_URL/$DOC_UPLOAD_FOLDER/index.html"
+  only:
+    # The documentation will only be built for the listed branches
+    - qudev_master
+    - /^Proj\/.*$/
+    - /^doc\/.*$/
 
 # Measure code quality (ab)using mypy
 codequality:
