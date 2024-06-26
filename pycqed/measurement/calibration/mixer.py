@@ -106,8 +106,10 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                     for qb_obj in self.get_qubits()[0]:
                         # sets ro_mod_freq depending on trigger separation to
                         # avoid beating patterns
-                        self.commensurability_lo_trigger(
+                        ro_mod_freq = self.commensurability_lo_trigger(
                             qb_obj, trigger_sep, force_ro_mod_freq)
+                        if ro_mod_freq is not None:
+                            tmp_vals.append((qb_obj.ro_mod_freq, ro_mod_freq))
                 except Exception as x:
                     log.warning('No qubit objects found.')
                 self.update_operation_dict()
@@ -158,11 +160,12 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                         'Automatic adjustment of the RO IF might lead to '
                         'wrong results since ro_fixed_lo_freq is set.')
                 beats_per_trigger = int(beats_per_trigger + 0.5)
-                qb_obj.ro_mod_freq(2 * beats_per_trigger / trigger_sep \
-                                 - qb_obj.ge_mod_freq())
+                ro_mod_freq = 2 * beats_per_trigger / trigger_sep \
+                                 - qb_obj.ge_mod_freq()
                 log.warning('To ensure commensurability the RO '
                             'modulation frequency will temporarily be set '
                             'to {} Hz.'.format(qb_obj.ro_mod_freq()))
+                return ro_mod_freq
 
     def sweep_block(self, sweep_points, qb, amplitude, **kw):
         # extract AWG channels
