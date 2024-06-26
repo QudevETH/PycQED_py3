@@ -22,22 +22,19 @@ cache:
     - .cache/apt
 
 # This is necessary to be able to copy the doc via SSH
+# FIXME: This part will move to Docker in Jul.2024
 before_script:
-  # ============================================================================
   # Dependencies for GUI
-  # ============================================================================
   - apt-get update && apt-get install libgl1 -y
-  # ============================================================================
+
   # Python virtual env
-  # ============================================================================
   - pip install .[docs,linting,user,measurement_setup]
   - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${QCODES_CONTRIB_DRIVERS_REPOSITORY}
   - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${VC707_PYTHON_INTERFACE_REPOSITORY}
   - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${DEVICE_DB_CLIENT_REPOSITORY}
   - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@github.com/pyGSTio/pyGSTi.git
-  # ============================================================================
+
   # Configure SSH agent to be able to copy the doc via SSH
-  # ============================================================================
   - mkdir -p $APT_CACHE_DIR
   - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client git -y )'
   - eval $(ssh-agent -s)
@@ -64,3 +61,14 @@ pages:
     - qudev_master
     - /^Proj\/.*$/
     - /^doc\/.*$/
+
+# Measure code quality (ab)using mypy
+codequality:
+  script:
+    - pip install mypy mypy-gitlab-code-quality
+    - mypy program.py --no-error-summary > pycqed-mypy.txt || true  # "|| true" is used for preventing job fail when mypy find errors
+    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json 
+  artifacts:
+    when: always
+    reports:
+      codequality: pycqed-codequality.json
