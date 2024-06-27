@@ -191,7 +191,8 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
         if self._acq_n_results > 2 ** 20:
             raise ValueError(
                 f'Acquisition device {self.name} ({self.devname}): '
-                f'{self._acq_n_results} > 1048576 not supported by the UHF. '
+                f'The number of acquisition results, {self._acq_n_results},'
+                f' (> 1048576), is too large for the UHF. '
                 f'Please reduce the compression_seg_lim, the number of 1D '
                 f'sweep points, or the nr_shots.')
 

@@ -599,10 +599,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         if self._acq_n_results > 2 ** 19:
             raise ValueError(
                 f'Acquisition device {self.name} ({self.devname}): '
-                f'{self._acq_n_results} > 524288 not supported by the SHF. '
+                f'The number of acquisition results, {self._acq_n_results},'
+                f' (> 524288), is too large for the SHF. '
                 f'Please reduce the compression_seg_lim, the number of 1D '
                 f'sweep points, or the nr_shots.')
-
 
     def acquisition_set_weights(self, channels, **kw):
         # Makes super call faster
