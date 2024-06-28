@@ -1675,6 +1675,12 @@ class Segment:
                 basis_phases[basis] = basis_phases.get(basis, 0) + rotation
 
             if pulse.basis is not None:
+                # total_phase = original_phase - basis_rotation
+                # basis_rotation is defined as the (^ right-handed) rotation
+                # angle of the quantum state with respect to subsequent gates
+                # (such that e.g. a virtual Z45 gate means basis_rotation=45)
+                # meaning that here, in the rotating frame of the state, we
+                # subtract basis_rotation from the phase of subsequent pulses
                 pulse.pulse_obj.phase = pulse.original_phase - \
                                         basis_phases.get(pulse.basis, 0)
 

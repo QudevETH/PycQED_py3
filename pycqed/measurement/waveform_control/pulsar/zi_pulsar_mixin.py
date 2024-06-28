@@ -1087,8 +1087,9 @@ class ZIGeneratorModule:
                         self._codeword_table[cw] = (w1, w2)
                     elif self._codeword_table[cw] != (w1, w2) \
                             and self.pulsar.reuse_waveforms():
-                        log.warning('Same codeword used for different '
-                                    'waveforms. Using first waveform. '
+                        log.warning(f'Same codeword {cw} used for different '
+                                    f'waveforms: {self._codeword_table[cw]} '
+                                    f'vs {(w1, w2)}. Using first waveform. '
                                     f'Ignoring element {element}.')
 
                 # Update self.has_waveforms flag of the corresponding channel

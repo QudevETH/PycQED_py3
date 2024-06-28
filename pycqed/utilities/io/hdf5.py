@@ -443,6 +443,15 @@ class HDF5Loader(Loader):
 
                             inst = Instrument(inst_path[-1])
                             inst.add_parameter(param)
+                            # Load class name. This only needs to be done
+                            # manually because the instrument is loaded only
+                            # partially here, and not via load_instrument.
+                            try:
+                                inst.add_classname(read_attribute_from_hdf5(
+                                    '.'.join(inst_path) + '.__class__',
+                                    config_file))
+                            except ParameterNotFoundError:
+                                pass  # do not set a class name
                     except ParameterNotFoundError:
                         try:
                             # Parameter is in fact an instrument, entire
@@ -454,7 +463,7 @@ class HDF5Loader(Loader):
                             # path to the instrument
                             inst_path = path_to_param.split('.')
 
-                        except ParameterNotFoundError:
+                        except KeyError:
                             # Exception is not raised here to not break the
                             # flow of loading the station. It is raised when
                             # user tries to get access to the parameter
