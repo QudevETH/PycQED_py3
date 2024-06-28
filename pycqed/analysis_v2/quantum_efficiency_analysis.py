@@ -529,25 +529,55 @@ class RamseyAnalysis(ba.BaseDataAnalysis):
 
 
 class RamseyAnalysisSweep(RamseyAnalysis):
-    def __init__(self, t_start: str = None, t_stop: str = None,
-                 label: str = '_ro_amp_sweep_ramsey',
-                 options_dict: dict = None, extract_only: bool = False,
-                 auto: bool = True, close_figs: bool = True,
-                 do_fitting: bool = True):
-        super().__init__(t_start=t_start, t_stop=t_start,
-                         label=label,
-                         options_dict=options_dict,
-                         do_fitting=do_fitting,
-                         close_figs=close_figs,
-                         extract_only=extract_only,
-                         )
+    """Analyzes Ramsey data from a sweep of a parameter (e.g., readout amplitude).
+
+    Extracts dephasing and phase data from a single timestamp corresponding to
+    a Ramsey measurement with a swept parameter. Optionally performs fitting
+    on the extracted data.
+    """
+
+    def __init__(
+        self,
+        t_start: str = None,
+        t_stop: str = None,
+        label: str = "_ro_amp_sweep_ramsey",
+        options_dict: dict = None,
+        extract_only: bool = False,
+        auto: bool = True,
+        close_figs: bool = True,
+        do_fitting: bool = True,
+    ):
+        """Initializes a RamseyAnalysisSweep instance.
+
+        Args:
+            t_start: Start timestamp of the Ramsey measurement.
+            t_stop: Stop timestamp of the Ramsey measurement (optional).
+            label: Label of the Ramsey measurement.
+            options_dict: Dictionary of options for the analysis.
+            extract_only: If True, only extract data without fitting.
+            auto: If True, automatically run the analysis upon initialization.
+            close_figs: If True, close figures after the analysis.
+            do_fitting: If True, perform fitting on the extracted data.
+        """
+        super().__init__(
+            t_start=t_start,
+            t_stop=t_start,
+            label=label,
+            options_dict=options_dict,
+            do_fitting=do_fitting,
+            close_figs=close_figs,
+            extract_only=extract_only,
+        )
         self.single_timestamp = True
-        ts = a_tools.get_timestamps_in_range(timestamp_start=t_start,
-                                        timestamp_end=t_stop, label=label,
-                                        exact_label_match=True)
+        ts = a_tools.get_timestamps_in_range(
+            timestamp_start=t_start,
+            timestamp_end=t_stop,
+            label=label,
+            exact_label_match=True,
+        )
         if self.verbose:
-            print('RamseyAnalysisSweep', ts)
-        assert(len(ts) == 1)
+            print("RamseyAnalysisSweep", ts)
+        assert len(ts) == 1
         self.timestamp = ts[0]
 
         if auto:
@@ -555,21 +585,25 @@ class RamseyAnalysisSweep(RamseyAnalysis):
 
     def extract_data(self):
         self.raw_data_dict = OrderedDict()
-        data_file = MeasurementAnalysis(label=self.labels[0],
-                                        timestamp=self.timestamp,
-                                        auto=True, TwoD=False)
+        data_file = MeasurementAnalysis(
+            label=self.labels[0], timestamp=self.timestamp, auto=True, TwoD=False
+        )
 
         dateobj = a_tools.datetime_from_timestamp(self.timestamp)
         self.timestamps = [self.timestamp]
-        self.raw_data_dict['timestamps'] = [self.timestamp]
-        self.raw_data_dict['datetime'] = np.array([dateobj], dtype=datetime.datetime)
+        self.raw_data_dict["timestamps"] = [self.timestamp]
+        self.raw_data_dict["datetime"] = np.array([dateobj], dtype=datetime.datetime)
 
         temp = data_file.load_hdf5data()
         data_file.get_naming_and_values()
-        self.raw_data_dict['scaling_amp'] = data_file.sweep_points
-        self.raw_data_dict['dephasing'] = np.array(data_file.measured_values[0], dtype=float)
-        self.raw_data_dict['phase'] = np.array(data_file.measured_values[1], dtype=float)
-        self.raw_data_dict['folder'] = data_file.folder
+        self.raw_data_dict["scaling_amp"] = data_file.sweep_points
+        self.raw_data_dict["dephasing"] = np.array(
+            data_file.measured_values[0], dtype=float
+        )
+        self.raw_data_dict["phase"] = np.array(
+            data_file.measured_values[1], dtype=float
+        )
+        self.raw_data_dict["folder"] = data_file.folder
 
 
 class RamseyAnalysisSingleScans(RamseyAnalysis):

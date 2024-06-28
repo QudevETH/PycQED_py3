@@ -7,6 +7,7 @@ import re
 import time
 from pathlib import Path
 import logging
+from collections import OrderedDict
 
 from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
 
@@ -15,9 +16,9 @@ logger = logging.getLogger(__name__)
 # file extensions used to dump and load files. Extensions are ordered beginning
 # with the filetype which should be favoured when opening a file with the same
 # filenames.
-file_extensions = {
+file_extensions = OrderedDict({
     'msgpack': '.msg', 'msgpack_comp': '.msgc', 'pickle': '.pickle',
-    'pickle_comp': '.picklec', 'hdf5': '.hdf5'}
+    'pickle_comp': '.picklec', 'hdf5': '.hdf5'})
 
 
 class Dumper:
@@ -162,10 +163,8 @@ class Loader:
                     for path in filepath:
                         file_name, file_extension = os.path.splitext(path)
                         if extension == file_extension:
-                            logger.warning(
-                                f"More than one file found for timestamp "
-                                f"'{timestamp}'. File in format '{format}' will"
-                                f" be considered.")
+                            # More than one file found for the given timestamp. The file with the file format first
+                            # occurring in file_extension will be considered.
                             return format
                 raise KeyError(f"More than one file found for "
                                f"timestamp '{timestamp}' and none matches the "

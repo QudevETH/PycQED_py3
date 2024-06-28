@@ -5750,6 +5750,9 @@ class Fluxpulse_Ramsey_2D_Analysis(MeasurementAnalysis):
 
 
 class Fluxpulse_Ramsey_2D_Analysis_Predictive(MeasurementAnalysis):
+    """Measurement analysis class to analyse Ramsey type measurements
+    with an interleaved flux pulse.
+    """
 
     def __init__(self, X90_separation=None, flux_pulse_length=None,
                  drive_pulse_length=None,
@@ -5758,17 +5761,19 @@ class Fluxpulse_Ramsey_2D_Analysis_Predictive(MeasurementAnalysis):
                  reference_measurements=False,
                  plot=False,
                  **kw):
-        """
-        Measurement analysis class to analyse Ramsey type measrements
-        with an interleaved flux pulse
+        """Initializes the Fluxpulse_Ramsey_2D_Analysis_Predictive class.
 
         Args:
-            X90_separation (float): separation between the two X90 pulses
-            flux_pulse_length (float): length of the flux pulse in seconds
-                                        (used to calculate freq. shifts)
-            qb_name (str): qubit name
-            label (str): measurement label
-            **kw:
+            X90_separation (float): Separation between the two X90 pulses.
+            flux_pulse_length (float): Length of the flux pulse in seconds
+                                       (used to calculate freq. shifts).
+            drive_pulse_length (float): Length of the drive pulse.
+            qb_name (str): Qubit name.
+            label (str): Measurement label.
+            cal_points (bool): Whether to include calibration points.
+            reference_measurements (bool): Whether to include reference measurements.
+            plot (bool): Whether to plot the results.
+            **kw: Additional keyword arguments.
         """
 
         kw['label'] = label

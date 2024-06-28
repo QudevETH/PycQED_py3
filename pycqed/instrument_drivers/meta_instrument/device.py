@@ -126,12 +126,17 @@ class Device(Instrument):
                            parameter_class=ManualParameter,
                            )
 
-        # Pulse preparation parameters
-        default_prep_params = dict(preparation_type='wait',
-                                   post_ro_wait=1e-6, reset_reps=1)
 
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
-                           initial_value=default_prep_params, vals=vals.Dict())
+                           vals=vals.Dict(), set_parser=self._validate_preparation_params)
+
+    def _validate_preparation_params(self, preparation_params):
+        log.error('specifying `preparation_params` in the device object is '
+                  'deprecated and will have  no effect. Please use `qb.reset.steps()` '
+                  'to specify your reset type or directly specify the '
+                  '`reset_params` as a keyword argument to the `QuantumExperiment`'
+                  'child measurement class.')
+        return preparation_params
 
     # General Class Methods
 

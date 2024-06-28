@@ -218,9 +218,11 @@ class MeasurementObject(Instrument):
         # Values needed for two-step readout
         self.add_pulse_parameter(
             operation_name='RO',
-            parameter_name='ro_multistep_param_pairs',
-            argument_name='multistep_param_pairs',
+            parameter_name='ro_multistep_amp_factor_duration_tuples',
+            argument_name='multistep_amp_factor_duration_tuples',
             initial_value=None,
+            # TODO should really be vals.Lists(vals.Tuples(vals.Numbers))
+            #      but a Tuple validator does not exist
             vals=vals.MultiType(vals.Enum(None), vals.Lists()),
             docstring="List of tuples containing an amplitude scaling factor "
             "and duration for which to apply this multiplier. Defaults to "
