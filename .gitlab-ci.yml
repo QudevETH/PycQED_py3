@@ -67,10 +67,10 @@ pages:
   artifacts:
     paths:
       - public
-#  only:
-#    - qudev_master
-#    - /^Proj\/.*$/
-#    - /^doc\/.*$/
+  only:
+    - qudev_master
+    - /^Proj\/.*$/
+    - /^doc\/.*$/
 
 deploy_docs:
   extends: .base_setup
@@ -81,9 +81,9 @@ deploy_docs:
     - ssh ${DOC_USER}@${DOC_URL} "rm -rf public/$DOC_UPLOAD_FOLDER/*"
     - scp -r public/* "${DOC_USER}@${DOC_URL}:public/$DOC_UPLOAD_FOLDER"
     - echo "Documentation accessible at https://$DOC_URL/$DOC_UPLOAD_FOLDER/index.html"
-#  only:
-#    - qudev_master
-#    - /^Proj\/.*$/
-#    - /^doc\/.*$/
+  only:
+    - qudev_master
+    - /^Proj\/.*$/
+    - /^doc\/.*$/
   needs:
     - pages
