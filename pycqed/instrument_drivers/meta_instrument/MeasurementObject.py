@@ -14,8 +14,7 @@ from pycqed.measurement import sweep_functions as swf
 
 class MeasurementObject(Instrument):
     _acq_weights_type_aliases = {}  # see self.get_acq_weights_type()
-    _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
-                           'GaussFilteredCosIQPulsePolyChromatic']
+    _ro_pulse_type_vals = ['GaussFilteredCosIQPulse']
     _allowed_drive_modes = [None]
 
     def __init__(self, name, **kw):
@@ -89,7 +88,7 @@ class MeasurementObject(Instrument):
             # parameter to None without further processing. This will then
             # trigger the special behavior for acq described in the docstring
             # of configure_mod_freqs the next time that method gets called.
-            docstring='Acquitision frequency. If None, ro_freq is used.')
+            docstring='Acquisition frequency. If None, ro_freq is used.')
         self.add_parameter(
             'acq_mod_freq', initial_value=None, unit='Hz',
             label='acquisition intermediate frequency',
@@ -98,7 +97,7 @@ class MeasurementObject(Instrument):
             # Separate treatment as for acq_freq (see above)
             vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
             parameter_class=ManualParameter,
-            docstring='Acquitision intermediate frequency. '
+            docstring='Acquisition intermediate frequency. '
                       'If None, ro_mod_freq is used.')
         awt_docstring = 'Determines what type of integration weights to ' +\
                         'use:\n\tSSB: Single sideband demodulation\n\tDSB: ' +\
@@ -174,9 +173,13 @@ class MeasurementObject(Instrument):
         self.add_pulse_parameter('RO', 'ro_Q_channel', 'Q_channel',
                                  initial_value=None, vals=vals.MultiType(
                                      vals.Enum(None), vals.Strings()))
+        # Allow individual numbers, lists, tuples, or arrays of numbers
+        _polychromatic_ro_param_validator = vals.MultiType(
+            vals.Numbers(), vals.Sequence(), vals.Arrays()
+        )
         self.add_pulse_parameter('RO', 'ro_amp', 'amplitude',
                                  initial_value=0.001,
-                                 vals=vals.MultiType(vals.Numbers(), vals.Lists()),
+                                 vals=_polychromatic_ro_param_validator,
                                  docstring="Amplitude or list of amplitudes in V")
         self.add_pulse_parameter('RO', 'ro_length', 'pulse_length',
                                  initial_value=2e-6, vals=vals.Numbers())
@@ -186,19 +189,19 @@ class MeasurementObject(Instrument):
             'RO', 'ro_mod_freq', 'mod_frequency', initial_value=100e6,
             set_parser=lambda f, s=self: s.configure_mod_freqs('ro',
                                                                ro_mod_freq=f),
-            vals=vals.MultiType(vals.Numbers(), vals.Lists()),
+            vals=_polychromatic_ro_param_validator,
             docstring="Readout modulation frequency or list of frequencies in Hz. "
             "Positive frequencies will be above the readout LO/center frequency."
         )
         self.add_pulse_parameter('RO', 'ro_phase', 'phase',
                                  initial_value=0,
-                                 vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+                                 vals=_polychromatic_ro_param_validator)
         self.add_pulse_parameter('RO', 'ro_phi_skew', 'phi_skew',
                                  initial_value=0,
-                                 vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+                                 vals=_polychromatic_ro_param_validator)
         self.add_pulse_parameter('RO', 'ro_alpha', 'alpha',
                                  initial_value=1,
-                                 vals=vals.MultiType(vals.Numbers(), vals.Lists()))
+                                 vals=_polychromatic_ro_param_validator)
         self.add_pulse_parameter('RO', 'ro_sigma',
                                  'gaussian_filter_sigma',
                                  initial_value=10e-9, vals=vals.Numbers())
@@ -225,11 +228,14 @@ class MeasurementObject(Instrument):
             #      but a Tuple validator does not exist
             vals=vals.MultiType(vals.Enum(None), vals.Lists()),
             docstring="List of tuples containing an amplitude scaling factor "
-            "and duration for which to apply this multiplier. Defaults to "
-            "None meaning that a constant amplitude is applied the entire "
-            "time. It is up to the user to provide meaningful values (there "
-            "is no warning if the total duration of the steps is longer "
-            "than the readout pulse itself)."
+            "(unitless) and a duration (in s) for this multiplier. "
+            "Amplitude scaling factors greater than 1 increase the "
+            "output amplitude while those less than 1 reduce it. "
+            "Defaults to None meaning that a constant amplitude is "
+            "applied the entire time. It is up to the user to provide "
+            "meaningful values (there is no warning if the total "
+            "duration of the steps is longer than the readout pulse "
+            "itself)."
         )
 
         # switch parameters
@@ -337,14 +343,24 @@ class MeasurementObject(Instrument):
         n_channels = self.instr_acq.get_instr().n_acq_inp_channels
         return [(self.acq_unit(), i) for i in range(n_channels)]
 
-    def get_ro_lo_freq(self):
+    def get_ro_lo_freq(self) -> float:
         """Returns the required local oscillator frequency for readout pulses
 
         The RO LO freq is calculated from self.ro_mod_freq (intermediate
         frequency) and self.ro_freq.
+
+        For polychromatic readout, only the first frequency is used.
         """
-        # For polychromatic readout, ro_freq and ro_mod_freq may be lists
-        return np.mean(self.ro_freq()) - np.mean(self.ro_mod_freq())
+        # ro_freq and ro_mod_freq may be scalar or array-like
+        if np.ndim(self.ro_freq()) == 0:
+            ro_freq = [self.ro_freq()]
+        else:
+            ro_freq = self.ro_freq()
+        if np.ndim(self.ro_mod_freq()) == 0:
+            ro_mod_freq = [self.ro_mod_freq()]
+        else:
+            ro_mod_freq = self.ro_mod_freq()
+        return ro_freq[0] - ro_mod_freq[0]
 
     def get_pulse_parameter(self, operation_name=None, argument_name=None):
         """
@@ -425,7 +441,7 @@ class MeasurementObject(Instrument):
         )
 
     def get_acq_mod_and_lo_freq(self):
-        """Returns the required IF and LO frequency for acquisition
+        """Returns the required IF and LO frequency for acquisition.
 
         The Acq LO freq is calculated from the acq_mod_freq (intermediate
         frequency) and the acq_freq stored in the qubit object. If any of them
@@ -434,13 +450,17 @@ class MeasurementObject(Instrument):
         is None, the value of acq_mod_freq will be chosen such that it is
         compatible with the LO frequency of the instr_ro_lo (assuming that
         this LO is also used for the acquisition).
+
+        Returns:
+            A list of modulation frequencies and a list of LO
+            frequencies.
         """
         if (acq_freq := self.acq_freq()) is None:
             acq_freq = self.ro_freq()
         if (acq_mod_freq := self.acq_mod_freq()) is None:
             if self.instr_acq_lo() is None:
                 acq_mod_freq = (
-                        np.asarray(acq_freq) - self.get_ro_lo_freq()
+                    np.asarray(acq_freq) - self.get_ro_lo_freq()
                 ).tolist()
             else:
                 acq_mod_freq = self.ro_mod_freq()
@@ -531,11 +551,11 @@ class MeasurementObject(Instrument):
 
         # Polychromatic readout
         if np.ndim(self.ro_freq()) != 0:
-            # Case where ro_mod_freq is a list due to ro_fixed_lo_freq
             if np.ndim(self.ro_mod_freq()) > 0:
+                # Case where ro_mod_freq is a list due to ro_fixed_lo_freq
                 mods = self.ro_mod_freq()
-            # Single ro_mod_freq (no fixed_lo_freq)
             else:
+                # Single ro_mod_freq (no fixed_lo_freq)
                 delta_freqs = self.ro_freq() - np.mean(self.ro_freq())
                 mods = [self.ro_mod_freq() + d for d in delta_freqs]
             operation_dict['RO ' + self.name]['mod_frequency'] = mods
@@ -702,16 +722,16 @@ class MeasurementObject(Instrument):
             else:
                 freq = get_param(f'{op}_freq')
                 old_mod_freq = get_param(f'{op}_mod_freq')
-                # if np.ndim(old_mod_freq):
-                #     raise NotImplementedError(
-                #         f'{op}: Fixed LO freq in combination with '
-                #         f'polychromatic mod freq is not implemented.')
                 if freq is None:  # freq not yet set
                     mod_freq = old_mod_freq  # no need to update the mod freq
                 else:
+                    # freq is not none
+                    if np.ndim(freq) == 0:
+                        freq = [freq]
+                    if np.ndim(old_mod_freq) == 0:
+                        old_mod_freq = [old_mod_freq]
                     lo_freq = self.get_closest_lo_freq(
-                        np.mean(freq) - np.mean(old_mod_freq),
-                        fixed_lo, operation=op)
+                        freq[0] - old_mod_freq[0], fixed_lo, operation=op)
                     mod_freq = (
                         np.asarray(get_param(f'{op}_freq')) - lo_freq
                     ).tolist()

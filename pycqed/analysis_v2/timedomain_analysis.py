@@ -8068,6 +8068,12 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         ana_params = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
             mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
+            # For polychromatic readout, mod_freq may be a list
+            # Obey principle of least surprise by choosing the first
+            # frequency here
+            # FIXME: generalize this
+            if not np.isscalar(mod_freq):
+                mod_freq = mod_freq[0]
             tbase = rdd[0]['hard_sweep_points']
             basis_labels = pdd["analysis_params_dict"][
                 'optimal_weights_basis_labels'][qbn]
@@ -8076,9 +8082,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                             + f'\nWeight Basis: {basis_labels}'
             plot_name = f"weights_{qbn}"
             xlabel = "Time, $t$"
-            # FIXME: generalize this
-            # For polychromatic readout, mod_freq may be a list
-            modulation = np.exp(2j * np.pi * np.mean(mod_freq) * tbase)
+            modulation = np.exp(2j * np.pi * mod_freq * tbase)
 
             for ax_id, (state, ttrace) in \
                 enumerate(ana_params["timetraces"][qbn].items()):

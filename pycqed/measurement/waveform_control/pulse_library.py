@@ -1235,6 +1235,20 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
                  element_name,
                  name='gauss filtered cos IQ pulse',
                  **kw):
+        """Creates a Gaussian-filtered, sinusoidal IQ pulse.
+
+        Polychromatic readout may be configured by setting .ro_freq()
+        to a list of frequencies. In this case, you may also set
+        ro_amplitude, ro_phase, ro_phi_skew, and ro_alpha to lists
+        of the same length as ro_freq/ro_mod_freq.
+
+        This is considered an expert feature since not all functions
+        support polychromatic readout. Some will choose the first
+        modulation frequency (SSB weights), while others will simply
+        error out (resonator spectroscopy). Use temporary values to
+        disable polychromatic readout for incompatible measurements
+        and 'optimal_qutrit' integration weights.
+        """
         super().__init__(name, element_name, **kw)
 
         self.I_channel = I_channel
@@ -1247,9 +1261,28 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         self.length = self.pulse_length + self.buffer_length_start + \
                       self.buffer_length_end
 
+        # For polychromatic readout, equalize lengths of parameters
+        if np.ndim(self.mod_frequency) > 0:
+            params = dict(
+                amplitude=self.amplitude,
+                phase=self.phase,
+                phi_skew=self.phi_skew,
+                alpha=self.alpha,
+            )
+
+            for pname, p in params.items():
+                if np.ndim(p) == 0:
+                    setattr(self, pname, len(self.mod_frequency) * [p])
+                elif len(p) != len(self.mod_frequency):
+                    raise ValueError(
+                        f"Received {len(p)} {pname}  but expected "
+                        f"{len(self.mod_frequency)} (number of "
+                        "frequencies)"
+                    )
+
     @classmethod
     def pulse_params(cls):
-        """Return a dictionary of pulse parameters and initial values.
+        """Returns a dictionary of pulse parameters and initial values.
 
         These parameters are set upon calling the super().__init__
         method.
@@ -1275,54 +1308,76 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         multistep_amp_factor_duration_tuples = (
             self.multistep_amp_factor_duration_tuples or []
         )
+        pulse_params = zip(
+            self.amplitude,
+            self.phase,
+            self.mod_frequency,
+            self.phi_skew,
+            self.alpha,
+        )
 
-        tstart = self.algorithm_time() + self.buffer_length_start
-        tend = tstart + self.pulse_length
-        if self.gaussian_filter_sigma == 0:
-            wave = np.ones_like(tvals) * self.amplitude
-            wave *= (tvals >= tstart)
-            wave *= (tvals < tend)
-        else:
-            scaling = 1 / np.sqrt(2) / self.gaussian_filter_sigma
-            wave = 0.5 * (sp.special.erf(
-                (tvals - tstart) * scaling) - sp.special.erf(
-                (tvals - tend) * scaling)) * self.amplitude
-        # Apply the multistep amplitude scaling
-        # Each step is applied for its given duration starting from
-        # the beginning of the pulse
-        step_start_time = tstart
-        for param_pair in multistep_amp_factor_duration_tuples:
-            amp_factor, step_duration = param_pair
-            step_end_time = step_start_time + step_duration
-            for idx, t_val in enumerate(tvals):
-                if (t_val >= step_start_time) and (t_val < step_end_time):
-                    wave[idx] *= amp_factor
-            step_start_time += step_duration
-        I_mod, Q_mod = apply_modulation(
-            wave,
-            np.zeros_like(wave),
-            tvals,
-            mod_frequency=self.mod_frequency,
-            phase=self.phase,
-            phi_skew=self.phi_skew,
-            alpha=self.alpha,
-            tval_phaseref=0 if self.phase_lock else self.algorithm_time())
+        I_mods, Q_mods = np.zeros_like(tvals), np.zeros_like(tvals)
+        # Iterate over modulation frequencies
+        for a, ph, f, phi, alpha in pulse_params:
+            tstart = self.algorithm_time() + self.buffer_length_start
+            tend = tstart + self.pulse_length
+            if self.gaussian_filter_sigma == 0:
+                wave = np.ones_like(tvals) * a
+                wave *= (tvals >= tstart)
+                wave *= (tvals < tend)
+            else:
+                scaling = 1 / np.sqrt(2) / self.gaussian_filter_sigma
+                wave = 0.5 * (sp.special.erf(
+                    (tvals - tstart) * scaling) - sp.special.erf(
+                    (tvals - tend) * scaling)) * a
+            # Apply the multistep amplitude scaling
+            # Each step is applied for its given duration starting from
+            # the beginning of the pulse
+            step_start_time = tstart
+            for param_pair in multistep_amp_factor_duration_tuples:
+                amp_factor, step_duration = param_pair
+                step_end_time = step_start_time + step_duration
+                for idx, t_val in enumerate(tvals):
+                    if (t_val >= step_start_time) and (t_val < step_end_time):
+                        wave[idx] *= amp_factor
+                step_start_time += step_duration
+            I_mod, Q_mod = apply_modulation(
+                wave,
+                np.zeros_like(wave),
+                tvals,
+                mod_frequency=f,
+                phase=ph,
+                phi_skew=phi,
+                alpha=alpha,
+                tval_phaseref=0 if self.phase_lock else self.algorithm_time())
+            I_mods += I_mod
+            Q_mods += Q_mod
         if chan == self.I_channel:
-            return I_mod
+            return I_mods
         if chan == self.Q_channel:
-            return Q_mod
+            return Q_mods
 
     def hashables(self, tstart, channel):
+        def _to_list(value):
+            """Casts scalar values to lists."""
+            if np.isscalar(value):
+                return [value]
+            else:
+                return value
         hashlist = self.common_hashables(tstart, channel)
         if channel not in self.channels or self.pulse_off:
             return hashlist
-        hashlist += [channel == self.I_channel, self.amplitude]
-        hashlist += [self.mod_frequency, self.gaussian_filter_sigma]
+        hashlist += [channel == self.I_channel]
+        hashlist += _to_list(self.amplitude)
+        hashlist += _to_list(self.mod_frequency)
+        hashlist += [self.gaussian_filter_sigma]
         hashlist += [self.buffer_length_start, self.buffer_length_end, self.pulse_length]
-        phase = self.phase
-        phase += 360 * self.phase_lock * self.mod_frequency \
-                 * self.algorithm_time()
-        hashlist += [self.alpha, self.phi_skew, phase]
+        hashlist += _to_list(self.alpha)
+        hashlist += _to_list(self.phi_skew)
+        # self.phase and self.mod_frequency must be lists for polychromatic readout
+        phase = [p + 360 * self.phase_lock * f * self.algorithm_time() \
+                 for p, f in zip(self.phase, self.mod_frequency)]
+        hashlist += phase
         if self.multistep_amp_factor_duration_tuples is not None:
             # So it is a list of tuples (which are immutable hence hashable)
             hashlist += self.multistep_amp_factor_duration_tuples
@@ -1411,157 +1466,27 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
         return self.fp.get_mirror_pulse_obj_and_pattern()
 
 
-class GaussFilteredCosIQPulsePolyChromatic(pulse.Pulse):
+class GaussFilteredCosIQPulseMultiChromatic(GaussFilteredCosIQPulse):
     def __init__(self,
                  I_channel,
                  Q_channel,
                  element_name,
                  name=None,
                  **kw):
-        if not name:
-            name = "Polychromatic Gaussian-filtered cosine IQ pulse"
 
-        super().__init__(name, element_name, **kw)
-
-        self.I_channel = I_channel
-        self.Q_channel = Q_channel
-        self.channels = [self.I_channel]
-        if self.Q_channel is not None:
-            self.channels += [self.Q_channel]
-
-        if np.ndim(self.mod_frequency) != 1:
-            raise ValueError("A polychromatic pulse requires a list or 1D array "
-                             f"of frequencies. Instead {self.mod_frequency} "
-                             f"was given")
-
-        self.phase_lock = kw.pop('phase_lock', False)
-        self.length = self.pulse_length + self.buffer_length_start + \
-                      self.buffer_length_end
-
-        params = dict(amplitude=self.amplitude,
-                      phase=self.phase,
-                      phi_skew=self.phi_skew,
-                      alpha=self.alpha)
-
-        for pname, p in params.items():
-            if np.ndim(p) == 0:
-                setattr(self, pname, len(self.mod_frequency) * [p])
-            elif len(p) != len(self.mod_frequency):
-                raise ValueError(f"Received {len(p)} {pname}  but expected "
-                                 f"{len(self.mod_frequency)} (number of frequencies)")
-
-    @classmethod
-    def pulse_params(cls):
-        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
-        super().__init__ method.
-        """
-        params = {
-            'pulse_type': 'GaussFilteredCosIQPulsePolyChromatic',
-            'I_channel': None,
-            'Q_channel': None,
-            'amplitude': 0,
-            'pulse_length': 0,
-            'mod_frequency': [0],
-            'phase': 0,
-            'buffer_length_start': 10e-9,
-            'buffer_length_end': 10e-9,
-            'alpha': 1,
-            'phi_skew': 0,
-            'gaussian_filter_sigma': 0,
-            'multistep_param_pairs': None,
-        }
-        return params
-
-    def chan_wf(self, chan, tvals, **kw):
-        """Compute the concrete numerical waveforms."""
-        if self.multistep_param_pairs is not None:
-            multistep_param_pairs = self.multistep_param_pairs
-        else:
-            multistep_param_pairs = []
-        I_mods, Q_mods = np.zeros_like(tvals), np.zeros_like(tvals)
-        for a, ph, f, phi, alpha in zip(self.amplitude, self.phase,
-                                        self.mod_frequency, self.phi_skew,
-                                        self.alpha):
-            tstart = self.algorithm_time() + self.buffer_length_start
-            tend = tstart + self.pulse_length
-            if self.gaussian_filter_sigma == 0:
-                wave = np.ones_like(tvals) * a
-                wave *= (tvals >= tstart)
-                wave *= (tvals < tend)
-            else:
-                scaling = 1 / np.sqrt(2) / self.gaussian_filter_sigma
-                wave = 0.5 * (sp.special.erf(
-                    (tvals - tstart) * scaling) - sp.special.erf(
-                    (tvals - tend) * scaling)) * a
-            # Apply the multistep amplitude scaling
-            # Each step is applied for its given duration starting from
-            # the beginning of the pulse
-            step_start_time = tstart
-            for param_pair in multistep_param_pairs:
-                amp_factor, step_duration = param_pair
-                step_end_time = step_start_time + step_duration
-                for idx, t_val in enumerate(tvals):
-                    if (t_val >= step_start_time) and (t_val < step_end_time):
-                        wave[idx] *= amp_factor
-                step_start_time += step_duration
-            I_mod, Q_mod = apply_modulation(
-                wave,
-                np.zeros_like(wave),
-                tvals,
-                mod_frequency=f,
-                phase=ph,
-                phi_skew=phi,
-                alpha=alpha,
-                tval_phaseref=0 if self.phase_lock else self.algorithm_time())
-            I_mods += I_mod
-            Q_mods += Q_mod
-        if chan == self.I_channel:
-            return I_mods
-        if chan == self.Q_channel:
-            return Q_mods
-
-    def hashables(self, tstart, channel):
-        hashlist = self.common_hashables(tstart, channel)
-        if channel not in self.channels or self.pulse_off:
-            return hashlist
-        hashlist += [channel == self.I_channel]
-        if np.shape(self.amplitude) != ():
-            hashlist += self.amplitude
-        else:
-            hashlist += list(self.amplitude)
-        hashlist += self.mod_frequency
-        hashlist += [self.gaussian_filter_sigma]
-        hashlist += [self.buffer_length_start, self.buffer_length_end, self.pulse_length]
-        # self.phase and self.mod_frequency must be lists for polychromatic readout
-        phase = [p + 360 * self.phase_lock * f * self.algorithm_time() \
-                 for p, f in zip(self.phase, self.mod_frequency)]
-        hashlist += self.alpha
-        hashlist += self.phi_skew
-        hashlist += phase
-        if self.multistep_param_pairs is not None:
-            # So it is a list of tuples (which are immutable hence hashable)
-            hashlist += self.multistep_param_pairs
-        return hashlist
-
-
-class GaussFilteredCosIQPulseMultiChromatic(GaussFilteredCosIQPulsePolyChromatic):
-    def __init__(self,
-                 I_channel,
-                 Q_channel,
-                 element_name,
-                 name=None,
-                 **kw):
-        log.warning(
-            "DeprecationWarning: The GaussFilteredCosIQPulseMultiChromatic "
-            "pulse is deprecated; use GaussFilteredCosIQPulsePolyChromatic "
-            "instead."
-        )
+        if name is not None:
+            kw.update({"name": name})
         super().__init__(
             I_channel,
             Q_channel,
             element_name,
-            name=name,
             **kw
+        )
+
+        raise FutureWarning(
+            "The GaussFilteredCosIQPulseMultiChromatic pulse is "
+            "deprecated; use GaussFilteredCosIQPulse instead (which "
+            "now supports all the same options)."
         )
 
 
