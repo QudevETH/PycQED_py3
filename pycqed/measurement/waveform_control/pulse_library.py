@@ -1249,8 +1249,10 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
-        super().__init__ method.
+        """Return a dictionary of pulse parameters and initial values.
+
+        These parameters are set upon calling the super().__init__
+        method.
         """
         params = {
             'pulse_type': 'GaussFilteredCosIQPulse',
@@ -1265,16 +1267,14 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
-            'multistep_param_pairs': None,
+            'multistep_amp_factor_duration_tuples': None,
         }
         return params
 
     def chan_wf(self, chan, tvals, **kw):
-        """Compute the concrete numerical waveforms."""
-        if self.multistep_param_pairs is not None:
-            multistep_param_pairs = self.multistep_param_pairs
-        else:
-            multistep_param_pairs = []
+        multistep_amp_factor_duration_tuples = (
+            self.multistep_amp_factor_duration_tuples or []
+        )
 
         tstart = self.algorithm_time() + self.buffer_length_start
         tend = tstart + self.pulse_length
@@ -1291,7 +1291,7 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         # Each step is applied for its given duration starting from
         # the beginning of the pulse
         step_start_time = tstart
-        for param_pair in multistep_param_pairs:
+        for param_pair in multistep_amp_factor_duration_tuples:
             amp_factor, step_duration = param_pair
             step_end_time = step_start_time + step_duration
             for idx, t_val in enumerate(tvals):
@@ -1313,11 +1313,6 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             return Q_mod
 
     def hashables(self, tstart, channel):
-        """Assemble a hashable list of pulse parameters.
-
-        This is done so that we can determine whether a pulse has already
-        been uploaded to the AWG.
-        """
         hashlist = self.common_hashables(tstart, channel)
         if channel not in self.channels or self.pulse_off:
             return hashlist
@@ -1328,9 +1323,9 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         phase += 360 * self.phase_lock * self.mod_frequency \
                  * self.algorithm_time()
         hashlist += [self.alpha, self.phi_skew, phase]
-        if self.multistep_param_pairs is not None:
+        if self.multistep_amp_factor_duration_tuples is not None:
             # So it is a list of tuples (which are immutable hence hashable)
-            hashlist += self.multistep_param_pairs
+            hashlist += self.multistep_amp_factor_duration_tuples
         return hashlist
 
 
