@@ -32,9 +32,19 @@ cache:
 pytest:
   extends: .base_setup
   stage: test_and_quality
+  before_script:
+    - pip install '.[test]' pytest-cov pytest-xdist flake8 pytest-sugar
+    - echo "🐍 Using Python $(python --version)"
   script:
     - pip install '.[test]' pytest-cov
     - pytest --cov=pycqed --cov-report=xml -m "not hardware" --junitxml=junit.xml pycqed/tests
+    - echo "🔍 Running flake8..."
+    - flake8 pycqed
+    - echo "🧪 Running tests..."
+    - pytest -v --cov=pycqed --cov-report=xml -m "not hardware" --junitxml=junit.xml --sugar pycqed/tests
+  after_script:
+    - echo "📊 Test coverage report:"
+    - coverage report
   artifacts:
     reports:
       junit: junit.xml
