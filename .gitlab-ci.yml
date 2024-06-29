@@ -36,8 +36,6 @@ pytest:
     - pip install '.[test]' pytest-cov pytest-xdist flake8 pytest-sugar
     - echo "🐍 Using Python $(python --version)"
   script:
-    - pip install '.[test]' pytest-cov
-    - pytest --cov=pycqed --cov-report=xml -m "not hardware" --junitxml=junit.xml pycqed/tests
     - echo "🔍 Running flake8..."
     - flake8 pycqed
     - echo "🧪 Running tests..."
