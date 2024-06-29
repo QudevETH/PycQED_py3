@@ -34,7 +34,7 @@ pytest:
   stage: test_and_quality
   script:
     - pip install '.[test]' pytest-cov
-    - pytest --cov=pycqed -m "not hardware" --junitxml=junit.xml --cov-report=xml pycqed/tests
+    - pytest --cov=pycqed --cov-report=xml -m "not hardware" --junitxml=junit.xml pycqed/tests
   artifacts:
     reports:
       junit: junit.xml
@@ -44,6 +44,7 @@ pytest:
     paths:
       - junit.xml
       - coverage.xml
+  coverage: '/(?i)total.*? (100(?:\.0+)?|\d{1,2}(?:\.\d+)?)%/'
 
 codequality:
   extends: .base_setup
