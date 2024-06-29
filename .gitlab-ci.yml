@@ -10,8 +10,8 @@ variables:
 
 cache:
   paths:
-    - .cache/pip
-    - .cache/apt
+    - ~/.cache/pip
+    - ~/.cache/apt
 
 .base_setup:
   image: python:3.9-bookworm
