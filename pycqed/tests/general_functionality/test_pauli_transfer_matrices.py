@@ -1,12 +1,22 @@
 import numpy as np
 import pytest
+from pycqed.simulations.pauli_transfer_matrices import (
+    CZ,
+    S2,
+    H,
+    S,
+    X,
+    X_theta,
+    Y,
+    Y_theta,
+    Z,
+    Z_theta,
+    average_gate_fidelity,
+    process_fidelity,
+)
 
-from pycqed.simulations.pauli_transfer_matrices import(
-    X,Y,Z, H, S, S2, CZ, X_theta, Y_theta, Z_theta,
-    process_fidelity, average_gate_fidelity)
 
 class TestPauliTransferProps:
-
     """
     Only the most basic test for the transfer matrices.
     Intended to catch silly things like typos
@@ -14,9 +24,8 @@ class TestPauliTransferProps:
 
     def test_single_qubit_Paulis(self):
         for pauli in [X, Y, Z]:
-            pauli2 = np.dot(pauli,pauli)
-            np.testing.assert_array_equal(pauli2,
-                                          np.eye(4, dtype=int))
+            pauli2 = np.dot(pauli, pauli)
+            np.testing.assert_array_equal(pauli2, np.eye(4, dtype=int))
 
     def test_basic_pauli_ops(self):
         exp_Z = np.dot(X, Y)
@@ -26,12 +35,11 @@ class TestPauliTransferProps:
         np.testing.assert_array_equal(Z, exp_mZ)
 
     def test_Hadamard(self):
-        np.testing.assert_array_equal(np.dot(H, H),
-                                      np.eye(4, dtype=int))
+        np.testing.assert_array_equal(np.dot(H, H), np.eye(4, dtype=int))
 
     def test_S_gate(self):
         np.testing.assert_array_equal(np.dot(S, S), S2)
-        np.testing.assert_array_equal(np.dot(S, S2), np.eye(4,dtype=int))
+        np.testing.assert_array_equal(np.dot(S, S2), np.eye(4, dtype=int))
 
     def test_cphase(self):
         CZ2 = np.linalg.multi_dot([CZ, CZ])
@@ -44,12 +52,15 @@ class TestPauliTransferProps:
         np.testing.assert_array_almost_equal(Z_theta(180), Z)
 
     def test_angle_rotation_unit(self):
-        np.testing.assert_array_almost_equal(X_theta(32, unit='deg'),
-                                      X_theta(np.deg2rad(32), unit='rad'))
-        np.testing.assert_array_almost_equal(Y_theta(18, unit='deg'),
-                                      Y_theta(np.deg2rad(18), unit='rad'))
-        np.testing.assert_array_almost_equal(Z_theta(180, unit='deg'),
-                                      Z_theta(np.deg2rad(180), unit='rad'))
+        np.testing.assert_array_almost_equal(
+            X_theta(32, unit="deg"), X_theta(np.deg2rad(32), unit="rad")
+        )
+        np.testing.assert_array_almost_equal(
+            Y_theta(18, unit="deg"), Y_theta(np.deg2rad(18), unit="rad")
+        )
+        np.testing.assert_array_almost_equal(
+            Z_theta(180, unit="deg"), Z_theta(np.deg2rad(180), unit="rad")
+        )
 
     def test_angle_rotations(self):
         # Expressed in the Pauli basis
