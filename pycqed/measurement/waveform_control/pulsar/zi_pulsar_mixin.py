@@ -305,7 +305,7 @@ class ZIPulsarMixin:
 
     def zi_playback_string(self, name, device, wave, acq=False, codeword=False,
                            prepend_zeros=0, placeholder_wave=False,
-                           command_table_index=None,
+                           command_table_index=None, log_acquisition=True,
                            internal_mod=False,
                            allow_filter=False):
         playback_string = []
@@ -345,14 +345,13 @@ class ZIPulsarMixin:
                         w1, w2, internal_mod=internal_mod)))
         if acq:
             playback_string.append("setTrigger(RO_TRIG);")
-            if acq == 'nologging':
+            if log_acquisition:
+                playback_string.append("setTrigger(WINT_EN);")
+            else:
                 playback_string.append(
                     "// readout without result logging (the bitwise OR with "
                     "the value 64 suppresses it)")
-                # TODO uncomment
-                playback_string.append("//setTrigger(WINT_EN | 64);")
-            else:
-                playback_string.append("setTrigger(WINT_EN);")
+                playback_string.append("setTrigger(WINT_EN | 64);")
         if allow_filter:
             playback_string.append("}")
         return playback_string

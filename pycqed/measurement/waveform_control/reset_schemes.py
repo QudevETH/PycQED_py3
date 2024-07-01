@@ -450,6 +450,15 @@ class FeedbackReset(ResetScheme):
                            initial_value=4e-6, vals=validators.Numbers(),
                            parameter_class=ManualParameter,
                            get_parser=self._validate_ro_feedback_delay)
+        self.add_parameter('log_feedback_acquisitions',
+                           docstring='If True, requests that the acquisition '
+                                     'device return the reset data (defaut). '
+                                     'If False, the reset data will not be '
+                                     'logged and returned by the device.',
+                           # TODO determine what happens if not possible
+                           initial_value=True, vals=validators.Bool(),
+                           parameter_class=ManualParameter,
+                           )
 
     def get_operation_dict(self, operation_dict=None):
         """
@@ -457,6 +466,8 @@ class FeedbackReset(ResetScheme):
  
         Inherits the operation dictionary from the parent `ResetScheme` class and 
         adds an "I" operation (with zero amplitude) derived from the "X180" operation.
+        Also edits the RO operation to allow skipping logging the data if
+        log_feedback_acquisitions is False.
  
         Args:
             operation_dict: Optional existing dictionary to update.
@@ -469,6 +480,8 @@ class FeedbackReset(ResetScheme):
         operation_dict[self.get_opcode("I")] = \
             deepcopy(operation_dict[self.get_opcode("X180")])
         operation_dict[self.get_opcode("I")]['amplitude'] = 0
+        operation_dict[self.get_opcode("RO")]['log_acquisition'] = \
+            self.log_feedback_acquisitions()
         return operation_dict
 
     def _reset_block(self, name, sweep_params, **kwargs):
@@ -569,10 +582,13 @@ class FeedbackReset(ResetScheme):
         # likely to change when analysis is refactored / enhanced to be able
         # to handle more complex reset types (e.g. combinations etc).
         # for now, the legacy naming conventions are used in the analysis
-        return dict(preparation_type='active_reset',
-                    post_ro_wait=self.ro_feedback_delay(),
-                    reset_reps=self.repetitions()
-                    )
+        if self.log_feedback_acquisitions():
+            return dict(preparation_type='active_reset',
+                        post_ro_wait=self.ro_feedback_delay(),
+                        reset_reps=self.repetitions()
+                        )
+        else:
+            return dict(preparation_type='wait')
 
 class ParametricFluxReset(ResetScheme):
     """

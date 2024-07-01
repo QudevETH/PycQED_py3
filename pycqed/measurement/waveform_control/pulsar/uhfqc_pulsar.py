@@ -183,7 +183,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         current_segment = 'no_segment'
 
         def play_element(element, playback_strings, wave_definitions,
-                         allow_filter=True, acq=None):
+                         allow_filter=True):
             awg_sequence_element = deepcopy(awg_sequence[element])
             if awg_sequence_element is None:
                 current_segment = element
@@ -208,8 +208,11 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             wave_definitions += self.zi_wave_definition(wave,
                                                         defined_waves)
 
-            # FIXME passing acq overrides the one from metadata
-            acq = acq or metadata.get('acq', False)
+            # FIXME this should be cleaned up such that
+            #  - acq has a known format (always a dict, and created in Segment)
+            #  - log_acquisition is contained in acq (in Segment)
+            acq = metadata.get('acq', False)
+            log_acquisition = metadata.get('log_acquisition', True)
             # Remark on allow_filter in the call to _zi_playback_string:
             # the element may be skipped via segment filtering only if
             # play_element was called with allow_filter=True *and* the
@@ -218,6 +221,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             # see below.)
             playback_strings += self.zi_playback_string(
                 name=self.awg.name, device='uhf', wave=wave, acq=acq,
+                log_acquisition=log_acquisition,
                 allow_filter=(
                         allow_filter and metadata.get('allow_filter', False)))
             # The following line only has an effect if the metadata specifies
@@ -329,11 +333,6 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         return 'variable', playback_strings, wave_definitions
                     return int(n[0] * np.sum(el_played_list)), playback_strings, wave_definitions
                 else:  # n is the number of elements inside a loop
-                    acq = None
-                    if n == 0:
-                        # Disable acquisition
-                        n = 1
-                        acq = 'nologging'
                     for k in range(n):
                         # Get the element that is meant to be played repeatedly
                         el_index = real_indicies[int(index)+k]
@@ -342,7 +341,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         # already covered by the repeat pattern if needed.
                         playback_strings, wave_definitions = play_element(
                             element, playback_strings, wave_definitions,
-                            allow_filter=False, acq=acq)
+                            allow_filter=False)
                         el_played = el_played + 1
                     return el_played, playback_strings, wave_definitions
 

@@ -508,6 +508,7 @@ class MeasurementObject(Instrument):
                     self.get(parameter_name)
 
         operation_dict['RO ' + self.name]['operation_type'] = 'RO'
+        operation_dict['RO ' + self.name]['log_acquisition'] = True
         operation_dict['Acq ' + self.name] = deepcopy(
             operation_dict['RO ' + self.name])
         operation_dict['Acq ' + self.name]['amplitude'] = 0

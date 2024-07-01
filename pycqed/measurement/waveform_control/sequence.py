@@ -188,8 +188,11 @@ class Sequence:
                                         codewords={cw})
                                     waveforms[h] = wf.popitem()[1].popitem()[1]\
                                                      .popitem()[1].popitem()[1]
+                    # FIXME this should rather happen in Segment
                     if elname in seg.acquisition_elements:
                         metadata['acq'] = seg.acquisition_mode
+                        metadata['log_acquisition'] = element_metadata.get(
+                            elname, {})['log_acquisition']
                     else:
                         metadata['acq'] = False
                     metadata['allow_filter'] = seg.allow_filter
@@ -435,9 +438,14 @@ class Sequence:
         Returns:
             number of acquisition elements (list (if per_segment) or int)
 
+        Note: this only counts the acquisitions which are really logged and
+        returned by the acquisition device.
+
         """
-        n_readouts = [len(seg.acquisition_elements)
-                      for seg in self.segments.values()]
+        n_readouts = [len(
+            [e for e in seg.acquisition_elements if seg.element_metadata.get(
+                e, {}).get('log_acquisition', True)]
+        ) for seg in self.segments.values()]
         if not per_segment:
             n_readouts = np.sum(n_readouts)
         return n_readouts
@@ -474,7 +482,7 @@ class Sequence:
             self.repeat_patterns.update(repeat)
         return self.repeat_patterns
 
-    def repeat_ro(self, pulse_name, operation_dict, hack_del_UHF_reset=False):
+    def repeat_ro(self, pulse_name, operation_dict):
         """
         Wrapper for repeated readout
         :param pulse_name:
@@ -482,9 +490,16 @@ class Sequence:
         :param sequence:
         :return:
         """
-        if hack_del_UHF_reset:
-            pattern = (self.n_acq_elements()//(hack_del_UHF_reset+1),
-                       (hack_del_UHF_reset, 0), (1, 1))
+
+        # FIXME generalise this
+        # FIXME will assume seg.acquisition_elements is ordered
+        # FIXME bypasses n_acq_elements
+        if any([not e.get('log_acquisition', True)
+                for seg in self.segments.values()
+                for e in seg.element_metadata.values()]):
+            num_resets = len(
+                list(self.segments.values())[0].acquisition_elements) - 1
+            pattern = (self.n_acq_elements(), (num_resets, 1), (1, 1))
         else:
             pattern = (self.n_acq_elements(), 1)
         return self.repeat(pulse_name, operation_dict, pattern)

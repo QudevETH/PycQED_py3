@@ -1366,9 +1366,7 @@ class CircuitBuilder:
         if repeat_ro:
             for s in seqs:
                 for ro_op in all_ro_op_codes:
-                    s.repeat_ro(
-                        ro_op, self.operation_dict,
-                        hack_del_UHF_reset = kw.get('hack_del_UHF_reset', False))
+                    s.repeat_ro(ro_op, self.operation_dict)
 
         if sweep_dims == 1:
             return seqs, [np.arange(seqs[0].n_acq_elements())]
