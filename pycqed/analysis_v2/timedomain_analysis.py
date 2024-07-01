@@ -2958,9 +2958,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         output, cost, training_set_cost = self.cpp_bxe_output(
             freqs, weights,
             targets=targets, targets_axis_sp=targets_axis_sp,
+            keepdims=(not self.get_param_value('optimize')),
         )
         # FIXME this atleast_2d is mostly because of _adjust_sp_length
-        training_set_cost = np.atleast_2d(training_set_cost)
+        #  solved?
+        # training_set_cost = np.atleast_2d(training_set_cost)
         training_set_cost_sp = self._adjust_sp_length(
             self.sp, training_set_cost)
         # only has an effect in the training mode
@@ -2975,6 +2977,25 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             'training_set_cost': (training_set_cost, training_set_cost_sp),
             'weights': (weights, 'noplot'),  # plotting won't work
         })
+
+        # add parameters plots
+        if self.get_param_value('optimize'):
+            optim_param_values = self.raw_data_dict['optimizer'][
+                'optim_param_values']
+            p_names = self.get_param_value('optim_param_names')
+            # n_non_trainable = len(p_names) - self.raw_data_dict['optimizer'][
+            #     'training_settings']['trainable_params']
+            n_non_trainable = 1
+            for id_param in range(optim_param_values.shape[0]):
+                p_name = p_names[n_non_trainable + id_param]
+                self.cpp_results.update({
+                    p_name: (
+                    optim_param_values[id_param], training_set_cost_sp)
+                })
+                self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                    p_name, [(':', 'smcol')]
+                )
+
         for key, (values, sp) in self.cpp_results.items():
             self.add_dummy_qb_data(key, values, sp)
 
@@ -2986,10 +3007,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # This could be generalised to e.g. create 1D sp if data is 1D
         assert len(sp.length()) == len(shape)
         for i, new_length in enumerate(shape):
-            sp[i] = {
-                k: (np.array(range(new_length)), v[1], v[2])
-                for k, v in sp[i].items()
-            }
+            if new_length != sp.length()[i]:
+                # if: to keep the x axis value unchanged in sweep mode
+                sp[i] = {
+                    k: (np.array(range(new_length)), v[1], v[2])
+                    for k, v in sp[i].items()
+                }
         return sp
 
     def _get_binary_shots_array(self, pk=True):
@@ -3174,14 +3197,38 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def cpp_bxe_output(freqs, weights, state_axis=0,
                        targets=None, targets_axis_sp=None,  # optional
-                       ):
+                       keepdims=None):
         # Basic idea: 1D weights dot ND freqs -> ND output
         # This method additionally allows ND weights (swept over all dims>0)
         assert isinstance(state_axis, int)
-        if isinstance(weights, dict):
-            raise NotImplementedError
-            # TODO extract weights from timestamps
-            #  (with slicing)
+        if isinstance(weights, str):
+            a_weights = VariationalAlgorithmAnalysis(
+                t_start=weights,
+                extract_only=True,
+                options_dict={
+                    'delegate_plotting': False,
+                    'plot_raw_data': False,
+                    'plot_proj_data': False,
+                },
+                raise_exceptions=True,
+            )
+            min_cost_index = np.unravel_index(
+                np.argmin(a_weights.cpp_results['training_set_cost'][0],
+                          axis=None),
+                a_weights.cpp_results['training_set_cost'][0].shape
+            )
+            min_cost_index = list(min_cost_index)
+            # weights has an extra dimension of targets in training mode. To
+            # extract the 1D weights this dimension must be added to
+            # min_cost_index. In sweep mode, when calculating training_set_cost,
+            # the dimension of targets is kept as a dummy dimension for
+            # self._adjust_sp_length().
+            if a_weights.get_param_value('optimize'):
+                min_cost_index.insert(targets_axis_sp, 0)
+            min_cost_index = tuple(min_cost_index)
+            # extract the 1D optimal weights
+            weights = a_weights.cpp_results['weights'][0][:, *min_cost_index]
+            # weights shape: (n_states,)
         assert isinstance(weights, np.ndarray)
         if len(weights.shape) == 1:
             weights = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
@@ -3209,7 +3256,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             )
             cost = np.sum(cost, axis=state_axis)
             # Average over targets
-            training_set_cost = np.mean(cost, axis=targets_axis_sp)
+            training_set_cost = np.mean(cost, axis=targets_axis_sp,
+                                        keepdims=keepdims)
         else:
             cost = None
             training_set_cost = None
