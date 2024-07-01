@@ -345,7 +345,14 @@ class ZIPulsarMixin:
                         w1, w2, internal_mod=internal_mod)))
         if acq:
             playback_string.append("setTrigger(RO_TRIG);")
-            playback_string.append("setTrigger(WINT_EN);")
+            if acq == 'nologging':
+                playback_string.append(
+                    "// readout without result logging (the bitwise OR with "
+                    "the value 64 suppresses it)")
+                # TODO uncomment
+                playback_string.append("//setTrigger(WINT_EN | 64);")
+            else:
+                playback_string.append("setTrigger(WINT_EN);")
         if allow_filter:
             playback_string.append("}")
         return playback_string

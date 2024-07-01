@@ -474,7 +474,7 @@ class Sequence:
             self.repeat_patterns.update(repeat)
         return self.repeat_patterns
 
-    def repeat_ro(self, pulse_name, operation_dict):
+    def repeat_ro(self, pulse_name, operation_dict, hack_del_UHF_reset=False):
         """
         Wrapper for repeated readout
         :param pulse_name:
@@ -482,8 +482,12 @@ class Sequence:
         :param sequence:
         :return:
         """
-        return self.repeat(pulse_name, operation_dict,
-                           (self.n_acq_elements(), 1))
+        if hack_del_UHF_reset:
+            pattern = (self.n_acq_elements()//(hack_del_UHF_reset+1),
+                       (hack_del_UHF_reset, 0), (1, 1))
+        else:
+            pattern = (self.n_acq_elements(), 1)
+        return self.repeat(pulse_name, operation_dict, pattern)
 
 
     @staticmethod
