@@ -64,6 +64,8 @@ codequality:
   artifacts:
     reports:
       codequality: pycqed-codequality.json
+    expire_in: 90 days # because Merge Requests progress slowly @QuDev
+  allow_failure: true
 
 pages:
   extends: .base_setup
