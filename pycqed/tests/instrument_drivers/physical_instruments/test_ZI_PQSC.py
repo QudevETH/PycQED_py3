@@ -7,7 +7,6 @@ import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_base_
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_PQSC as PQ
 
 
-@pytest.mark.hardware
 @pytest.fixture(scope="class")
 def pqsc():
     print("Connecting...")

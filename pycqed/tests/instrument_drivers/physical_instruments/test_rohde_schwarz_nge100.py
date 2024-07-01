@@ -7,7 +7,6 @@ from pycqed.instrument_drivers.physical_instruments.rohde_schwarz_nge100 import 
 )
 
 
-@pytest.mark.hardware
 @pytest.fixture(scope="class")
 def nge102b():
     instrument = NGE102B("test_nge_102", "TCPIP::192.1.2.3::INS", virtual=True)
@@ -16,7 +15,6 @@ def nge102b():
     yield instrument, ch1
     instrument.close()
 
-@pytest.mark.hardware
 @pytest.fixture(scope="class")
 def nge103b():
     instrument = NGE103B("test_nge_103", "TCPIP::192.1.2.3::INS", virtual=True)

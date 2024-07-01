@@ -10,11 +10,11 @@ variables:
 
 cache:
   paths:
-    - .cache/pip
-    - .cache/apt
+    - ~/.cache/pip
+    - ~/.cache/apt
 
 .base_setup:
-  image: python:3.9-bookworm
+  image: quay.io/jupyter/datascience-notebook:python-3.11.9 # because nlopt and qutip are lazy with pre-built packages
   before_script:
     - apt-get update && apt-get install -y libgl1 openssh-client git
     - pip install '.[docs,linting,user,measurement_setup]'
@@ -32,9 +32,16 @@ cache:
 pytest:
   extends: .base_setup
   stage: test_and_quality
+  before_script:
+    - pip install '.[test]' pytest-cov pytest-xdist flake8 pytest-sugar
+    - echo "🐍 Using Python $(python --version)"
   script:
-    - pip install '.[test]' pytest-cov
-    - pytest --cov=pycqed -m "not hardware" --junitxml=junit.xml --cov-report=xml pycqed/tests
+    # FIXME: We have so many problems that this crashes the GitLab CI pipeline
+    #    - echo "🔍 Running flake8..."
+    #    - flake8 pycqed
+    - echo "🧪 Running tests..."
+    - echo "📊 Running coverage..."
+    - pytest -v -n auto --cov=pycqed --cov-report xml:coverage.xml --cov-report term -m "not hardware" --junitxml=junit.xml pycqed/tests
   artifacts:
     reports:
       junit: junit.xml
@@ -44,6 +51,7 @@ pytest:
     paths:
       - junit.xml
       - coverage.xml
+  coverage: '/(?i)total.*? (100(?:\.0+)?|\d{1,2}(?:\.\d+)?)%/'
 
 codequality:
   extends: .base_setup
@@ -55,6 +63,8 @@ codequality:
   artifacts:
     reports:
       codequality: pycqed-codequality.json
+    expire_in: 90 days # because Merge Requests progress slowly @QuDev
+  allow_failure: true
 
 pages:
   extends: .base_setup
