@@ -2765,6 +2765,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                 else color_map(normalize(sp))},
                             'title': title}
         elif len(sweep_points) == 1:  # 1D along 2nd sweep dimension (rare)
+            # FIXME this logic does not work yet for 1D slices (0D slice of 1D)
             # Only 1 sweep point in 1st dimension: do a 1D plot along 2nd dim
             yvals = yvals.flatten()
             for pn, ssp in sp2dd.items():
