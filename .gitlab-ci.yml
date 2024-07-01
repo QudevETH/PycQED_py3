@@ -14,7 +14,7 @@ cache:
     - ~/.cache/apt
 
 .base_setup:
-  image: python:3.9-bookworm
+  image: quay.io/jupyter/datascience-notebook:python-3.11.9 # because nlopt and qutip are lazy with pre-built packages
   before_script:
     - apt-get update && apt-get install -y libgl1 openssh-client git
     - pip install '.[docs,linting,user,measurement_setup]'
@@ -39,10 +39,8 @@ pytest:
     - echo "🔍 Running flake8..."
     - flake8 pycqed
     - echo "🧪 Running tests..."
-    - pytest -v --cov=pycqed --cov-report=xml -m "not hardware" --junitxml=junit.xml --sugar pycqed/tests
-  after_script:
-    - echo "📊 Test coverage report:"
-    - coverage report
+    - echo "📊 Running coverage..."
+    - pytest -v -n auto --cov=pycqed --cov-report xml:coverage.xml --cov-report term -m "not hardware" --junitxml=junit.xml pycqed/tests
   artifacts:
     reports:
       junit: junit.xml
