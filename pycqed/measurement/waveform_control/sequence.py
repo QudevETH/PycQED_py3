@@ -192,7 +192,7 @@ class Sequence:
                     if elname in seg.acquisition_elements:
                         metadata['acq'] = seg.acquisition_mode
                         metadata['log_acquisition'] = element_metadata.get(
-                            elname, {})['log_acquisition']
+                            elname, {}).get('log_acquisition', True)
                     else:
                         metadata['acq'] = False
                     metadata['allow_filter'] = seg.allow_filter
