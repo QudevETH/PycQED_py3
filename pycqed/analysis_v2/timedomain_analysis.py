@@ -2299,12 +2299,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 Example: [('8:13', 'row'), (0, 'col')]
         """
         for slice_idxs in slice_idxs_list:
-            idxs, axis, xvals, xlabel, xunit, sim = \
+            idxs, idxs_kw, axis, xvals, xlabel, xunit, sim = \
                 self.get_1d_slice_params(qb_name, slice_idxs)
-            if sim:
-                log.warning("Simultaneous not yet implemented for raw plots!")
             for idx in idxs:
-                fig_suffix = \
+                fig_suffix = '' if sim else\
                     f'{"_row" if axis == 0 else "_col"}_{idx}'
                 self._prepare_raw_data_plots(qb_name, raw_data_dict,
                                              xvals, idx, axis,
@@ -2426,10 +2424,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                          '"twod_data_axis" must be specified '
                                          'in order to plot 1D a slice of the '
                                          'TwoD raw data.')
-                    yvals = np.take_along_axis(
-                        yvals.T,
-                        np.array([[twod_data_idx]]), twod_data_axis).flatten()
-                self.plot_dicts[plot_name + '_' + ro_channel] = {
+                    if twod_data_idx == 'mean':
+                        yvals = np.mean(yvals, axis=twod_data_axis).flatten()
+                    else:
+                        yvals = np.take_along_axis(
+                            yvals.T,
+                            np.array([[twod_data_idx]]), twod_data_axis).flatten()
+                self.plot_dicts[plot_name + '_' + ro_channel + '_' + str(
+                    twod_data_idx)] = {
                     'fig_id': plot_name,
                     'ax_id': ax_id,
                     'plotfn': self.plot_line,
