@@ -17,6 +17,7 @@ cache:
   image: quay.io/jupyter/datascience-notebook:python-3.11.9 # because nlopt and qutip are lazy with pre-built packages
   before_script:
     - apt-get update && apt-get install -y libgl1 openssh-client git
+    - export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH # make sure libEGL.so.1 is found (PySide6 requirement)
     - pip install '.[docs,linting,user,measurement_setup]'
     - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${QCODES_CONTRIB_DRIVERS_REPOSITORY}
     - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${VC707_PYTHON_INTERFACE_REPOSITORY}
