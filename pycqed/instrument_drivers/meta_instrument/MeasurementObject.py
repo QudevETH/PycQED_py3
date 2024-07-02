@@ -726,12 +726,9 @@ class MeasurementObject(Instrument):
                     mod_freq = old_mod_freq  # no need to update the mod freq
                 else:
                     # freq is not none
-                    if np.ndim(freq) == 0:
-                        freq = [freq]
-                    if np.ndim(old_mod_freq) == 0:
-                        old_mod_freq = [old_mod_freq]
                     lo_freq = self.get_closest_lo_freq(
-                        freq[0] - old_mod_freq[0], fixed_lo, operation=op)
+                        np.mean(freq) - np.mean(old_mod_freq),
+                        fixed_lo, operation=op)
                     mod_freq = (
                         np.asarray(get_param(f'{op}_freq')) - lo_freq
                     ).tolist()
