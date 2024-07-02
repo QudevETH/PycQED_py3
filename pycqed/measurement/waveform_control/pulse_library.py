@@ -1309,11 +1309,11 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             self.multistep_amp_factor_duration_tuples or []
         )
         pulse_params = zip(
-            self.amplitude,
-            self.phase,
-            self.mod_frequency,
-            self.phi_skew,
-            self.alpha,
+            _to_list(self.amplitude),
+            _to_list(self.phase),
+            _to_list(self.mod_frequency),
+            _to_list(self.phi_skew),
+            _to_list(self.alpha),
         )
 
         I_mods, Q_mods = np.zeros_like(tvals), np.zeros_like(tvals)
@@ -1358,12 +1358,6 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             return Q_mods
 
     def hashables(self, tstart, channel):
-        def _to_list(value):
-            """Casts scalar values to lists."""
-            if np.isscalar(value):
-                return [value]
-            else:
-                return value
         hashlist = self.common_hashables(tstart, channel)
         if channel not in self.channels or self.pulse_off:
             return hashlist
@@ -2168,3 +2162,10 @@ def apply_modulation(ienv, qenv, tvals, mod_frequency,
                 qenv * np.sin(np.deg2rad(phiq))) / alpha
 
     return imod, qmod
+
+def _to_list(value):
+    """Casts scalar values to lists."""
+    if np.isscalar(value):
+        return [value]
+    else:
+        return value
