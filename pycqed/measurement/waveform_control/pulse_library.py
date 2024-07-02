@@ -1374,10 +1374,11 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         hashlist += [self.buffer_length_start, self.buffer_length_end, self.pulse_length]
         hashlist += _to_list(self.alpha)
         hashlist += _to_list(self.phi_skew)
-        # self.phase and self.mod_frequency must be lists for polychromatic readout
-        phase = [p + 360 * self.phase_lock * f * self.algorithm_time() \
-                 for p, f in zip(self.phase, self.mod_frequency)]
-        hashlist += phase
+        # self.phase and self.mod_frequency may be lists for polychromatic readout
+        hashlist += [
+            p + 360 * self.phase_lock * f * self.algorithm_time()
+            for p, f in zip(_to_list(self.phase), _to_list(self.mod_frequency))
+        ]
         if self.multistep_amp_factor_duration_tuples is not None:
             # So it is a list of tuples (which are immutable hence hashable)
             hashlist += self.multistep_amp_factor_duration_tuples
