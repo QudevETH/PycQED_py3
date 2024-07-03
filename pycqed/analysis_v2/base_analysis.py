@@ -656,7 +656,11 @@ class BaseDataAnalysis(object):
                 return dict(preparation_type="wait")
             else:
                 if qbn is None:
-                    qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    if reset_params['analysis_instructions']:
+                        qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    else:
+                        log.warning('reset_params[analysis_instructions] is empty')
+                        return dict(preparation_type="wait")
                 if len(reset_params['analysis_instructions'][qbn]) == 0:
                     # empty list, i.e. no reset steps
                     return dict(preparation_type="wait")
