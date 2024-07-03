@@ -650,6 +650,17 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
     qubits = dev.get_qubits(qubits)
     qb_names = dev.get_qubits(qubits, "str")
 
+    # Check if any qubits have reset configured
+    qubits_with_some_reset = {
+        qb.name for qb in qubits if len(qb.reset.steps()) > 0}
+    if qubits_with_some_reset != {}:
+        log.warning(
+            f"Qubit(s) {qubits_with_some_reset} have some sort of reset"
+            " configured which is not compatible with "
+            "find_optimal_weights(). Set qb.reset.steps([]) for all "
+            "measured qubits (e.g. in a temporary_value)."
+        )
+
     if measure:
         uhf_names = np.array([qubit.instr_acq.get_instr().name for qubit in qubits])
         unique, counts = np.unique(uhf_names, return_counts=True)
