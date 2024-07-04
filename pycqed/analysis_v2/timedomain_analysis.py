@@ -2965,9 +2965,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # training_set_cost = np.atleast_2d(training_set_cost)
         training_set_cost_sp = self._adjust_sp_length(
             self.sp, training_set_cost)
-        # only has an effect in the training mode
+        # FIXME only has an effect in the training mode
         output = output.reshape(self.sp.length())
-        cost = cost.reshape(self.sp.length())
+        if cost is not None:
+            cost = cost.reshape(self.sp.length())
         self.cpp_results.update({
             'output': (output, self.sp),
             'cost': (cost, self.sp),
@@ -3197,7 +3198,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def cpp_bxe_output(freqs, weights, state_axis=0,
                        targets=None, targets_axis_sp=None,  # optional
-                       keepdims=None):
+                       keepdims=False):
         # Basic idea: 1D weights dot ND freqs -> ND output
         # This method additionally allows ND weights (swept over all dims>0)
         assert isinstance(state_axis, int)
@@ -3217,15 +3218,15 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                           axis=None),
                 a_weights.cpp_results['training_set_cost'][0].shape
             )
-            min_cost_index = list(min_cost_index)
             # weights has an extra dimension of targets in training mode. To
             # extract the 1D weights this dimension must be added to
             # min_cost_index. In sweep mode, when calculating training_set_cost,
             # the dimension of targets is kept as a dummy dimension for
             # self._adjust_sp_length().
             if a_weights.get_param_value('optimize'):
-                min_cost_index.insert(targets_axis_sp, 0)
-            min_cost_index = tuple(min_cost_index)
+                min_cost_index = list(min_cost_index)
+                min_cost_index.insert(1, 0)  # (index, value)
+                min_cost_index = tuple(min_cost_index)
             # extract the 1D optimal weights
             weights = a_weights.cpp_results['weights'][0][:, *min_cost_index]
             # weights shape: (n_states,)
