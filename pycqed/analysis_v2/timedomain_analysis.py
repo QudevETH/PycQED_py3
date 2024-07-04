@@ -2281,11 +2281,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                  fig_suffix=fig_suffix)
                 if TwoD and len(slice_idxs_list) > 0:
                     # plot slices of the 2D raw data
-                    self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
-                                                      slice_idxs_list)
+                    self._prepare_raw_1d_slices_plots(
+                        qb_name, raw_data_dict, slice_idxs_list,
+                        fig_suffix=fig_suffix, sp_1D=sweep_points)
 
     def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
-                                     slice_idxs_list):
+                                     slice_idxs_list, fig_suffix='',
+                                     sp_1D=None):
         """
         Prepares 1d plots of slices from a TwoD raw data plot.
 
@@ -2300,13 +2302,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         """
         for slice_idxs in slice_idxs_list:
             idxs, idxs_kw, axis, xvals, xlabel, xunit, sim = \
-                self.get_1d_slice_params(qb_name, slice_idxs)
+                self.get_1d_slice_params(qb_name, slice_idxs, sp_1D=sp_1D)
             for idx in idxs:
-                fig_suffix = '' if sim else\
+                _fig_suffix = fig_suffix + '' if sim else\
                     f'{"_row" if axis == 0 else "_col"}_{idx}'
                 self._prepare_raw_data_plots(qb_name, raw_data_dict,
                                              xvals, idx, axis,
-                                             fig_suffix=fig_suffix,
+                                             fig_suffix=_fig_suffix,
                                              TwoD=False,
                                              xlabel=xlabel, xunit=xunit)
 
@@ -2873,7 +2875,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         """
         self._plot_1d_slices_of_2d_data('proj', slice_idxs_1d_proj_plot)
 
-    def get_1d_slice_params(self, qb_name, slice_idxs):
+    def get_1d_slice_params(self, qb_name, slice_idxs, sp_1D=None):
         """
         Translates the information in slice_idxs into the relevant plot
         parameters used by the functions that prepare plots.
@@ -2900,25 +2902,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             add_mean = True
             slice_idxs = (slice_idxs[0], slice_idxs[1][1:])
         axis = 0 if slice_idxs[1] == 'row' else 1
+        xvals = sp_1D if sp_1D is not None else self.proc_data_dict[
+            'sweep_points_dict'][qb_name][
+            'sweep_points']
+        yvals = list(
+            self.proc_data_dict[
+                'sweep_points_2D_dict'][
+                qb_name].values())[0]
         if axis == 0:
-            xvals = self.proc_data_dict[
-                'sweep_points_dict'][qb_name][
-                'sweep_points']
-            yvals = list(
-                self.proc_data_dict[
-                    'sweep_points_2D_dict'][
-                    qb_name].values())[0]
             xlabel, xunit = None, None
         else:
+            xvals, yvals = yvals, xvals
             param_name = list(self.proc_data_dict[
                                   'sweep_points_2D_dict'][qb_name])[0]
-            xvals = list(
-                self.proc_data_dict[
-                    'sweep_points_2D_dict'][
-                    qb_name].values())[0]
-            yvals = self.proc_data_dict[
-                'sweep_points_dict'][qb_name][
-                'sweep_points']
             xlabel, xunit = \
                 self.get_soft_sweep_label_unit(
                     param_name)
