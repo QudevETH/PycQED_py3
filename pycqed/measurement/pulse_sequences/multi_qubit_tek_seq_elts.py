@@ -5,22 +5,12 @@ import numpy as np
 from copy import deepcopy
 import pycqed.measurement.waveform_control.sequence as sequence
 from pycqed.utilities.general import add_suffix_to_dict_keys
-import pycqed.measurement.randomized_benchmarking.randomized_benchmarking as rb
-import pycqed.measurement.randomized_benchmarking.two_qubit_clifford_group as tqc
 from pycqed.measurement.pulse_sequences.single_qubit_tek_seq_elts import \
     get_pulse_dict_from_pars, add_preparation_pulses, pulse_list_list_seq, \
-    prepend_pulses, add_suffix, sweep_pulse_params
-from pycqed.measurement.gate_set_tomography.gate_set_tomography import \
-    create_experiment_list_pyGSTi_qudev as get_exp_list
+    add_suffix, sweep_pulse_params
 from pycqed.measurement.waveform_control import pulsar as ps
 import pycqed.measurement.waveform_control.segment as segment
 from pycqed.analysis_v2 import tomography_qudev as tomo
-
-station = None
-kernel_dir = 'kernels/'
-# You need to explicitly set this before running any functions from this module
-# I guess there are cleaner solutions :)
-cached_kernels = {}
 
 
 def n_qubit_off_on(pulse_pars_list, RO_pars_list, return_seq=False,
@@ -155,20 +145,6 @@ def get_tomography_pulses(*qubit_names, basis_pulses=('I', 'X180', 'Y90',
     return tomo_sequences
 
 
-def get_decoupling_pulses(*qubit_names, nr_pulses=4):
-    if nr_pulses % 2 != 0:
-        logging.warning('Odd number of dynamical decoupling pulses')
-    echo_sequences = []
-    for pulse in nr_pulses*['X180']:
-        for i, qb in enumerate(qubit_names):
-            if i == 0:
-                qb = ' ' + qb
-            else:
-                qb = 's ' + qb
-            echo_sequences.append(pulse+qb)
-    return echo_sequences
-
-
 def n_qubit_ref_seq(qubit_names, operation_dict, ref_desc, upload=True,
                     return_seq=False, preselection=False, ro_spacing=1e-6):
     """
@@ -240,69 +216,10 @@ def n_qubit_ref_all_seq(qubit_names, operation_dict, upload=True,
                            preselection=preselection, ro_spacing=ro_spacing)
 
 
-def Ramsey_add_pulse_seq(times, measured_qubit_name,
-                         pulsed_qubit_name, operation_dict,
-                         artificial_detuning=None,
-                         cal_points=True,
-                         verbose=False,
-                         upload=True, return_seq=False):
-    raise NotImplementedError(
-        'Ramsey_add_pulse_seq has not been '
-        'converted to the latest waveform generation code and can not be used.')
-
-    if np.any(times > 1e-3):
-        logging.warning('The values in the times array might be too large.'
-                        'The units should be seconds.')
-
-    seq_name = 'Ramsey_with_additional_pulse_sequence'
-    seq = sequence.Sequence(seq_name)
-    el_list = []
-
-
-    pulse_pars_x1 = deepcopy(operation_dict['X90 ' + measured_qubit_name])
-    pulse_pars_x1['refpoint'] = 'end'
-    pulse_pars_x2 = deepcopy(pulse_pars_x1)
-    pulse_pars_x2['refpoint'] = 'start'
-    RO_pars = operation_dict['RO ' + measured_qubit_name]
-    add_pulse_pars = deepcopy(operation_dict['X180 ' + pulsed_qubit_name])
-
-    for i, tau in enumerate(times):
-        if cal_points and (i == (len(times)-4) or i == (len(times)-3)):
-            el = multi_pulse_elt(i, station, [
-                operation_dict['I ' + measured_qubit_name], RO_pars])
-        elif cal_points and (i == (len(times)-2) or i == (len(times)-1)):
-            el = multi_pulse_elt(i, station, [
-                operation_dict['X180 ' + measured_qubit_name], RO_pars])
-        else:
-            pulse_pars_x2['pulse_delay'] = tau
-            if artificial_detuning is not None:
-                Dphase = ((tau-times[0]) * artificial_detuning * 360) % 360
-                pulse_pars_x2['phase'] = Dphase
-
-            if i % 2 == 0:
-                el = multi_pulse_elt(
-                    i, station, [operation_dict['X90 ' + measured_qubit_name],
-                                 pulse_pars_x2, RO_pars])
-            else:
-                el = multi_pulse_elt(i, station,
-                                     [add_pulse_pars, pulse_pars_x1,
-                                     # [pulse_pars_x1, add_pulse_pars,
-                                      pulse_pars_x2, RO_pars])
-        el_list.append(el)
-        seq.append_element(el, trigger_wait=True)
-    if upload:
-        station.pulsar.program_awgs(seq, *el_list, verbose=verbose)
-
-    if return_seq:
-        return seq, el_list
-    else:
-        return seq_name
-
-
 def ramsey_add_pulse_seq_active_reset(
         times, measured_qubit_name, pulsed_qubit_name,
         operation_dict, cal_points, n=1, artificial_detunings = 0,
-        upload=True, for_ef=False, last_ge_pulse=False, prep_params=dict()):
+        upload=True, for_ef=False, last_ge_pulse=False, reset_params=None):
     '''
      Azz sequence:  Ramsey on measured_qubit
                     pi-pulse on pulsed_qubit
@@ -357,12 +274,13 @@ def ramsey_add_pulse_seq_active_reset(
     swept_pulses_with_prep = \
         [add_preparation_pulses(p, operation_dict,
                                 [pulsed_qubit_name, measured_qubit_name],
-                                **prep_params)
+                                reset_params=reset_params)
          for p in swept_pulses]
     seq = pulse_list_list_seq(swept_pulses_with_prep, seq_name, upload=False)
 
     # add calibration segments
-    seq.extend(cal_points.create_segments(operation_dict, **prep_params))
+    seq.extend(cal_points.create_segments(operation_dict,
+                                          reset_params=reset_params))
 
     # reuse sequencer memory by repeating readout pattern
     seq.repeat_ro(f"RO {measured_qubit_name}", operation_dict)
@@ -372,141 +290,6 @@ def ramsey_add_pulse_seq_active_reset(
         ps.Pulsar.get_instance().program_awgs(seq)
 
     return seq, np.arange(seq.n_acq_elements())
-
-
-def get_dd_pulse_list(operation_dict, qb_names, dd_time, nr_pulses=4, 
-                      dd_scheme='cpmg', init_buffer=0, refpoint='end'):
-    drag_pulse_length = (operation_dict['X180 ' + qb_names[-1]]['nr_sigma'] * \
-                         operation_dict['X180 ' + qb_names[-1]]['sigma'])
-    pulse_list = []
-    def cpmg_delay(i, nr_pulses=nr_pulses):
-        if i == 0 or i == nr_pulses:
-            return 1/nr_pulses/2
-        else:
-            return 1/nr_pulses
-
-    def udd_delay(i, nr_pulses=nr_pulses):
-        delay = np.sin(0.5*np.pi*(i + 1)/(nr_pulses + 1))**2
-        delay -= np.sin(0.5*np.pi*i/(nr_pulses + 1))**2
-        return delay
-
-    if dd_scheme == 'cpmg':
-        delay_func = cpmg_delay
-    elif dd_scheme == 'udd':
-        delay_func = udd_delay
-    else:
-        raise ValueError('Unknown decoupling scheme "{}"'.format(dd_scheme))
-
-    for i in range(nr_pulses+1):
-        delay_pulse = {
-            'pulse_type': 'SquarePulse',
-            'channel': operation_dict['X180 ' + qb_names[0]]['I_channel'],
-            'amplitude': 0.0,
-            'length': dd_time*delay_func(i),
-            'pulse_delay': 0}
-        if i == 0:
-            delay_pulse['pulse_delay'] = init_buffer
-            delay_pulse['refpoint'] = refpoint
-        if i == 0 or i == nr_pulses:
-            delay_pulse['length'] -= drag_pulse_length/2
-        else:
-            delay_pulse['length'] -= drag_pulse_length
-        if delay_pulse['length'] > 0:
-            pulse_list.append(delay_pulse)
-        else:
-            raise Exception("Dynamical decoupling pulses don't fit in the "
-                            "specified dynamical decoupling duration "
-                            "{:.2f} ns".format(dd_time*1e9))
-        if i != nr_pulses:
-            for j, qbn in enumerate(qb_names):
-                pulse_name = 'X180 ' if j == 0 else 'X180s '
-                pulse_pulse = deepcopy(operation_dict[pulse_name + qbn])
-                pulse_list.append(pulse_pulse)
-    return pulse_list
-
-
-def get_DD_pulse_list(operation_dict, qb_names, DD_time,
-                      qb_names_DD=None,
-                      pulse_dict_list=None, idx_DD_start=-1,
-                      nr_echo_pulses=4, UDD_scheme=True):
-
-    n = len(qb_names)
-    if qb_names_DD is None:
-        qb_names_DD = qb_names
-    if pulse_dict_list is None:
-        pulse_dict_list = []
-    elif len(pulse_dict_list) < 2*n:
-        raise ValueError('The pulse_dict_list must have at least two entries.')
-
-    idx_DD_start *= n
-    pulse_dict_list_end = pulse_dict_list[idx_DD_start::]
-    pulse_dict_list = pulse_dict_list[0:idx_DD_start]
-
-    X180_pulse_dict = operation_dict['X180 ' + qb_names_DD[0]]
-    DRAG_length = X180_pulse_dict['nr_sigma']*X180_pulse_dict['sigma']
-    X90_separation = DD_time - DRAG_length
-
-    if UDD_scheme:
-        pulse_positions_func = \
-            lambda idx, N: np.sin(np.pi*idx/(2*N+2))**2
-        pulse_delays_func = (lambda idx, N: X90_separation*(
-                pulse_positions_func(idx, N) -
-                pulse_positions_func(idx-1, N)) -
-                ((0.5 if idx == 1 else 1)*DRAG_length))
-
-        if nr_echo_pulses*DRAG_length > X90_separation:
-            pass
-        else:
-            for p_nr in range(nr_echo_pulses):
-                for qb_name in qb_names_DD:
-                    if qb_name == qb_names_DD[0]:
-                        DD_pulse_dict = deepcopy(operation_dict[
-                                                     'X180 ' + qb_name])
-                        DD_pulse_dict['refpoint'] = 'end'
-                        DD_pulse_dict['pulse_delay'] = pulse_delays_func(
-                            p_nr+1, nr_echo_pulses)
-                    else:
-                        DD_pulse_dict = deepcopy(operation_dict[
-                                                     'X180s ' + qb_name])
-                    pulse_dict_list.append(DD_pulse_dict)
-
-            for j in range(n):
-                if j == 0:
-                    pulse_dict_list_end[j]['refpoint'] = 'end'
-                    pulse_dict_list_end[j]['pulse_delay'] = pulse_delays_func(
-                        1, nr_echo_pulses)
-                else:
-                    pulse_dict_list_end[j]['pulse_delay'] = 0
-    else:
-        echo_pulse_delay = (X90_separation -
-                            nr_echo_pulses*DRAG_length) / \
-                           nr_echo_pulses
-        if echo_pulse_delay < 0:
-            pass
-        else:
-            start_end_delay = echo_pulse_delay/2
-            for p_nr in range(nr_echo_pulses):
-                for qb_name in qb_names_DD:
-                    if qb_name == qb_names_DD[0]:
-                        DD_pulse_dict = deepcopy(operation_dict[
-                                                     'X180 ' + qb_name])
-                        DD_pulse_dict['refpoint'] = 'end'
-                        DD_pulse_dict['pulse_delay'] = \
-                            (start_end_delay if p_nr == 0 else echo_pulse_delay)
-                    else:
-                        DD_pulse_dict = deepcopy(operation_dict[
-                                                     'X180s ' + qb_name])
-                    pulse_dict_list.append(DD_pulse_dict)
-            for j in range(n):
-                if j == 0:
-                    pulse_dict_list_end[j]['refpoint'] = 'end'
-                    pulse_dict_list_end[j]['pulse_delay'] = start_end_delay
-                else:
-                    pulse_dict_list_end[j]['pulse_delay'] = 0
-
-    pulse_dict_list += pulse_dict_list_end
-
-    return pulse_dict_list
 
 
 def generate_mux_ro_pulse_list(qubit_names, operation_dict, element_name='RO',
@@ -528,8 +311,7 @@ def generate_mux_ro_pulse_list(qubit_names, operation_dict, element_name='RO',
 
 def interleaved_pulse_list_equatorial_seg(
         qubit_names, operation_dict, interleaved_pulse_list, phase, 
-        pihalf_spacing=None, prep_params=None, segment_name='equatorial_segment'):
-    prep_params = {} if prep_params is None else prep_params
+        pihalf_spacing=None, reset_params=None, segment_name='equatorial_segment'):
     pulse_list = []
     for notfirst, qbn in enumerate(qubit_names):
         pulse_list.append(deepcopy(operation_dict['X90 ' + qbn])) 
@@ -547,24 +329,26 @@ def interleaved_pulse_list_equatorial_seg(
             pulse_list[-1]['ref_point'] = 'start'
             pulse_list[-1]['pulse_delay'] = pihalf_spacing
     pulse_list += generate_mux_ro_pulse_list(qubit_names, operation_dict)
-    pulse_list = add_preparation_pulses(pulse_list, operation_dict, qubit_names, **prep_params)
+    pulse_list = add_preparation_pulses(pulse_list, operation_dict, qubit_names,
+                                        reset_params=reset_params)
     return segment.Segment(segment_name, pulse_list)
 
 
 def interleaved_pulse_list_list_equatorial_seq(
         qubit_names, operation_dict, interleaved_pulse_list_list, phases, 
-        pihalf_spacing=None, prep_params=None, cal_points=None,
+        pihalf_spacing=None, reset_params=None, cal_points=None,
         sequence_name='equatorial_sequence', upload=True):
-    prep_params = {} if prep_params is None else prep_params
     seq = sequence.Sequence(sequence_name)
     for i, interleaved_pulse_list in enumerate(interleaved_pulse_list_list):
         for j, phase in enumerate(phases):
             seg = interleaved_pulse_list_equatorial_seg(
                 qubit_names, operation_dict, interleaved_pulse_list, phase,
-                pihalf_spacing=pihalf_spacing, prep_params=prep_params, segment_name=f'segment_{i}_{j}')
+                pihalf_spacing=pihalf_spacing, reset_params=reset_params,
+                segment_name=f'segment_{i}_{j}')
             seq.add(seg)
     if cal_points is not None:
-        seq.extend(cal_points.create_segments(operation_dict, **prep_params))
+        seq.extend(cal_points.create_segments(operation_dict,
+                                              reset_params=reset_params))
     if upload:
         ps.Pulsar.get_instance().program_awgs(seq)
     return seq, np.arange(seq.n_acq_elements())
@@ -572,7 +356,7 @@ def interleaved_pulse_list_list_equatorial_seq(
 
 def measurement_induced_dephasing_seq(
         measured_qubit_names, dephased_qubit_names, operation_dict, 
-        ro_amp_scales, phases, pihalf_spacing=None, prep_params=None,
+        ro_amp_scales, phases, pihalf_spacing=None, reset_params=None,
         cal_points=None, upload=True, sequence_name='measurement_induced_dephasing_seq'):
     interleaved_pulse_list_list = []
     for i, ro_amp_scale in enumerate(ro_amp_scales):
@@ -585,13 +369,13 @@ def measurement_induced_dephasing_seq(
         interleaved_pulse_list_list.append(interleaved_pulse_list)
     return interleaved_pulse_list_list_equatorial_seq(
         dephased_qubit_names, operation_dict, interleaved_pulse_list_list, 
-        phases, pihalf_spacing=pihalf_spacing, prep_params=prep_params,
+        phases, pihalf_spacing=pihalf_spacing, reset_params=reset_params,
         cal_points=cal_points, sequence_name=sequence_name, upload=upload)
 
 
 def drive_cancellation_seq(
         drive_op_code, ramsey_qubit_names, operation_dict,
-        sweep_points, n_pulses=1, pihalf_spacing=None, prep_params=None,
+        sweep_points, n_pulses=1, pihalf_spacing=None, reset_params=None,
         cal_points=None, upload=True, sequence_name='drive_cancellation_seq'):
     """
     Sweep pulse cancellation parameters and measure Ramsey on qubits the
@@ -638,14 +422,14 @@ def drive_cancellation_seq(
     return interleaved_pulse_list_list_equatorial_seq(
         ramsey_qubit_names, operation_dict, interleaved_pulse_list_list,
         sweep_points[1]['phase'][0], pihalf_spacing=pihalf_spacing,
-        prep_params=prep_params, cal_points=cal_points,
+        reset_params=reset_params, cal_points=cal_points,
         sequence_name=sequence_name, upload=upload)
 
 
 def fluxline_crosstalk_seq(target_qubit_name, crosstalk_qubits_names,
                            crosstalk_qubits_amplitudes, sweep_points,
                            operation_dict, crosstalk_fluxpulse_length,
-                           target_fluxpulse_length, prep_params,
+                           target_fluxpulse_length, reset_params,
                            cal_points, upload=True,
                            sequence_name='fluxline_crosstalk_seq'):
     """
@@ -669,7 +453,7 @@ def fluxline_crosstalk_seq(target_qubit_name, crosstalk_qubits_names,
         target_fluxpulse_length: length of the flux pulse on the target qubit.
         crosstalk_fluxpulse_length: length of the flux pulses on the crosstalk
             qubits
-        prep_params: Perparation parameters dictionary specifying the type
+        reset_params: Perparation parameters dictionary specifying the type
             of state preparation.
         cal_points: CalibrationPoints object determining the used calibration
             points
@@ -717,5 +501,5 @@ def fluxline_crosstalk_seq(target_qubit_name, crosstalk_qubits_names,
     return interleaved_pulse_list_list_equatorial_seq(
         crosstalk_qubits_names, operation_dict, interleaved_pulse_list_list,
         sweep_points[0]['phase'][0], pihalf_spacing=pihalf_spacing,
-        prep_params=prep_params, cal_points=cal_points,
+        reset_params=reset_params, cal_points=cal_points,
         sequence_name=sequence_name, upload=upload)

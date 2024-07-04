@@ -7,7 +7,7 @@
 import numpy as np
 import pycqed.measurement.waveform_control.pulsar as ps
 from collections import OrderedDict as odict
-from copy import deepcopy
+from copy import deepcopy, copy
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -77,7 +77,8 @@ class Sequence:
     def generate_waveforms_sequences(self, awgs=None,
                                      get_channel_hashes=False,
                                      resolve_segments=None,
-                                     trigger_groups=None):
+                                     trigger_groups=None,
+                                     awg_sequences=None):
         """
         Calculates and returns 
             * waveforms: a dictionary of waveforms used in the sequence,
@@ -95,6 +96,10 @@ class Sequence:
             sequence still need to be resolved. If not provided,
             self.is_resolved is checked to determine whether segments
             need to be resolved.
+        :param awg_sequences: (dict, optional) Sequences, as previously
+            returned by this method. Can be used for caching in case this
+            method is called multiple times. If provided, it is assumed that
+            this dict is complete (no error handling in case keys are missing).
         :return: a tuple of waveforms, sequences as described above if
             get_channel_hashes==False. Otherwise, a tuple channel_hashes,
             sequences.
@@ -145,20 +150,37 @@ class Sequence:
                 # Take element metadata from the resolved segments.
                 element_metadata = seg.element_metadata
                 elnames = seg.elements_on_awg.get(group, [])
-                for elname in elnames:
-                    sequences[awg].setdefault(elname, {'metadata': {}})
-                    for cw in seg.get_element_codewords(elname, trigger_group=group):
-                        sequences[awg][elname].setdefault(cw, {})
-                        for ch in seg.get_element_channels(elname, trigger_group=group):
-                            h = seg.calculate_hash(elname, cw, ch)
+                # Determine when each element starts in the current group
+                el_start_times = {
+                    elname: seg.element_start_length(elname, group)[0]
+                    for elname in elnames}
+                # Loop through elements in the order of their start time
+                for i in np.argsort(list(el_start_times.values())):
+                    elname = elnames[i]
+                    # uelname = element name unique within the AWG
+                    # If elements are shared between trigger groups of an AWG,
+                    # this ensures that the following logic correctly orders
+                    # waveforms within each trigger group
+                    uelname = group + '_' + elname
+                    sequences[awg].setdefault(uelname, {'metadata': {}})
+                    metadata = sequences[awg][uelname]['metadata']
+                    for cw in seg.get_element_codewords(elname,
+                                                        trigger_group=group):
+                        sequences[awg][uelname].setdefault(cw, {})
+                        for ch in seg.get_element_channels(elname,
+                                                           trigger_group=group):
                             chid = self.pulsar.get(f'{ch}_id')
-                            sequences[awg][elname][cw][chid] = h
+                            if awg_sequences:
+                                h = awg_sequences[awg][uelname][cw][chid]
+                            else:
+                                h = seg.calculate_hash(elname, cw, ch)
+                            sequences[awg][uelname][cw][chid] = h
                             if get_channel_hashes:
                                 if ch not in channel_hashes:
                                     channel_hashes[ch] = {}
-                                if elname not in channel_hashes[ch]:
-                                    channel_hashes[ch][elname] = {}
-                                channel_hashes[ch][elname][cw] = h
+                                if uelname not in channel_hashes[ch]:
+                                    channel_hashes[ch][uelname] = {}
+                                channel_hashes[ch][uelname][cw] = h
                             else:
                                 if h not in waveforms:
                                     wf = seg.waveforms(awgs={awg},
@@ -167,40 +189,35 @@ class Sequence:
                                     waveforms[h] = wf.popitem()[1].popitem()[1]\
                                                      .popitem()[1].popitem()[1]
                     if elname in seg.acquisition_elements:
-                        sequences[awg][elname]['metadata']['acq'] = \
-                            seg.acquisition_mode
+                        metadata['acq'] = seg.acquisition_mode
                     else:
-                        sequences[awg][elname]['metadata']['acq'] = False
-                    sequences[awg][elname]['metadata']['allow_filter'] = \
-                        seg.allow_filter
-                    sequences[awg][elname]['metadata'].setdefault('trigger_groups', set())
-                    sequences[awg][elname]['metadata']['trigger_groups'].add(group)
+                        metadata['acq'] = False
+                    metadata['allow_filter'] = seg.allow_filter
+                    metadata.setdefault('trigger_groups', set())
+                    metadata['trigger_groups'].add(group)
                     # Write modulation and sine configuration to element
                     if elname in element_metadata.keys() \
                             and 'mod_config' in element_metadata[elname].keys()\
                                 and element_metadata[elname]['mod_config']:
-                        sequences[awg][elname]['metadata']['mod_config'] = \
+                        metadata['mod_config'] = \
                             element_metadata[elname]['mod_config']
                     elif seg.mod_config:
-                        sequences[awg][elname]['metadata']['mod_config'] =\
-                            seg.mod_config
+                        metadata['mod_config'] = seg.mod_config
                     if seg.sine_config:
-                        sequences[awg][elname]['metadata']['sine_config'] = \
-                            seg.sine_config
+                        metadata['sine_config'] = seg.sine_config
                     # Pass command table scaling factors to element metadata
                     if elname in scaling_factors.keys():
-                        sequences[awg][elname]['metadata']['scaling_factor'] \
-                            = scaling_factors[elname]
+                        metadata['scaling_factor'] = scaling_factors[elname]
                 # Experimental feature to sweep values of nodes of ZI HDAWGs
                 # in a hard sweep. See the comments above the sweep_params
                 # property in Segment.
                 if seg.sweep_params is not None and len(seg.sweep_params):
-                    sequences[awg][elnames[0]]['metadata']['loop'] = len(
+                    sequences[awg][group + '_' + elnames[0]]['metadata']['loop'] = len(
                         list(seg.sweep_params.values())[0])
-                    sequences[awg][elnames[0]]['metadata']['sweep_params'] = \
+                    sequences[awg][group + '_' + elnames[0]]['metadata']['sweep_params'] = \
                         {k[len(awg) + 1:]: v for k, v in
                          seg.sweep_params.items() if k.startswith(awg + '_')}
-                    sequences[awg][elnames[-1]]['metadata']['end_loop'] = True
+                    sequences[awg][group + '_' + elnames[-1]]['metadata']['end_loop'] = True
         self.is_resolved = True
         if get_channel_hashes:
             return channel_hashes, sequences
@@ -219,6 +236,8 @@ class Sequence:
         :param awgs: a list of AWG names. If None, lengths will be harmonized
             for all AWGs.
         """
+        # Setting the property will prequery all AWG clock and amplitudes
+        sequences[0].pulsar.awgs_prequeried = True
         seq_groups = []
         if awgs is None:
             awgs = sequences[0].pulsar.awgs
@@ -255,6 +274,7 @@ class Sequence:
                 seg._test_overlap()
             # mark sequence as resolved
             seq.is_resolved = True
+        sequences[0].pulsar.awgs_prequeried = False
 
     def harmonize_amplitude(self, awg):
         """Rescale waveform amplitudes such that the largest pulse amplitude
@@ -298,7 +318,8 @@ class Sequence:
                 parameter_suffix="_use_command_table"
             ):
                 logging.warning(
-                    f"On {awg_module.awg.name}: PycQED will "
+                    f"On {awg_module.awg.name}_"
+                    f"{awg_module.analog_channel_ids[0]}: PycQED will "
                     f"not harmonize amplitude for this AWG module "
                     f"because this feature only works when command table "
                     f"is enabled. Please set \"_use_command_table\" "
@@ -513,7 +534,7 @@ class Sequence:
         elif len(sequences) == 1:
             # special case, return current sequence:
             return sequences
-        sequences = [deepcopy(s) for s in sequences]
+        sequences = [copy(s) for s in sequences]
         merged_seqs = [sequences[0]]
         if segment_limit is None:
             segment_limit = np.inf
@@ -534,6 +555,7 @@ class Sequence:
             # otherwise merge sequences
             else:
                 for seg_name, segment in seq.segments.items():
+                    segment.is_first_segment = False
                     try:
                         merged_seqs[-1].add(segment)
                     except NameError:  # in case segment name exists, create new name

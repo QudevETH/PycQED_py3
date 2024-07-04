@@ -142,7 +142,7 @@ to review:
   * 1 bugfix per MR, instead of multiple bugfixes (unless all related).
   * 1 new feature per MR, unless the new features do not make sense individually.
 * Fill in the template on GitLab (see
-[Merge request template](./merge_Request_template.md)). You may remove
+[Merge request template](./merge_request_template.md)). You may remove
 irrelevant sections.
 * Provide background when necessary to facilitate the review, e.g. justify some
 implementation choices, or document the limitations of your implementation.

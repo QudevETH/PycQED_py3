@@ -2189,10 +2189,8 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
 
             if self.analyze_ef:
                 try:
-                    old_freq = self.get_hdf_param_value(
-                        f"Instrument settings/{qb_name}", 'ge_freq')
-                    old_freq_ef = self.get_hdf_param_value(
-                        f"Instrument settings/{qb_name}", 'ef_freq')
+                    old_freq = self.get_instrument_setting(qb_name+'.ge_freq')
+                    old_freq_ef = self.get_instrument_setting(qb_name+'.ef_freq')
                     label = 'f0={:.5f} GHz ' \
                             '\nold f0={:.5f} GHz' \
                             '\nkappa0={:.4f} MHz' \
@@ -2222,8 +2220,7 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                 label = 'f0={:.5f} GHz '.format(
                     self.fit_res[qb_name].params['f0'].value * scale)
                 try:
-                    old_freq = self.get_hdf_param_value(
-                        f"Instrument settings/{qb_name}", 'ge_freq')
+                    old_freq = self.get_instrument_setting(qb_name+'.ge_freq')
                     label += '\nold f0={:.5f} GHz'.format(old_freq * scale)
                 except (TypeError, KeyError, ValueError):
                     log.warning('qb_name is None. Old parameter values will '
@@ -2866,8 +2863,7 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
         """
         # Find the dips for each measured qubit
         for qb_name in self.qb_names:
-            flux_parking = self.get_hdf_param_value(
-                f"Instrument settings/{qb_name}", "flux_parking")
+            flux_parking = self.get_instrument_setting(qb_name+'.flux_parking')
 
             left_dips_indices = []
             right_dips_indices = []
@@ -3289,6 +3285,28 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                 self._compute_s21_distance(raw_data, states)
 
     def _compute_s21_distance(self, data, states):
+        """
+        Computes the distance between S21 transmission measurements for different states.
+
+        Args:
+            data (dict): A dictionary containing I and Q components of the measured
+                data.
+            states (list): A list of states for which to compute the distance.
+
+        Returns:
+            dict: A dictionary containing the computed distances between states
+                and the argmax of the array, e.g. {"g-e": (distance_array, argmax)}
+
+
+        Raises:
+            ValueError: If fewer than two states are provided.
+
+        Notes:
+            - The distance between two states is calculated as the absolute difference
+              between their corresponding S21 transmission measurements.
+            - The distances are computed for all combinations of two states.
+            - The computed distances also include the sum of distances across all states.
+        """
         distances = dict()
         if len(states) < 2:
             log.error('At least two states need to be measured to compute a'
@@ -3303,11 +3321,18 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
             distance = np.abs(S21_1-S21_2)
             argmax = np.argmax(distance)
             distances[f'{state_1}-{state_2}'] = (distance, argmax)
+
+        # generate sum of distances
+        if len(distances): # at least one distance
+            # each distance is a tuple (distance, argmax), so take first entry
+            distances_sum = np.sum([v[0] for v in distances.values()], axis=0)
+            argmax = np.argmax(distances_sum)
+            distances["sum"] = (distances_sum, argmax)
         return distances
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
-        plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+        plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
         for qb_name in self.qb_names:
             fig_title = (self.raw_data_dict['timestamp'] + ' ' +
                          self.raw_data_dict['measurementstring'] +
@@ -3366,12 +3391,13 @@ class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
                         'xvals': frequency[argmax] * np.ones(2),
                         'yvals': [0.95 * np.min(distance),
                                   1.05 * np.max(distance)],
-                        'color': 'red',
+                        'color': 'red' if dkey == "sum" else 'k',
                         'linestyle': 'dotted',
                         'marker': 'None',
                         'setlabel': '$f_{RO}$ = ' \
-                                    + f'{(frequency[argmax]/1e9):.3f} GHz',
+                                    + f'{(frequency[argmax]/1e9):.4f} GHz',
                         'do_legend': True,
+                    "legend_pos": "best",
                 }
 
     def get_state_color(self, state, cmap=plt.get_cmap('tab10')):

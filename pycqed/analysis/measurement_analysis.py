@@ -8,8 +8,9 @@ import matplotlib.lines as mlines
 import matplotlib
 from matplotlib import pyplot as plt
 from pycqed.analysis import analysis_toolbox as a_tools
+import pycqed.utilities.settings_manager as setman
 from pycqed.analysis import fitting_models as fit_mods
-import pycqed.measurement.hdf5_data as h5d
+import pycqed.utilities.io.hdf5 as h5d
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import scipy.optimize as optimize
 import lmfit
@@ -4930,13 +4931,13 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
 
         scale = SI_prefix_and_scale_factor(val=max(abs(ax_dist.get_xticks())),
                                            unit=self.sweep_unit[0])[0]
-
-        instr_set = self.data_file['Instrument settings']
-
         if analyze_ef:
             try:
-                old_freq = eval(instr_set[self.qb_name].attrs['f_qubit'])
-                old_freq_ef = eval(instr_set[self.qb_name].attrs['f_ef_qubit'])
+                sm = setman.SettingsManager()
+                old_freq = sm.get_parameter(self.qb_name + '.ge_freq',
+                                            self.timestamp)
+                old_freq_ef = sm.get_parameter(self.qb_name + '.ef_freq',
+                                               self.timestamp)
                 label = 'f0={:.5f} GHz ' \
                         '\nold f0={:.5f} GHz' \
                         '\nkappa0={:.4f} MHz' \
@@ -4976,9 +4977,6 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
                 self.fit_res.params['kappa'].value / 1e6)
 
         self.add_textbox(label, fig_dist, ax_dist)
-        # fig_dist.text(0.5, 0, label, transform=ax_dist.transAxes,
-        #               fontsize=self.font_size, verticalalignment='top',
-        #               horizontalalignment='center', bbox=self.box_props)
 
         if print_fit_results is True:
             print(self.fit_res.fit_report())
@@ -5752,6 +5750,9 @@ class Fluxpulse_Ramsey_2D_Analysis(MeasurementAnalysis):
 
 
 class Fluxpulse_Ramsey_2D_Analysis_Predictive(MeasurementAnalysis):
+    """Measurement analysis class to analyse Ramsey type measurements
+    with an interleaved flux pulse.
+    """
 
     def __init__(self, X90_separation=None, flux_pulse_length=None,
                  drive_pulse_length=None,
@@ -5760,17 +5761,19 @@ class Fluxpulse_Ramsey_2D_Analysis_Predictive(MeasurementAnalysis):
                  reference_measurements=False,
                  plot=False,
                  **kw):
-        """
-        Measurement analysis class to analyse Ramsey type measrements
-        with an interleaved flux pulse
+        """Initializes the Fluxpulse_Ramsey_2D_Analysis_Predictive class.
 
         Args:
-            X90_separation (float): separation between the two X90 pulses
-            flux_pulse_length (float): length of the flux pulse in seconds
-                                        (used to calculate freq. shifts)
-            qb_name (str): qubit name
-            label (str): measurement label
-            **kw:
+            X90_separation (float): Separation between the two X90 pulses.
+            flux_pulse_length (float): Length of the flux pulse in seconds
+                                       (used to calculate freq. shifts).
+            drive_pulse_length (float): Length of the drive pulse.
+            qb_name (str): Qubit name.
+            label (str): Measurement label.
+            cal_points (bool): Whether to include calibration points.
+            reference_measurements (bool): Whether to include reference measurements.
+            plot (bool): Whether to plot the results.
+            **kw: Additional keyword arguments.
         """
 
         kw['label'] = label

@@ -13,7 +13,7 @@ from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
-from pycqed.utilities.timer import WatchdogTimer, WatchdogException
+from pycqed.utilities.timer import WatchdogTimer, WatchdogException, Timer
 
 from .zi_pulsar_mixin import ZIPulsarMixin
 
@@ -153,22 +153,33 @@ class PulsarAWGInterface(ABC):
                              docstring="Group all the pulses on this AWG into "
                                        "a single element. Useful for making "
                                        "sure the master AWG has only one "
-                                       "waveform per segment.",
+                                       "waveform per segment. This parameter will"
+                                       "modify _join_or_split_elements. Setting"
+                                       "this to False only has an effect if "
+                                       "_join_or_split_elements is 'ese'.",
+                             vals=vals.Bool(),
                              get_cmd=lambda s=self.pulsar:
                              s.get(f'{name}_join_or_split_elements') == 'ese',
                              set_cmd=lambda v, s=self.pulsar:
                              (s.set(f'{name}_join_or_split_elements', 'ese')
-                              if v else None), )
+                              if v else (s.set(
+                                f'{name}_join_or_split_elements', 'default') if
+                                s.get(f'{name}_join_or_split_elements') == 'ese' else
+                                         None)), )
         pulsar.add_parameter(f"{name}_join_or_split_elements",
                              initial_value="default",
-                             vals=vals.Enum("default", "split", "ese"),
+                             vals=vals.MultiType(
+                                 vals.Enum("default", "split", "ese"),
+                                 vals.Dict()),
                              parameter_class=ManualParameter,
                              docstring="If ese: Group all the pulses on this "
                                        "AWG into a single element. Useful "
                                        "for making sure the master AWG has "
                                        "only one waveform per segment. If "
                                        "split: Split all pulses into individual "
-                                       "elements.")
+                                       "elements. Can alternatively be a dict "
+                                       "indexed by trigger groups, see "
+                                       f"parameter {name}_trigger_groups.")
         pulsar.add_parameter(f"{name}_granularity",
                              get_cmd=lambda: self.GRANULARITY)
         pulsar.add_parameter(f"{name}_element_start_granularity",
@@ -190,9 +201,9 @@ class PulsarAWGInterface(ABC):
                              initial_value=0,
                              unit="s",
                              parameter_class=ManualParameter,
-                             docstring="Global delay applied to this channel. "
+                             docstring="Global delay applied to this AWG. "
                                        "Positive values move pulses on this "
-                                       "channel forward in time. "
+                                       "AWG forward in time. "
                                        "Can be a dict with trigger "
                                        "group names as keys.")
         pulsar.add_parameter(f"{name}_trigger_channels",
@@ -255,6 +266,18 @@ class PulsarAWGInterface(ABC):
                                  get_cmd=partial(self.awg_getter, id, "centerfreq"),
                                  vals=vals.Numbers(
                                      *self.CHANNEL_CENTERFREQ_BOUNDS[ch_type]))
+        pulsar.add_parameter(f"{ch_name}_delay",
+                             label=f"{ch_name} delay", unit='s',
+                             vals=vals.MultiType(vals.Enum(None),
+                                                 vals.Numbers()),
+                             docstring="Specific software delay applied to "
+                                       "this channel. It can have any float "
+                                       "value, and sampling rate and "
+                                       "granularity are taken care of later. "
+                                       "This delay does not change trigger "
+                                       "pulses, and operates within the "
+                                       "space provided by min_element_buffer.",
+                             parameter_class=ManualParameter)
 
         if ch_type == "analog":
             pulsar.add_parameter(f"{ch_name}_distortion",
@@ -559,6 +582,7 @@ class Pulsar(Instrument):
 
         super().__init__(name)
 
+        self.timer = None
         self._sequence_cache = dict()
         self.reset_sequence_cache()
 
@@ -584,7 +608,7 @@ class Pulsar(Instrument):
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation', initial_value=False,
                            parameter_class=ManualParameter)
-        self.add_parameter('flux_channels', initial_value=[],
+        self.add_parameter('flux_channels', initial_value={},
                            parameter_class=ManualParameter)
         self.add_parameter('flux_crosstalk_cancellation_mtx',
                            initial_value=None, parameter_class=ManualParameter)
@@ -646,6 +670,31 @@ class Pulsar(Instrument):
                       "default), 'init_start' (first pulse in the init part "
                       "of the segment), or a search pattern as described in "
                       "the docstring of Block.build, param sweep_dicts_list.")
+        self.add_parameter("min_element_buffer",
+            initial_value=None, unit='s',
+            label="Minimum element buffer",
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
+            parameter_class=ManualParameter,
+            docstring="Introduces the buffer for each element to allow using "
+                      "software channel delays on all channels of all AWGs. "
+                      "Could take any float value. "
+                      "The actual buffer length might be longer than "
+                      "specified here due to granularity or other reasons; "
+                      "however, this parameter enforces a minimum buffer "
+                      "length (at the start and end of each element), which "
+                      "ensures correct working of software delays.")
+        self.add_parameter("max_element_start_time",
+            initial_value=None, unit='s',
+            label="Maximum element start time",
+            vals=vals.MultiType(vals.Enum(None), vals.Numbers()),
+            parameter_class=ManualParameter,
+            docstring="With this parameter activated (not None), every "
+                      "element will start at most at max_element_start_time "
+                      "in the algorithm time. If the element already starts "
+                      "earlier, no update is made. Intended usage is while "
+                      "e.g. specifying the algorithm_start to be the start of "
+                      "readout and then fixing the physical timing of "
+                      "the devices' trigger with this parameter.")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
         self.awgs:Set[str] = set()  # AWG names
@@ -655,9 +704,9 @@ class Pulsar(Instrument):
         self._awgs_with_waveforms = set()
         self.channel_groups = {}
         self.num_channel_groups = {}
-        self.mcc_finalize_callbacks = {}
-        """A dict of methods which requires execution after multi-core 
-        compilation. Keys are AWG names, and values are methods to execute."""
+
+        self.multi_core_compilers = []
+        """Multi-core AWG bitstream compilers"""
 
         self._awgs_prequeried_state = False
 
@@ -969,6 +1018,17 @@ class Pulsar(Instrument):
             group = self.get_trigger_group(ch)
             return enforce_single_element[group]
 
+    def get_join_or_split_elements(self, ch:str) -> bool:
+        awg = self.get_channel_awg(ch).name
+
+        join_or_split_elements = self.get(f"{awg}_join_or_split_elements")
+
+        if isinstance(join_or_split_elements, str):
+            return join_or_split_elements
+        else:
+            group = self.get_trigger_group(ch)
+            return join_or_split_elements[group]
+
     def clock(self, channel:str=None, awg:str=None):
         """Returns the clock rate of channel or AWG.
 
@@ -1081,28 +1141,13 @@ class Pulsar(Instrument):
 
         for awg in used_awg_interfaces:
             awg.stop()
+        self.timer = None
 
     def sigout_on(self, ch, on:bool=True):
         """Turn channel outputs on or off."""
 
         awg = self.find_instrument(self.get(ch + '_awg'))
         self.awg_interfaces[awg.name].sigout_on(ch, on)
-
-    def get_unique_mccs(self):
-        """
-        Returns list of unique multi_core_compiler instances from
-        PulsarAWGInterface._pulsar_interfaces.
-        """
-        return set([awg_int.multi_core_compiler
-                    for awg_int in self.awg_interfaces.values()
-                    if hasattr(awg_int, 'multi_core_compiler')])
-
-    def reset_active_awgs_mcc(self):
-        """
-        Resets the active awgs on the unique multi_core_compilers.
-        """
-        for mcc in self.get_unique_mccs():
-            mcc.reset_active_awgs()
 
     def program_awgs(self, sequence, awgs:Union[List[str], str]="all"):
         """Program the AWGs to play a sequence.
@@ -1113,6 +1158,15 @@ class Pulsar(Instrument):
             awgs: List of AWGs names, or ``"all"``
         """
 
+        # This and the line in self.stop ensure that a new timer is created
+        # when starting every new measurement. At the end of the measurement
+        # this timer will get stored as a child of the Sequence timer (current
+        # behaviour). Note: 2D sweeps with multiple uploads will create
+        # multiple timers, each new timer becoming a child of the
+        # corresponding Sequence.
+        if self.timer is None:
+            self.timer = Timer(self.name)
+            sequence.timer.children.update({self.name: self.timer})
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
@@ -1123,13 +1177,15 @@ class Pulsar(Instrument):
             self.reset_sequence_cache()
             self._program_awgs(sequence, awgs)
 
+    @Timer()
     def _program_awgs(self, sequence, awgs:Union[List[str], str]='all'):
 
         # Stores the last uploaded sequence for easy access and plotting
         self.last_sequence = sequence
 
         # resets the parallel compilation active AWG list
-        self.reset_active_awgs_mcc()
+        for mcc in self.multi_core_compilers:
+            mcc.reset_upload_cache()
 
         if awgs == 'all':
             awgs = None  # default value for generate_waveforms_sequences
@@ -1172,7 +1228,8 @@ class Pulsar(Instrument):
                                  '{}_prepend_zeros',
                                  '{}_use_command_table',
                                  '{}_join_or_split_elements',
-                                 'prepend_zeros']
+                                 'prepend_zeros',
+                                 'use_mcc']
             # Some of the settings are specified for each generator AWG module.
             # We should check these parameters as well.
             generator_settings_to_check = [
@@ -1221,7 +1278,7 @@ class Pulsar(Instrument):
                 sequence_cache['metadata'][awg] = metadata[awg]
             # Check for which channels some relevant setting or some hash has
             # changed, in which case the group of channels should be uploaded.
-            settings_to_check = ['{}_internal_modulation']
+            settings_to_check = ['{}_internal_modulation', '{}_delay']
             awgs_with_channels_to_upload = []
             channels_to_upload = []
             channels_to_program = []
@@ -1264,7 +1321,7 @@ class Pulsar(Instrument):
                      f'{time.time() - t0}')
             waveforms, _ = sequence.generate_waveforms_sequences(
                 awgs_to_program + awgs_with_channels_to_upload,
-                resolve_segments=False)
+                resolve_segments=False, awg_sequences=awg_sequences)
             log.debug(f'End of waveform generation sequence {sequence.name} '
                      f'{time.time() - t0}')
             # Check for which channels the sequence structure, or some element
@@ -1363,16 +1420,8 @@ class Pulsar(Instrument):
         if self.use_mcc():
             # Use parallel compilation and upload if the _awgs_with_waveforms
             # support it.
-            for mcc in self.get_unique_mccs():
-                if mcc is not None and len(mcc._awgs) > 0:
-                    mcc.wait_compile()
-                    mcc.upload()
-
-            # Finalize callbacks allow individual AWG interfaces to do final
-            # upload steps (e.g., uploading waveforms).
-            for awg, callback in self.mcc_finalize_callbacks.items():
-                if awg in self._awgs_with_waveforms:
-                    callback()
+            for mcc in self.multi_core_compilers:
+                mcc.execute_mcc()
 
         if self.use_sequence_cache():
             # Compilation finished sucessfully. Store sequence cache.

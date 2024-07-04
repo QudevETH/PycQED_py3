@@ -31,12 +31,13 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
     """
     task_mobj_keys = ['mobj']
 
-    def __init__(self, meas_objs, sweep_functions_dict=None,
+    def __init__(self, meas_objs, sweep_functions_dict=None, drive=None,
                  **kw):
         try:
             super().__init__(meas_objs=meas_objs,
                              df_name='psd_avg_det',
                              cal_states=[],
+                             drive=drive,
                              **kw)
 
             for task in self.task_list:
@@ -60,6 +61,11 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
             self.sweep_functions_dict = {} if sweep_functions_dict is None \
                                         else sweep_functions_dict
             self.preprocessed_task_list = self.preprocess_task_list()
+            # See get_sweep_points_for_sweep_n_dim
+            # Here the sweep points for pulses are an empty dict, meaning
+            # that we only upload one Sequence with one Segment
+            self.sweep_points_pulses = sp_mod.SweepPoints(
+                min_length=2 if self.force_2D_sweep else 1)
 
             self.autorun()
         except Exception as x:
@@ -110,15 +116,28 @@ class NoisePower(twoqbcal.MultiTaskingExperiment):
         """
         return [task['mobj']]
 
-    def run_measurement(self, **kw):
-        # Rerun in case params of the measurement objects changed since the init
-        self.preprocessed_task_list = self.preprocess_task_list()
+    def get_sweep_points_for_sweep_n_dim(self):
+        """ Returns a SweepPoints object to be used to generate the sequences
 
+        The SweepPoints of the experiment, when converted to sequences,
+        would yield many times the same sequence (since only instruments
+        parameters change). To avoid generating and uploading more waveforms
+        than necessary, we pass to sweep_n_dim SweepPoints corresponding only
+        to the sequences to be uploaded by Pulsar. The full SweepPoints (in the
+        task list) are still used as mc_points to measure the correct number
+        of points, and in the analysis.
+        """
+        return self.sweep_points_pulses
+
+    def run_measurement(self, **kw):
         self.sequences, self.mc_points = self.parallel_sweep(
             self.preprocessed_task_list, self.sweep_block, **kw)
-        # FIXME is this needed?
+        # Set mc_points to the full SweepPoints of the experiment,
+        # see self.get_sweep_points_for_sweep_n_dim
         self.mc_points[0] = range(self.preprocessed_task_list[0][
                                       'sweep_points'].length(0))
+        self.mc_points[1] = range(self.preprocessed_task_list[0][
+                                      'sweep_points'].length(1))
 
         # self.generate_sweep_functions()
         for dim in range(1, len(self.sweep_points)):

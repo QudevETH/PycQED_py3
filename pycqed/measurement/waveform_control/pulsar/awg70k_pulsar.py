@@ -9,8 +9,11 @@ import time
 try:
     from pycqed.instrument_drivers.physical_instruments.AWG70002A \
         import AWG70002A
+    from pycqed.instrument_drivers.virtual_instruments.virtual_AWG70002A \
+        import VirtualAWG70002A
 except Exception:
     AWG70002A = type(None)
+    VirtualAWG70002A = type(None)
 
 from .pulsar import PulsarAWGInterface
 
@@ -23,13 +26,14 @@ class AWG70kPulsar(PulsarAWGInterface):
         Currently supports the way SuperQuLAN uses the 70k:
         Slow trigger mode, no marker channels."""
 
-    AWG_CLASSES = [AWG70002A]
+    AWG_CLASSES = [AWG70002A, VirtualAWG70002A]
 
     GRANULARITY = 160
     ELEMENT_START_GRANULARITY = 160 / 25e9
     MIN_LENGTH_SAMPLES = 2400  # Changed in accordance with the qcodes driver
     MIN_LENGTH = MIN_LENGTH_SAMPLES / 25e9
     INTER_ELEMENT_DEADTIME = 0.0
+    WARN_CUT = 1e-3  # Cutoff for non-zero element start warning
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.125, 0.25),
         "marker": (-1.4,1.4),
@@ -195,7 +199,8 @@ class AWG70kPulsar(PulsarAWGInterface):
                                   'constant', constant_values=0) for h in wave]
                 packed_waveforms[wfname] = np.array(grp_wfs[0])
                 wfname_l[-1].append(wfname)
-                if any([wf[0] != 0 for wf in grp_wfs]):
+                # Exponentially small starting value is fine
+                if any([abs(wf[0]) > self.WARN_CUT for wf in grp_wfs]):
                     log.warning(f'Element {element} starts with non-zero '
                                 f'entry on {self.awg.name}.')
 

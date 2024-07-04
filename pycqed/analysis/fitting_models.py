@@ -35,15 +35,23 @@ def DoubleExpDampOscFunc(t, tau_1, tau_2,
     return cos_1 + cos_2 + osc_offset
 
 
-def double_RandomizedBenchmarkingDecay(numCliff, p, offset,
-                                       invert=1):
+def double_RandomizedBenchmarkingDecay(numCliff, p, offset, invert=1):
     """
     A variety of the RB-curve that allows fitting both the inverting and
     non-inverting exponential.
+
     The amplitude of the decay curve is constrained to start at 0 or 1.
     The offset is the common point both curves converge to.
 
-    pick invert to be 1 or 0
+    Args:
+        numCliff (float | numpy.ndarray): Number of Clifford gates.
+        p (float): depolarizing parameter (0 <= p <= 1).
+        offset (float): offset (value of the function when numCliff -> infinity).
+        invert (int, optional): Whether the exponential decay should start from 0 (invert = 0)
+            or from 1 (invert = 1). Defaults to 1.
+
+    Returns:
+        float | numpy.ndarray: Value of the function.
     """
     # Inverting clifford curve
     val_inv = (1 - offset) * (p ** numCliff) + offset
@@ -237,12 +245,12 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
                           dac_sweet_spot=0.0, V_per_phi0=None,
                           dac_flux_coefficient=None, phi_park=None,
                           branch='smallest', n_periods=(-1, 2),
-                          single_branch=False):
+                          single_branch=False, transition='ge'):
     """
     The cosine Arc model for uncalibrated flux for asymmetric qubit.
     This function implements the inverse of "Qubit_dac_to_freq_res"
 
-    frequency (array): qubit frequency (Hz).
+    frequency (array): frequency of the specified transition (Hz).
     Ej_max (float): Maximum josephson energy (Hz).
     E_c (float): charging energy of the qubit (Hz).
     V_per_phi0 (float): volt per phi0 (convert voltage to flux).
@@ -262,6 +270,8 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
         close to volt_guess
     single_branch (bool): forces all voltages to lie in a single branch (e.g. to
         avoid jumps in a frequency sweep)
+    transition (str): String specifying the transition of the requested
+        frequency. Valid values are 'ge', 'gf', 'ef'. Defaults to 'ge'.
     """
     if V_per_phi0 is None and dac_flux_coefficient is None:
         raise ValueError('Please specify "V_per_phi0".')
@@ -279,17 +289,24 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
         frequency = [frequency]
         return_float = True
     E_j = [transmon.transmon_resonator_ej_anh_frg_chi(
-            f, ec=E_c, frb=fr, gb=coupling)[0]
+            f, ec=E_c, frb=fr, gb=coupling, transition=transition)[0]
             for f in frequency]
     E_j = np.array(E_j)
 
     r = E_j / Ej_max
     if np.any(r > 1):
         r_str = '[' + ', '.join([f'{x}' for x in r[r>1]]) + ']'
+        # This would mean being above the upper sweet spot
         log.warning(f'Ratio Ej/Ej_max is larger than 1 at '
                     f'indices {np.argwhere(r > 1)}: {r_str} '
                     f'Truncating to 1.')
-        r[r>1] = 1
+    if np.any(r < asymmetry):
+        r_str = '[' + ', '.join([f'{x}' for x in r[r<asymmetry]]) + ']'
+        # This would mean being below the lower sweet spot
+        log.warning(f'Ratio Ej/Ej_max is smaller than the asymmetry at '
+                    f'indices {np.argwhere(r < asymmetry)}: {r_str} '
+                    f'Rounding up to the asymmetry = {asymmetry}.')
+    r = np.clip(r, asymmetry, 1)
     phi = np.arccos(np.sqrt((r**2 - asymmetry**2)/(1-asymmetry**2)))
 
     if dac_flux_coefficient is not None:
@@ -456,6 +473,138 @@ def CosFunc(t, amplitude, frequency, phase, offset):
         offset a.u.
     '''
     return amplitude * np.cos(2 * np.pi * frequency * t + phase) + offset
+
+
+def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
+    r"""Describes the damped oscillation model used for f0g1 calibration
+    routines. This function implements equation 5.3 from Dr. Paul Magnard's
+    PhD Thesis (2021).
+
+    Args:
+        t (float): Time value.
+        amp (float): Amplitude.
+        gamma (float): Coupling coefficient.
+        kappa (float): Damping coefficient.
+        mu_a (float): Coefficient of the oscillation term.
+        mu_b (float): Baseline offset.
+        t0 (float): Initial time.
+        c1 (float): Linear coefficient for coupling strength calculation.
+        c3 (float): Third-order coefficient for coupling strength calculation.
+        c5 (float): Fifth-order coefficient for coupling strength calculation.
+
+    Returns:
+        float: The calculated damped oscillation value at time 't'.
+
+    Notes:
+        The function fits the following equation:
+
+        .. math::
+
+            \mu_b + \mu_a \cdot \left[ e^{-\frac{(\kappa+\gamma)}{2}\tau}
+                \left| \cosh\left(\frac{\Omega\tau}{2}\right) +
+                \frac{\kappa-\gamma}{2\Omega} \cdot
+                \sinh\left(\frac{\Omega\tau}{2}\right) \right|^2
+            \right]
+
+        where:
+
+        .. math::
+
+            FIXME: Why does the Rabi term not have a factor of 2?
+            \tau = t-t_0 \\
+            \Omega = \sqrt{-g^2 + \frac{(\kappa-\gamma)^2}{4}} \\
+            g = c_1*\text{amp} + c_3*\text{amp}^3 + c_5*\text{amp}^5
+    """
+
+
+    g = c1 * amp + c3 * amp**3 + c5 * amp**5
+
+    tau = t - t0
+    rabi = np.sqrt((-(g**2) + (kappa - gamma) ** 2 / 4) * (1 + 0j)) # \Omega
+    return (
+        mu_b
+        + mu_a
+        * np.exp(-(kappa + gamma) * tau / 2)
+        * np.abs(
+            np.cosh(rabi * tau / 2)
+            + np.sinh(rabi * tau / 2) * (kappa - gamma) / (2 * rabi)
+        )
+        ** 2
+    )
+
+
+def damped_oscillation_guess(model, t, data, **kw):
+    """Provides initial parameter guesses for a damped oscillation fitting model.
+
+    This function generates reasonable starting values for parameters used in
+    damped oscillation modeling.
+
+    Args:
+        model: The fitting model object.
+        t: Time data (independent variable).
+        data: Observed data.
+        **kw: Additional keyword arguments (not used in this function).
+
+    Returns:
+        model.parameters: A parameters object with initial guesses.
+    """
+
+    params = model.make_params()
+
+    params.add("mu_a", value=1, min=0.9, max=1.1)
+    params.add("mu_b", value=0, min=0, max=0.1)
+    params.add("t0", value=0, min=-0.1, max=0.1)
+    params.add("kappa", value=0.4e8, min=0, max=1e11)
+    params.add("gamma", value=0.5e7, min=0, max=1e11)
+    params.add("c1", value=3e8)
+    params.add("c3", value=0)
+    params.add("c5", value=0)
+
+    return params
+
+
+def tanh_fit(t, m, n, a, b):
+    """Function used for fitting model.
+
+    It fits the following equation:
+        a * (np.tanh(m * t + n) + 1)
+    """
+    # return a * (np.tanh(m * t + n) + b)
+    return a * (np.tanh(m * t + n) + 1)
+
+def tanh_guess(model, t, data):
+    """Provides initial parameter guesses for a tanh fitting model.
+
+    This function estimates starting parameters for a model fitting a hyperbolic
+    tangent (tanh_fit) function based on the provided data.
+
+    Args:
+        model: The fitting model object.
+        t: Time data (independent variable).
+        data: Observed data.
+
+    Returns:
+        model.parameters: A parameters object with initial guesses.
+    """
+
+    t, data = np.array(t), np.array(data) #use data as numpy array
+
+    a = (np.max(data)-np.min(data))/2 if not np.max(data)==np.min(data) else 0.5
+    b = (np.max(data)+np.min(data))/(2*a)
+
+    interval = np.int32((data < np.max(a * (0.9 + b))) & (data > np.max(a * (-0.9 + b))))
+    t_trimmed    = np.trim_zeros(interval * t)
+    data_trimmed = np.trim_zeros(interval * data)
+    O = (np.max(t_trimmed)+np.min(t_trimmed))/2 if not t_trimmed.size == 0 else 0
+
+
+    m = 3 / (np.max(t_trimmed)-np.min(t_trimmed)) *(-1)**(data_trimmed[-1] < data_trimmed[0]) \
+        if not t_trimmed.size == 0 else 1/np.max(data)
+    n = -O * m
+
+    #return the found parameters
+    params = model.make_params(m = m, n = n, a = a, b = b)
+    return params
 
 
 def ResidZZFuncJoint(t, amplitude, amplitude1, tau, alpha, t11, frequency,
@@ -1766,6 +1915,13 @@ ExponentialModel = lmfit.models.ExponentialModel
 HangerWithPfModel = lmfit.Model(hanger_with_pf)
 SimHangerWithPfModel = lmfit.Model(simultan_hanger_with_pf,
                                    independent_vars=['f'])
+#models used for f0g1: Rabi Rate, Ac Stark and pitch
+GaussianModel_v2 = lmfit.models.GaussianModel
+PolynomialModel = lmfit.models.PolynomialModel
+DampedOscillationModel = lmfit.Model(damped_oscillation, independent_vars=['t', 'amp'])
+DampedOscillationModel.guess = damped_oscillation_guess.__get__(DampedOscillationModel, DampedOscillationModel.__class__)
+TanhModel = lmfit.Model(tanh_fit)
+TanhModel.guess = tanh_guess.__get__(TanhModel, TanhModel.__class__)
 
 # 2D models
 Gaus2D_model = lmfit.Model(gaussian_2D, independent_vars=['x', 'y'])

@@ -9,13 +9,15 @@ import traceback
 import qutip as qt
 import numpy as np
 import scipy as sp
-from copy import deepcopy
+from copy import copy, deepcopy
 from functools import reduce
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis import fitting_models as fit_mods
-
+import pycqed.measurement.sweep_points as sp_mod
+import pycqed.measurement.benchmarking.randomized_benchmarking as rb_meas
 
 
 convert_to_mhz = lambda freq_angle, t: freq_angle/2/np.pi/t
@@ -50,7 +52,7 @@ def crossEntropy(p, q):
     prod = p*np.log(q)
     if len(idxs) > 0:
         prod[idxs] = 0
-    return np.sum(-prod)
+    return - np.sum(prod)
 entropy = lambda p: crossEntropy(p, p)
 def crossEntropyFidelity(pops_meas, pops_ideal, d):
     """
@@ -285,7 +287,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                               probability_states=None, save_figures=True,
                               raw_keys_in=None, save=True, save_filename=None,
                               renormalize=True, shots_selection_map=None,
-                              **params):
+                              meas_data_dtype=None, **params):
 
     # (nr_seq, len(cycles), nr_cycles)
     # list with nr_seq lists; each sublist has length len(cycles)
@@ -302,7 +304,8 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         print(meas_obj_names)
         if raw_keys_in is None:
             raw_keys_in = {mobjn: 'raw' for mobjn in meas_obj_names}
-        data_dict = dat_extr_mod.extract_data_hdf(timestamps=timestamp)
+        data_dict = dat_extr_mod.extract_data_hdf(
+            timestamps=timestamp, meas_data_dtype=meas_data_dtype)
         swpts, movnm = hlp_mod.get_measurement_properties(
             data_dict, props_to_extract=['sp', 'movnm'])
         if sweep_type is None:
@@ -312,17 +315,22 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         nr_seq = swpts.length(1)
         compression_factor = hlp_mod.get_param('compression_factor', data_dict,
                                                **params)
-        n_shots = hlp_mod.get_instr_param_from_hdf_file(
+        n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
+        prep_params = hlp_mod.get_param_from_metadata_group(
+            timestamp, 'preparation_params')
+        reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
+            'preparation_type'] else 0
 
         nr_swpts0 = swpts.length(0)
         # nr_swpts1 = swpts.length(1)
         data_size = len(data_dict[meas_obj_names[0]][
                             list(data_dict[meas_obj_names[0]])[0]])
-        nr_swpts1 = data_size // n_shots // nr_swpts0
+        nr_swpts1 = data_size // n_shots // nr_swpts0 // (reset_reps+1)
         n_segments = nr_swpts0 * compression_factor
         n_sequences = nr_swpts1 // compression_factor
-        print(f'{n_sequences} sequences, {n_shots} shots, {n_segments} segments')
+        print(f'{nr_swpts0} segments, {compression_factor} hard sequences, '
+              f'{n_sequences} soft sequences, {n_shots} shots')
 
         classifier_params = hlp_mod.get_clf_params_from_hdf_file(
             timestamp, meas_obj_names, classifier_params)
@@ -352,7 +360,12 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
 
         pp.add_node('extract_data_hdf', timestamps=timestamp)
         for mobjn in meas_obj_names:
-            pp.add_node('classify_gm', keys_in=raw_keys_in[mobjn],
+            pp.add_node('filter_data', keys_in=raw_keys_in[mobjn],
+                        data_filter=lambda x: x[reset_reps::reset_reps+1],
+                        meas_obj_names=mobjn)
+            pp.add_node('classify_gm',
+                        keys_in=[f'{mobjn}.filter_data {movn}' for movn in
+                                 movnm[mobjn]],  # keys set by filter_data
                         keys_out=[f'{mobjn}.classify_gm.{ps}'
                                   for ps in probability_states],
                         clf_params=classifier_params.get(mobjn, None),
@@ -392,6 +405,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
 
 def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
                                       init_rotation=None, renormalize=True,
+                                      amp_sc_intlvd_gate=None, nr_seq=None,
                                       **params):
 
     d = hlp_mod.get_param('dim_hilbert', data_dict, raise_error=True, **params)
@@ -407,6 +421,17 @@ def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
     else:
         init_state = None
 
+    Uinterleaved = None
+    if amp_sc_intlvd_gate is not None:
+        Uinterleaved = qt.qip.operations.gates.rx(amp_sc_intlvd_gate*np.pi,
+                                                  N=None, target=0).full()
+    circuit_calc_func = hlp_mod.get_param('circuit_calc_func', data_dict,
+                                          **params)
+    if isinstance(circuit_calc_func, str):
+        circuit_calc_func = eval(circuit_calc_func)
+    if circuit_calc_func is None:
+        circuit_calc_func = calculate_ideal_circuit_1qb
+
     meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict, **params)
     if meas_obj_names is None:
         meas_obj_names = hlp_mod.get_param_from_metadata_group(
@@ -415,7 +440,8 @@ def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
     swpts, mospm = hlp_mod.get_measurement_properties(data_dict,
                                                props_to_extract=['sp', 'mospm'])
     cycles = swpts.get_sweep_params_property('values', sweep_type['cycles'])
-    nr_seq = swpts.length(sweep_type['seqs'])
+    if nr_seq is None:
+        nr_seq = swpts.length(sweep_type['seqs'])
 
     apm = hlp_mod.get_param('add_param_method', data_dict, **params)
     if apm is None:
@@ -426,17 +452,19 @@ def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
         if hlp_mod.get_param('renormalize', data_dict,
                              default_value=renormalize):
             pops_meas_all /= (pops_meas_all + data_dict[mobjn][data_key]['pg'])
+        # add pg = 1-pe
+        pops_meas_all = np.concatenate([(1-pops_meas_all)[np.newaxis].T,
+                                        pops_meas_all[np.newaxis].T], axis=1)
+        pops_meas_all = pops_meas_all.reshape((nr_seq, swpts.length(0), 2))
         hlp_mod.add_param(f'{mobjn}.xeb_probabilities', pops_meas_all,
                           data_dict, **params)
-        pops_meas_all = pops_meas_all.reshape((swpts.length(1), swpts.length(0)))
 
         fidelities = np.zeros(len(cycles))
         purities = np.zeros(len(cycles))
+        pops_ideal_all = np.zeros_like(pops_meas_all)
         for ii, nr_cycles in enumerate(cycles):
             index = np.where(np.array(cycles) == nr_cycles)[0][0]
-            pops_meas = pops_meas_all[:, index]
-            pops_meas = np.reshape(pops_meas, (len(pops_meas), 1))
-            pops_meas = np.concatenate([1-pops_meas, pops_meas], axis=1)
+            pops_meas = pops_meas_all[:, index, :]
 
             z_angles = swpts.get_sweep_params_property('values',
                                                        sweep_type['seqs'],
@@ -448,12 +476,17 @@ def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
                                      qutip_type=False)
 
             # calculate assuming ideal gate
-            pops_ideal = calculate_ideal_circuit_1qb(
-                nr_cycles, nr_seq, z_rots, init_state=init_state)
+            pops_ideal = circuit_calc_func(
+                nr_cycles, nr_seq, z_rots,
+                Uvar=Uinterleaved, init_state=init_state)
+            pops_ideal_all[:, index, :] = pops_ideal
             fidelities[ii] = crossEntropyFidelity(pops_meas, pops_ideal, d)
             purities[ii] = sqrt_purity(pops_meas, d)
 
+        hlp_mod.add_param(f'{mobjn}.xeb_probabilities_ideal', pops_ideal_all,
+                          data_dict, **params)
         hlp_mod.add_param(f'{mobjn}.fidelities', fidelities, data_dict, **params)
+        # FIXME THESE ARE SQRT PURITIES !!!
         hlp_mod.add_param(f'{mobjn}.purities', purities, data_dict, **params)
 
 
@@ -491,8 +524,8 @@ def get_sg_qb_gate_lengths(timestamp):
     params_dict.update({f'{qbn}_ge_nr_sigma':
                             f'Instrument settings.{qbn}.ge_nr_sigma'
                         for qbn in meas_obj_names})
-    dd = hlp_mod.get_params_from_hdf_file({}, params_dict,
-                                          folder=a_tools.get_folder(timestamp))
+    dd = hlp_mod.get_params_from_files({}, params_dict,
+                                       folder=a_tools.get_folder(timestamp))
     gate_lengths = {qbn: dd[f'{qbn}_ge_sigma']*dd[f'{qbn}_ge_nr_sigma']
                     for qbn in meas_obj_names}
     return gate_lengths
@@ -505,15 +538,15 @@ def get_two_qb_gate_length(timestamp, dev_name, gate_name='CZ_nztc',
                                                                'meas_objs')
     assert len(meas_obj_names) == 2
     params_dict = {f'pulse_length':
-                       f'Instrument settings.{dev_name}.{gate_name}_'
-                       f'{meas_obj_names[0]}_{meas_obj_names[1]}_pulse_length'}
-    dd = hlp_mod.get_params_from_hdf_file({}, params_dict,
-                                          folder=a_tools.get_folder(timestamp))
+                       f'Instrument settings.{dev_name}.{gate_name}_{meas_obj_names[0]}_'
+                       f'{meas_obj_names[1]}_pulse_length'}
+    dd = hlp_mod.get_params_from_files({}, params_dict,
+                                       folder=a_tools.get_folder(timestamp))
     if dd['pulse_length'] == 0:
         params_dict = {f'pulse_length':
-                           f'Instrument settings.{dev_name}.{gate_name}_'
-                           f'{meas_obj_names[1]}_{meas_obj_names[0]}_pulse_length'}
-        dd = hlp_mod.get_params_from_hdf_file(
+                           f'Instrument settings.{dev_name}.{gate_name}_{meas_obj_names[1]}_'
+                           f'{meas_obj_names[0]}_pulse_length'}
+        dd = hlp_mod.get_params_from_files(
             {}, params_dict, folder=a_tools.get_folder(timestamp))
     return dd['pulse_length']
 
@@ -619,18 +652,23 @@ def simulate_circuits_2qbs(nr_cycles, nr_seq, circuits_list, T1, T2, t_gate,
 
 
 ## Calculation ##
-def translate(info):
+def translate(info, dd):
     s_gates = ["RX", "RY", "RZ"]
-
     if info[0][0] == 'Y':
         gate_name = s_gates[1]
         angle = np.pi / 2
     elif info[0][0] == 'X':
         gate_name = s_gates[0]
         angle = np.pi / 2
-    else:
+    elif info[0][0] == 'Z':
         gate_name = s_gates[2]
         angle = np.pi / 4
+    else:  # C-phase gate
+        gate_name = 'CPHASE'
+        angle = 180 if info[0][2:]=='' else float(info[0][2:])
+        # -1 for old measurements with left-handed basis
+        legacy_sign = 1 if dd['exp_metadata'].get('right_handed_basis') else -1
+        angle = legacy_sign*angle*np.pi/180
     if int(info[1][3]) == 1:
         qubit = 0
     else:
@@ -638,15 +676,15 @@ def translate(info):
     return gate_name, qubit, angle
 
 
-def construct_from_op(op_lis):
+def construct_from_op(op_lis, dd):
     q = qt.qip.circuit.QubitCircuit(2, reverse_states=False)
     for op in op_lis:
         op_info = op.split(" ")
+        info = translate(op_info, dd=dd)
         if len(op_info) == 2:
-            info = translate(op_info)
             q.add_gate(info[0], info[1], None, info[2], r"\pi/4")
         else:
-            q.add_gate('CPHASE', 0, 1, np.pi)
+            q.add_gate(info[0], 0, 1, info[2])
     return q
 
 
@@ -666,13 +704,106 @@ def transfer(data_dict, **params):
     lis = []
     for circuit_lis in gates_list:
         for count, circuit in enumerate(circuit_lis):
-            q = construct_from_op(circuit)
+            q = construct_from_op(circuit, dd=data_dict)
             lis += [q]
     return lis
 
 
+def manual_propagator(gate):
+    """
+    Efficiently computes the propagator for a parameterised quantum gate using
+    analytic expressions.
+
+    Calling this method for each gate in a qutip circuit is equivalent to
+    calling circuit.propagators(). The latter is more generic, since it can
+    deal with arbitrary gates by exponentiating the underlying Hamiltonians.
+    The former is however approximately 2 orders of magnitude faster, because
+    it is so simple, and could probably still be further optimised if needed.
+    """
+    m = np.zeros([4,4], 'complex128')
+    if gate.name == 'RZ':
+        e = np.exp(-1j*gate.arg_value/2)
+        ec = np.exp(1j*gate.arg_value/2)
+        if gate.targets[0] == 0:
+            m[0,0] = e
+            m[1,1] = e
+            m[2,2] = ec
+            m[3,3] = ec
+        if gate.targets[0] == 1:
+            m[0,0] = e
+            m[1,1] = ec
+            m[2,2] = e
+            m[3,3] = ec
+    elif gate.name == 'RY':
+        cos = np.cos(gate.arg_value/2)
+        sin = np.sin(gate.arg_value/2)
+        if gate.targets[0] == 0:
+            m[0,0] = cos
+            m[1,1] = cos
+            m[0,2] = -sin
+            m[1,3] = -sin
+            m[2,0] = sin
+            m[3,1] = sin
+            m[2,2] = cos
+            m[3,3] = cos
+        if gate.targets[0] == 1:
+            m[0,0] = cos
+            m[0,1] = -sin
+            m[1,0] = sin
+            m[1,1] = cos
+            m[2,2] = cos
+            m[2,3] = -sin
+            m[3,2] = sin
+            m[3,3] = cos
+    elif gate.name == 'RX':
+        cos = np.cos(gate.arg_value/2)
+        misin = -1j*np.sin(gate.arg_value/2)
+        if gate.targets[0] == 0:
+            m[0,0] = cos
+            m[1,1] = cos
+            m[0,2] = misin
+            m[1,3] = misin
+            m[2,0] = misin
+            m[3,1] = misin
+            m[2,2] = cos
+            m[3,3] = cos
+        if gate.targets[0] == 1:
+            m[0,0] = cos
+            m[0,1] = misin
+            m[1,0] = misin
+            m[1,1] = cos
+            m[2,2] = cos
+            m[2,3] = misin
+            m[3,2] = misin
+            m[3,3] = cos
+    elif gate.name == 'CPHASE':
+        m[0,0] = 1
+        m[1,1] = 1
+        m[2,2] = 1
+        m[3,3] = np.exp(1j*gate.arg_value)  # qutip convention: positive sign
+    else:
+        raise ValueError(f"Gate {gate.name} not implemented!")
+        # TODO if needed: fall back to the generic method
+        #  qt.qip.operations.gate_sequence_product(qc.propagators())
+        #  where qc is a qutip quantum circuit containing the gates.
+    return m
+
+
 def proba(qc):
-    U = qt.qip.operations.gate_sequence_product(qc.propagators())
+    """
+    Computes the output states probabilities for a qutip quantum circuit
+
+    TODO: one can finish removing calls to qutip and make this method even
+     faster if needed.
+    """
+    # Equivalent (only for basic gates) to
+    # U = qt.qip.operations.gate_sequence_product(qc.propagators())
+    M = np.eye(4)
+    for g in qc.gates:
+        M = np.matmul(manual_propagator(g), M)
+    U = qt.Qobj(M)
+    U.dims = [[2, 2], [2, 2]]
+
     gg = qt.tensor(qt.basis(2, 0), qt.basis(2, 0))
     ge = qt.tensor(qt.basis(2, 0), qt.basis(2, 1))
     eg = qt.tensor(qt.basis(2, 1), qt.basis(2, 0))
@@ -767,7 +898,8 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                            state_prob_mtxs=None, correct_readout=(True,),
                            sweep_type=None, save_processed_data=True,
                            probability_states=None, save_figures=True,
-                           raw_keys_in=None, save_filename=None, save=True):
+                           raw_keys_in=None, save_filename=None, save=True,
+                           meas_data_dtype=None):
 
     pp = pp_mod.ProcessingPipeline(add_param_method='replace')
     try:
@@ -777,7 +909,8 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         if raw_keys_in is None:
             raw_keys_in = {mobjn: 'raw' for mobjn in meas_obj_names}
         print(meas_obj_names)
-        data_dict = dat_extr_mod.extract_data_hdf(timestamps=timestamp)
+        data_dict = dat_extr_mod.extract_data_hdf(
+            timestamps=timestamp, meas_data_dtype=meas_data_dtype)
         swpts, movnm = hlp_mod.get_measurement_properties(
             data_dict, props_to_extract=['sp', 'movnm'])
         if sweep_type is None:
@@ -786,16 +919,21 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         cycles = swpts.get_sweep_params_property('values', 0)
         nr_seq = swpts.length(1)
         compression_factor = hlp_mod.get_param('compression_factor', data_dict)
-        n_shots = hlp_mod.get_instr_param_from_hdf_file(
+        n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
+        prep_params = hlp_mod.get_param_from_metadata_group(
+            timestamp, 'preparation_params')
+        reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
+            'preparation_type'] else 0
 
         nr_swpts0 = swpts.length(0)
         data_size = len(data_dict[meas_obj_names[0]][
                             list(data_dict[meas_obj_names[0]])[0]])
         nr_swpts1 = data_size // n_shots // nr_swpts0
         n_segments = nr_swpts0 * compression_factor
-        n_sequences = nr_swpts1 // compression_factor
-        print(f'{n_sequences} sequences, {n_shots} shots, {n_segments} segments')
+        n_sequences = nr_swpts1 // compression_factor // (reset_reps+1)
+        print(f'{nr_swpts0} segments, {compression_factor} hard sequences, '
+              f'{n_sequences} soft sequences, {n_shots} shots')
 
         classifier_params = hlp_mod.get_clf_params_from_hdf_file(
             timestamp, meas_obj_names, classifier_params)
@@ -824,9 +962,13 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         print('probability_states: ', probability_states)
         nr_states = len(probability_states)**len(meas_obj_names)
 
-        pp.add_node('extract_data_hdf', timestamps=timestamp)
         for mobjn in meas_obj_names:
-            pp.add_node('classify_gm', keys_in=raw_keys_in[mobjn],
+            pp.add_node('filter_data', keys_in=raw_keys_in[mobjn],
+                        data_filter=lambda x: x[reset_reps::reset_reps+1],
+                        meas_obj_names=mobjn)
+            pp.add_node('classify_gm',
+                        keys_in=[f'{mobjn}.filter_data {movn}' for movn in
+                                 movnm[mobjn]],  # keys set by filter_data
                         keys_out=[f'{mobjn}.classify_gm.{ps}'
                                   for ps in probability_states],
                         clf_params=classifier_params.get(mobjn, None),
@@ -842,11 +984,13 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                     joint_processing=True, do_preselection=False,
                     meas_obj_names=meas_obj_names)
         pp.resolve(movnm)
-        data_dict = {'dim_hilbert': len(meas_obj_names)**2,
-                     'sg_qb_gate_lengths': get_sg_qb_gate_lengths(timestamp),
-                     'sweep_type': sweep_type,
-                     'meas_obj_names': meas_obj_names,
-                     'renormalize': renormalize}
+        data_dict.update({
+            'dim_hilbert': len(meas_obj_names)**2,
+            'sg_qb_gate_lengths': get_sg_qb_gate_lengths(timestamp),
+            'sweep_type': sweep_type,
+            'meas_obj_names': meas_obj_names,
+            'renormalize': renormalize
+        })
         pp(data_dict)
         data_dict = pp.data_dict
 
@@ -903,8 +1047,7 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
                              default_value=renormalize):
             proba_exp = proba_exp/np.reshape(np.sum(proba_exp, axis=1),
                                              (proba_exp.shape[0], 1))
-    hlp_mod.add_param(f'{container}.xeb_probabilities', proba_exp,
-                      data_dict, **params)
+    proba_ideal = np.zeros_like(proba_exp)
 
     circuits = transfer(data_dict, **params)
     xeb_data = dict()
@@ -919,6 +1062,7 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
         p_m = sqrt_purity(pops_meas, d)
         purity[cycles[i]] = p_m
         prob_ideal = proba_from_all_circuits(current_circuits)
+        proba_ideal[i::len(cycles)] = prob_ideal
         xeb = crossEntropyFidelity(pops_meas, np.array(prob_ideal), d)
         xeb_data[cycles[i]] = xeb
         i += 1
@@ -934,47 +1078,279 @@ def calculate_fidelities_purities_2qb(data_dict, data_key='correct_readout',
     if apm is None:
         params['add_param_method'] = 'replace'
 
+    hlp_mod.add_param(f'{container}.xeb_probabilities',
+                      np.reshape(proba_exp, (swpts.length(1), swpts.length(0),
+                                             proba_exp.shape[-1])),
+                      data_dict, **params)
+    hlp_mod.add_param(f'{container}.xeb_probabilities_ideal',
+                      np.reshape(proba_ideal, (swpts.length(1), swpts.length(0),
+                                               proba_ideal.shape[-1])),
+                      data_dict, **params)
     hlp_mod.add_param(f'{container}.fidelities', y_xeb, data_dict, **params)
     hlp_mod.add_param(f'{container}.purities', y_purity, data_dict, **params)
 
 
-def calculate_cz_error(data_dict1, data_dict2, **params):
-    timestamp = data_dict1['timestamps'][0]
-    meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict1, **params)
+pauli_error_from_average_error = lambda avg_err, d: (1 + 1/d) * avg_err
+average_error_from_pauli_error = lambda pauli_err, d: pauli_err / (1 + 1/d)
+
+
+def calculate_cz_error(data_dict2, data_dict1=None, subtract_1qb_errors=True,
+                       **params):
+    """
+    Extracts the CZ error from fit results
+
+    Args:
+        data_dict2 (dict): Two-qubit characterisation data dict
+        data_dict1 (dict): Single-qubit characterisation data dict (only
+            used if subtract_1qb_errors)
+        subtract_1qb_errors (bool): Whether or not to subtract single-qubit
+            errors from the two-qubit errors when calculating the CZ errors
+    """
+    timestamp = data_dict2['timestamps'][0]
+    meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict2, **params)
     if meas_obj_names is None:
         meas_obj_names = hlp_mod.get_param_from_metadata_group(
             timestamp, 'meas_objs')
     container = ",".join(meas_obj_names)
+    metric = params.get('metric', 'fidelity')
+    errtype = params.get('error_type', 'pauli')
 
     try:
-        e1_1 = data_dict1[meas_obj_names[0]]['fit_res_fidelity'].best_values['e']
-        e1_2 = data_dict1[meas_obj_names[1]]['fit_res_fidelity'].best_values['e']
-        e1_1e = data_dict1[meas_obj_names[0]]['fit_res_fidelity'].params['e'].stderr
-        e1_2e = data_dict1[meas_obj_names[1]]['fit_res_fidelity'].params['e'].stderr
+        e2 = data_dict2[container][f'fit_res_{metric}'].best_values['e']
+        e2e = data_dict2[container][f'fit_res_{metric}'].params['e'].stderr
     except AttributeError:
-        e1_1 = data_dict1[meas_obj_names[0]]['fit_res_fidelity'][
+        e2 = data_dict2[container][f'fit_res_{metric}'][
             'params']['e']['value']
-        e1_2 = data_dict1[meas_obj_names[1]]['fit_res_fidelity'][
-            'params']['e']['value']
-        e1_1e = data_dict1[meas_obj_names[0]]['fit_res_fidelity'][
-            'params']['e']['stderr']
-        e1_2e = data_dict1[meas_obj_names[1]]['fit_res_fidelity'][
+        e2e = data_dict2[container][f'fit_res_{metric}'][
             'params']['e']['stderr']
 
-    try:
-        e2 = data_dict2[container]['fit_res_fidelity'].best_values['e']
-        e2e = data_dict2[container]['fit_res_fidelity'].params['e'].stderr
-    except AttributeError:
-        e2 = data_dict2[container]['fit_res_fidelity'][
-            'params']['e']['value']
-        e2e = data_dict2[container]['fit_res_fidelity'][
-            'params']['e']['stderr']
+    if subtract_1qb_errors:
+        try:
+            # FIXME This try except is used since the fits saved in the data
+            #  dict have slightly different formats if the data has been
+            #  extracted from a previous analysis run saved in an hdf file.
+            #  This should be fixed in the data extraction instead.
+            e1_1 = data_dict1[meas_obj_names[0]][
+                f'fit_res_{metric}'].best_values['e']
+            e1_2 = data_dict1[meas_obj_names[1]][
+                f'fit_res_{metric}'].best_values['e']
+            e1_1e = data_dict1[meas_obj_names[0]][
+                f'fit_res_{metric}'].params['e'].stderr
+            e1_2e = data_dict1[meas_obj_names[1]][
+                f'fit_res_{metric}'].params['e'].stderr
+        except AttributeError:
+            e1_1 = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'][
+                'params']['e']['value']
+            e1_2 = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'][
+                'params']['e']['value']
+            e1_1e = data_dict1[meas_obj_names[0]][f'fit_res_{metric}'][
+                'params']['e']['stderr']
+            e1_2e = data_dict1[meas_obj_names[1]][f'fit_res_{metric}'][
+                'params']['e']['stderr']
+        e2 = e2 - e1_1 - e1_2
+        e2e = np.sqrt(e2e**2 + e1_1e**2 + e1_2e**2)
 
-    cz_error_rate = {'value': e2 - e1_1 - e1_2,
-                     'stderr': 0.5*np.sqrt(e2e**2 + e1_1e**2 + e1_2e**2)}
+    cz_error_rate = {'value': e2, 'stderr': e2e}
+    if errtype == 'pauli':
+        pass
+    elif errtype == 'average':
+        cz_error_rate = {k: average_error_from_pauli_error(v, 4)
+                         for k, v in cz_error_rate.items()}
+    else:
+        raise NotImplementedError
     hlp_mod.add_param(f"{container}.cz_error_rate", cz_error_rate,
                       data_dict2, add_param_method='replace')
     return cz_error_rate
+
+
+def get_1qb_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
+                         idx0f=0, idx0p=0,):
+    """
+    Runs the single-qubit XEB analysis and plotting
+
+    Args: see the respective methods to which they are passed.
+    """
+    if timestamp is None:
+        return {}
+    try:
+        dd1 = hlp_mod.read_analysis_file(timestamp, raise_errors=True)
+    except FileNotFoundError:
+        pp, meas_obj_names1, cycles, nr_seq = single_qubit_xeb_analysis(
+            timestamp,
+            meas_obj_names=meas_obj_names,
+            meas_data_dtype=meas_data_dtype,
+            save=False)
+        plot_porter_thomas_dist(pp.data_dict, savefig=True)
+        calculate_fidelities_purities_1qb(
+            pp.data_dict,
+            data_key='correct_readout'  # 'average_data'
+        )
+        _ = fit_plot_fidelity_purity(
+            pp.data_dict,
+            idx0f=0, idx0p=0,
+            savefig=True,
+            log_scale=False
+        )
+        fit_plot_leakage_1qb(pp.data_dict, meas_obj_names,
+                                     data_key='correct_readout',
+                                     idx0f=idx0f, idx0p=idx0p,
+                                     savefig=True, show=False)
+        pp.save()
+        plt.close('all')
+        dd1 = pp.data_dict
+    return dd1
+
+
+def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
+                         meas_data_dtype=None, meas_obj_names=None,
+                         idx0f=0, idx0p=0, idx_cp_break=None):
+    """
+    Runs the two-qubit multi-cphase XEB analysis and plotting
+
+    Compatible with multi-phase XEB (TwoQubitXEBMultiCphase) only.
+    First extracts the data, then successively trims the part corresponding
+    to each single cphase and reshapes it to make it analysable by the
+    single-phase XEB analysis.
+    TODO: if needed, make this compatible with single-phase XEB (TwoQubitXEB),
+     in which case the loop should run once, and should not trim data and sp.
+
+    Args:
+        clear_some_memory: Clears raw data from the final data dicts
+        timer: Optional timer object
+        idx_cp_break: Optional cphase index after which the loop should
+        stop (for debugging purposes).
+        Other: see the respective methods to which they are passed.
+    Returns:
+        Data dict. For a multi-phase XEB (TwoQubitXEBMultiCphase),
+        the returned value is a list of dict of length len(cphase).
+    """
+
+    task_id = 0  # FIXME: currently only tested for a single task
+
+    dd2 = []
+    if timer:
+        timer.checkpoint('two_qubit_xeb_analysis.start')
+    pp_full, meas_obj_names2, cycles1, nr_seq1 = two_qubit_xeb_analysis(
+        timestamp,
+        meas_obj_names=meas_obj_names,
+        save=False,
+        meas_data_dtype=meas_data_dtype,
+        # timer=timer,
+    )
+    if timer:
+        timer.checkpoint('two_qubit_xeb_analysis.end')
+
+    cphases = hlp_mod.get_param_from_metadata_group(timestamp, 'task_list')[
+        task_id].get('cphases')
+
+    # Multi-phase XEB (TwoQubitXEBMultiCphase)
+    for idx_cp in range(len(cphases)):  # loop over cphases
+        pp = deepcopy(pp_full)
+        # Extract sp corresponding to a single cphase
+        sp = sp_mod.SweepPoints(pp_full.data_dict['exp_metadata'][
+            'task_list'][task_id]['full_sweep_points'][idx_cp])
+        pp.data_dict['exp_metadata']['sweep_points'] = sp
+        # Set cphase
+        pp.data_dict['exp_metadata']['cphase'] = cphases[idx_cp]
+
+        # Trim data and only keep what corresponds to one cphase
+        data = pp.data_dict[','.join(meas_obj_names)]['correct_readout']
+        data = data.reshape(
+            [sp.length(1), len(cphases), sp.length(0),
+             9])[:, idx_cp, :, :].reshape([-1, 9])
+        pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
+
+        # Set mospm
+        pp.data_dict['exp_metadata']['meas_obj_sweep_points_map'] = \
+            sp.get_meas_obj_sweep_points_map(meas_obj_names)
+
+        # Analysis
+        if timer:
+            timer.checkpoint('plot_porter_thomas_dist.start')
+        plot_porter_thomas_dist(pp.data_dict, savefig=True)
+        if timer:
+            timer.checkpoint('plot_porter_thomas_dist.end')
+        if timer:
+            timer.checkpoint('calculate_fidelities_purities_2qb.start')
+        calculate_fidelities_purities_2qb(
+            pp.data_dict,
+            data_key='correct_readout',
+            timer=timer,
+        )
+        if timer:
+            timer.checkpoint('calculate_fidelities_purities_2qb.end')
+        if timer:
+            timer.checkpoint('fit_plot_fidelity_purity.start')
+        _ = fit_plot_fidelity_purity(
+            pp.data_dict,
+            idx0f=idx0f, idx0p=idx0p,
+            joint_processing=True,
+            savefig=True,
+            log_scale=False
+        )
+        if timer:
+            timer.checkpoint('fit_plot_fidelity_purity.end')
+        if timer:
+            timer.checkpoint('fit_plot_leakage_2qb.start')
+        fit_plot_leakage_2qb(
+            pp.data_dict, meas_obj_names,
+            data_key='correct_readout',
+            savefig=True, show=False, timer=timer
+        )
+        if timer:
+            timer.checkpoint('fit_plot_leakage_2qb.end')
+        plt.close('all')
+        # Removed for speed reasons. Could be re-added once this works
+        # properly (faster, and not overriding the saved file at each call)
+        # if timer:
+        #     timer.checkpoint('pp.save.start')
+        # pp.save()
+        # if timer:
+        #     timer.checkpoint('pp.save.end')
+        dd = pp.data_dict  # Keeping only the data dict
+        del pp
+        if clear_some_memory:
+            for mobjn in meas_obj_names:
+                # Raw data seems to be the highest quantity of data
+                # (from task manager: 80%?)
+                del dd[mobjn]
+        dd2.append(dd)
+
+        if idx_cp_break:  # Stop at this index
+            if idx_cp >= idx_cp_break:
+                break
+    del pp_full
+    return dd2
+
+
+def get_multi_xeb_results_from_dd(dd2, dd1=None, meas_obj_names=None, **kw):
+    """
+    Helper method to extract various error rates from analysed XEB measurements
+
+    Args:
+        dd2 (dict): Previously analysed two-qubit multi-cphase XEB data dict
+        dd1 (dict): Previously analysed single-qubit XEB data dict
+        meas_obj_names (list): mobj names, which may need to be passed e.g. in
+            case they aren't saved by the experiment in the correct order
+            (necessary to correctly simulate the quantum circuits here).
+    """
+    results = {}
+    for dd in dd2:
+        cphase = dd['exp_metadata']['cphase']
+        results[cphase] = res = {}
+        res['tot'] = calculate_cz_error(
+            dd, dd1, meas_obj_names=meas_obj_names,
+            metric='fidelity', error_type='average', **kw)
+        res['inc'] = calculate_cz_error(
+            dd, dd1, meas_obj_names=meas_obj_names,
+            metric='purity', error_type='average', **kw)
+        res['coh'] = {
+            'value': res['tot']['value'] - res['inc']['value'],
+            'stderr': np.linalg.norm(
+                [res['tot']['stderr'], res['inc']['stderr']], 2),
+        }
+    return results
+
 
 ## Functions common to both 1 and 2 qubits ##
 # standard_pulses = {
@@ -1025,7 +1401,7 @@ def get_populations_unitary(U, init_state, povms):
     return [np.real((final_state_dag @ M @ final_state)[0][0]) for M in povms]
 
 
-def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
+def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
                              fidelities=None, purities=None,
                              exclude_from_plot=False, cz_error_rate=None,
                              fit=True, plot=True, joint_processing=False,
@@ -1034,8 +1410,7 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                              legend_kw=None, text_position=None, text_kw=None,
                              **params):
 
-    plot_mod.get_default_plot_params()
-    fig, ax = plt.subplots()
+    fig = None
     try:
         if legend_kw is None:
             legend_kw = {}
@@ -1043,12 +1418,12 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
         d = hlp_mod.get_param('dim_hilbert', data_dict, raise_error=True,
                               **params)
         print('d', d)
-
         timestamp = data_dict['timestamps'][0]
-        meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict, **params)
         if meas_obj_names is None:
-            meas_obj_names = hlp_mod.get_param_from_metadata_group(
-                timestamp, 'meas_objs')
+            meas_obj_names = hlp_mod.get_param('meas_obj_names', data_dict, **params)
+            if meas_obj_names is None:
+                meas_obj_names = hlp_mod.get_param_from_metadata_group(
+                    timestamp, 'meas_objs')
 
         if joint_processing:
             meas_obj_names = [",".join(meas_obj_names)]
@@ -1079,7 +1454,9 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                                        **params)
         swpts = hlp_mod.get_measurement_properties(data_dict,
                                                    props_to_extract=['sp'])
-        cycles = swpts.get_sweep_params_property('values', sweep_type['cycles'])
+        cycles = copy(swpts.get_sweep_params_property('values', sweep_type['cycles']))
+        start_idx = 1 if cycles[0] == 0 else 0
+        cycles = cycles[start_idx:]
         nr_seq = swpts.length(sweep_type['seqs'])
 
         fit_guess_params = hlp_mod.get_param(
@@ -1089,8 +1466,8 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
         return_dict = {}
         for mobjn in fidelities:
             return_dict[mobjn] = []
-            fid = fidelities[mobjn]
-            pur = purities[mobjn]
+            fid = fidelities[mobjn][start_idx:]
+            pur = purities[mobjn][start_idx:]
             user_guess_dict = fit_guess_params.get(mobjn, {})
 
             if fit:
@@ -1131,107 +1508,112 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0,
                 return_dict[mobjn] += [fit_res_f, fit_res_p]
 
             if plot:
-                if cz_error_rate is None:
-                    cz_error_rate = hlp_mod.get_param(
-                        f'{mobjn}.cz_error_rate', data_dict)
+                with mpl.rc_context(rc={}):
+                    fig, ax = plt.subplots()
+                    if cz_error_rate is None:
+                        cz_error_rate = hlp_mod.get_param(
+                            f'{mobjn}.cz_error_rate', data_dict)
 
-                if exclude_from_plot:
-                    line_f, = ax.plot(cycles[idx0f:], fid[idx0f:], 'o',
-                                      zorder=0)
-                    line_p, = ax.plot(cycles[idx0p:], pur[idx0p:], 'o',
-                                      zorder=1)
-                else:
-                    line_f, = ax.plot(cycles, fid, 'o', zorder=0)
-                    line_p, = ax.plot(cycles, pur, 'o', zorder=1)
+                    if exclude_from_plot:
+                        line_f, = ax.plot(cycles[idx0f:], fid[idx0f:], 'o',
+                                          zorder=0)
+                        line_p, = ax.plot(cycles[idx0p:], pur[idx0p:], 'o',
+                                          zorder=1)
+                    else:
+                        line_f, = ax.plot(cycles, fid, 'o', zorder=0)
+                        line_p, = ax.plot(cycles, pur, 'o', zorder=1)
 
-                if fit:
-                    xfine = np.linspace(cycles[idx0f], cycles[-1], 100)
-                    ax.plot(xfine, fit_res_f.model.func(xfine, **fit_res_f.best_values),
-                            c=line_f.get_color(), zorder=0)
-                    xfine = np.linspace(cycles[idx0p], cycles[-1], 100)
-                    ax.plot(xfine, fit_res_p.model.func(xfine, **fit_res_p.best_values),
-                            c=line_p.get_color(), zorder=1)
+                    if fit:
+                        xfine = np.linspace(cycles[idx0f], cycles[-1], 100)
+                        ax.plot(xfine, fit_res_f.model.func(xfine, **fit_res_f.best_values),
+                                c=line_f.get_color(), zorder=0)
+                        xfine = np.linspace(cycles[idx0p], cycles[-1], 100)
+                        ax.plot(xfine, fit_res_p.model.func(xfine, **fit_res_p.best_values),
+                                c=line_p.get_color(), zorder=1)
 
-                    epc, epc_err = 100*fit_res_f.best_values["e"], \
-                                   100*fit_res_f.params["e"].stderr
-                    hlp_mod.add_param(f'{mobjn}.fit_results.EPC',
-                                      (epc/100, epc_err/100), data_dict,
-                                      **params)
-                    ppc, ppc_err = 100*fit_res_p.best_values["e"], \
-                                   100*fit_res_p.params["e"].stderr
-                    hlp_mod.add_param(f'{mobjn}.fit_results.PPC',
-                                      (ppc/100, ppc_err/100), data_dict,
-                                      **params)
-                    ctrl_err = epc-ppc
-                    ctrl_err_err = np.sqrt(epc_err**2 + ppc_err**2)
-                    hlp_mod.add_param(f'{mobjn}.fit_results.CEPC',
-                                      (ctrl_err/100, ctrl_err_err/100),
-                                      data_dict, **params)
-                    textstr = f'{epc:.3f}% $\\pm$ {epc_err:.3f}% error per c.' \
-                              f'\n{ppc:.3f}% $\\pm$ {ppc_err:.3f}% purity per c.' \
-                              f'\n{ctrl_err:.3f}% $\\pm$ ' \
-                              f'{ctrl_err_err:.3f}% ctrl. errors per c.'
-                    if cz_error_rate is not None:
-                        textstr += f'\nCZ error: ' \
-                                   f'{100*cz_error_rate.get("value", "nan"):.3f}% ' \
-                                   f'$\\pm$ {100*cz_error_rate.get("stderr", "nan"):.3f}%'
-                    if text_kw is None:
-                        text_kw = dict(va='bottom', ha='left') if log_scale \
-                            else dict(va='top', ha='right')
-                    ax.text(*text_position, textstr, transform=ax.transAxes,
-                            **text_kw)
+                        epc, epc_err = 100*fit_res_f.best_values["e"], \
+                                       100*fit_res_f.params["e"].stderr
+                        # hlp_mod.add_param(f'{mobjn}.fit_results.EPC',
+                        #                   (epc/100, epc_err/100), data_dict,
+                        #                   **params)
+                        ppc, ppc_err = 100*fit_res_p.best_values["e"], \
+                                       100*fit_res_p.params["e"].stderr
+                        # hlp_mod.add_param(f'{mobjn}.fit_results.PPC',
+                        #                   (ppc/100, ppc_err/100), data_dict,
+                        #                   **params)
+                        ctrl_err = epc-ppc
+                        ctrl_err_err = np.sqrt(epc_err**2 + ppc_err**2)
+                        # hlp_mod.add_param(f'{mobjn}.fit_results.CEPC',
+                        #                   (ctrl_err/100, ctrl_err_err/100),
+                        #                   data_dict, **params)
+                        textstr = f'{epc:.3f}% $\\pm$ {epc_err:.3f}% error per c.' \
+                                  f'\n{ppc:.3f}% $\\pm$ {ppc_err:.3f}% purity per c.' \
+                                  f'\n{ctrl_err:.3f}% $\\pm$ ' \
+                                  f'{ctrl_err_err:.3f}% ctrl. errors per c.'
+                        if cz_error_rate is not None:
+                            textstr += f'\nCZ error: ' \
+                                       f'{100*cz_error_rate.get("value", "nan"):.3f}% ' \
+                                       f'$\\pm$ {100*cz_error_rate.get("stderr", "nan"):.3f}%'
+                        if text_kw is None:
+                            text_kw = dict(va='bottom', ha='left') if log_scale \
+                                else dict(va='top', ha='right')
+                        ax.text(*text_position, textstr, transform=ax.transAxes,
+                                **text_kw)
 
-                ax.plot([], [], 'o-', c=line_f.get_color(),  label='Fidelity')
-                ax.plot([], [], 'o-', c=line_p.get_color(),
-                        label='$\\sqrt{\mathrm{Purity}}$')
-                ax.legend(frameon=False, **legend_kw)
-                ax.set_title(f'{filename_prefix}XEB {mobjn} - {timestamp}')
+                    ax.plot([], [], 'o-', c=line_f.get_color(),  label='Fidelity')
+                    ax.plot([], [], 'o-', c=line_p.get_color(),
+                            label='$\\sqrt{\mathrm{Purity}}$')
+                    ax.legend(frameon=False, **legend_kw)
+                    cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}" \
+                        if 'cphase' in data_dict['exp_metadata'] else ''
+                    ax.set_title(
+                        f'{filename_prefix}XEB{cz_name} {mobjn} - {timestamp}')
 
-                ax.set_ylabel('XEB fidelity, $\\sqrt{\mathrm{Purity}}$')
-                ax.set_xlabel('Number of cycles, $m$')
-                if log_scale:
-                    ax.set_yscale('log')
-                    ax.set_ylim(None, 1.5)
-                    fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
-                else:
-                    ax.set_ylim(-0.1, 1.1)
-                    fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
-
-                xlims = params.get('xlims', None)
-                if xlims is not None:
-                    ax.set_xlim(xlims)
-                ylims = params.get('ylims', None)
-                if ylims is not None:
-                    ax.set_ylim(ylims)
-                return_dict[mobjn] += [fig, ax]
-
-                if savefig:
-                    if fmts is None:
-                        fmts = ['png']
-                    fn = deepcopy(filename)
-                    if fn is None:
-                        fn = f'XEB_{mobjn}_{cycles[-1]}cycles_{nr_seq}seqs_' \
-                             f'{timestamp}'
+                    ax.set_ylabel('XEB fidelity, $\\sqrt{\mathrm{Purity}}$')
+                    ax.set_xlabel('Number of cycles, $m$')
                     if log_scale:
-                        fn += '_log'
-                    fn = f'{filename_prefix}{fn}'
-                    for ext in ['png']:
-                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                        fig.savefig(fn)
-                if show:
-                    plt.show()
-                else:
-                    plt.close(fig)
+                        ax.set_yscale('log')
+                        ax.set_ylim(None, 1.5)
+                        fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
+                    else:
+                        ax.set_ylim(-0.1, 1.1)
+                        fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
 
+                    xlims = params.get('xlims', None)
+                    if xlims is not None:
+                        ax.set_xlim(xlims)
+                    ylims = params.get('ylims', None)
+                    if ylims is not None:
+                        ax.set_ylim(ylims)
+                    return_dict[mobjn] += [fig, ax]
+
+                    if savefig:
+                        if fmts is None:
+                            fmts = ['png']
+                        fn = copy(filename)
+                        if fn is None:
+                            fn = (f'XEB_{mobjn}_{cycles[-1]}cycles_'
+                                  f'{nr_seq}seqs_{cz_name}_{timestamp}')
+                        if log_scale:
+                            fn += '_log'
+                        fn = f'{filename_prefix}{fn}'
+                        for ext in ['png']:
+                            fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                            fig.savefig(fn)
+                    if show:
+                        plt.show()
+                    else:
+                        plt.close(fig)
         return return_dict
     except Exception:
-        plt.close(fig)
+        if fig is not None:
+            plt.close(fig)
         traceback.print_exc()
         return
 
 
 def fit_plot_leakage_1qb(data_dict, meas_obj_names, data_key='correct_readout',
-                         savefig=True, show=False, **params):
+                         filename_prefix='', savefig=True, show=False, **params):
     """
     Fit and plot the f-state population measured in a single-qubit
     XEB experiment.
@@ -1270,6 +1652,11 @@ def fit_plot_leakage_1qb(data_dict, meas_obj_names, data_key='correct_readout',
                                      params=guess_pars)
 
             # add to data dict
+            hlp_mod.add_param(f'{mobjn}.leakage',
+                              pf.reshape(swpts.length(1), swpts.length(0)),
+                              data_dict, add_param_method='replace')
+            hlp_mod.add_param(f'{mobjn}.fit_res_leakage',
+                              fit_res, data_dict, **params)
             hlp_mod.add_param(f'{mobjn}.fit_results.leakage',
                               (fit_res.best_values["pu"],
                                fit_res.params["pu"].stderr), data_dict,
@@ -1288,15 +1675,19 @@ def fit_plot_leakage_1qb(data_dict, meas_obj_names, data_key='correct_readout',
             for c, label in legend_info.items():
                 ax.plot([], [], '-o', c=c, label=label)
             ax.legend(frameon=False)
+            cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}"\
+                if 'cphase' in data_dict['exp_metadata'] else ''
 
             ax.set_xlabel('Number of Cycles, $m$')
             ax.set_ylabel('Probability, $P(f)$')
             timestamp = data_dict['timestamps'][0]
-            ax.set_title(f'Leakage {mobjn} - {timestamp}')
+            ax.set_title(f'{filename_prefix}Leakage{cz_name} {mobjn} - '
+                         f'{timestamp}')
 
             if savefig:
                 fig.savefig(data_dict['folders'][0] +
-                            f'\\Leakage_{mobjn}_{timestamp}.png',
+                            f'\\{filename_prefix}Leakage{cz_name}_{mobjn}_'
+                            f'{timestamp}.png',
                             dpi=600, bbox_inches='tight')
             if show:
                 plt.show()
@@ -1308,7 +1699,7 @@ def fit_plot_leakage_1qb(data_dict, meas_obj_names, data_key='correct_readout',
 
 
 def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
-                         savefig=True, show=False, **params):
+                         filename_prefix='', savefig=True, show=False, **params):
     """
     Fit and plot the f-state population measured in a two-qubit
     XEB experiment.
@@ -1328,9 +1719,12 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
         show (bool): whether to show the figure or not
         **params: keyword arguments: passed to extract_leakage_classified_shots
     """
-    fig, axs = plt.subplots(3, sharex=True,
-                            figsize=(plt.rcParams['figure.figsize'][0], 3))
+    fig, axs = plt.subplots(
+        3, sharex=True,
+        figsize=([plt.rcParams['figure.figsize'][0],]*2)
+    )
     try:
+        fit_res_all = {}
         swpts = hlp_mod.get_measurement_properties(data_dict, ['sp'])
         cycles = swpts.get_sweep_params_property('values', 0)
         # get leakage
@@ -1341,6 +1735,11 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
 
         for i, ax in enumerate(axs):
             keys = list(data_dict['extract_leakage_classified_shots'])
+            leakage = data_dict['extract_leakage_classified_shots'][keys[i]].reshape(
+                    swpts.length(1), swpts.length(0))
+            hlp_mod.add_param(f'{mobjn_joined}.leakage.{keys[i]}', leakage,
+                              data_dict, add_param_method='replace')
+
             avg_leak = np.mean(
                 data_dict['extract_leakage_classified_shots'][keys[i]].reshape(
                     swpts.length(1), swpts.length(0)),
@@ -1352,6 +1751,10 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
             guess_pars = rbleak_mod.make_params(pu=0.01, pd=0.05, p0=0)
             fit_res = rbleak_mod.fit(data=avg_leak, numCliff=cycles,
                                      params=guess_pars)
+            fit_res_all[keys[i]] = (fit_res.best_values["pu"],
+                                    fit_res.params["pu"].stderr)
+            hlp_mod.add_param(f'{mobjn_joined}.fit_res_leakage.{keys[i]}',
+                              fit_res, data_dict, add_param_method='replace')
 
             cycles_fine = np.linspace(cycles[0], cycles[-1], 100)
             ax.plot(cycles_fine, fit_res.model.func(
@@ -1367,11 +1770,20 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
         axs[1].set_ylabel('Probability, $P_f$')
 
         timestamp = data_dict['timestamps'][0]
-        axs[0].set_title(f'Leakage {mobjn_joined} - {timestamp}')
+        cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}"\
+            if 'cphase' in data_dict['exp_metadata'] else ''
+        axs[0].set_title(f'{filename_prefix}Leakage{cz_name} {mobjn_joined} '
+                         f'- {timestamp}')
+
+        # add to data dict
+        hlp_mod.add_param(f'{mobjn_joined}.fit_results.leakage',
+                          fit_res_all, data_dict,
+                          add_param_method='replace')
 
         if savefig:
             fig.savefig(data_dict['folders'][0] +
-                        f'\\Leakage_{mobjn_joined}_{timestamp}.png',
+                        f'\\{filename_prefix}Leakage{cz_name}_'
+                        f'{mobjn_joined}_{timestamp}.png',
                         dpi=600, bbox_inches='tight')
         if show:
             plt.show()
@@ -1382,17 +1794,45 @@ def fit_plot_leakage_2qb(data_dict, meas_obj_names, data_key='correct_readout',
         raise e
 
 
-def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
-                            savefig=True, fmts=None, figure_width='1col',
-                            figure_height=4.1, filename=None, filename_prefix='',
+pdf_PT = lambda x, d: (d - 1) * (1 - x) ** (d - 2)
+cdf_PT = lambda x, d: 1 - (1 - x) ** (d - 1)
+
+
+def get_cdf(pops, d, staircase=False):
+    """For each sample s in pops, gives the cumulative probability p<=s
+
+    This is computed by ordering x values, and for each sample in x giving the
+    fraction of samples which are smaller or equal, which is (i+1)/N since the
+    samples are ordered (with index i from 0 to N-1).
+    """
+    x = np.sort(pops)
+    y = np.linspace(0, 1, len(x)+1, endpoint=True)[1:]
+    y_theory = cdf_PT(x, d)  # Only used to compute the distance
+    distance = np.mean(np.abs(y - y_theory))
+    if staircase:
+        # In order to plot as staircase: for each sample indexed by i,
+        # add a point at (x[i], y[i-1]). Then finally add (0,0) and (1,1),
+        # since we know that x is in [0,1].
+        x = np.array([x[i] for i in range(len(x)) for _ in range(2)])
+        # We add this first point removed above, to keep the logic cleaner
+        y = np.concatenate(([0], y))
+        y = np.array([[y[i-1], y[i]] for i in range(1, len(y))]).flatten()
+        # Add end points
+        x = np.concatenate(([0], x, [1]))
+        y = np.concatenate(([0], y, [1]))
+    return x, y, distance
+
+
+def plot_porter_thomas_dist(data_dict, data_key='correct_readout',
+                            savefig=True, fmts=None,
+                            figure_width=None, figure_height=None,
+                            filename=None, filename_prefix='',
                             numcols=None, numrows=None, renormalize=True,
                             show=False, nr_sp_2d=None, **params):
     try:
         d = hlp_mod.get_param('dim_hilbert', data_dict, raise_error=True,
                               **params)
         print('d', d)
-        bin_size = d/nr_bins
-
         sweep_type = hlp_mod.get_param('sweep_type', data_dict,
                                        default_value={'cycles': 0, 'seqs': 1},
                                        **params)
@@ -1423,115 +1863,112 @@ def plot_porter_thomas_dist(data_dict, nr_bins=50, data_key='correct_readout',
                     numrows = len(cycles) // numr
                     break
         print(numrows, numcols)
-        if numcols == 1:
-            figure_width = 2
+        if figure_width is None:
+            figure_width = plt.rcParams['figure.figsize'][0]/2*numcols
+        if figure_height is None:
+            figure_height = plt.rcParams['figure.figsize'][1]/2*numrows
         return_dict = {}
-        for mobjn in meas_obj_names:
-            proba_exp_all = hlp_mod.get_param(f'{mobjn}.xeb_probabilities',
-                                              data_dict)
-            xeb_proba_found = True
-            if proba_exp_all is None:
-                proba_exp_all = data_dict[mobjn][data_key]
-                xeb_proba_found = False
-            print('xeb_proba_found', xeb_proba_found)
 
-            plot_mod.get_default_plot_params(figure_width=figure_width,
-                                             figure_height=figure_height)
-            fig, axs = plt.subplots(numrows, numcols, sharex=True, sharey=True)
+        rc_params = {
+            'figure.figsize': (figure_width, figure_height),
+        }
+        with mpl.rc_context(rc=rc_params):
+            for mobjn in meas_obj_names:
+                proba_exp_all = hlp_mod.get_param(f'{mobjn}.xeb_probabilities',
+                                                  data_dict)
+                xeb_proba_found = True
+                if proba_exp_all is None:
+                    proba_exp_all = data_dict[mobjn][data_key]
+                    xeb_proba_found = False
+                print('xeb_proba_found', xeb_proba_found)
 
-            for i, nrc in enumerate(cycles):
-                proba_exp = proba_exp_all
+                fig, axs = plt.subplots(numrows, numcols,
+                                        sharex=True, sharey=True)
+                big_ax = fig.add_subplot(111, frameon=False)
+                big_ax.tick_params(
+                    labelcolor='none', which='both', top=False, bottom=False,
+                    left=False, right=False)
+                for i, nrc in enumerate(cycles):
+                    proba_exp = proba_exp_all
 
-                if isinstance(axs, np.ndarray):
-                    ax = axs.flatten()[i]
-                else:
-                    ax = axs
-
-                if not xeb_proba_found:
-                    if isinstance(proba_exp_all, dict):
-                        # 1 qb case
-                        proba_exp = proba_exp_all['pe']
-                        if renormalize:
-                            proba_exp /= (proba_exp + proba_exp_all['pg'])
-                        # proba_exp = np.array(list(proba_exp_all.values())).T
+                    if isinstance(axs, np.ndarray):
+                        ax = axs.flatten()[i]
                     else:
-                        # 2 qb case
-                        proba_exp = np.concatenate([proba_exp_all[:, :2],
-                                                    proba_exp_all[:, 3:5]],
-                                                   axis=1)
-                        if renormalize:
-                            proba_exp = proba_exp/np.reshape(
-                                np.sum(proba_exp, axis=1),
-                                (proba_exp.shape[0], 1))
+                        ax = axs
 
-                if len(proba_exp.shape) > 1:
-                    # 2 qb case
-                    proba_exp = proba_exp.reshape(nr_sp_2d,
-                                                  swpts.length(0),
-                                                  proba_exp.shape[-1])
+                    if not xeb_proba_found:
+                        if isinstance(proba_exp_all, dict):
+                            # 1 qb case
+                            proba_exp = proba_exp_all['pe']
+                            if renormalize:
+                                proba_exp /= (proba_exp + proba_exp_all['pg'])
+                            # add pg = 1-pe
+                            proba_exp = np.concatenate([(1 - proba_exp)[np.newaxis].T,
+                                                        proba_exp[np.newaxis].T],
+                                                       axis=1)
+                            # proba_exp = np.array(list(proba_exp_all.values())).T
+                        else:
+                            # 2 qb case
+                            proba_exp = np.concatenate([proba_exp_all[:, :2],
+                                                        proba_exp_all[:, 3:5]],
+                                                       axis=1)
+                            if renormalize:
+                                proba_exp = proba_exp/np.reshape(
+                                    np.sum(proba_exp, axis=1),
+                                    (proba_exp.shape[0], 1))
+                        proba_exp = proba_exp.reshape(nr_sp_2d,
+                                                      swpts.length(0),
+                                                      proba_exp.shape[-1])
                     proba_exp = proba_exp[:, i, :]
+
+                    # get cdfs
+                    x, y_exp, distance = get_cdf(proba_exp.flatten(), d, True)
+                    # Plot data
+                    ax.plot(x, y_exp, linewidth=2, label='Measured data')
+                    # Porter-Thomas distrib:
+                    xpt = np.linspace(0, 1, 100)
+                    ax.plot(xpt, cdf_PT(xpt, d), 'k--', label='Porter Thomas')
+                    ax.vlines(1/d, 0, 1, colors='gray', linestyles='--',
+                              linewidth=1)
+                    ax.text(0.95, 0.05, f'{nrc} cycles\n$\\xi$={distance:.3f}',
+                            ha='right', va='bottom', transform=ax.transAxes)
+
+                # add legend
+                odd_nr_cols = numcols % 2 == 1
+                if not hasattr(axs, "shape"):
+                    ax = axs
+                elif len(axs.shape) == 1:
+                    ax = axs[(numcols // 2 + odd_nr_cols) - 1]
                 else:
-                    # 1 qb case
-                    proba_exp = proba_exp.reshape(nr_sp_2d,
-                                                  swpts.length(0))
-                    proba_exp = np.reshape(proba_exp[:, i],
-                                           (len(proba_exp[:, i]), 1))
-                    proba_exp = np.concatenate([1-proba_exp, proba_exp],
-                                               axis=1)
+                    ax = axs[0, (numcols // 2 + odd_nr_cols) - 1]
+                ax.legend(frameon=False, loc='lower center', ncol=2,
+                          bbox_to_anchor=(0.5 if odd_nr_cols else 1.05, 0.965))
 
-                probabilities_scaled = d*proba_exp.flatten()
-                hist, hist_edges = np.histogram(probabilities_scaled,
-                                                bins=nr_bins, range=(0, d),
-                                                density=True)
-                hist_centers = (hist_edges + 0.5*4/nr_bins)[:-1]
-                hist_PT_real = (d-1)/d*(1-hist_centers/4)**(d-2)
+                big_ax.set_ylabel('Cumulative distribution')
+                big_ax.set_xlabel('Basis-state prob., $p$')
+                cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}"\
+                    if 'cphase' in data_dict['exp_metadata'] else ''
+                fig.suptitle(f'{filename_prefix}XEB{cz_name} {mobjn} - '
+                                 f'{timestamp}', y=1.0)
+                fig.subplots_adjust(wspace=0.05, hspace=0.05)
+                return_dict[mobjn] = [fig, axs]
 
-                ax.hist(probabilities_scaled, bins = np.linspace(0, d, nr_bins),
-                        density=True, cumulative=True, histtype='step',
-                        linewidth=2, label='Measured data')# if i == 0 else None)
-                ax.plot(hist_centers, np.cumsum(hist_PT_real)*bin_size, 'k--',
-                        label=r'Porter Thomas')# if i == 0 else None)
-                ax.vlines(1, 0, 1, colors='gray', linestyles='--', linewidth=1)
-                ax.text(0.95, 0.3, f'{nrc} cycles', ha='right', va='top',
-                        transform=ax.transAxes)
-
-            # add legend
-            odd_nr_cols = numcols % 2 == 1
-            if not hasattr(axs, "shape"):
-                ax = axs
-            elif len(axs.shape) == 1:
-                ax = axs[(numcols // 2 + odd_nr_cols) - 1]
-            else:
-                ax = axs[0, (numcols // 2 + odd_nr_cols) - 1]
-            ax.legend(frameon=False, loc='lower center', ncol=2,
-                      bbox_to_anchor=(0.5 if odd_nr_cols else 1.05, 0.965))
-
-            fig.text(0, 0.5, r'Normalized counts', ha='left', va='center',
-                     rotation=90)
-            fig.text(0.5, 0, f'Probability$\\cdot {d}$', va='bottom',
-                     ha='center')
-            fig.text(0.5, 1, f'{filename_prefix}XEB {mobjn} - {timestamp}',
-                     ha='center', va='top')
-            fig.subplots_adjust(0.11, 0.075, 0.99, 0.92,
-                                wspace=0.05, hspace=0.05)
-            return_dict[mobjn] = [fig, axs]
-
-            if savefig:
-                if fmts is None:
-                    fmts = ['png']
-                fn = deepcopy(filename)
-                if fn is None:
-                    fn = f'Porter_Thomas_Cumulative_{mobjn}_' \
-                         f'{cycles[-1]}cycles_{nr_sp_2d}seqs_' \
-                         f'{timestamp}'
-                fn = f'{filename_prefix}{fn}'
-                for ext in fmts:
-                    fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                    fig.savefig(fn)
-            if show:
-                plt.show()
-            else:
-                plt.close(fig)
+                if savefig:
+                    if fmts is None:
+                        fmts = ['png']
+                    fn = copy(filename)
+                    if fn is None:
+                        fn = f'Porter_Thomas_Cumulative_{mobjn}_' \
+                             f'{cycles[-1]}cycles_{nr_sp_2d}seqs{cz_name}_' \
+                             f'{timestamp}'
+                    fn = f'{filename_prefix}{fn}'
+                    for ext in fmts:
+                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                        fig.savefig(fn)
+                if show:
+                    plt.show()
+                else:
+                    plt.close(fig)
         return return_dict
     except Exception:
         plt.close(fig)
@@ -1583,68 +2020,67 @@ def calculate_optimal_nr_cycles(data_dict, idx0=0, joint_processing=False,
             nrc_opt_all[mobjn] = nrc_opt
 
             if plot:
-                plot_mod.get_default_plot_params()
-                fig, ax = plt.subplots()
+                with mpl.rc_context(rc={}):
+                    fig, ax = plt.subplots()
 
-                # plot data
-                if exlude_from_plot:
-                    line, = ax.plot(cycles[idx0:], fid[idx0:], 'o', zorder=1)
-                else:
-                    line, = ax.plot(cycles, fid, 'o', zorder=1)
+                    # plot data
+                    if exlude_from_plot:
+                        line, = ax.plot(cycles[idx0:], fid[idx0:], 'o', zorder=1)
+                    else:
+                        line, = ax.plot(cycles, fid, 'o', zorder=1)
 
-                # plot optimal nr_cycles lines
-                opt_point = fit_res.model.func(nrc_opt, **fit_res.best_values)
-                ax.plot(nrc_opt, opt_point, 'o', c='gray')
-                ax.vlines(nrc_opt, -0.1, opt_point,
-                          linestyles='--', color='gray', zorder=2)
-                ax.hlines(opt_point, 0, nrc_opt,
-                          linestyles='--', color='gray', zorder=2)
+                    # plot optimal nr_cycles lines
+                    opt_point = fit_res.model.func(nrc_opt, **fit_res.best_values)
+                    ax.plot(nrc_opt, opt_point, 'o', c='gray')
+                    ax.vlines(nrc_opt, -0.1, opt_point,
+                              linestyles='--', color='gray', zorder=2)
+                    ax.hlines(opt_point, 0, nrc_opt,
+                              linestyles='--', color='gray', zorder=2)
 
-                # plot fit
-                xfine = np.linspace(cycles[idx0], cycles[-1], 100)
-                ax.plot(xfine, fit_res.model.func(xfine, **fit_res.best_values),
-                        c=line.get_color(), zorder=0)
+                    # plot fit
+                    xfine = np.linspace(cycles[idx0], cycles[-1], 100)
+                    ax.plot(xfine, fit_res.model.func(xfine, **fit_res.best_values),
+                            c=line.get_color(), zorder=0)
 
-                p, p_err = 100*fit_res.best_values["p"], \
-                               100*fit_res.params["p"].stderr
-                textstr = f'Decay const.: {p:.3f}% $\\pm$ {p_err:.3f}%' \
-                          f'\nOptimal nr. cycles: {nrc_opt}'
+                    p, p_err = 100*fit_res.best_values["p"], \
+                                   100*fit_res.params["p"].stderr
+                    textstr = f'Decay const.: {p:.3f}% $\\pm$ {p_err:.3f}%' \
+                              f'\nOptimal nr. cycles: {nrc_opt}'
 
-                if log_scale:
-                    ax.text(0.05, 0.075, textstr,
-                            va='bottom', ha='left', transform=ax.transAxes)
-                else:
-                    ax.text(0.975, 0.95, textstr,
-                            va='top', ha='right', transform=ax.transAxes)
-
-                ax.set_title(f'XEB {mobjn} - {timestamp}')
-                ax.set_ylabel('XEB fidelity')
-                ax.set_xlabel('Number of cycles, $m$')
-                if log_scale:
-                    ax.set_yscale('log')
-                    ax.set_ylim(None, 1.5)
-                    fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
-                else:
-                    ax.set_ylim(-0.1, 1.1)
-                    fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
-
-                if savefig:
-                    if fmts is None:
-                        fmts = ['png']
-                    fn = deepcopy(filename)
-                    if fn is None:
-                        fn = f'Opt_nr_cycles_{mobjn}_{swpts.length(1)}seqs_' \
-                             f'{timestamp}'
                     if log_scale:
-                        fn += '_log'
-                    for ext in ['png']:
-                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                        fig.savefig(fn)
-                if show:
-                    plt.show()
-                else:
-                    plt.close(fig)
+                        ax.text(0.05, 0.075, textstr,
+                                va='bottom', ha='left', transform=ax.transAxes)
+                    else:
+                        ax.text(0.975, 0.95, textstr,
+                                va='top', ha='right', transform=ax.transAxes)
 
+                    ax.set_title(f'XEB {mobjn} - {timestamp}')
+                    ax.set_ylabel('XEB fidelity')
+                    ax.set_xlabel('Number of cycles, $m$')
+                    if log_scale:
+                        ax.set_yscale('log')
+                        ax.set_ylim(None, 1.5)
+                        fig.subplots_adjust(0.14, 0.16, 0.99, 0.9)
+                    else:
+                        ax.set_ylim(-0.1, 1.1)
+                        fig.subplots_adjust(0.12, 0.16, 0.99, 0.9)
+
+                    if savefig:
+                        if fmts is None:
+                            fmts = ['png']
+                        fn = copy(filename)
+                        if fn is None:
+                            fn = f'Opt_nr_cycles_{mobjn}_{swpts.length(1)}seqs_' \
+                                 f'{timestamp}'
+                        if log_scale:
+                            fn += '_log'
+                        for ext in ['png']:
+                            fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                            fig.savefig(fn)
+                    if show:
+                        plt.show()
+                    else:
+                        plt.close(fig)
         return nrc_opt_all
     except Exception:
         plt.close(fig)
@@ -1680,50 +2116,50 @@ def plot_ctrl_errors(data_dict, unitary_label, data_dict_cepc=None,
     if fig_margins is None:
         fig_margins = [0.17, 0.2, 0.99, 0.90]
     try:
-        for mobjn in meas_obj_names:
-            process_errs = hlp_mod.get_param(f'{mobjn}.optimization_result_process_errs',
-                                             data_dict, default_value=process_errs,
-                                             **params)
-            plot_mod.get_default_plot_params()
-            fig, ax = plt.subplots()
-            # colours = {'qb3': (253/255, 208/255, 162/255), 'qb7': (127/255, 39/255, 4/255)}
-            ax.plot(cycles, 100*np.array(list(process_errs.values())), 'o')
-            try:
-                ctrl_errs = 100*(data_dict_cepc[mobjn]['fit_res_fidelity'].best_values['e'] - \
-                                 data_dict_cepc[mobjn]['fit_res_purity'].best_values['e'])
-                ctrl_errs_err = 100*np.sqrt(data_dict_cepc[mobjn]['fit_res_fidelity'].params['e'].stderr**2 + \
-                                            data_dict_cepc[mobjn]['fit_res_purity'].params['e'].stderr**2)
-            except AttributeError:
-                ctrl_errs = 100*(data_dict_cepc[mobjn]['fit_res_fidelity']['params']['e']['value'] - \
-                                 data_dict_cepc[mobjn]['fit_res_purity']['params']['e']['value'])
-                ctrl_errs_err = 100*np.sqrt(data_dict_cepc[mobjn]['fit_res_fidelity']['params']['e']['stderr']**2 + \
-                                            data_dict_cepc[mobjn]['fit_res_purity']['params']['e']['stderr']**2)
-            if show_error_stripe:
-                ax.axhspan(ctrl_errs-ctrl_errs_err, ctrl_errs+ctrl_errs_err, 0,
-                           cycles[-1]+2, color='gray', alpha=0.25)
-            ax.hlines(ctrl_errs, cycles[0]-2, cycles[-1]+2, linestyles='--',
-                      colors='gray', label='ctrl. err. per cycle')
-            ax.legend(frameon=False)
-            ax.set_xticks(cycles)
-            ax.set_xticklabels(cycles, rotation=45)
-            ax.set_ylabel(f'Error {unitary_label}, $\\varepsilon$ (%)')
-            ax.set_xlabel('Number of cycles, $m$', labelpad=0.1)
-            ax.set_title(f'{filename_prefix}Control errors {mobjn} - {timestamp}')
-            fig.subplots_adjust(*fig_margins, hspace=0.05)
+        with mpl.rc_context(rc={}):
+            for mobjn in meas_obj_names:
+                process_errs = hlp_mod.get_param(f'{mobjn}.optimization_result_process_errs',
+                                                 data_dict, default_value=process_errs,
+                                                 **params)
+                fig, ax = plt.subplots()
+                # colours = {'qb3': (253/255, 208/255, 162/255), 'qb7': (127/255, 39/255, 4/255)}
+                ax.plot(cycles, 100*np.array(list(process_errs.values())), 'o')
+                try:
+                    ctrl_errs = 100*(data_dict_cepc[mobjn]['fit_res_fidelity'].best_values['e'] - \
+                                     data_dict_cepc[mobjn]['fit_res_purity'].best_values['e'])
+                    ctrl_errs_err = 100*np.sqrt(data_dict_cepc[mobjn]['fit_res_fidelity'].params['e'].stderr**2 + \
+                                                data_dict_cepc[mobjn]['fit_res_purity'].params['e'].stderr**2)
+                except AttributeError:
+                    ctrl_errs = 100*(data_dict_cepc[mobjn]['fit_res_fidelity']['params']['e']['value'] - \
+                                     data_dict_cepc[mobjn]['fit_res_purity']['params']['e']['value'])
+                    ctrl_errs_err = 100*np.sqrt(data_dict_cepc[mobjn]['fit_res_fidelity']['params']['e']['stderr']**2 + \
+                                                data_dict_cepc[mobjn]['fit_res_purity']['params']['e']['stderr']**2)
+                if show_error_stripe:
+                    ax.axhspan(ctrl_errs-ctrl_errs_err, ctrl_errs+ctrl_errs_err, 0,
+                               cycles[-1]+2, color='gray', alpha=0.25)
+                ax.hlines(ctrl_errs, cycles[0]-2, cycles[-1]+2, linestyles='--',
+                          colors='gray', label='ctrl. err. per cycle')
+                ax.legend(frameon=False)
+                ax.set_xticks(cycles)
+                ax.set_xticklabels(cycles, rotation=45)
+                ax.set_ylabel(f'Error {unitary_label}, $\\varepsilon$ (%)')
+                ax.set_xlabel('Number of cycles, $m$', labelpad=0.1)
+                ax.set_title(f'{filename_prefix}Control errors {mobjn} - {timestamp}')
+                fig.subplots_adjust(*fig_margins, hspace=0.05)
 
-            if savefig:
-                if fmts is None:
-                    fmts = ['png']
-                fn = deepcopy(filename)
-                if fn is None:
-                    fn = f'Opt_res_ctrl_errs_{mobjn}_' \
-                         f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
-                fn = f'{filename_prefix}{fn}'
-                if f'{fn}.png' in os.listdir(data_dict["folders"][0]):
-                    fn = '{}--{:%Y%m%d_%H%M%S}'.format(fn, datetime.datetime.now())
-                for ext in fmts:
-                    fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                    fig.savefig(fn, dpi=600)
+                if savefig:
+                    if fmts is None:
+                        fmts = ['png']
+                    fn = copy(filename)
+                    if fn is None:
+                        fn = f'Opt_res_ctrl_errs_{mobjn}_' \
+                             f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
+                    fn = f'{filename_prefix}{fn}'
+                    if f'{fn}.png' in os.listdir(data_dict["folders"][0]):
+                        fn = '{}--{:%Y%m%d_%H%M%S}'.format(fn, datetime.datetime.now())
+                    for ext in fmts:
+                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                        fig.savefig(fn, dpi=600)
         if show:
             plt.show()
         else:
@@ -1757,46 +2193,50 @@ def plot_opt_res(data_dict, param_labels, savefig=True, fmts=None,
 
         if fig_margins is None:
             fig_margins = [0.2, 0.14, 0.99, 0.99]
-        for mobjn in meas_obj_names:
-            opt_res = hlp_mod.get_param(f'{mobjn}.optimization_result', data_dict,
-                                        raise_error=True, **params)
-            xvals = np.array([int(nc) for nc in opt_res])
-            or_vals = np.array(list(opt_res.values()))
-            nr_params = or_vals.shape[1]
-            if numcols is None or numrows is None:
-                numrows_list = [4, 3, 2, 1]
-                for numr in numrows_list:
-                    if not nr_params % numr:
-                        numrows = numr
-                        numcols = nr_params // numr
-                        break
-            print(mobjn, numrows, numcols)
 
-            plot_mod.get_default_plot_params(figure_width=figure_width,
-                                             figure_height=figure_height)
-            fig, axs = plt.subplots(numrows, numcols, sharex=True)
-            for i, ax in enumerate(axs):
-                ax.plot(xvals, or_vals[:, i], 'o')
-                ax.set_ylabel(param_labels[i])
+        rc_params = {
+            'figure.figsize': (figure_width, figure_height),
+        }
+        with mpl.rc_context(rc=rc_params):
+            for mobjn in meas_obj_names:
+                opt_res = hlp_mod.get_param(f'{mobjn}.optimization_result',
+                                            data_dict, raise_error=True,
+                                            **params)
+                xvals = np.array([int(nc) for nc in opt_res])
+                or_vals = np.array(list(opt_res.values()))
+                nr_params = or_vals.shape[1]
+                if numcols is None or numrows is None:
+                    numrows_list = [4, 3, 2, 1]
+                    for numr in numrows_list:
+                        if not nr_params % numr:
+                            numrows = numr
+                            numcols = nr_params // numr
+                            break
+                print(mobjn, numrows, numcols)
 
-            ax.set_xlabel('Number of cycles, $m$', labelpad=0.1)
-            ax.set_xticks(xvals)
-            ax.set_xticklabels(xvals, rotation=45)
-            fig.align_labels()
-            fig.subplots_adjust(*fig_margins, hspace=0.05)
-            if savefig:
-                if fmts is None:
-                    fmts = ['png']
-                fn = deepcopy(filename)
-                if fn is None:
-                    fn = f'Opt_res_{mobjn}_' \
-                         f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
-                fn = f'{filename_prefix}{fn}'
-                if f'{fn}.png' in os.listdir(data_dict["folders"][0]):
-                    fn = '{}--{:%Y%m%d_%H%M%S}'.format(fn, datetime.datetime.now())
-                for ext in fmts:
-                    fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
-                    fig.savefig(fn, dpi=600)
+                fig, axs = plt.subplots(numrows, numcols, sharex=True)
+                for i, ax in enumerate(axs):
+                    ax.plot(xvals, or_vals[:, i], 'o')
+                    ax.set_ylabel(param_labels[i])
+
+                ax.set_xlabel('Number of cycles, $m$', labelpad=0.1)
+                ax.set_xticks(xvals)
+                ax.set_xticklabels(xvals, rotation=45)
+                fig.align_labels()
+                fig.subplots_adjust(*fig_margins, hspace=0.05)
+                if savefig:
+                    if fmts is None:
+                        fmts = ['png']
+                    fn = copy(filename)
+                    if fn is None:
+                        fn = f'Opt_res_{mobjn}_' \
+                             f'{swpts.length(sweep_type["seqs"])}seqs_{timestamp}'
+                    fn = f'{filename_prefix}{fn}'
+                    if f'{fn}.png' in os.listdir(data_dict["folders"][0]):
+                        fn = '{}--{:%Y%m%d_%H%M%S}'.format(fn, datetime.datetime.now())
+                    for ext in fmts:
+                        fn = f'{data_dict["folders"][0]}\\{fn}.{ext}'
+                        fig.savefig(fn, dpi=600)
         if show:
             plt.show()
         else:

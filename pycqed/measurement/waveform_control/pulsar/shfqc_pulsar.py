@@ -27,7 +27,6 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.0031, 1),
     }
-    IMPLEMENTED_ACCESSORS = ["amp", "centerfreq"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -131,6 +130,17 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
         """
         return self._get_superclass(id).create_channel_parameters(
             self, id, ch_name, ch_type)
+
+    def _check_if_implemented(self, id:str, param:str):
+        """Overload this function in order to choose the right
+        IMPLEMENTED_ACCESSORS from either the SHFQA or SHFSG."""
+        IMPLEMENTED_ACCESSORS = self._get_superclass(id).IMPLEMENTED_ACCESSORS
+        if param in IMPLEMENTED_ACCESSORS and (
+            not isinstance(IMPLEMENTED_ACCESSORS, dict)
+            or id in IMPLEMENTED_ACCESSORS[param]
+        ):
+            return True
+        return False
 
     def awg_setter(self, id:str, param:str, value):
         return self._get_superclass(id).awg_setter(self, id, param, value)

@@ -1,7 +1,12 @@
 from qcodes.instrument.base import Instrument as QcodesInstrument
+from qcodes.instrument.channel import InstrumentModule as QcodesInstrumentModule
+import weakref
+
+class FurtherInstrumentsDictMixIn:
+    _further_instruments = weakref.WeakValueDictionary()
 
 
-class Instrument(QcodesInstrument):
+class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
     """
     Class for all QCodes instruments.
     """
@@ -38,3 +43,65 @@ class Instrument(QcodesInstrument):
         if param_name not in self.parameters and len(args) == 1:
             return args[0]  # interpret second argument as default value
         return super().get(param_name)
+
+    @classmethod
+    def find_instrument(cls, name, instrument_class=None):
+        # This overrides the super method to allow normal qcodes instruments
+        # and other kinds of instruments inheriting from
+        # FurtherInstrumentsDictMixIn (e.g., remote instruments) to find each
+        # other. There is no docstring here since the docstring of the super
+        # method remains valid.
+        try:
+            # First try to find it among the qcodes instruments.
+            return super().find_instrument(
+                name, instrument_class=instrument_class)
+        except KeyError:
+            # Try to find it in the dict of further instruments.
+            if name not in cls._further_instruments:
+                raise KeyError(f"Instrument with name {name} does not exist")
+            # By default, allow qcodes instruments and objects from classes
+            # that include the FurtherInstrumentsDictMixIn.
+            internal_instrument_class = instrument_class or (
+                QcodesInstrument, FurtherInstrumentsDictMixIn)
+            ins = cls._further_instruments[name]
+            if not isinstance(ins, internal_instrument_class):
+                raise TypeError(
+                    f"Instrument {name} is {type(ins)} but "
+                    f"{internal_instrument_class} was requested"
+                )
+            return ins
+
+
+# FIXME: Is this class really needed?
+class InstrumentModule(QcodesInstrumentModule):
+    """
+    Custom extension of QcodesInstrumentModule for ResetScheme.
+
+    See QCoDeS docs & reset_schemes.py for more details.
+    """
+
+    def get_idn(self):
+        """Get the Instrument Module's ID and Name.
+
+        See QCoDeS docs for more details.
+
+        Returns:
+            dict: A dictionary with two keys: 'driver' and 'name'.
+                The values are the name of the driver and the name of the instrument (set during initialization).
+        """
+        return {'driver': self.__class__.__name__, 'name': self.name}
+
+
+class DummyVisaHandle:
+    """Dummy handle for virtual visa instruments to avoid crash in snapshot
+    """
+    class DummyTimeOut:
+        def get(self):
+            return None
+    read_termination = None
+    write_termination = None
+    timeout = DummyTimeOut()
+
+    def close(self):
+        pass
+

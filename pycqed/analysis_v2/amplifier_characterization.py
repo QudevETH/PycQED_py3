@@ -24,7 +24,6 @@ class Amplifier_Characterization_Analysis(ba.BaseDataAnalysis):
             'sweep_parameter_names': 'Experimental Data.sweep_parameter_names',
             'sweep_parameter_units': 'Experimental Data.sweep_parameter_units',
             'measurementstring': 'measurementstring',
-            'measured_values': 'measured_values',
             'value_names': 'value_names',
             'value_units': 'value_units',
         }
@@ -381,7 +380,7 @@ class MultiTWPA_SNR_Analysis(ba.NDim_BaseDataAnalysis):
                                 if qb.acq_unit() == TWPA.acq_unit()]
 
             sp = pdd['sweep_points'][mobjn]
-            plotsize = self.get_default_plot_params(set=False)['figure.figsize']
+            plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
             gain_min = self.options_dict.get('gain_min', 0)
             gain_max = self.options_dict.get('gain_max', 35)
             snr_min = self.options_dict.get('snr_min', 0)
@@ -422,7 +421,7 @@ class MultiTWPA_SNR_Analysis(ba.NDim_BaseDataAnalysis):
                     'xlabel': '',
                     'xtick_labels': [],
                     'xunit': '',
-                    'xlabels_rotation': 0,
+                    'xtick_rotation': 0,
                     'ylabel': 'Pump\npwr.',
                     'yunit': 'dBm',
                     'plotcbar': False,
@@ -441,7 +440,7 @@ class MultiTWPA_SNR_Analysis(ba.NDim_BaseDataAnalysis):
                     'xlabel': '',
                     'xtick_labels': [],
                     'xunit': '',
-                    'xlabels_rotation': 0,
+                    'xtick_rotation': 0,
                     'ylabel': '',
                     'ytick_labels': [],
                     'yunit': '',

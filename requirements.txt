@@ -5,7 +5,7 @@ matplotlib
 scipy
 sympy
 cython
-PyQt6
+pyside6
 tensorflow
 pandas
 pyyaml
@@ -26,3 +26,4 @@ plotly
 sphinx
 sphinx-rtd-theme
 myst-parser
+qcodes==0.35

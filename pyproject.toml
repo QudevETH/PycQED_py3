@@ -1,0 +1,94 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools"]
+
+[project]
+name = "pycqed"
+version = "0.1.0"
+description = "Python-based circuit QED data acquisition framework"
+readme = "README.md"
+requires-python = ">=3.9,<3.12" # 2024.05: we recommend 3.11.
+authors = [{ name = "Quantum Device Laboratory" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+# FIXME: Pin versions
+dependencies = [
+    "blosc2",
+    "func-timeout",
+    "h5py",
+    "lmfit",
+    "matplotlib",
+    "more-itertools",
+    "msgpack",
+    "msgpack_numpy",
+    "nlopt",
+    "numpy",
+    "pandas",
+    "pyqtgraph",
+    "pyside6",
+    "qcodes",
+    "qcodes-loop",
+    "qutip",
+    "requests",
+    "scikit-learn",
+    "scipy",
+    "sympy",
+    "zhinst",
+]
+
+[project.optional-dependencies]
+docs = ["myst-parser", "sphinx", "sphinx-rtd-theme"]
+test = ["pytest", "pytest-cov", "pycycle"]
+linting = ["pylint"]
+# The following libraries are updating slowly
+# or not at all.
+#
+# - Neupy is not maintained anymore as of 2024.02
+#   see https://github.com/itdxer/neupy
+#
+# - and PyTorch is having the lead ahead of Tensorflow.
+# - further Tensorflow is owned by Google, who are known to
+#   kill products at random points in time.
+#
+slow_machine_learning = ["neupy", "tensorflow"]
+measurement_setup = [
+    "influxdb",
+    "nidaqmx",
+    "pyvisa",
+    "pyserial",
+    "zhinst-hdiq",
+    "zhinst-qcodes",
+]
+user = [
+    "cython < 3.0.0",               # Due to Qutip 4.7.5
+    "jupyter",
+    "jupyter-contrib-nbextensions",
+    "notebook < 7.0.0",
+    "psutil",
+    "plotly",
+    "pyyaml",
+]
+
+[tool.setuptools.packages.find]
+where = ["./"]
+exclude = ["tests"]
+
+[tool.setuptools.package-data]
+pycqed = [
+    # FIXME: When building packages, which will happen most likely on GitHub,
+    #        it makes sense to add a warning and some more docs.
+    "utilities/WARNING.png",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "hardware",
+]

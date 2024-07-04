@@ -1,8 +1,10 @@
 import traceback
 
 import time
+
+import h5py
 import numpy as np
-from pycqed.analysis_v3 import helper_functions
+from pycqed.analysis import analysis_toolbox as a_tools
 
 from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.utilities.general import temporary_value
@@ -35,7 +37,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
     """
     TIMED_METHODS = ["run_analysis"]
-    _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
+    _metadata_params = {'cal_points', 'sweep_points',
                         'channel_map', 'meas_objs'}
     # The following string can be overwritten by child classes to provide a
     # default value for the kwarg experiment_name. None means that the name
@@ -52,7 +54,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                                   awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
-                 callback_condition=lambda : True, **kw):
+                 callback_condition=lambda : True, mc_mode=None,
+                 mc_store_sweep_indices=False, **kw):
         """
         Initializes a QuantumExperiment.
 
@@ -146,6 +149,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 the callback.
             callback_condition (func): function returning a bool to decide whether or
                 not the callback function should be executed. Defaults to always True.
+            mc_mode (str): manually set the mode argument in the call to MC.run
+            mc_store_sweep_indices (bool): set MC.store_sweep_indices in MC.run
             **kw:
                 further keyword arguments are passed to the CircuitBuilder __init__
         """
@@ -177,6 +182,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.callback = callback
         self.callback_condition = callback_condition
         self.plot_sequence = plot_sequence
+        self.mc_mode = mc_mode
+        self.mc_store_sweep_indices = mc_store_sweep_indices
 
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
@@ -223,7 +230,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.exp_metadata.update(kw)
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
-                                  'data_type': data_type})
+                                  'data_type': data_type,
+                                  'right_handed_basis': True,
+                                  })
         self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
@@ -288,6 +297,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
             # configure measurement control (mc_points, detector functions)
             mode = self._configure_mc()
+            if self.mc_mode is None:
+                self.mc_mode = mode
 
             self.guess_label(**kw)
 
@@ -296,7 +307,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # run measurement
             try:
                 self.MC.run(name=self.label, exp_metadata=self.exp_metadata,
-                            mode=mode)
+                            mode=self.mc_mode,
+                            store_sweep_indices=self.mc_store_sweep_indices)
             except (Exception, KeyboardInterrupt) as e:
                 exception = e  # exception will be raised below
         self.extract_timestamp()
@@ -689,20 +701,22 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             self.MC.set_sweep_function_2D(sweep_func_2nd_dim)
             self.MC.set_sweep_points_2D(self.mc_points[1])
 
-        # Below, start_pulsar is set to False since pulsar usually gets
-        # started by the detector function (either via df.AWG or via
-        # df.prepare_and_finish_pulsar).
-        if sweep_func_1st_dim.configure_upload(start_pulsar=False):
-            # sweep_func_1st_dim takes care of first upload
-            pass
-        elif len(self.mc_points[1]) > 0 \
-                and sweep_func_2nd_dim.configure_upload(start_pulsar=False):
-            # sweep_func_2nd_dim takes care of first upload
-            pass
-        else:
-            self._upload_first_sequence()
-            # separate method so that children can override
-            # see docstring for default behavior
+        if self.upload:
+            # Below, start_pulsar is set to False since pulsar usually gets
+            # started by the detector function (either via df.AWG or via
+            # df.prepare_and_finish_pulsar).
+            if sweep_func_1st_dim.configure_upload(start_pulsar=False):
+                # sweep_func_1st_dim takes care of first upload
+                pass
+            elif len(self.mc_points[1]) > 0 \
+                    and sweep_func_2nd_dim.configure_upload(
+                        start_pulsar=False):
+                # sweep_func_2nd_dim takes care of first upload
+                pass
+            else:
+                self._upload_first_sequence()
+                # separate method so that children can override
+                # see docstring for default behavior
 
         # check whether there is at least one measure object
         if len(self.meas_objs) == 0:
@@ -802,9 +816,12 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     def save_timers(self, quantum_experiment=True, sequence=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
             return
-        data_file = helper_functions.open_hdf_file(self.timestamp,
-                                                   filepath=filepath, mode="r+")
-        try:
+        if filepath is None:
+            # retrieve filepath from MC.datadir() and timestamp
+            folder = a_tools.get_folder(self.timestamp,
+                                        folder=self.MC.datadir())
+            filepath = a_tools.measurement_filename(folder)
+        with h5py.File(filepath, mode="r+") as data_file:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
                 timer_group = data_file.create_group(Timer.HDF_GRP_NAME)
@@ -828,9 +845,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
                     except AttributeError:
                         pass # in case some sequences don't have timers
-        except Exception as e:
-            data_file.close()
-            raise e
 
 
     def plot(self, sequences=0, segments=0, qubits=None,
@@ -1029,7 +1043,7 @@ class NDimQuantumExperiment():
         Resulting experiments (psueudo-code):
         for j in range(2):
             for i in range(3):
-                idxs = (i,j)
+                idx = (i,j)
                 sweep_points=sp_mod.SweepPoints([
                     {'freq': (..., 'Hz', 'Readout frequency')},
                     {  # dimension number self.DUMMY_DIM
@@ -1057,14 +1071,15 @@ class NDimQuantumExperiment():
         self.experiments = {}
         if QuantumExperiment is not None:
             self.QuantumExperiment = QuantumExperiment
+        self.timestamps = []
         self.forget_experiments = forget_experiments
         self.sweep_points = SweepPoints(sweep_points)
         self._generate_sweep_lengths()
         self.args = args
         self.kwargs = kwargs
 
-        for idxs in self.get_experiment_indices():
-            self.create_experiment(idxs)
+        for idx in self.get_experiment_indices():
+            self.create_experiment(idx)
 
         if kwargs.get('measure') and kwargs.get('analyze', True):
             self.run_ndim_analysis()
@@ -1093,14 +1108,15 @@ class NDimQuantumExperiment():
             *[range(i) for i in self.sweep_lengths[:1:-1]])
         return [idx[::-1] for idx in idxs]
 
-    def make_2d_sweep_points(self, sweep_points, idxs):
+    def make_2d_sweep_points(self, sweep_points, idx):
         """
-        Extracts 2-dim SweepPoints for an experiment indexed by idxs,
-        by slicing the dimensions >=2 of sweep_points at indices idxs.
+        Extracts 2-dim SweepPoints for an experiment indexed by idx,
+        by slicing the dimensions >=2 of sweep_points at indices idx.
 
         Args:
-            sweep_points: N-dim sweep points to slice down to 2 dimensions.
-            idxs: indices of the experiments to instantiate,
+            sweep_points (SweepPoints): N-dim SweepPoints to slice down to 2
+            dimensions.
+            idx (tuple): indices of the experiments to instantiate,
             see self.get_experiment_indices
         """
         # Extract sweep_point dimensions beyond the second dimension
@@ -1108,34 +1124,45 @@ class NDimQuantumExperiment():
         # Extract first two dimensions of N dimensional sweep points
         current_sp = SweepPoints(sweep_points[:2])
         length = self.sweep_lengths[self.DUMMY_DIM]
-        for dim, idx in enumerate(idxs):
+        for dim, i in enumerate(idx):
             for k in extra_sp.get_sweep_dimension(dim, default={}):
                 current_sp.add_sweep_parameter(
-                    k, [extra_sp[k][idx] for i in range(length)],
+                    k, [extra_sp[k][i] for _ in range(length)],
                     extra_sp.get_sweep_params_property('unit', param_names=k),
                     extra_sp.get_sweep_params_property('label', param_names=k),
                     dimension=self.DUMMY_DIM,
                 )
         return current_sp
 
-    def create_experiment(self, idxs):
-        """
-        Instantiates sub-experiments.
+    def create_experiment(self, idx, **kw):
+        """Instantiates a sub-experiment (one 2-D QuantumExperiment).
 
         Args:
-            idxs: indices of the experiments to instantiate,
+            idx (tuple): indices corresponding to the experiment to instantiate,
                 see self.get_experiment_indices
+            kw (dict): keyword arguments passed to instantiate the experiment
         """
-        current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
+        current_sp = self.make_2d_sweep_points(self.sweep_points, idx)
+        # To recover the N-dimensional SweepPoints in the analysis,
+        # one could either store them fully in the metadata of each
+        # QuantumExperiment and read them from there, or just store the 2-D
+        # points corresponding to each QuantumExperiment, and reconstruct
+        # the N-D ones in the analysis. Here we do the former, for simplicity.
+        # FIXME: currently only task-specific N-dim SweepPoints
+        #  (from NDimMultiTaskingExperiment.create_experiment) are read in
+        #  NDim_BaseDataAnalysis. The analysis should be extended if we want
+        #  to run a simple NDimQuantumExperiment (without multitasking),
+        #  such that the analysis also reads the metadata stored here:
         exp_metadata = dict(
             ndim_sweep_points=self.sweep_points,
-            ndim_current_idxs=idxs,
+            ndim_current_idxs=idx,
         )
-        self.experiments[idxs] = self.QuantumExperiment(
+        self.experiments[idx] = self.QuantumExperiment(
             *self.args, sweep_points=current_sp, exp_metadata=exp_metadata,
-            **self.kwargs)
+            **self.kwargs, **kw)
+        self.timestamps = [qe.timestamp for qe in self.experiments.values()]
         if self.forget_experiments:
-            del self.experiments[idxs]
+            del self.experiments[idx]
 
     def run_measurement(self, **kw):
         for qe in self.experiments.values():
@@ -1167,6 +1194,11 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         task_list: see MultiTaskingExperiment
 
     FIXME should a MultiTasking-like experiment be listed in this module?
+
+    FIXME It is currently mandatory to pass sweep_points in the task_list.
+     This is because base_analysis.NDim_BaseDataAnalysis currently relies on
+     the sweep_points present in the task_list of each experiment to
+     reconstruct the N-dimensional sweep_points (see docstring).
     """
 
     def __init__(self, task_list, *args, sweep_points=None,
@@ -1175,7 +1207,6 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
         super().__init__(*args, sweep_points=sweep_points,
                          QuantumExperiment=QuantumExperiment, **kwargs)
 
-
     def _generate_sweep_lengths(self, sweep_points=None):
         sp = self.sweep_points if sweep_points is None else sweep_points
         sp = deepcopy(sp)
@@ -1183,20 +1214,14 @@ class NDimMultiTaskingExperiment(NDimQuantumExperiment):
             sp.update(SweepPoints(task.get('sweep_points', [])))
         super()._generate_sweep_lengths(sp)
 
-
-    def create_experiment(self, idxs):
-        current_sp = self.make_2d_sweep_points(self.sweep_points, idxs)
+    def create_experiment(self, idx, **kw):
         current_tl = [copy(t) for t in self.task_list]
         for task in current_tl:
-            # Just to ease recovering the full sp in the analysis
+            # Store task-specific SweepPoints in the metadata, see super method
             task['ndim_sweep_points'] = task['sweep_points']
-            task['ndim_current_idxs'] = idxs
-            # Make sp that will actually be used in the experiment
+            task['ndim_current_idxs'] = idx
+            # Make sp that will actually be used in the sub-experiment
             task['sweep_points'] = self.make_2d_sweep_points(
-                task.get('sweep_points', []), idxs)
-        self.experiments[idxs] = self.QuantumExperiment(
-            *self.args, sweep_points=current_sp,
-            task_list=current_tl, **self.kwargs)
-        if self.forget_experiments:
-            del self.experiments[idxs]
+                task.get('sweep_points', []), idx)
+        super().create_experiment(idx, task_list=current_tl, **kw)
 

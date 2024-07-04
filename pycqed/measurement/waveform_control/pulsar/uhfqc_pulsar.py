@@ -10,13 +10,13 @@ except Exception:
     UHFQA = type(None)
 
 from .pulsar import PulsarAWGInterface
-from .zi_pulsar_mixin import ZIPulsarMixin, ZIMultiCoreCompilerMixin
+from .zi_pulsar_mixin import ZIPulsarMixin
 
 
 log = logging.getLogger(__name__)
 
 
-class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
+class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
     """ZI UHFQC specific functionality for the Pulsar class."""
 
     AWG_CLASSES = [UHFQA]
@@ -55,6 +55,10 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
     def __init__(self, pulsar, awg):
         super().__init__(pulsar, awg)
+
+        # Set up multi-core compiler
+        self.find_multi_core_compiler()
+
         try:
             # Here we instantiate a zhinst.qcodes-based UHFQA in addition to
             # the one based on the ZI_base_instrument because the parallel
@@ -62,28 +66,14 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
             from pycqed.instrument_drivers.physical_instruments. \
                 ZurichInstruments.zhinst_qcodes_wrappers import UHFQA
             kw = {'server': 'emulator'} if awg.server == 'emulator' else {}
-            self._awg_mcc = UHFQA(awg.devname, name=awg.name + '_mcc',
-                                  host='localhost', interface=awg.interface,
-                                  **kw)
-            if getattr(self.awg.daq, 'server', None) == 'emulator':
-                # This is a hack for virtual setups to make sure that the
-                # ready node is in sync between the two mock DAQ servers.
-                path = f'/{self.awg.devname}/awgs/0/ready'
-                self._awg_mcc._session.daq_server.nodes[
-                    path] = self.awg.daq.nodes[path]
+            self.awg_mcc = UHFQA(awg.devname, name=awg.name + '_mcc',
+                                 host='localhost', interface=awg.interface,
+                                 **kw)
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '
                       f'{awg.name} ({awg.devname}).')
-            self._awg_mcc = None
-
-        self._init_mcc()
-
-    def _get_awgs_mcc(self) -> list:
-        if self._awg_mcc is not None:
-            return list(self._awg_mcc.awgs)
-        else:
-            return []
+            self.awg_mcc = None
 
     def create_awg_parameters(self, channel_name_map):
         super().create_awg_parameters(channel_name_map)
@@ -377,11 +367,13 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
         self.awg._awg_needs_configuration[0] = False
         self.awg._awg_program[0] = True
 
-        if self.pulsar.use_mcc() and len(self.awgs_mcc) > 0:
-            # Parallel seqc string compilation and upload
-            self.multi_core_compiler.add_active_awg(self.awgs_mcc[0])
-            self.multi_core_compiler.load_sequencer_program(
-                self.awgs_mcc[0], awg_str)
+        if self.pulsar.use_mcc() and self.awg_mcc:
+            self.multi_core_compiler.sequencer_code_mcc[self.awg.name] = (
+                self.awg_mcc.awgs[0], awg_str)
+            self.multi_core_compiler.post_sequencer_code_upload[
+                self.awg.name] = [(self._update_device_ready_status_mcc, {})]
+            self.awg.store_awg_source_string(0, awg_str)
+            # otherwise, configure_awg_from_string stores it automatically
         else:
             if self.pulsar.use_mcc():
                 log.warning(
@@ -406,3 +398,10 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin, ZIMultiCoreCompilerMixin):
 
         chid = self.pulsar.get(ch + '_id')
         self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
+
+    def _update_device_ready_status_mcc(self):
+        if getattr(self.awg.daq, 'server', None) == 'emulator':
+            # This is a hack for virtual setups to make sure that the
+            # ready node is in sync between the two mock DAQ servers.
+            path = f'/{self.awg.devname}/awgs/0/ready'
+            self.awg.daq.nodes[path]["value"] = self.awg_mcc.awgs[0].ready()

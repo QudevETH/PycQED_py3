@@ -6,7 +6,7 @@ import json
 import time
 import datetime
 import pickle
-from pycqed.measurement import hdf5_data as h5d
+from pycqed.utilities.io import hdf5 as h5d
 from pycqed.analysis import analysis_toolbox as a_tools
 import errno
 import pycqed as pq
@@ -155,8 +155,9 @@ def to_hex_string(byteval):
 
 def load_settings(instrument,
                   label: str='', folder: str=None,
-                  timestamp: str=None, update=True, **kw):
-    '''
+                  timestamp: str=None, update=True,
+                  load_settings_submodules=True, **kw):
+    """
     Loads settings from an hdf5 file onto the instrument handed to the
     function. By default uses the last hdf5 file in the datadirectory.
     By giving a label or timestamp another file can be chosen as the
@@ -173,26 +174,91 @@ def load_settings(instrument,
         timestamp (str)       : timestamp of file in the datadir
         update (bool, default True): if set to False, the loaded settings
             will be returned instead of updating them in the instrument.
+        load_settings_submodules (bool): whether or not the parameters of
+            submodules of `instrument` (and their child submodules recursively)
+            should be loaded. Defaults to True.
+            If set to True, all parameters of all submodules are loaded,
+            independently of the kwarg params_to_set.
 
     Kwargs:
         params_to_set (list)    : list of strings referring to the parameters
-            that should be set for the instrument
-    '''
-    from numpy import array  # DO not remove. Used in eval(array(...))
-    from collections import OrderedDict  # DO NOT remove. Used in eval()
-    if folder is None:
-        folder_specified = False
-    else:
-        folder_specified = True
+            that should be loaded for the instrument. If not provided, all
+            parameters are loaded.
+            Note that loading parameters from submodules is not affected by
+            this kwarg. Either all or no parameters of submodules are loaded,
+            depending on the value of load_settings_submodules.
+    """
+    from pycqed.utilities import settings_manager as setman
+
+    def _load_settings(instrument, ins_loaded, params_to_set=None,
+                       load_settings_submodules=True, update=True,
+                       verbose=True):
+        if isinstance(instrument, str) and not update:
+            instrument_name = instrument
+        else:
+            instrument_name = instrument.name
+
+        if verbose:
+            print('Loaded settings successfully from the file.')
+        if params_to_set is not None:
+            if len(params_to_set) == 0:
+                log.warning('The list of parameters to update is empty.')
+            if verbose and update:
+                print('Setting parameters {} for {}.'.format(
+                    params_to_set, instrument_name))
+            params_to_set = [(param, val()) for (param, val) in
+                             ins_loaded.parameters.items() if param in
+                             params_to_set]
+        else:
+            if verbose and update:
+                print('Setting parameters for {}.'.format(instrument_name))
+            params_to_set = [
+                (param, val()) for (param, val) in ins_loaded.parameters.items()
+                if param not in getattr(
+                    instrument, '_params_to_not_load', {})]
+
+        if not update:
+            params_dict = {parameter: value for parameter, value in \
+                           params_to_set}
+            return params_dict
+
+        for parameter, value in params_to_set:
+            if parameter in instrument.parameters.keys() and \
+                    hasattr(instrument.parameters[parameter], 'set'):
+                try:
+                    instrument.set(parameter, value)
+                except Exception:
+                    log.error('Could not set parameter '
+                              '"%s" to "%s" '
+                              'for instrument "%s"' % (
+                                  parameter, value,
+                                  instrument_name))
+
+        if load_settings_submodules:
+            for submodule in ins_loaded.submodules.keys():
+                try:
+                    _load_settings(
+                        getattr(instrument, submodule),
+                        ins_loaded.submodules[submodule],
+                        params_to_set=None,
+                        load_settings_submodules=load_settings_submodules,
+                        verbose=verbose,
+                        update=update)
+                except Exception as e:
+                    log.error(f"Could not load settings onto "
+                              f"submodule {submodule}"
+                              f" of instrument {instrument_name}: {e}.")
+
+    verbose = kw.pop('verbose', True)
+    older_than = kw.pop('older_than', None)
+    success = False
+    count = 0
+    folder_specified = False if folder is None else True
 
     if isinstance(instrument, str) and not update:
         instrument_name = instrument
     else:
         instrument_name = instrument.name
-    verbose = kw.pop('verbose', True)
-    older_than = kw.pop('older_than', None)
-    success = False
-    count = 0
     # Will try multiple times in case the last measurements failed and
     # created corrupt data files.
     while success is False and count < 10:
@@ -203,91 +269,21 @@ def load_settings(instrument,
             print('Folder used: {}'.format(folder))
 
         try:
-            filepath = a_tools.measurement_filename(folder)
-            f = h5py.File(filepath, 'r')
-            sets_group = f['Instrument settings']
-            ins_group = sets_group[instrument_name]
+            station = setman.get_station_from_file(folder=folder,
+                                                   param_path=[instrument_name])
+            ins_loaded = station.components[instrument_name]
 
-            if verbose:
-                print('Loaded settings successfully from the HDF file.')
-
-            params_to_set = kw.pop('params_to_set', None)
-            if params_to_set is not None:
-                if len(params_to_set) == 0:
-                    log.warning('The list of parameters to update is empty.')
-                if verbose and update:
-                    print('Setting parameters {} for {}.'.format(
-                        params_to_set, instrument_name))
-                params_to_set = [(param, val) for (param, val) in
-                                ins_group.attrs.items() if param in
-                                 params_to_set]
-            else:
-                if verbose and update:
-                    print('Setting parameters for {}.'.format(instrument_name))
-                params_to_set = [
-                    (param, val) for (param, val) in ins_group.attrs.items()
-                    if param not in getattr(
-                        instrument, '_params_to_not_load', {})]
-
-            if not update:
-                params_dict = {parameter : value for parameter, value in \
-                        params_to_set}
-                f.close()
-                return params_dict
-
-            for parameter, value in params_to_set:
-                if parameter in instrument.parameters.keys() and \
-                        hasattr(instrument.parameters[parameter], 'set'):
-                    if value == 'None':  # None is saved as string in hdf5
-                        try:
-                            instrument.set(parameter, None)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    elif value == 'False':
-                        try:
-                            instrument.set(parameter, False)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    elif value == 'True':
-                        try:
-                            instrument.set(parameter, True)
-                        except Exception:
-                            print('Could not set parameter "%s" to "%s" for '
-                                  'instrument "%s"' % (
-                                      parameter, value, instrument_name))
-                    else:
-                        try:
-                            instrument.set(parameter, int(value))
-                        except Exception:
-                            try:
-                                instrument.set(parameter, float(value))
-                            except Exception:
-                                try:
-                                    instrument.set(parameter, eval(value))
-                                except Exception:
-                                    try:
-                                        instrument.set(parameter,
-                                                       value)
-                                    except Exception:
-                                        log.error('Could not set parameter '
-                                              '"%s" to "%s" '
-                                              'for instrument "%s"' % (
-                                                  parameter, value,
-                                                  instrument_name))
-
+            p = _load_settings(
+                instrument, ins_loaded,
+                params_to_set=kw.get('params_to_set', None),
+                load_settings_submodules=load_settings_submodules,
+                verbose=verbose, update=update)
+            if p is not None:
+                return p
             success = True
-            f.close()
         except Exception as e:
             logging.warning(e)
             success = False
-            try:
-                f.close()
-            except:
-                pass
             if timestamp is None and not folder_specified:
                 print('Trying next folder.')
                 older_than = os.path.split(folder)[0][-8:] \
@@ -701,45 +697,50 @@ def check_keyboard_interrupt():
         pass
 
 
-
-def temporary_value(*param_value_pairs):
+class TemporaryValue:
     """
     This context manager allows to change a given QCodes parameter
     to a new value, and the original value is reverted upon exit of the context
     manager.
 
     Args:
-        *param_value_pairs: 2-tuples of qcodes parameters and their temporary 
+        *param_value_pairs: 2-tuples of qcodes parameters and their temporary
                             values
-    
+
     Example:
-        # measure qubit spectroscopy at a different readout frequency without 
+        # measure qubit spectroscopy at a different readout frequency without
         # setting the parameter value
-        with temporary_values((qb1.ro_freq, 6e9)):
+        with TemporaryValue((qb1.ro_freq, 6e9)):
             qb1.measure_spectroscopy(...)
     """
 
-    class TemporaryValueContext:
-        def __init__(self, *param_value_pairs):
-            if len(param_value_pairs) > 0 and \
-                    not isinstance(param_value_pairs[0], (tuple, list)):
-                param_value_pairs = (param_value_pairs,)
-            self.param_value_pairs = param_value_pairs
-            self.old_value_pairs = []
+    def __init__(self, *param_value_pairs):
+        if len(param_value_pairs) > 0 and \
+                not isinstance(param_value_pairs[0], (tuple, list)):
+            param_value_pairs = (param_value_pairs,)
+        self.param_value_pairs = param_value_pairs
+        self.old_value_pairs = []
 
-        def __enter__(self):
-            log.debug('Entered TemporaryValueContext')
+    def __enter__(self):
+        log.debug('Entered TemporaryValueContext')
+        try:
             self.old_value_pairs = \
                 [(param, param()) for param, value in self.param_value_pairs]
             for param, value in self.param_value_pairs:
                 param(value)
-    
-        def __exit__(self, type, value, traceback):
-            for param, value in self.old_value_pairs: 
-                param(value)
-            log.debug('Exited TemporaryValueContext')
-    
-    return TemporaryValueContext(*param_value_pairs)
+        except Exception:
+            self.__exit__(None, None, None)
+            raise
+
+    def __exit__(self, type, value, traceback):
+        for param, value in self.old_value_pairs:
+            param(value)
+        log.debug('Exited TemporaryValueContext')
+
+
+# Alias in order to have the class definition in camel case, but keep
+# backwards compatibility
+temporary_value = TemporaryValue
 
 
 def configure_qubit_mux_drive(qubits, lo_freqs_dict):
@@ -811,7 +812,7 @@ def configure_qubit_mux_readout(qubits, lo_freqs_dict, set_mod_freq=True):
             qb.ro_mod_freq(qb.ro_freq() - lo_freqs_dict[qb_ro_mwg])
 
 
-def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
+def configure_qubit_feedback_params(qubits, for_ef=None, set_thresholds=False):
     for qb in qubits:
         ge_ch = qb.ge_I_channel()
         acq_ch = qb.acq_I_channel()
@@ -821,20 +822,53 @@ def configure_qubit_feedback_params(qubits, for_ef=False, set_thresholds=False):
             AWG.dios_0_mode(2)
             vawg = (int(pulsar.get(f'{ge_ch}_id')[2:])-1)//2
             AWG.set(f'awgs_{vawg}_dio_mask_shift', 1+acq_ch)
-            AWG.set(f'awgs_{vawg}_dio_mask_value', 0b11 if for_ef else 1) #
-            # assumes channel I and Q are consecutive on same AWG.
+            if (two_dio_bits := for_ef) is None:
+                two_dio_bits = (len(qb.get_acq_int_channels()) == 2)
+            # The case with two dio bits assumes channel I and Q are
+            # consecutive both on the acquisition device and the AWG.
+            AWG.set(f'awgs_{vawg}_dio_mask_value',
+                    0b11 if two_dio_bits else 0b1)
         acq_dev = qb.instr_acq.get_instr()
         acq_dev.dios_0_mode(2)
         if set_thresholds:
-            if for_ef:
-                log.warning('This function sets only thresholds for ge. Please '
-                            'call ActiveReset._set_thresholds for proper ge-ef '
-                            'reset.')
-            threshs = qb.acq_classifier_params()
-            if threshs is not None:
-                threshs = threshs.get('thresholds', None)
-            if threshs is not None:
-                acq_dev.set(f'qas_0_thresholds_{acq_ch}_level', threshs[0])
+            upload_classif_thresholds(qb)
+
+
+def upload_classif_thresholds(qb, clf_params=None, add=None):
+    """Sets classification thresholds for active reset
+
+    Converts the thresholds from the classifier params of the qubit into
+    actual thresholds as seen by the acquisition device (the former have the
+    dimension of voltages, the latter integrated voltages over time),
+    and uploads them to the acquisition device.
+
+    Args:
+        qb (QuDev_transmon): qubit object
+        clf_params (dict): dictionary containing the thresholds that must
+            be set on the corresponding UHF channel(s).
+            If None, then defaults to qb.acq_classifier_params().
+        add (dict): Optional offsets to add to the uploaded thresholds,
+            in voltage units.
+
+    Note: this could also be a qubit method.
+    """
+    if clf_params is None:
+        clf_params = qb.acq_classifier_params()
+    if add is None:
+        add = {0: 0, 1: 0}
+    instr = qb.instr_acq.get_instr()
+    ths = {
+        k: v + add[k]
+        for k, v in clf_params['thresholds'].items()
+    }
+    # Rescale thresholds to match integrated values in the acq. intrument
+    ths = {k: instr.acq_sampling_rate * qb.acq_length() * v
+           for k, v in ths.items()}
+    # Upload thresholds
+    for key, th in ths.items():
+        ch = {0: 'I', 1: 'Q'}[key]
+        channel_id = qb.parameters[f'acq_{ch}_channel']()
+        instr.parameters[f'qas_0_thresholds_{channel_id}_level'](ths[key])
 
 
 def find_symmetry_index(data):

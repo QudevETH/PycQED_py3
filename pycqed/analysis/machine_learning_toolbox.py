@@ -5,17 +5,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from abc import ABCMeta, abstractmethod
 
-#from neupy.algorithms import GRNN as grnn
 from sklearn.neural_network import MLPRegressor as mlpr
 from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans as KMeans
 import fractions, math
 fractions.gcd = math.gcd  # fractions.gcd (for neupy) is removed in python 3.9
-from neupy.algorithms import GRNN as grnn
+
+# These libraries might not be available. Please check pypproject.toml
 try:
-	import tensorflow as tf
+    from neupy.algorithms import GRNN as grnn
 except Exception:
-	logging.warning('Could not import tensorflow')
+    logging.warning('Could not import neupy.')
+try:
+    import tensorflow as tf
+except Exception:
+    logging.warning('Could not import tensorflow.')
 
 
 class Estimator(metaclass=ABCMeta):

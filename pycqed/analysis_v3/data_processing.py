@@ -385,6 +385,8 @@ def average_data(data_dict, keys_in, keys_out=None, **params):
     :param params: keyword arguments.:
         - shape (tuple of ints): shape into which to reshape array before
             averaging
+        - order (str, optional): {'C', 'F', 'A'}, see np documentation of
+            reshape. Used when reshaping the input data before averaging.
         - averaging_axis (int): axis along which to average
         - final_shape (tuple of ints): shape into which to cast the array after
             averaging
@@ -398,6 +400,7 @@ def average_data(data_dict, keys_in, keys_out=None, **params):
     if keys_out is None:
         keys_out = [f'average_data.{k}' for k in keys_in]
     shape = hlp_mod.get_param('shape', data_dict, **params)
+    order = hlp_mod.get_param('order', data_dict, default_value='C', **params)
     final_shape = hlp_mod.get_param('final_shape', data_dict, **params)
     averaging_axis = hlp_mod.get_param('averaging_axis', data_dict,
                                        default_value=-1, **params)
@@ -411,7 +414,7 @@ def average_data(data_dict, keys_in, keys_out=None, **params):
                              f'data from ch {keyi} with length '
                              f'{len(data_to_proc_dict[keyi])}.')
         data_to_avg = data_to_proc_dict[keyi] if shape is None else \
-            np.reshape(data_to_proc_dict[keyi], shape)
+            np.reshape(data_to_proc_dict[keyi], shape, order)
         avg_data = np.mean(data_to_avg, axis=averaging_axis)
         if final_shape is not None:
             avg_data = np.reshape(avg_data, final_shape)
@@ -452,6 +455,85 @@ def transform_data(data_dict, keys_in, keys_out, **params):
         hlp_mod.add_param(
             keyo, transform_func(data_to_proc_dict[keyi], **tf_kwargs),
             data_dict)
+    return data_dict
+
+
+def normalize_qubit_subspace(data_dict, keys_in, keys_out=None, **params):
+    """
+    Normalise the qubit subspace after a qutrit classification,
+    such that pg + pe = 1.
+
+    This function assumes that keys_in point to pg, pe, pf, in this order.
+
+    Args:
+        data_dict (dict): containing data to be processed and where the
+            processed data is to be stored
+        keys_in (list): key names or dictionary keys paths in
+            data_dict pointing to pg, pe, pf (in this order)
+        keys_out (list, None):  key names or dictionary keys paths in
+            data_dict where the renormalised data to be saved in data_dict.
+            If None, appends the suffix "_renormalized" to keys_in.
+        **params: keyword arguments: passed to add_param
+
+    Returns:
+        data_dict
+    """
+    data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
+    # get populations as an array with shape
+    # (3, nr measured probabilities for each basis-state) where 3 refers to the
+    # qutrit probabilities pg, pe, pf
+    populations = np.array(list(data_to_proc_dict.values()))
+    if keys_out is None:
+        keys_out = [f'{keyi}_renormalized' for keyi in keys_in]
+    if len(keys_out) != len(data_to_proc_dict):
+        raise ValueError('keys_out and keys_in do not have the same length.')
+    norm_factor = populations[0, :] + populations[1, :]  # pg + pe
+    populations[0, :] /= norm_factor  # pg
+    populations[1, :] /= norm_factor  # pe
+    for pop, keyo in zip(populations, keys_out):
+        hlp_mod.add_param(keyo, pop, data_dict, **params)
+    return data_dict
+
+
+def normalize_qubit_subspace_2qb(data_dict, keys_in, keys_out=None, **params):
+    """
+    Normalise the qubit subspace after a qutrit classification,
+    such that pgg + pge + peg + pee = 1.
+
+    This function assumes that keys_in point to an array with shape
+    (nr measured probabilities for each basis-state, 9). The columns are the 9
+    basis-state probabilities for a qutrit: gg, ge, gf, eg, ee, ef, fg, fe, ff.
+
+    Args:
+        data_dict (dict): containing data to be processed and where the
+            processed data is to be stored
+        keys_in (list): key names or dictionary keys paths in
+            data_dict pointing to pg, pe, pf (in this order)
+        keys_out (list, None):  key names or dictionary keys paths in
+            data_dict where the renormalised data to be saved in data_dict.
+            If None, appends the suffix "_renormalized" to keys_in.
+        **params: keyword arguments: passed to add_param
+
+    Returns:
+        data_dict
+    """
+    data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
+    # get populations as an array with shape
+    # (nr measured probabilities for each basis-state, 9), where 9 refers to the
+    # basis-state probabilities for a qutrit; see docstring)
+    populations = np.array(list(data_to_proc_dict.values()))[0]
+    if keys_out is None:
+        keys_out = [f'{keyi}_renormalized' for keyi in keys_in]
+    if len(keys_out) != len(data_to_proc_dict):
+        raise ValueError('keys_out and keys_in do not have the same length.')
+    # Take columns corresponding to  pgg, pge, peg, pee
+    pop_qb = np.concatenate([populations[:, 0:2], populations[:, 3:5]], axis=1)
+    norm_factor = np.sum(pop_qb, axis=1)  # pgg + pge + peg + pee
+    populations[:, 0] /= norm_factor  # pgg
+    populations[:, 1] /= norm_factor  # pge
+    populations[:, 3] /= norm_factor  # peg
+    populations[:, 4] /= norm_factor  # pee
+    hlp_mod.add_param(keys_out[0], populations, data_dict, **params)
     return data_dict
 
 
@@ -1094,7 +1176,8 @@ def calculate_meas_ops_and_covariations_cal_points(
     meas_obj_names = hlp_mod.get_measurement_properties(
         data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
         **params)
-    prep_params = hlp_mod.get_param('preparation_params', data_dict, **params)
+
+    prep_params = hlp_mod.get_preparation_parameters(data_dict, **params)
 
     try:
         preselection_obs_idx = list(observables.keys()).index('pre')

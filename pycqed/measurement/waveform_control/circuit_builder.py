@@ -1,17 +1,19 @@
 import itertools
+import logging
+from copy import copy, deepcopy
+
 import numpy as np
-from copy import copy
-from copy import deepcopy
-from pycqed.measurement.waveform_control.block import Block
-from pycqed.measurement.waveform_control.block import ParametricValue
-from pycqed.measurement.waveform_control.sequence import Sequence
-from pycqed.measurement.waveform_control.segment import Segment
+
 from pycqed.measurement import multi_qubit_module as mqm
+
+log = logging.getLogger(__name__)
+from pycqed.measurement.waveform_control.block import Block, ParametricValue
+from pycqed.measurement.waveform_control.segment import Segment
+from pycqed.measurement.waveform_control.sequence import Sequence
 
 
 class CircuitBuilder:
-    """
-    A class that helps to build blocks, segments, or sequences, e.g.,
+    """A class that helps to build blocks, segments, or sequences, e.g.,
     when implementing quantum algorithms.
 
     :param dev: the device on which the algorithm will be executed
@@ -23,13 +25,17 @@ class CircuitBuilder:
              object if available, or otherwise the first operation from the
              operation_dict whose name contains 'CZ', or we fall back to
              'CZ' if no such operation is found.)
-         decompose_rotation_gates: (dict of bool) whether arbitrary
-            rotation gates should be decomposed into pi rotations
-            and virtual Z gates, e.g., {'X': True, 'Y': False}.
-            False means direct implementation. For gate types not specified
-            here, the default is False.
-         prep_params: (dict) custom preparation params (default: from
-            instrument settings)
+         decompose_rotation_gates: (dict of bool or dict of lists of lists)
+            whether arbitrary rotation gates should be decomposed into pi
+            rotations and virtual Z gates. Can either be a boolean to
+            decompose all gates of a given type, e.g. {'CZ_nztc': True},
+            or a list of all qubit pairs for which the gate should be
+            decomposed, e.g {'CZ_nztc': [['qb2', 'qb1'], ['qb3', 'qb4]]}. In
+            the latter case the single-qubit gates of the decomposition are
+            applied to the first qubit of the pair.
+         reset_params: (dict) Global reset parameters, see doc string of
+            CircuitBuilder.reset()
+            If None, they are taken from the individual qubit.reset modules.
          fast_mode: (bool, default: False) activate faster processing by
             - creating segments with fast_mode=True in self.sweep_n_dim
                 (see fast_mode parameter in Segment class)
@@ -37,15 +43,13 @@ class CircuitBuilder:
                 - addressing qubits via logical indices (spin indices)
                 - resolution of ParametricValues in self.sweep_n_dim if
                   body_block_func is used
-            - copy pulse dicts with copy instead of with deepcopy. This means
-              that the user has to ensure that mutable pulse parameters (dicts,
-              lists, etc.) do not get modified by their code.
+            - copying pulse dicts with copy instead of with deepcopy. This
+                means that the user has to ensure that mutable pulse parameters
+                (dicts,lists, etc.) do not get modified by their code.
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
                 'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef']}
-    STD_PREP_PARAMS = {'preparation_type': 'wait', 'reset_reps': 3,
-                       'ro_separation': 1.5e-6, 'post_ro_wait': 1e-6}
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  filter_qb_names=None, **kw):
@@ -53,6 +57,7 @@ class CircuitBuilder:
         self.dev = dev
         self.qubits, self.qb_names = self.extract_qubits(
             dev, qubits, operation_dict, filter_qb_names)
+        self._prep_sweep_params = {qb: {} for qb in self.qb_names}
         self.update_operation_dict(operation_dict)
         self.cz_pulse_name = kw.get('cz_pulse_name')
         if self.cz_pulse_name is None:
@@ -66,7 +71,7 @@ class CircuitBuilder:
         self.decompose_rotation_gates = kw.get('decompose_rotation_gates', {})
         self.fast_mode = kw.get('fast_mode', False)
         self.copy_op = copy if self.fast_mode else deepcopy
-        self.prep_params = kw.get('prep_params', None)
+        self.reset_params = self._parse_reset(kw.get('reset_params', None))
 
     @staticmethod
     def extract_qubits(dev=None, qubits=None, operation_dict=None,
@@ -96,9 +101,38 @@ class CircuitBuilder:
             qb_names = [qb for qb in qb_names if qb in filter_qb_names]
         return qubits, qb_names
 
-    def update_operation_dict(self, operation_dict=None):
+    @staticmethod
+    def _parse_reset(reset_params=None):
+        """Parse reset parameters such that the output is either "None"
+        or a dictionary containing reset parameters.
+
+        Args:
+            reset_params (None, str, dict): reset parameters.
+            If None, returned reset params will be None.
+            If False, returned reset params is a dict with no reset steps
+            If string, returned reset params is a dict where the reset step is
+            the string.
+            If a dict, then reset_params is returned untouched.
+            Otherwise, an exception is raised.
+
+        Returns:
+            reset_parameters (dict, None): FIXME
         """
-        Updates the stored operation_dict based on the passed operation_dict or
+        if isinstance(reset_params, str):
+            return dict(steps=[reset_params])
+        elif reset_params == False:
+            return dict(steps=[])
+        elif reset_params is None:
+            return reset_params
+        elif not isinstance(reset_params, dict):
+            raise ValueError(f'reset_params must be a string, False,'
+                             f' or a dict, but not {reset_params} of type'
+                             f' {type(reset_params)}')
+        else:
+            return reset_params
+
+    def update_operation_dict(self, operation_dict=None):
+        """Updates the stored operation_dict based on the passed operation_dict or
         based on the stored device/qubit objects.
         :param operation_dict: (optional) The operation dict to be used. If
             not provided, an operation dict is generated from  the stored
@@ -113,8 +147,7 @@ class CircuitBuilder:
             self.operation_dict = deepcopy(mqm.get_operation_dict(self.qubits))
 
     def get_qubits(self, qb_names=None, strict=True):
-        """
-        Wrapper to get 'all' qubits, single qubit specified as string
+        """Wrapper to get 'all' qubits, single qubit specified as string
         or list of qubits, checking they are in self.qubits
         :param qb_names: 'all', single qubit name (eg. 'qb1') or list of
             qb names
@@ -155,36 +188,92 @@ class CircuitBuilder:
             qb_map = {qb.name: qb for qb in self.qubits}
             return [qb_map[qb] for qb in qb_names], qb_names
 
-    def get_prep_params(self, qb_names='all'):
-        """
-        Gets a copy of preparation parameters (used for active reset,
+    def get_reset_params(self, qb_names="all"):
+        """Gets a copy of preparation parameters (used for active reset,
         preselection) for qb_names.
+
         Args:
             qb_names (list): list of qubit names for which the
-                preparation params should be retrieved. Default is 'all',
-                which retrieves the preparation parameters for all qubits.
+                reset params should be retrieved. Default is 'all',
+                which retrieves the reset parameters for all qubits.
+                Note: this parameter is overwritten by
+                self.reset_params["qb_names"] in case it exists.
 
         Returns:
-            preparation_params (dict): deep copy of preparation parameters
+            reset_params (dict): deep copy of preparation parameters
+
+        """
+        reset_params = deepcopy(self.reset_params) or {}
+
+        # collect them from CircuitBuilder
+        steps, analysis_instructions = self._get_reset_steps(
+            qb_names=reset_params.get('qb_names', qb_names),
+            steps=reset_params.get('steps', None))
+
+        reset_params.update(dict(steps=steps, analysis_instructions=
+                                 analysis_instructions))
+        return reset_params
+
+    def _get_reset_steps(self, qb_names="all", steps=None):
+        """Constructs the global reset steps for the given qubits in qb_names
+        by retrieving the steps of the individual qubits in qb.reset.steps
+        or from the passed `steps`
+        Args:
+            qb_names (str, list): list of qubit names.
+            steps (None, list, str): list of reset steps for all qubits in
+                qb_names. If None (default), steps are taken for each qubit
+                from qb.reset.steps
+
+        Returns:
+            reset_steps (dict): preparation parameters
+            analysis_instructions (dict)
 
         """
         qubits, qb_names = self.get_qubits(qb_names)
-        if self.prep_params is not None:
-            return deepcopy(self.prep_params)
-        elif self.dev is not None:
-            return self.dev.get_prep_params(qubits)
-        elif qubits is not None:
-            return mqm.get_multi_qubit_prep_params(qubits)
+        # collect steps and ensure they are lists, and deepcopy them to allow
+        # modification within this function without affecting original object
+        if qubits is None:
+            # no qubits objects passed, so no reset possible
+            log.warning("Failed to retrieve reset "
+                        "steps from qb.reset.steps() because no qubits "
+                        "objects were found (self.qubits is None). "
+                        "No reset steps will be added.")
+            reset_steps = {qbn: [] for qbn in qb_names}
+            analysis_instructions = {qbn: [dict(preparation_type="wait")]
+                                     for qbn in qb_names}
+        elif steps is None:
+            try:
+                reset_steps = {qb.name: deepcopy(qb.reset.steps()) for qb in qubits}
+                analysis_instructions = \
+                    {qb.name: [qb.reset.submodules.get(s).get_analysis_instructions()
+                               for s in qb.reset.steps() if s != "padding"]
+                     for qb in qubits}
+            except AttributeError as e:
+                log.error(f"Failed to retrieve reset "
+                          f"steps from qb.reset.steps(): {e}. "
+                          f"No reset steps will be added.")
+                reset_steps = {qbn: [] for qbn in qb_names}
+                analysis_instructions = {qbn: [dict(preparation_type="wait")]
+                                         for qbn in qb_names}
         else:
-            return deepcopy(self.STD_PREP_PARAMS)
+            if isinstance(steps, str):
+                steps = [steps]
+            reset_steps = {qb.name: deepcopy(steps) for qb in qubits}
+            analysis_instructions =\
+                {qb.name: [qb.reset.submodules.get(s).get_analysis_instructions()
+                           for s in steps]
+                for qb in qubits}
+        return reset_steps, analysis_instructions
 
-    def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None, **kw):
-        """
-        Finds the name of the CZ gate between qb1-qb2 that exists in
+    def get_cz_operation_name(self, qb1=None, qb2=None, op_code=None,
+                              cz_pulse_name=None, **kw):
+        """Finds the name of the CZ gate between qb1-qb2 that exists in
         self.operation_dict.
         :param qb1: name of qubit object of one of the gate qubits
         :param qb2: name of qubit object of the other gate qubit
         :param op_code: provide an op_code instead of qb1 and qb2
+        :param cz_pulse_name: specify a CZ pulse name different from
+            self.cz_pulse_name (if not specified in the op_code)
 
         :param kw: keyword arguments:
             cz_pulse_name: a custom cz_pulse_name instead of the stored one
@@ -194,7 +283,8 @@ class CircuitBuilder:
         assert (qb1 is None and qb2 is None and op_code is not None) or \
                (qb1 is not None and qb2 is not None and op_code is None), \
             "Provide either qb1&qb2 or op_code!"
-        cz_pulse_name = kw.get('cz_pulse_name', self.cz_pulse_name)
+        if cz_pulse_name is None:
+            cz_pulse_name = self.cz_pulse_name
         if op_code is not None:
             op_split = op_code.split(' ')
             qb1, qb2 = op_split[1:]
@@ -210,20 +300,29 @@ class CircuitBuilder:
         else:
             raise KeyError(f'CZ gate "{cz_pulse_name} {qb1} {qb2}" not found.')
 
-    def get_pulse(self, op, parse_rotation_gates=False):
-        """
-        Gets a pulse from the operation dictionary, and possibly parses
-        logical indexing as well as arbitrary angle from Z gate operation.
+    def get_pulse(self, *args, **kwargs):
+        """Wrapper for get_pulses, for backwards compatibility only"""
+        pulses = self.get_pulses(*args, **kwargs)
+        if len(pulses) > 1:
+            raise ValueError("get_pulse returned several pulses, please use "
+                             "the newest version - get_pulses - instead!")
+        return pulses[0]
+
+    def get_pulses(self, op):
+        """Gets pulse dictionaries, corresponding to the operation op, from the
+        operation dictionary, and possibly parses logical indexing as well as
+        arbitrary angles.
+
         Examples:
-             >>> get_pulse('CZ 0 2', parse_rotation_gates=True)
+             >>> get_pulses('CZ 0 2')
              will perform a CZ gate (according to cz_pulse_name)
              between the qubits with logical indices 0 and 2
-             >>> get_pulse('Z100 qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z100 qb1')
              will perform a 100 degree Z rotation
-             >>> get_pulse('Z:theta qb1', parse_rotation_gates=True)
+             >>> get_pulses('Z:theta qb1')
              will perform a parametric Z rotation with parameter name theta
-             >>> get_pulse('Z:2*[theta] qb1', parse_rotation_gates=True)
-             will perform a parametric Z rotation with twice the
+             >>> get_pulses('X:2*[theta] qb1')
+             will perform a parametric X rotation with twice the
              value of the parameter named theta. The brackets are used to
              indicated the parameter name. This feature has also been tested
              with some more complicated mathematical expression.
@@ -231,124 +330,239 @@ class CircuitBuilder:
              spaces in between operands. For instance,
              'Z:2*[theta]/180+[theta]**2 qb1' and not
              'Z: 2 * [theta] / 180 + [theta]**2 qb1
+             >>> get_pulses('CZ_nztc40 qb3 qb2')
+             will perform a 40 degrees CZ gate (if allowed by the CZ operation),
+             using the CZ_nztc hardware implementation
         Adding 's' (for simultaneous) in front of an op_code (e.g.,
         'sZ:theta qb1') will reference the pulse to the start of the
         previous pulse.
         Adding 'm' (for minus) in front of an op_code (e.g.,
         'mZ:theta qb1') negates the sign. If 's' is also given,
         it has to be in the order 'sm'.
+        In addition, if self.decompose_rotation_gates is not None,
+        arbitrary-angle CZ gates are decomposed into two standard CZ gates
+        and single-qubit gates. Examples:
+            decompose_rotation_gates={'CZ_nztc': True} decomposes all CZ_nztc
+            decompose_rotation_gates={'CZ_nztc': [['qb3', 'qb2'],]} decomposes
+                all CZ_nztc between qb2 and qb3, and applies the single-qubit
+                gates to qb3 (first qubit in the pair)
+        Note that get_pulses parses one operation 'op', but may return more than
+        one pulse, for example for gate decomposition.
 
         Args:
             op: operation (str in the above format, or iterable
             corresponding to the splitted string)
-            parse_rotation_gates: whether or not to look for gates with
-            arbitrary angles.
 
-        Returns: deepcopy of the pulse dictionary
+        Returns: list of pulses, where each pulse is a copy (see self.copy_op)
+        of the corresponding pulse dictionary
 
         """
-        op_info = op.split(" ") if isinstance(op, str) else op
-        if not self.fast_mode:
+        # op_split is further parsed and used below
+        # op is the op_code which will be stored in the returned pulse
+        if isinstance(op, str):
+            op_split = op.split(" ")
+        else:
+            op_split = op
+            op = " ".join(op)
+        # Extract op_name and qbn (qubit names)
+        # op_name: first part of the op_code, e.g. "Z:2*[theta]"
+        op_name = op_split[0]
+        if self.fast_mode:
+            qbn = op_split[1:]
+        else:
             # the call to get_qubits resolves qubits indices if needed
-            _, op_info[1:] = self.get_qubits(op_info[1:], strict=False)
-        op_name = op_info[0][1:] if op_info[0][0] == 's' else op_info[0]
-        op = op_name + ' ' + ' '.join(op_info[1:])
+            _, qbn = self.get_qubits(op_split[1:], strict=False)
+        simultaneous = False
+        if op_name[0] == 's':
+            simultaneous = True
+            op_name = op_name[1:]
+        if op_name[-1] == 's':
+            simultaneous = True
+            op_name = op_name[:-1]
 
         if op in self.operation_dict:
-            p = self.copy_op(self.operation_dict[op])
-        elif op_info[0].rstrip('0123456789.') == 'CZ' or \
-                op_info[0].startswith('CZ:'):
-            operation = self.get_cz_operation_name(op_info[1], op_info[2])
-            p = self.copy_op(self.operation_dict[operation])
-        elif parse_rotation_gates and op not in self.operation_dict:
+            p = [self.copy_op(self.operation_dict[op])]
+
+        else:
             # assumes operation format of, e.g., f" Z{angle} qbname"
             # FIXME: This parsing is format dependent and is far from ideal but
             #  to generate parametrized pulses it is helpful to be able to
             #  parse Z gates etc.
-            factor = -1 if op_name[0] == 'm' else 1
-            if factor == -1:
-                op_name = op_name[1:]
-            if op_name[0] not in ['X', 'Y', 'Z']:
+            # FIXME e- allows to recognise numbers in scientific notation,
+            #  but could be made more specific
+            op_type = op_name.split(':')[0].rstrip('0123456789.e-')
+            angle = op_name[len(op_type):]
+            sign = -1 if op_type[0] == 'm' else 1
+            if sign == -1:
+                op_type = op_type[1:]
+            allowed_ops = ['X', 'Y', 'Z', 'CZ']
+            # startswith is needed to recognise all CZ gates, e.g. 'CZ_nztc'
+            if not any([op_type.startswith(g) for g in allowed_ops]):
                 raise KeyError(f'Gate "{op}" not found.')
-            angle, qbn = op_name[1:], op_info[1]
-            if angle[-1] == 's' and angle[:-1].isnumeric():
-                # For non-parametric gates, an alternative syntax for
-                # simultaneous pulses with appended s instead of prepended s
-                # is allowed. This code branch treats, e.g., simultaneous
-                # virtual Z pulses (like 'Z90s qb1') and simultaneous X/Y
-                # rotations with angles different from 90 and 180
-                # (like 'X45s qb1'; X90s and X180s are contained in the
-                # operations dict anyways, but no other angles).
-                op_info[0] = 's' + op_info[0]
-                angle = angle[:-1]
-            param = None
-            if angle[0] == ':':  # angle depends on a parameter
-                angle = angle[1:]
-                param_start = angle.find('[') + 1
-                # If '[' is contained, this indicates that the parameter
-                # is part of a mathematical expression. Otherwise, the angle
-                # is equal to the parameter.
-                if param_start > 0:
-                    param_end = angle.find(']', param_start)
-                    param = angle[param_start:param_end]
-                    angle = angle.replace('[' + param + ']', 'x')
-                    f = eval('lambda x : ' + angle)
-                else:
-                    param = angle
+            param = None  # e.g. 'theta' if angle = '2*[theta]'
+            if angle:
+                if angle[0] == ':':  # angle depends on a parameter
+                    angle = angle[1:]
+                    param_start = angle.find('[') + 1
+                    # If '[' is contained, this indicates that the parameter
+                    # is part of a mathematical expression. Otherwise, the angle
+                    # is equal to the parameter.
+                    if param_start > 0:
+                        param_end = angle.find(']', param_start)
+                        param = angle[param_start:param_end]
+                        angle = angle.replace('[' + param + ']', 'x')
+                    else:
+                        param = angle
 
-            if self.decompose_rotation_gates.get(op_name[0], False):
-                raise NotImplementedError('Decomposed rotations not '
-                                          'implemented yet.')
-            else:
-                p = self.get_pulse(f"{op_name[0]}180 {qbn}")
-                if op_name[0] == 'Z':
+            if op_type.startswith('CZ'):  # Two-qubit gate
+                if param is not None:
+                    # FIXME: this code block is duplicated 3 times, for each
+                    #  gate type (CZ, Z, X/Y). This should be cleaned up once
+                    #  we improve or generalise further what op codes can be
+                    #  parsed by this method.
+                    if param_start > 0:
+                        func = (lambda x, sign=sign, fnc=
+                        eval('lambda x : ' + angle): sign * fnc(x))
+                    else:
+                        func = (lambda x, sign=sign: sign * x)
+                    cphase = ParametricValue(
+                        param, func=func,
+                        op_split=[op_name, *qbn])
+                # op_name = "NameVal" (e.g. "Z100", see docstring)
+                elif angle:
+                    cphase = float(angle)  # gate angle
+                else:  # no cphase specified: standard CZ gate (180 deg)
+                    cphase = None
+                # Extract the operation which is available in the device
+                # If the op_code only contains the generic keyword 'CZ',
+                # this will use the default CZ pulse name of the experiment
+                device_op = self.get_cz_operation_name(
+                    *qbn,
+                    cz_pulse_name=None if op_type == 'CZ' else op_type)
+                # Get concrete operation implemented on the device, e.g. CZ_nztc
+                op_type = device_op.split(" ")[0]
+                # Here, we figure out if the gate should be decomposed into
+                # CZ and single-qubit gates
+                decomp_info = self.decompose_rotation_gates.get(op_type, False)
+                # qb_dec is the qubit on which to apply single-qubit
+                # gates in case of gate decomposition
+                qb_dec = None
+                if decomp_info==True:
+                    # If True: we decompose the gate
+                    # By default: use the qubit order defined in the op code
+                    # to apply the single-qubit gates
+                    qb_dec = qbn
+                elif isinstance(decomp_info, list):
+                    # If list: we decompose the gate if it is in the list...
+                    for gate_to_decomp in decomp_info:
+                        for qbn_reordered in [qbn, qbn[::-1]]:
+                            if qbn_reordered == gate_to_decomp:
+                                # ... and apply the single-qubit gates to the
+                                # qubits in the order passed in
+                                # decompose_rotation_gates
+                                qb_dec = gate_to_decomp
+                # Force resolving to a single CZ if no cphase is required
+                # (note that CZ180 will still be decomposed)
+                if cphase is None:
+                    qb_dec = None
+                # If qb_dec is not None, we decompose the gate
+                if qb_dec:
+                    if isinstance(cphase, ParametricValue):
+                        # Update the op_split info in the ParametricValue,
+                        # such that it matches the operation decomposition
+                        cphase.op_split[0] = 'Z'
+                    # CZ_x = diag(1,1,1,e^i*x)  # pycqed sign convention
+                    #  = e^(i*x/4)*Z1(x/2)*Z0(x/2)*H1*CZ*H1*Z1(-x/2)*H1*CZ*H1
+                    # and replacing each Hadamard H = i*Y*Z(pi) and
+                    # discarding the global phase gives the decomposition:
+                    decomposed_op = [
+                        f'Y90 {qb_dec[0]}',
+                        device_op,
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        f'Z0 {qb_dec[0]}',  # phase set below
+                        f'Y90 {qb_dec[0]}',
+                        device_op,
+                        f'Z180 {qb_dec[0]}',
+                        f'Y90 {qb_dec[0]}',
+                        f'Z0 {qb_dec[0]}',  # phase set below
+                        f'Z0 {qb_dec[1]}',  # phase set below
+                    ]
+                    p = [
+                        self.copy_op(self.operation_dict[do])
+                        for do in decomposed_op
+                    ]
+                    p[4]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
+                    p[10]['basis_rotation'] = {qb_dec[0]: cphase/2+180}
+                    p[11]['basis_rotation'] = {qb_dec[1]: cphase/2}
+                else:
+                    p = [self.copy_op(self.operation_dict[device_op])]
+                    if cphase is not None:
+                        p[0]['cphase'] = cphase
+
+            else:  # Single-qubit gate
+                if self.decompose_rotation_gates.get(op_type, False):
+                    raise NotImplementedError(
+                        'Single qb decomposed rotations not implemented yet.')
+                if angle == '':
+                    angle = 180
+                device_op = f"{op_type}180 {qbn[0]}"
+                if device_op in self.operation_dict:
+                    p = [self.copy_op(self.operation_dict[device_op])]
+                else:
+                    raise KeyError(f"Operation {op} not found.")
+                if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func = (lambda x, qb=op_info[1], f=factor,
+                            func = (lambda x, qb=qbn[0], sign=sign,
                                           fnc=eval('lambda x : ' + angle):
-                                    {qb: f * fnc(x)})
+                                    {qb: sign * fnc(x)})
                         else:  # angle = parameter
-                            func = (lambda x, qbn=op_info[1], f=factor:
-                                    {qbn: f * x})
-                        p['basis_rotation'] = ParametricValue(
-                            param, func=func, op_split=(op_name, op_info[1]))
+                            func = (lambda x, qbn=qbn[0], sign=sign:
+                                    {qbn: sign * x})
+                        p[0]['basis_rotation'] = {qbn[0]: ParametricValue(
+                            param, func=func, op_split=(op_name, qbn[0]))}
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
-                        p['basis_rotation'] = {qbn: factor * float(angle)}
+                        p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
                 else:
-                    qb, _ = self.get_qubits(qbn)
+                    qb, _ = self.get_qubits(qbn[0])
                     corr_func = qb[0].calculate_nonlinearity_correction
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
                             # combine the mathematical expression with a
                             # function that calculates the amplitude
                             func = (
-                                lambda x, a=p['amplitude'], f=factor,
+                                lambda x, a=p[0]['amplitude'], sign=sign,
                                        fnc=eval('lambda x : ' + angle):
                                 a * corr_func(
-                                    ((f * fnc(x) + 180) % (-360) + 180) / 180))
+                                    ((sign * fnc(x) + 180) %
+                                     (-360) + 180) / 180))
                         else:  # angle = parameter
-                            func = lambda x, a=p['amplitude'], f=factor: \
+                            func = lambda x, a=p[0]['amplitude'], sign=sign: \
                                 a * corr_func(
-                                    ((f * x + 180) % (-360) + 180) / 180)
-                        p['amplitude'] = ParametricValue(
-                            param, func=func, op_split=(op_name, op_info[1]))
+                                    ((sign * x + 180) % (-360) + 180) / 180)
+                        p[0]['amplitude'] = ParametricValue(
+                            param, func=func, op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
-                        angle = factor * float(angle)
+                        angle = sign * float(angle)
                         # configure drive pulse amplitude for this angle
-                        p['amplitude'] *= corr_func(
+                        p[0]['amplitude'] *= corr_func(
                             ((angle + 180) % (-360) + 180) / 180)
-        else:
-            raise KeyError(f"Operation {' '.join(op_info)} not found.")
-        p['op_code'] = op
-        if op_info[0][0] == 's':
-            p['ref_point'] = 'start'
+        if len(p) == 1:
+            # If only one pulse: set its op_code to the initially requested one
+            # in order to keep information provided there (e.g. 2qb gate type).
+            # If more than one pulse: the operation has been decomposed into
+            # several pulses, so these should keep their separate op_code.
+            p[0]['op_code'] = op
+
+        if simultaneous:
+            p[0]['ref_point'] = 'start'
 
         return p
 
     def swap_qubit_indices(self, i, j=None):
-        """
-        Swaps logical qubit indices by swapping the entries in self.qb_names.
+        """Swaps logical qubit indices by swapping the entries in self.qb_names.
         :param i: (int or iterable): index of the first qubit to be swapped or
             indices of the two qubits to be swapped (as two ints given in the
             first two elements of the iterable)
@@ -358,11 +572,10 @@ class CircuitBuilder:
             i, j = i[0], i[1]
         self.qb_names[i], self.qb_names[j] = self.qb_names[j], self.qb_names[i]
 
-    def initialize(self, init_state='0', qb_names='all', prep_params=None,
+    def initialize(self, init_state='0', qb_names='all', reset_params=None,
                    simultaneous=True, block_name=None, pulse_modifs=None,
                    prepend_block=None):
-        """
-        Initializes the specified qubits with the corresponding init_state
+        """Initializes the specified qubits with the corresponding init_state
         :param init_state (String or list): Can be one of the following
             - one of the standard initializations: '0', '1', '+', '-'.
               In that case the same init_state is done on all qubits
@@ -373,7 +586,7 @@ class CircuitBuilder:
               not include space and qubit name (those are added internally).
         :param qb_names (list or 'all'): list of qubits on which init should be
             applied. Defaults to all qubits.
-        :param prep_params: preparation parameters
+        :param reset_params: preparation parameters
         :param simultaneous: (bool, default True) whether initialization
             pulses should be applied simultaneously.
         :param block_name: (str, optional) a name to replace the
@@ -389,9 +602,9 @@ class CircuitBuilder:
         _, qb_names = self.get_qubits(qb_names)
         if not len(qb_names):
             return Block(block_name, [])
-        if prep_params is None:
-            prep_params = self.get_prep_params(qb_names)
-        if len(init_state) == 1:
+        if reset_params is None:
+            reset_params = self.get_reset_params(qb_names)
+        if len(init_state) == 1 and isinstance(init_state, str):
             init_state = [init_state] * len(qb_names)
         else:
             assert len(init_state) == len(qb_names), \
@@ -417,9 +630,12 @@ class CircuitBuilder:
         block = Block(block_name, pulses, copy_pulses=False)
         block.set_end_after_all_pulses()
         blocks = []
-        if len(prep_params) != 0:
-            blocks.append(self.prepare(qb_names, ref_pulse="start",
-                                       **prep_params))
+        # if reset parameters exist and location specifies reset should be done
+        # at start of sequence (note: is this really the best way to encode where
+        # to do the reset? shall we make this 'per_qubit')?)
+        if len(reset_params) != 0 and \
+                reset_params.get('location', 'start') == 'start':
+            blocks.append(self.reset(**reset_params))
         if prepend_block is not None:
             blocks.append(prepend_block)
         if len(blocks) > 0:
@@ -427,11 +643,9 @@ class CircuitBuilder:
             block = self.sequential_blocks(block_name, blocks)
         return block
 
-
     def finalize(self, init_state='0', qb_names='all', simultaneous=True,
                  block_name=None, pulse_modifs=None):
-        """
-        Applies the specified final rotation to the specified qubits.
+        """Applies the specified final rotation to the specified qubits.
         This is basically the same initialize, but without preparation.
         For parameters, see initialize().
         :return: finalization block
@@ -440,164 +654,158 @@ class CircuitBuilder:
             block_name = f"Finalialization_{qb_names}"
         return self.initialize(init_state=init_state, qb_names=qb_names,
                                simultaneous=simultaneous,
-                               prep_params={},
+                               reset_params={},
                                block_name=block_name,
                                pulse_modifs=pulse_modifs)
 
-    def prepare(self, qb_names='all', ref_pulse='start',
-                preparation_type=STD_PREP_PARAMS['preparation_type'],
-                post_ro_wait=STD_PREP_PARAMS['post_ro_wait'],
-                ro_separation=STD_PREP_PARAMS['ro_separation'],
-                reset_reps=STD_PREP_PARAMS['reset_reps'], final_reset_pulse=False,
-                pad_end=False, threshold_mapping=None, block_name=None):
-        """
-        Prepares specified qb for an experiment by creating preparation pulse
-        for preselection or active reset.
+    def reset(self, qb_names='all', steps=None,
+              step_alignment='start', alignment="end",
+              block_name=None, **kws):
+        """Prepares a reset of a list of qubits using a sequence of steps
+        (globally provided as argument to this function or individually
+         specified from qubit.init.steps).
+
+        I.e.:
+
+        qb0 --[step 0 ] -- ... - [step i]
+        qb1 --[step 0 ] -- ... - [step j]
+
         Args:
             qb_names: which qubits to prepare. Defaults to all.
-            ref_pulse: reference pulse of the first pulse in the pulse list.
-                reset pulse will be added in front of this.
-                If the pulse list is empty,
-                reset pulses will simply be before the block_start.
-            preparation_type:
-                for nothing: 'wait'
-                for preselection: 'preselection'
-                for active reset on |e>: 'active_reset_e'
-                for active reset on |e> and |f>: 'active_reset_ef'
-            post_ro_wait: wait time after a readout pulse before applying reset
-            ro_separation: spacing between two consecutive readouts
-            reset_reps: number of reset repetitions
-            final_reset_pulse: Note: NOT used in this function.
-            threshold_mapping (dict): thresholds mapping for each qb
-            pad_end (bool): Only used in active reset. Whether or not padding
-                should be added after the last reset readout pulse. If False,
-                no padding is added and therefore any subsequent pulse will start
-                right after the last reset pulse. If True, then the end of the
-                prepare block is set such that the subsequent pulse start
-                "ro_separation" after the start of the last readout pulse.
+            steps (list, str, None, dict): list of steps for the preparation.
+                If a list is provided, all steps are the same for all qubits.
+                If a string is provided, it is converted to a single-entry list.
+                If None (default), takes the steps for each qubit individually
+                from qubit.init.steps. The different qubits can
+                have different number of steps. The qubits with less steps
+                will get padded (waiting time) in the beginning or the end
+                of the block, depending on `alignment`.
+                If dict, then it assumes that keys are qubit names and values
+                are lists of steps.
+                To get no reset whatsoever, pass an emtpy list.
+                Constraints: if a step includes acquisition(s)
+                (e.g. preselection, active reset), then they
+                should happen simultaneously for all qubits which are on
+                the same acquisition unit (constraint of, e.g., ZI devices) and the
+                same number of times across all qubits sharing that acquisition
+                device. Note that this function does not name the elements explicitly
+                for the acquisition (this is handled by Segment.add()),
+                and it DOES ALLOW steps which do not satisfy this
+                constraint (in case the constraint is relaxed in the future by the
+                instrument drivers).
+            step_alignment (str): "start", "center" or "end". Indicates whether
+                step i on all qubits should be start, center- or end- aligned.
+                Note that if the steps contain readout pulses which
+                are generated by the same acquisition unit, only "Start"
+                should be used, to ensure the acquisition is started simultaneously
+                on all qubits on that acquisition unit. Defaults to "start".
+            alignment (str): "start" or "end". In case the number of
+                steps is different for the different qubits, specifies whether
+                the qubits should be aligned at the start or finish the preparation.
 
+            block_name (str): Name of the preparation block.
 
         Returns:
-
+            sequantial_blocks: A Reset_{qb_names} block with a sequential list
+            of simultaneous prep blocks.
         """
+        qubits, qb_names = self.get_qubits(qb_names)
         if block_name is None:
-            block_name = f"Preparation_{qb_names}"
-        _, qb_names = self.get_qubits(qb_names)
+            block_name = f"Reset_{qb_names}"
 
-        if threshold_mapping is None or len(threshold_mapping) == 0:
-            threshold_mapping = {qbn: {0: 'g', 1: 'e'} for qbn in qb_names}
+        # parse steps if not yet done.
+        if not isinstance(steps, dict):
+            steps, _ = self._get_reset_steps(qb_names, steps)
+        max_steps = np.max([len(steps) for steps in steps.values()])
 
-        # Calculate the length of a ge pulse, assumed the same for all qubits
-        state_ops = dict(g=["I "], e=["X180 "], f=["X180_ef ", "X180 "])
+        # pad qubits which have less steps
+        for qbn in steps:
+            padding = max_steps - len(steps[qbn])
+            if alignment == "end":
+                # add padding steps at the beginning
+                steps[qbn] = ["padding"] * padding + steps[qbn]
+            elif alignment == "start":
+                # add padding steps at the end
+                steps[qbn] = steps[qbn] + ["padding"] * padding
+            else:
+                raise NotImplementedError("Only start and end alignment of "
+                                          "the preparation block is currently"
+                                          " supported.")
 
-        # no preparation pulses
-        if preparation_type == 'wait':
-            return Block(block_name, [])
+        # Fill prep list first with parallel reset blocks
+        prep = []
+        for i in range(max_steps):
 
-        # active reset
-        elif 'active_reset' in preparation_type:
-            reset_ro_pulses = []
-            ops_and_codewords = {}
-            for i, qbn in enumerate(qb_names):
-                reset_ro_pulses.append(self.get_pulse('RO ' + qbn))
-                reset_ro_pulses[-1]['ref_point'] = 'start' if i != 0 else 'end'
+            # Collect all parallel Blocks in current step i for each qubit
+            simultaneous_blocks = []
+            for qb in qubits:
+                if steps[qb.name][i] == "padding":
+                    simultaneous_blocks.append(
+                        Block(f"padding_step_{i}_{qb.name}", [])
+                    )
+                else: # if reset block
+                    try:
+                        reset_scheme = qb.reset.instrument_modules[steps[qb.name][i]]
+                    except KeyError as e:
+                        log.error(
+                            f"Reset Step '{steps[qb.name][i]}' not known for {qb.name}."
+                            f"Available steps are: {qb.reset.instrument_modules.keys()}")
+                        raise e
 
-                if preparation_type == 'active_reset_e':
-                    ops_and_codewords[qbn] = [
-                        (state_ops[threshold_mapping[qbn][0]], 0),
-                        (state_ops[threshold_mapping[qbn][1]], 1)]
-                elif preparation_type == 'active_reset_ef':
-                    assert len(threshold_mapping[qbn]) == 4, \
-                        f"Active reset for the f-level requires a mapping of " \
-                        f"length 4 but only {len(threshold_mapping)} were " \
-                        f"given: {threshold_mapping}"
-                    ops_and_codewords[qbn] = [
-                        (state_ops[threshold_mapping[qbn][0]], 0),
-                        (state_ops[threshold_mapping[qbn][1]], 1),
-                        (state_ops[threshold_mapping[qbn][2]], 2),
-                        (state_ops[threshold_mapping[qbn][3]], 3)]
-                else:
-                    raise ValueError(f'Invalid preparation type '
-                                     f'{preparation_type}')
+                    simultaneous_blocks.append(
+                        reset_scheme.reset_block(
+                            f"step_{i}_{qb.name}",
+                            sweep_params=self._prep_sweep_params.get(qb.name, None),
+                        )
+                    )
 
-            reset_pulses = []
-            for i, qbn in enumerate(qb_names):
-                for ops, codeword in ops_and_codewords[qbn]:
-                    for j, op in enumerate(ops):
-                        reset_pulses.append(self.get_pulse(op + qbn))
-                        # Reset pulses cannot include phase information at the moment
-                        # since we use the exact same waveform(s) (corresponding to
-                        # a given codeword) for every reset pulse(s) we play (no
-                        # matter where in the circuit). Therefore, remove phase_lock
-                        # that references the phase to algorithm time t=0.
-                        reset_pulses[-1]['phaselock'] = False
-                        reset_pulses[-1]['codeword'] = codeword
-                        if j == 0:
-                            reset_pulses[-1]['ref_point'] = 'start'
-                            reset_pulses[-1]['pulse_delay'] = post_ro_wait
-                        else:
-                            reset_pulses[-1]['ref_point'] = 'start'
-                            pulse_length = 0
-                            for jj in range(1, j + 1):
-                                if 'pulse_length' in reset_pulses[-1 - jj]:
-                                    pulse_length += reset_pulses[-1 - jj][
-                                        'pulse_length']
-                                else:
-                                    pulse_length += \
-                                        reset_pulses[-1 - jj]['sigma'] * \
-                                        reset_pulses[-1 - jj]['nr_sigma']
-                            reset_pulses[-1]['pulse_delay'] = post_ro_wait + \
-                                                              pulse_length
+            # Finally append all parallel blocks of step i
+            prep.append(
+                self.simultaneous_blocks(
+                    f"Reset_step_{i}",
+                    simultaneous_blocks,
+                    set_end_after_all_pulses=True,
+                    block_align=step_alignment,
+                )
+            )
 
-            prep_pulse_list = []
-            for rep in range(reset_reps):
-                ro_list = self.copy_op(reset_ro_pulses)
-                ro_list[0]['name'] = 'refpulse_reset_element_{}'.format(rep)
+        # FIXME: Temporarily dropping support for f0g1_reset.
+        #        Will be reintroduced with devel/f0g1_init_schemes.
+        #
+        # # f0g1 reset
+        # elif preparation_type == 'f0g1_reset':
+        #     preparation_pulses = []
+        #     for i, qbn in enumerate(qb_names):
+        #         preparation_pulses.append(
+        #             self.get_pulse('f0g1_reset_pulse ' + qbn))
+        #         preparation_pulses[-1]['ref_point'] = 'start'
+        #         preparation_pulses[-1]['element_name'] = 'f0g1_reset'
 
-                for pulse in ro_list:
-                    pulse['element_name'] = 'reset_ro_element_{}'.format(rep)
-                if rep == 0:
-                    ro_list[0]['ref_pulse'] = ref_pulse
-                    ro_list[0]['pulse_delay'] = -reset_reps * ro_separation
-                else:
-                    ro_list[0]['ref_pulse'] = \
-                        'refpulse_reset_element_{}'.format(rep - 1)
-                    ro_list[0]['pulse_delay'] = ro_separation
-                    ro_list[0]['ref_point'] = 'start'
+        #         preparation_pulses.append(
+        #             self.get_pulse('ef_for_f0g1_reset_pulse ' + qbn))
+        #         preparation_pulses[-1]['ref_point'] = 'start'
+        #         preparation_pulses[-1]['element_name'] = 'f0g1_reset'
 
-                rp_list = self.copy_op(reset_pulses)
-                for j, pulse in enumerate(rp_list):
-                    pulse['element_name'] = f'reset_pulse_element_{rep}'
-                    pulse['ref_pulse'] = f'refpulse_reset_element_{rep}'
-                prep_pulse_list += ro_list
-                prep_pulse_list += rp_list
+        #     preparation_pulses[0]['ref_pulse'] = ref_pulse
+        #     preparation_pulses[0]['name'] = 'f0g1_reset_pulse'
+        #     preparation_pulses[0]['pulse_delay'] = 0  # -ro_separation
 
-            if pad_end:
-                block_end = dict(
-                    name='end', pulse_type="VirtualPulse",
-                    ref_pulse=f'refpulse_reset_element_{reset_reps - 1}',
-                    pulse_delay=ro_separation, ref_point="start")
-                prep_pulse_list += [block_end]
-            return Block(block_name, prep_pulse_list, copy_pulses=False)
+        #     preparation_pulses[1]['ref_pulse'] = ref_pulse
+        #     preparation_pulses[1]['name'] = 'ef_for_f0g1_reset_pulse'
+        #     preparation_pulses[1]['pulse_delay'] = 0  # -ro_separation
 
-        # preselection
-        elif preparation_type == 'preselection':
-            preparation_pulses = []
-            for i, qbn in enumerate(qb_names):
-                preparation_pulses.append(self.get_pulse('RO ' + qbn))
-                preparation_pulses[-1]['ref_point'] = 'start'
-                preparation_pulses[-1]['element_name'] = 'preselection_element'
-            preparation_pulses[0]['ref_pulse'] = ref_pulse
-            preparation_pulses[0]['name'] = 'preselection_RO'
-            preparation_pulses[0]['pulse_delay'] = -ro_separation
-            block_end = dict(name='end', pulse_type="VirtualPulse",
-                             ref_pulse='preselection_RO',
-                             pulse_delay=ro_separation,
-                             ref_point='start')
-            preparation_pulses += [block_end]
-            return Block(block_name, preparation_pulses, copy_pulses=False)
+        #     block_end = dict(name='end', pulse_type="VirtualPulse",
+        #                      ref_pulse='f0g1_reset_pulse',
+        #                      pulse_delay=ro_separation,
+        #                      ref_point='end')
+        #     preparation_pulses += [block_end]
+        #     return Block(block_name, preparation_pulses, copy_pulses=False)
+
+
+        return self.sequential_blocks(block_name, prep)
 
     def mux_readout(self, qb_names='all', element_name='RO', block_name="Readout",
+                    reset_params=None,
                     **pulse_pars):
         _, qb_names = self.get_qubits(qb_names)
         ro_pulses = []
@@ -612,29 +820,35 @@ class CircuitBuilder:
             ro_pulses.append(ro_pulse)
         block = Block(block_name, ro_pulses, copy_pulses=False)
         block.set_end_after_all_pulses()
-        return block
+        if reset_params is None:
+            reset_params = self.get_reset_params(qb_names)
+
+        if reset_params.get("location", "start") == "end":
+            return self.sequential_blocks(
+                f"{block_name}_and_reset",
+                [block, self.reset(**reset_params)]
+            )
+        else:
+            return block
 
     def Z_gate(self, theta=0, qb_names='all'):
-
-        """
-        Software Z-gate of arbitrary rotation.
+        """Software Z-gate of arbitrary rotation.
 
         :param theta:           rotation angle, in degrees
         :param qb_names:      pulse parameters (dict)
 
         :return: Pulse dict of the Z-gate
         """
-
         # if qb_names is the name of a single qb, expects single pulse output
         single_qb_given = not isinstance(qb_names, list)
         _, qb_names = self.get_qubits(qb_names)
-        pulses = [self.get_pulse(f'Z{theta} {qbn}', True) for qbn in qb_names]
+        pulses = [p for qbn in qb_names for p in self.get_pulses(
+            f'Z{theta} {qbn}')]
         return pulses[0] if single_qb_given else pulses
 
     def get_ops_duration(self, operations=None, pulses=None, fill_values=None,
                          pulse_modifs=None, init_state='0'):
-        """
-        Calculates the total duration of the operations by resolving a dummy
+        """Calculates the total duration of the operations by resolving a dummy
         segment created from operations.
         :param operations: list of operations (str), which can be preformatted
             and later filled with values in the dictionary fill_values
@@ -664,8 +878,7 @@ class CircuitBuilder:
 
     def block_from_ops(self, block_name, operations, fill_values=None,
                        pulse_modifs=None):
-        """
-        Returns a block with the given operations.
+        """Returns a block with the given operations.
         Eg.
         >>> ops = ['X180 {qbt:}', 'X90 {qbc:}']
         >>> builder.block_from_ops("MyAwesomeBlock",
@@ -704,15 +917,13 @@ class CircuitBuilder:
                     return op.format(**fill_values)
                 else:
                     return [s.format(**fill_values) for s in op]
-
-            pulses = [self.get_pulse(op_format(op, **fill_values), True)
-                      for op in operations]
-        else:
-            # the shortcut if op in self.operation_dict is for speed reasons
-            pulses = [self.copy_op(self.operation_dict[op])
-                      if op in self.operation_dict
-                      else self.get_pulse(op, True)
-                      for op in operations]
+            operations = [op_format(op, **fill_values) for op in operations]
+        # the shortcut if op in self.operation_dict is for speed reasons
+        p_lists = [[self.copy_op(self.operation_dict[op])]
+                   if op in self.operation_dict
+                   else self.get_pulses(op)
+                   for op in operations]
+        pulses = [p for p_list in p_lists for p in p_list]  # flattened
 
         return Block(block_name, pulses, pulse_modifs, copy_pulses=False)
 
@@ -720,8 +931,7 @@ class CircuitBuilder:
                             block_align='end', segment_prefix='calibration_',
                             sweep_dicts_list=None, sweep_index_list=None,
                             **kw):
-        """
-        Returns a list of segments for each cal state in cal_points.states.
+        """Returns a list of segments for each cal state in cal_points.states.
         :param cal_points: CalibrationPoints instance
         :param init_state: initialization state (string or list),
             see documentation of initialize().
@@ -772,8 +982,8 @@ class CircuitBuilder:
         return segments
 
     def block_from_anything(self, pulses, block_name):
-        """
-        Convert various input formats into a `Block`.
+        """Convert various input formats into a `Block`.
+
         Args:
             pulses: A specification of a pulse sequence. Can have the following
                 formats:
@@ -789,7 +999,6 @@ class CircuitBuilder:
             block_name: Name of the resulting block
         Returns: The input converted to a Block.
         """
-
         if hasattr(pulses, 'build'):  # Block
             return pulses
         elif isinstance(pulses, str):  # opcode
@@ -803,8 +1012,7 @@ class CircuitBuilder:
 
     def block_from_pulse_dicts(self, pulse_dicts,
                                block_name='from_pulse_dicts'):
-        """
-        Generates a block from a list of pulse dictionaries.
+        """Generates a block from a list of pulse dictionaries.
 
         Args:
             pulse_dicts: list
@@ -821,17 +1029,25 @@ class CircuitBuilder:
         if pulse_dicts is not None:
             for i, pp in enumerate(pulse_dicts):
                 # op_code determines which pulse to use
-                pulse = self.get_pulse(pp['op_code']) if 'op_code' in pp else {}
+                p_list = self.get_pulses(pp['op_code']) if 'op_code' in pp \
+                    else [{}]
                 # all other entries in the pulse dict are interpreted as
                 # pulse parameters that overwrite the default values
-                pulse.update(pp)
-                pulses += [pulse]
+                pp_add_entries = {k: v for k, v in pp.items() if k != 'op_code'}
+                if len(pp_add_entries):
+                    if len(p_list) > 1:
+                        raise NotImplementedError(
+                            "get_pulses returned more than one pulse for "
+                            f"pulse dict {i}, and it is not clear to which "
+                            f"one the parameters passed in the pulse dict "
+                            f"should be applied.")
+                    p_list[0].update(pp_add_entries)
+                pulses += p_list
         return Block(block_name, pulses)
 
     def seg_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seg_name='Segment1', ro_kwargs=None):
-        """
-        Returns a segment with the given operations using the function
+        """Returns a segment with the given operations using the function
         block_from_ops().
         :param operations: list of operations (str), which can be preformatted
             and later filled with values in the dictionary fill_values
@@ -857,8 +1073,7 @@ class CircuitBuilder:
 
     def seq_from_ops(self, operations, fill_values=None, pulse_modifs=None,
                      init_state='0', seq_name='Sequence', ro_kwargs=None):
-        """
-        Returns a sequence with the given operations using the function
+        """Returns a sequence with the given operations using the function
         block_from_ops().
         :param operations: list of operations (str), which can be preformatted
             and later filled with values in the dictionary fill_values
@@ -884,8 +1099,7 @@ class CircuitBuilder:
     def simultaneous_blocks(self, block_name, blocks, block_align='start',
                             set_end_after_all_pulses=False,
                             disable_block_counter=False, destroy=False):
-        """
-        Creates a block with name :block_name: that consists of the parallel
+        """Creates a block with name :block_name: that consists of the parallel
         execution of the given :blocks:. Ensures that any pulse or block
         following the created block will occur after the longest given block.
 
@@ -912,24 +1126,32 @@ class CircuitBuilder:
                 individual blocks can be destroyed (speedup by avoiding
                 copying pulses, see Block.build).
         """
-
         simultaneous = Block(block_name, [])
+
         if not hasattr(destroy, '__iter__'):
             destroy = [destroy] * len(blocks)
+
         simultaneous_end_pulses = []
+
+        # saves computation time in Segment.resolve_timing
         if block_align == 'start':
-            # saves computation time in Segment.resolve_timing
             block_align = None
+
         for block, d in zip(blocks, destroy):
             if set_end_after_all_pulses:
                 block.set_end_after_all_pulses()
+            # if there is already custom block start, then just update it
+            # with block alignment otherwise create it
+            block_start = block.block_start or {'block_align': block_align}
             simultaneous.extend(block.build(
-                ref_pulse=f"start", block_start=dict(block_align=block_align),
-                name=block.name if disable_block_counter else None, destroy=d))
+                ref_pulse="start", block_start=block_start,
+                name=block.name if disable_block_counter else None,
+                destroy=d))
             simultaneous_end_pulses.append(simultaneous.pulses[-1]['name'])
+
         # the name of the simultaneous_end_pulse is used in
         # Segment.resolve_timing and should not be changed
-        simultaneous.extend([{"name": f"simultaneous_end_pulse",
+        simultaneous.extend([{"name": "simultaneous_end_pulse",
                               "pulse_type": "VirtualPulse",
                               "pulse_delay": 0,
                               "ref_pulse": simultaneous_end_pulses,
@@ -941,8 +1163,7 @@ class CircuitBuilder:
     def sequential_blocks(self, block_name, blocks,
                           set_end_after_all_pulses=False,
                           disable_block_counter=False, destroy=False):
-        """
-        Creates a block with name :block_name: that consists of the serial
+        """Creates a block with name :block_name: that consists of the serial
         execution of the given :blocks:.
 
         CAUTION: For each of the given blocks, the end time of the block is
@@ -964,7 +1185,6 @@ class CircuitBuilder:
                 False): whether the individual blocks can be destroyed
                 (speedup by avoiding copying pulses, see Block.build).
         """
-
         sequential = Block(block_name, [])
         if not hasattr(destroy, '__iter__'):
             destroy = [destroy] * len(blocks)
@@ -980,8 +1200,7 @@ class CircuitBuilder:
                     ro_kwargs=None, return_segments=False, ro_qubits='all',
                     repeat_ro=True, init_kwargs=None, final_kwargs=None,
                     segment_kwargs=None, **kw):
-        """
-        Creates a sequence or a list of segments by doing an N-dim sweep
+        """Creates a sequence or a list of segments by doing an N-dim sweep
         over the given operations based on the sweep_points.
         Currently, only 1D and 2D sweeps are implemented.
 
@@ -1052,7 +1271,16 @@ class CircuitBuilder:
 
         ro = self.mux_readout(**ro_kwargs, qb_names=ro_qubits)
         _, all_ro_qubits = self.get_qubits(ro_qubits)
-        all_ro_op_codes = [p['op_code'] for p in ro.pulses]
+        # FIXME: checking whether op_code starts with RO or Acq is a good
+        #  hack because mux_readout() was modified to also sometimes be RO + reset
+        #  but maybe a cleaner solution would be to have a separate block for the
+        #  end reset after the readout?
+        # FIXME: add an explaining comment why the space in 'RO ' is necessary to
+        # avoid matching other op_codes. Which other op_codes starting with 'RO' are there?
+
+        all_ro_op_codes = [p['op_code'] for p in ro.pulses if "op_code" in p
+                           and (p['op_code'].startswith('RO ') # space after RO required to avoid matching the wrong OP code
+                                or p['op_code'].startswith('Acq'))]
         if body_block is not None:
             op_codes = [p['op_code'] for p in body_block.pulses if 'op_code'
                         in p]
@@ -1115,7 +1343,7 @@ class CircuitBuilder:
                             vals = sweep_points.get_sweep_params_property(
                                 'values', dim, param)
                             setattr(seg, param[len('Segment.'):],
-                                    vals[j if dim == 0 else i])
+                                    deepcopy(vals[j if dim == 0 else i]))
                 # add the new segment to the sequence
                 seq.add(seg)
             if cal_points is not None:
@@ -1148,9 +1376,7 @@ class CircuitBuilder:
 
     def tomography_pulses(self, tomo_qubits=None,
                           basis_rots=('I', 'X90', 'Y90'), all_rots=True):
-
-        """
-        Generates a complete list of tomography pulse lists for tomo_qubits.
+        """Generates a complete list of tomography pulse lists for tomo_qubits.
         :param tomo_qubits: None, list of qubit names, or of qubits indices in
             self.get_qubits(). I None, then tomo_qubit = self.get_qubits()[1].
             If list of indices, they will be sorted.
@@ -1174,7 +1400,6 @@ class CircuitBuilder:
                 len(tomo_qubits) repetitions of each pulse in basis_rots
                 (i.e. all qubits get the same pulses).
         """
-
         if not isinstance(basis_rots[0], str):
             return basis_rots
 
