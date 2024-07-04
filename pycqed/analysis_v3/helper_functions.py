@@ -1788,7 +1788,9 @@ def translate_reset_to_prep_params(
                 if reset_parameters['analysis_instructions']:
                     qbn = list(reset_parameters['analysis_instructions'].keys())[0]
                 else:
-                    log.warning('reset_params[analysis_instructions] is empty')
+                    log.warning('reset_params[analysis_instructions] is empty.\n'
+                                'Likely the reset used does not require any special '
+                                ' instructions for data analysis.')
                     return { 'preparation_type': 'wait'}
             if len(reset_parameters['analysis_instructions'][qbn]) == 0:
                 # empty list, i.e. no reset steps
