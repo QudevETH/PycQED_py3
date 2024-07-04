@@ -9606,7 +9606,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'legend_ncol': 1,
             'do_legend': True,
             'legend_bbox_to_anchor': (1, -0.15),
-            'legend_pos': 'upper right'
+            'legend_pos': 'upper right',
+            'grid': True,
         }
         
         textstr = f'best fidelity: {best_fidelity * 100:.2f}%'
