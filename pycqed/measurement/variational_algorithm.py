@@ -286,7 +286,7 @@ class VariationalAlgorithmCZ(VariationalAlgorithm):
                                             destroy=True)
 
 
-class QCNN4(VariationalAlgorithm):
+class QCNNExperiment(VariationalAlgorithm):
     """Experiment to train a variational quantum algorithm.
 
     The blocks are hard coded at the moment because this was the easiest way to implement parallel
@@ -294,7 +294,7 @@ class QCNN4(VariationalAlgorithm):
     parameterized quantum circuits. TODO
     """
 
-    default_experiment_name = 'QCNN_4_qubit'
+    default_experiment_name = 'QCNN_n_qubit'
 
     def __init__(self, prep_params_filename=None, *args, **kw):
         self.prep_params_filename = prep_params_filename
@@ -305,6 +305,9 @@ class QCNN4(VariationalAlgorithm):
 
         Short name for convenience when using in an op code
         """
+        if len(self.qubits) == 9:
+            # TODO extract parameters from file for 9 qb. Order might change
+            return 0
         # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 2
         # h_index = 21, prepare TP state with explicit parameters below
         # h_index = 22, prepare |0000> state by setting all params to 0
@@ -380,8 +383,6 @@ class QCNN4(VariationalAlgorithm):
                                 [0, '[basis]',])
         elif len(self.qubits) == 4:
             op_code = "cb.pp([h_index],{i})"
-            # Prep circuit. Only one parameter determines whether to prepare
-            # the all zero state (theta_p=0) or the ground state (theta_p=180)
             # TODO maybe remove prefix if not needed
             self._add_ry_block('RYp1', range(len(self.qubits)),
                                [op_code.format(i=i) for i in [0, 1, 2, 3]])
@@ -404,7 +405,46 @@ class QCNN4(VariationalAlgorithm):
             self._add_ry_block('RY3', range(len(self.qubits)),
                                ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
         elif len(self.qubits) == 9:
-            pass  # TODO
+            op_code = "cb.pp([h_index],{i})"
+            # TODO maybe remove prefix if not needed
+            self._add_ry_block('RYp1', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in range(0, 9)])
+
+            self._add_cz_block('CZp1', [[2, 3], [5, 6]],
+                               [op_code.format(i=i) for i in range(9, 11)])
+            # self._add_cz_block('CZp2', [[5, 6]],
+            #                    [op_code.format(i=10)])
+
+            self._add_ry_block('RYp2', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in range(11, 20)])
+
+            self._add_cz_block('CZp2', [[1, 2], [4, 5], [7, 8]],
+                               [op_code.format(i=i) for i in range(20, 23)])
+            # self._add_cz_block('CZp4', [[4, 5]],
+            #                    [op_code.format(i=21)])
+            # self._add_cz_block('CZp5', [[7, 8]],
+            #                    [op_code.format(i=22)])
+
+            self._add_ry_block('RYp3', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in range(23, 32)])
+
+            self._add_cz_block('CZp3', [[0, 1], [3, 4], [6, 7]],
+                               [op_code.format(i=i) for i in range(32, 35)])
+            # self._add_cz_block('CZp7', [[3, 4]],
+            #                    [op_code.format(i=33)])
+            # self._add_cz_block('CZp8', [[6, 7]],
+            #                    [op_code.format(i=34)])
+
+            self._add_ry_block('RYp4', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in range(35, 44)])
+            # QCNN. Each gate has an independent parameter.
+            self._add_ry_block('RY1', range(len(self.qubits)))
+            self._add_cz_block('CZ1', [[1, 2], [4, 5], [8, 7]])
+            self._add_ry_block('RY2', range(len(self.qubits)))
+            self._add_cz_block('CZ2', [[0, 1], [3, 4], [6, 7]])
+            self._add_ry_block('RY3', range(len(self.qubits)))
+            self._add_cz_block('CZ3', [[2, 3], [5, 6]])
+            self._add_ry_block('RY4', range(len(self.qubits)))
         elif len(self.qubits) == 1:
             self._add_ry_block('RYp', [qb.name for qb in self.qubits],
                                ['theta_p'])
@@ -451,7 +491,7 @@ class QCNN4(VariationalAlgorithm):
     #                                         set_end_after_all_pulses=True,
     #                                         destroy=True)
 
-class QCNNExperiment(VariationalAlgorithm):
+class QCNNExperiment_old(VariationalAlgorithm):
     """QuantumExperiment to perform training of the 3qb spin chain QCNN for quantum phase recognition.
     """
 
