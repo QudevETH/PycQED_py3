@@ -2936,6 +2936,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                 'training_set_cost', [(':', 'smcol')]
             )
+            # slice-plot output along the soft sweep axis (iteration)
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                 'output', [(':', 'scol')]
             )
@@ -2945,8 +2946,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         elif self.sp.find_parameter('targets') is not None:
             # sweep mode with targets
             targets_axis_sp = self.sp.find_parameter('targets')
-            targets = self.get_param_value(
-                'targets', self.sp['targets'])
+            targets = self.get_param_value('targets', self.sp['targets'])
+            # slice-plot output along the hard sweep axis
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'output', [(':', 'srow')]
+            )
 
         # main data processing
         if weights is None:

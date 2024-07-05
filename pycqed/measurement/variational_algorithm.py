@@ -195,14 +195,11 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         #  Can this create any problems? How to re-run offline?
         movnm = {mobj.name: [f'{mobj.name}_{i}' for i in range(2)]  # I,Q
                  for mobj in meas_objs}
+        analysis_instructions = self.get_reset_params()[
+            'analysis_instructions']
         for mobj in meas_objs:
-            # FIXME get this from the metadata instead?
-            steps = mobj.reset.steps()
-            assert np.all(np.array(steps) == 'feedback') or not steps
-            num_feedback_steps = len(steps)
-            num_repetitions = mobj.reset.feedback.repetitions() if hasattr(
-                mobj.reset, 'feedback') else 0
-            reset_reps = num_repetitions*num_feedback_steps
+            reset_reps = sum([step.get('reset_reps', 0)
+                              for step in analysis_instructions[mobj.name]])
             pp.add_node('filter_data', keys_in='raw',
                         data_filter=lambda x: x[reset_reps::reset_reps+1],
                         meas_obj_names=mobj.name)
