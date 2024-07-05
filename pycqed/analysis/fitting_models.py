@@ -35,15 +35,23 @@ def DoubleExpDampOscFunc(t, tau_1, tau_2,
     return cos_1 + cos_2 + osc_offset
 
 
-def double_RandomizedBenchmarkingDecay(numCliff, p, offset,
-                                       invert=1):
+def double_RandomizedBenchmarkingDecay(numCliff, p, offset, invert=1):
     """
     A variety of the RB-curve that allows fitting both the inverting and
     non-inverting exponential.
+
     The amplitude of the decay curve is constrained to start at 0 or 1.
     The offset is the common point both curves converge to.
 
-    pick invert to be 1 or 0
+    Args:
+        numCliff (float | numpy.ndarray): Number of Clifford gates.
+        p (float): depolarizing parameter (0 <= p <= 1).
+        offset (float): offset (value of the function when numCliff -> infinity).
+        invert (int, optional): Whether the exponential decay should start from 0 (invert = 0)
+            or from 1 (invert = 1). Defaults to 1.
+
+    Returns:
+        float | numpy.ndarray: Value of the function.
     """
     # Inverting clifford curve
     val_inv = (1 - offset) * (p ** numCliff) + offset
@@ -468,15 +476,15 @@ def CosFunc(t, amplitude, frequency, phase, offset):
 
 
 def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
-    """Calculates the damped oscillation value based on Dr. Paul Magnard's model.
-
-    This function implements equation 5.3 from Dr. Paul Magnard's PhD Thesis (2021).
+    r"""Describes the damped oscillation model used for f0g1 calibration
+    routines. This function implements equation 5.3 from Dr. Paul Magnard's
+    PhD Thesis (2021).
 
     Args:
         t (float): Time value.
         amp (float): Amplitude.
-        gamma (float): Damping coefficient.
-        kappa (float): Coupling coefficient.
+        gamma (float): Coupling coefficient.
+        kappa (float): Damping coefficient.
         mu_a (float): Coefficient of the oscillation term.
         mu_b (float): Baseline offset.
         t0 (float): Initial time.
@@ -487,25 +495,32 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
     Returns:
         float: The calculated damped oscillation value at time 't'.
 
-    Function used for fitting model, that fits the following equation:
+    Notes:
+        The function fits the following equation:
 
-    Dr. Paul Magnard PhD Thesis, 2021 - equation 5.3 :
-                       Γ                                                                                              -
-                      |       -tau * (kappa+gamma)       |        rabi*tau       kappa-gamma         rabi*tau    |^2   |
-        mu_b + mu_a * |  exp( ———————————————————— )  *  |  cosh( ———————— ) +   ——————————— * sinh( ———————— )  |     |
-                      |                2                 |           2              2*rabi              2        |     |
-                      L                                                                                               ⅃
-                                                         ________________________________
-        where:                                          /          (kappa-gamma)^2
-                tau = t-t0        and        rabi = \  /  - g^2 + ————————————————
-                                                     \/                  4
-                and      g = c1*amp + c3*amp^3 + c5*amp^5
+        .. math::
+
+            \mu_b + \mu_a \cdot \left[ e^{-\frac{(\kappa+\gamma)}{2}\tau}
+                \left| \cosh\left(\frac{\Omega\tau}{2}\right) +
+                \frac{\kappa-\gamma}{2\Omega} \cdot
+                \sinh\left(\frac{\Omega\tau}{2}\right) \right|^2
+            \right]
+
+        where:
+
+        .. math::
+
+            FIXME: Why does the Rabi term not have a factor of 2?
+            \tau = t-t_0 \\
+            \Omega = \sqrt{-g^2 + \frac{(\kappa-\gamma)^2}{4}} \\
+            g = c_1*\text{amp} + c_3*\text{amp}^3 + c_5*\text{amp}^5
     """
+
 
     g = c1 * amp + c3 * amp**3 + c5 * amp**5
 
     tau = t - t0
-    rabi = np.sqrt((-(g**2) + (kappa - gamma) ** 2 / 4) * (1 + 0j))
+    rabi = np.sqrt((-(g**2) + (kappa - gamma) ** 2 / 4) * (1 + 0j)) # \Omega
     return (
         mu_b
         + mu_a

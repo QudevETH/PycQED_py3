@@ -162,6 +162,7 @@ class Instrument(DelegateAttributes):
         Args:
             name (str): name of the respective instrument
         """
+        self.station = None
         self.name = name
         self.parameters = {}
         self.functions = {}
@@ -170,6 +171,20 @@ class Instrument(DelegateAttributes):
         # instrument, e.g. pycqed.instrument_drivers.meta_instrument
         # .qubit_objects.QuDev_transmon.QuDev_transmon
         self.classname: str = None
+
+    def __getattr__(self, key: str):
+        try:
+            return super().__getattr__(key)
+        except AttributeError:
+            # Try to load the missing parameter or submodules if a settings
+            # manager is available
+            if (station := self.station) and (ts := station.timestamp) and \
+                    (set_man := station.settings_manager):
+                path_to_param = self.name + '.' + key
+                set_man.get_parameter(path_to_param, ts)
+                return super().__getattr__(key)
+            else:
+                raise
 
     def snapshot(self, reduced=False) -> dict[any, any]:
         """
@@ -234,6 +249,22 @@ class Instrument(DelegateAttributes):
     def add_classname(self, name: str):
         # Not existing in qcodes.instrument.base.instrument.
         self.classname = name
+        self._load_custom_mock_class(name)
+
+    def _load_custom_mock_class(self, cls):
+        """Load custom mock class if it exists for the given class"""
+        if isinstance(cls, str):
+            cls = cls.split('.')[-1]  # extract class name (strip modules)
+            from pycqed.instrument_drivers import mock_qcodes_special_classes \
+                as mqs
+            if hasattr(mqs, cls):
+                # The class of the actual instrument which should be
+                # imitated has to have the same classname as the mock class.
+                # This would lead to an issue if multiple qcodes instrument
+                # classes have the same classname and are supposed to use
+                # different mock classes. But this is not the case in the
+                # current implementation.
+                self.__class__ = getattr(mqs, cls)
 
     def add_submodule(self, name: str, submod: Instrument):
         """
@@ -288,6 +319,7 @@ class Station(DelegateAttributes):
             timestamp (str): For accepted formats of the timestamp see
             a_tools.verify_timestamp(str)
         """
+        self.settings_manager = None
         self.instruments: dict = {}
         self.parameters: dict = {}
         self.components: dict = {}
@@ -345,6 +377,10 @@ class Station(DelegateAttributes):
                 f'Cannot add component "{namestr}", because a '
                 'component of that name is already registered to the station')
         self.components[namestr] = inst
+        # The station attribute of the instrument is used in __getattr__ of
+        # the mock Instrument. Therefore, the station attribute of the
+        # instrument has to be updated.
+        inst.station = self
 
     def get(self, path_to_param):
         """
@@ -376,6 +412,7 @@ class Station(DelegateAttributes):
         self.parameters.update(station.parameters)
         self.config.update(station.config)
         for comp_name, comp_inst in station.components.items():
+            comp_inst.station = self
             if comp_name in self.components.keys():
                 self.components[comp_name].update(comp_inst)
             else:

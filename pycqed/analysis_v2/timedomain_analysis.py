@@ -166,7 +166,6 @@ class PhaseErrorsAnalysisMixin():
                    f'\nold envelope mod. freq. ={chr}{old_pulse_par_val:.4f} MHz'
 
 
-# Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -397,8 +396,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             qbn: self.raw_data_dict['measurementstring'] for qbn in
             self.qb_names}
 
-        self.prep_params = self.get_param_value('preparation_params',
-                                                default_value=dict())
+        self.prep_params = self.get_reset_params(default_value=dict())
 
         # creates self.channel_map
         self.get_channel_map()
@@ -3026,6 +3024,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
     Analyses the results of the state tomography experiment and calculates
     the corresponding quantum state.
 
+    ```
     Possible options that can be passed in the options_dict parameter:
         cal_points: A data structure specifying the indices of the calibration
                     points. See the AveragedTimedomainAnalysis for format.
@@ -3066,6 +3065,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
              with more qubits require smaller tolerance to converge.
         rho_target (optional): A qutip density matrix that the result will be
                                compared to when calculating fidelity.
+        ```
     """
     def __init__(self, *args, **kwargs):
         auto = kwargs.pop('auto', True)
@@ -5164,6 +5164,14 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class NPulsePhaseErrorCalibAnalysis(RabiAnalysis, PhaseErrorsAnalysisMixin):
+    """
+    Analysis class for calibrating phase errors in N-pulse sequences.
+
+    This class inherits from RabiAnalysis and PhaseErrorsAnalysisMixin, and is
+    used to analyze data from N-pulse sequences to calibrate phase errors. It
+    extracts data, prepares plots, and performs fitting to determine the phase
+    error values.
+    """
 
     def extract_data(self):
         super().extract_data()
@@ -8168,8 +8176,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.preselection = \
-            self.get_param_value("preparation_params",
-                                 {}).get("preparation_type", "wait") == "preselection"
+            self.get_reset_params(default_value={})\
+                                .get("preparation_type", "wait") == "preselection"
         default_states_info = defaultdict(dict)
         default_states_info.update({"g": {"label": r"$|g\rangle$"},
                                "e": {"label": r"$|e\rangle$"},
@@ -8784,9 +8792,9 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        if "ro_separation" in self.get_param_value("preparation_params"):
-            ro_sep = \
-                self.get_param_value("preparation_params")["ro_separation"]
+
+        if "ro_separation" in self.prep_params:
+            ro_sep = self.prep_params["ro_separation"]
         else:
             return
 
@@ -9032,9 +9040,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         from matplotlib.ticker import MaxNLocator
         for axname, ax in self.axs.items():
             if "populations" in axname:
-                if "ro_separation" in self.get_param_value("preparation_params"):
-                    ro_sep = \
-                        self.get_param_value("preparation_params")["ro_separation"]
+                if "ro_separation" in self.prep_params:
+                    ro_sep = self.prep_params["ro_separation"]
                     timeax = ax.twiny()
                     timeax.set_xlabel(r"Time ($\mu s$)")
                     timeax.set_xlim(0, ax.get_xlim()[1] * ro_sep * 1e6)
@@ -10015,11 +10022,25 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         else:
             # Note that the number of shots is already included in n_hsp
             n_hsp = len(self.raw_data_dict['hard_sweep_points'])
-            prep_params = self.metadata['preparation_params']
+            prep_params = self.get_reset_params(default_value={})
             if 'active' in prep_params['preparation_type']:
                 # If reset: n_hsp already includes the number of shots
                 # and the final readout is interleaved with n_reset readouts
-                n_resets = prep_params['reset_reps']
+                n_resets = prep_params.get('reset_reps')
+                # in some cases the number of reset might not be part of the 
+                # reset params if it was not provided at run time. 
+                # So we tell the user about it and mention how the info can be provided.
+                if not n_resets:
+                    log.warning('reset_reps not found in reset_params obtained '
+                                'with self.get_reset_params(). Assuming'
+                                ' 3 repetitions. This will affect the timing'
+                                ' calculations of the bare_measurement_timer.'
+                                ' For manual adjustment, provide e.g., the following'
+                                ' to the options_dict: reset_params=dict(steps=["feedback"],'
+                                ' analysis_instructions=dict(qb1=[dict(preparation_type='
+                                '"active_reset", reset_reps=N_RESET_REPS)]))'
+                                )
+                    n_resets = 3
                 n_hsp = n_hsp // (1 + n_resets)
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
@@ -12335,24 +12356,31 @@ class f0g1BandwidthAnalysis(MultiQubit_TimeDomain_Analysis):
 class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     """
     Analysis class for the DriveAmpCalib measurement.
+
     The typical accepted input parameters are described in the parent class.
 
-    Additional parameters that this class recognises, which can be passed in the
-    options_dict:
-        - nr_pulses_pi (int; default: None): specifying into how many identical
-            pulses a pi rotation was divided ( nr_pulses_pi pulses with rotation
-            angle pi/nr_pulses_pi ). See docstring of the measurement class.
-            Can also be dict with qb names as keys.
-        - fixed scaling (int; default: None): specifying the amplitude scaling
-            for the pulse that wasn't swept. See docstring of the measurement
-            class. Can also be dict with qb names as keys.
-        - fitted_scaling_errors (dict; default: None): the keys are qubit names
-            and the values are arrays of fit results for each soft sweep
-            ex: {'qb10':  np.array([-0.00077432, -0.00055945])}
-        - maxeval (int; default: 400): number of evaluations for the optimiser
-        - T1 (float; default: value from hdf): qubit T1 to use for fit (fixed)
-        - T2 (float; default: value from hdf): qubit T2 to use as starting value
-            for the fit (dimensionless fraction T2/T2_guess is varied)
+    Args:
+        options_dict: Additional parameters that this class recognises:
+            nr_pulses_pi (int, optional): Specifying into how many identical
+                pulses a pi rotation was divided (nr_pulses_pi pulses with
+                rotation angle pi/nr_pulses_pi). See docstring of the
+                measurement class. Can also be dict with qb names as keys.
+                Defaults to None.
+            fixed_scaling (int, optional): Specifying the amplitude scaling
+                for the pulse that wasn't swept. See docstring of the
+                measurement class. Can also be dict with qb names as keys.
+                Defaults to None.
+            fitted_scaling_errors (dict, optional): The keys are qubit names
+                and the values are arrays of fit results for each soft sweep.
+                Example: {'qb10':  np.array([-0.00077432, -0.00055945])}
+                Defaults to None.
+            maxeval (int, optional): Number of evaluations for the optimiser.
+                Defaults to 400.
+            T1 (float, optional): Qubit T1 to use for fit (fixed).
+                Defaults to value from hdf.
+            T2 (float, optional): Qubit T2 to use as starting value for the
+                fit (dimensionless fraction T2/T2_guess is varied).
+                Defaults to value from hdf.
     """
     def extract_data(self):
         super().extract_data()
@@ -12429,10 +12457,10 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             t_gate (float): gate length (s)
             gamma_1 (float): qubit energy relaxation rate
             gamma_phi (float): qubit dephasing rate
-            zth (float; default=1): z coordinate at equilibrium
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
 
-        Returns
-            y, z: coordinates of the qubit state vector after the evolution
+        Returns:
+            tuple: y, z: coordinates of the qubit state vector after the evolution
         """
         Omega = ang_scaling*np.pi/t_gate
         f_rabi = np.sqrt(Omega**2 - (1/16)*(gamma_1-2*gamma_phi)**2)
@@ -12453,63 +12481,93 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
     @staticmethod
     def apply_gate_mtx(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, nreps=1):
-        """
-        Calculates the time evolution of the y and z components of the qubit
-        state vector under the application of an X gate described by the
-        time-independent Hamiltonian (ang_scaling*pi/t_gate)*sigma_x/2.
+        """Calculates the time evolution of the y and z components of the qubit
+        This function implements the matrix version of apply_gate: y and z here
+        are y - yinf and z - zinf in apply_gate.
+
+        To be specific: Calculates the time evolution of the y and z
+        components of the qubit state vector under the application of
+        an X gate described by the time-independent Hamiltonian 
+        (ang_scaling*pi/t_gate)*sigma_x/2.
+
         https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
-        This function implements the matrix version of apply_gate: y and z
-        here are y - yinf and z - zinf in apply_gate
 
         This function is used in sim_func when fixed_scaling is None.
 
         Args:
-            y (float): scaled y coordinate of the qubit state vector at the
-                start of the evolution
-            z (float): scaled z coordinate of the qubit state vector at the
-                start of the evolution
-            ang_scaling (float or array): fraction of a pi rotation
-                (see Hamiltonian above)
-            t_gate (float): gate length (s)
-            gamma_1 (float): qubit energy relaxation rate
-            gamma_phi (float): qubit dephasing rate
-            nreps (int; default: 1): number of times the gate is applied
+            y (float): Scaled y coordinate of the qubit state vector at the
+                start of the evolution.
+            z (float): Scaled z coordinate of the qubit state vector at the
+                start of the evolution.
+            ang_scaling (float or array): Fraction of a pi rotation
+                (see Hamiltonian above).
+            t_gate (float): Gate length (s).
+            gamma_1 (float): Qubit energy relaxation rate.
+            gamma_phi (float): Qubit dephasing rate.
+            nreps (int, optional): Number of times the gate is applied.
+                Defaults to 1.
 
-        Returns
-            y, z: scaled coordinates of the qubit state vector after the
-                evolution
+        Returns:
+            Tuple[float, float]: Scaled coordinates of the qubit state
+            vector after the evolution.
+
+        References:
+            https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
         """
         Omega = ang_scaling * np.pi / t_gate
-        f_rabi = np.sqrt(Omega ** 2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
+        f_rabi = np.sqrt(Omega**2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
         prefactor = np.exp(-(3 * gamma_1 + 2 * gamma_phi) * t_gate / 4)
-        mtx = prefactor * np.array([
-            [np.cos(f_rabi * t_gate) + np.sin(f_rabi * t_gate) * \
-                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi),
-             np.sin(f_rabi * t_gate) * Omega / f_rabi],
-            [-np.sin(f_rabi * t_gate) * Omega / f_rabi,
-             np.cos(f_rabi * t_gate) - np.sin(f_rabi * t_gate) * \
-                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi)]])
+        mtx = prefactor * np.array(
+            [
+                [
+                    np.cos(f_rabi * t_gate)
+                    + np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                    np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                ],
+                [
+                    -np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                    np.cos(f_rabi * t_gate)
+                    - np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                ],
+            ]
+        )
         mtx = np.linalg.matrix_power(mtx, nreps)
         res = mtx @ np.array([[y], [z]])
         return res[0][0], res[1][0]
 
     @staticmethod
-    def sim_func(nr_pi_pulses, sc_error, ideal_scaling,
-                 T2, t2_r=1, nr_pulses_pi=None,
-                 y0=0, z0=1, zth=1, fixed_scaling=None,
-                 T1=None, t_gate=None, mobjn=None, ts=None):
+    def sim_func(
+        nr_pi_pulses,
+        sc_error,
+        ideal_scaling,
+        T2,
+        t2_r=1,
+        nr_pulses_pi=None,
+        y0=0,
+        z0=1,
+        zth=1,
+        fixed_scaling=None,
+        T1=None,
+        t_gate=None,
+        mobjn=None,
+        ts=None,
+    ):
         """
         Simulation function for the excited qubit state populations for a trace
         of the N-pulse calibration experiment:
             - X90 - [ repeated groups of pulses ]^nr_pi_pulses -
 
         The repeated groups of pulses are either:
-         - nr_pulses_pi x R(pi/nr_pulses_pi)
-         or
-         - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
+        - nr_pulses_pi x R(pi/nr_pulses_pi)
+        or
+        - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
             if fixed_scaling is not None
 
-         See also the docstring of the measurement class DriveAmpCalib.
+        See also the docstring of the measurement class DriveAmpCalib.
 
         Args:
             nr_pi_pulses (array): number of repeated pulses applied to the qubit
@@ -12518,23 +12576,24 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 away from the ideal scaling. This error will be fitted
             ideal_scaling (float): ideal amplitude scaling factor
             T2 (float): qubit decoherence time in seconds to be used as a guess
-            t2_r (float; default=1): ratio T2_varied/T2. This ratio will be fitted
-            nr_pulses_pi (int; default=None): the number of pulses that together
-                implement a pi rotation.
-            y0 (float; default=0): y coordinate of the initial state
-            z0 (float; default=1): z coordinate of the initial state
-            zth (float; default=1): z coordinate at equilibrium
-            fixed_scaling (float; default: None): the amplitude scaling of
-                the first rotation in the description above
-            T1 (float; default: None): quit lifetime (s)
-            t_gate (float): gate length (s)
-            mobjn (str): name of the qubit
-            ts (str): measurement timestamp
+            t2_r (float, optional): ratio T2_varied/T2. This ratio will be fitted.
+                Defaults to 1.
+            nr_pulses_pi (int, optional): the number of pulses that together
+                implement a pi rotation. Defaults to None.
+            y0 (float, optional): y coordinate of the initial state. Defaults to 0.
+            z0 (float, optional): z coordinate of the initial state. Defaults to 1.
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
+            fixed_scaling (float, optional): the amplitude scaling of
+                the first rotation in the description above. Defaults to None.
+            T1 (float, optional): quit lifetime (s). Defaults to None.
+            t_gate (float, optional): gate length (s). Defaults to None.
+            mobjn (str, optional): name of the qubit. Defaults to None.
+            ts (str, optional): measurement timestamp. Defaults to None.
             The last two parameers will be used to extract T1/t_gate if the
             latter are not specified (see docstring of sim_func)
 
-        Returns
-            e_pops (array): same length as nr_pi_pulses and containing the
+        Returns:
+            array: e_pops, same length as nr_pi_pulses and containing the
                 qubit excited state populations after the application of
                 nr_pi_pulses repeated groups of pulses
         """
@@ -12544,39 +12603,50 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             assert ts is not None
         if ts is not None:
             from pycqed.utilities.settings_manager import SettingsManager
+
             sm = SettingsManager()
         if t_gate is None:
-            t_gate = sm.get_parameter(mobjn + '.ge_sigma', ts) * \
-                     sm.get_parameter(mobjn + '.ge_nr_sigma', ts)
+            t_gate = sm.get_parameter(mobjn + ".ge_sigma", ts) * sm.get_parameter(
+                mobjn + ".ge_nr_sigma", ts
+            )
         if t_gate == 0:
-            raise ValueError('Please specify t_gate.')
+            raise ValueError("Please specify t_gate.")
         if T1 is None:
-            T1 = sm.get_parameter(mobjn + '.T1', ts)
+            T1 = sm.get_parameter(mobjn + ".T1", ts)
         if T1 == 0:
-            raise ValueError('Please specify T1.')
+            raise ValueError("Please specify T1.")
 
         T2 = t2_r * T2
         if nr_pulses_pi is None and fixed_scaling is None:
-            raise ValueError('Please specify either nr_pulses_pi or '
-                             'fixed_scaling.')
+            raise ValueError("Please specify either nr_pulses_pi or " "fixed_scaling.")
 
-        gamma_1 = 1/T1
-        gamma_2 = 1/T2
-        gamma_phi = gamma_2 - 0.5*gamma_1
+        gamma_1 = 1 / T1
+        gamma_2 = 1 / T2
+        gamma_phi = gamma_2 - 0.5 * gamma_1
 
         # apply initial pi/2 gate
         y00, z00 = NPulseAmplitudeCalibAnalysis.apply_gate(
-            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth)
+            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth
+        )
 
         # calculate yinf, zinf with amp_sc
         amp_sc = sc_error + ideal_scaling
-        if hasattr(amp_sc, '__iter__'):
+        if hasattr(amp_sc, "__iter__"):
             amp_sc = amp_sc[0]
         Omega = amp_sc * np.pi / t_gate
-        yinf = 2 * zth * Omega * gamma_1 / \
-               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
-        zinf = zth * gamma_1 * (gamma_1 + 2 * gamma_phi) / \
-               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
+        yinf = (
+            2
+            * zth
+            * Omega
+            * gamma_1
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
+        zinf = (
+            zth
+            * gamma_1
+            * (gamma_1 + 2 * gamma_phi)
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
 
         e_pops = np.zeros(len(nr_pi_pulses))
         for i, n in enumerate(nr_pi_pulses):
@@ -12586,8 +12656,8 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 # adds offset to initial values
                 y, z = y00 - yinf, z00 - zinf
                 y, z = NPulseAmplitudeCalibAnalysis.apply_gate_mtx(
-                    y, z, amp_sc, t_gate, gamma_1, gamma_phi,
-                    nreps=nr_pulses_pi * n)
+                    y, z, amp_sc, t_gate, gamma_1, gamma_phi, nreps=nr_pulses_pi * n
+                )
                 # get back the true y and z
                 y += yinf
                 z += zinf
@@ -12596,10 +12666,12 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 for j in range(n):
                     # apply pulse with varying scaling
                     y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth)
+                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
                     # apply pulse with fixed scaling
                     y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth)
+                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
             e_pops[i] = 0.5 * (1 - z)
         return e_pops
 
@@ -13205,7 +13277,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         self.fit_dicts = OrderedDict()
         self.proc_data_dict['Delta'] = OrderedDict()
 
-        def pe_function(t, Delta, J=10e6, offset_freq=0):
+        def pe_function(t, Delta, J=10e6, offset_freq=0, t_offset=0):
             # From Nathan's master's thesis Eq. 2.6 - fitting function
             t = t*1e9
             J = 2*np.pi*J/1e9
@@ -13213,6 +13285,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             Delta = Delta/1e9
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
+            t += t_offset # to account for the effective sigma
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
                     4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
 
@@ -13296,6 +13369,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             model = self.get_param_value('model', 'transmon_res')
             J_guess_boundary_scale = self.get_param_value('guess_paramater_scale', 2)
             offset_guess_boundary = self.get_param_value('offset_guess_boundary', 2e8)
+            t_offset_boundary = self.get_param_value('t_offset_boundary', 5e-9)
             hdf_file_index = self.get_param_value('hdf_file_index', 0)
 
             qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
@@ -13366,6 +13440,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                                     max=J_guess_boundary_scale*J_guess)
             pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary,
                                     max=offset_guess_boundary)
+            pe_model.set_param_hint('t_offset', value=0,
+                                    min=0,
+                                    max=t_offset_boundary)
             guess_pars = pe_model.make_params()
             self.set_user_guess_pars(guess_pars)
 
@@ -13541,11 +13618,13 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
         self.plot_leakage_amp()
 
     def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05,
-                         xtransform=None, draw_lower_lines=True,
+                         xtransform=None,
+                         draw_lower_lines=True, draw_lower_points=True,
+                         color_lower_points=True, color_max_points=True,
                          pop_scale_right=None, pop_scale_left=None,
                          pop_unit_right=None, pop_unit_left=None,
                          pop_label_right=None, pop_label_left=None,
-                         gate_yticks=None, gate_yticks_prec=2, **kw):
+                         right_ticks=None, right_ticks_pc=2, **kw):
         """
         Plots leakage amplification results (2D map, and 1D with maximum line)
 
@@ -13555,19 +13634,24 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 Default (None): chooses a small margin around the data.
             cmap_margin (float): Margin for z range, relative to cmap_lim
             xtransform (function): Optional x-axis transformation
+            draw_lower_points (bool): In the projected data panel (bottom),
+                whether to plot each row of data below the maximum
             draw_lower_lines (bool): In the projected data panel (bottom),
-                whether to draw lines to connect each row of data below the
-                maximum (line instead of scatter)
+                whether to draw lines to connect each row of data points
+            color_lower_points (bool): If True, colours the lower points
+                according to the color bar.
+            color_max_points (bool): If True, colours the max points
+                according to the color bar.
             pop_scale_right (float): Scaling factor for right axis
             pop_scale_left (float): Scaling factor for left axis
             pop_unit_right (str): Unit for right axis
             pop_unit_left (str): Unit for left axis
             pop_label_right (str): Right axis label (overrides pop_unit_right)
             pop_label_left (str): Left axis label (overrides pop_unit_left)
-            gate_yticks (list): Set explicit values for the left yticks. If
+            right_ticks (list): Set explicit values for the right yticks. If
                 None (default), they are set to match the (automatic)
-                locations of the right panel ticks.
-            gate_yticks_prec (int): Precision (digits) of the left tick labels
+                locations of the left axis ticks.
+            right_ticks_pc (int): Precision (digits) of the right tick labels
             **kw (dict): Additional formatting arguments, currently 'title',
                 'cmap'.
 
@@ -13578,6 +13662,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
         """
 
         _default_units = (1e-2, '%')
+
         if pop_scale_right is None:
             pop_scale_right, pop_unit_right = _default_units
         if pop_scale_left is None:
@@ -13658,13 +13743,13 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             y_scatter = np.array(pop).flatten()
             y_err = y_err_f(y_max, acq_averages)
 
-            # Create the figure + disable the top right axis
+            # Create the figure + disable the top left axis
             self.plot_dicts[figname + "_emptyaxis"] = {
                 'fig_id': figname,
                 'plotfn': None,
-                'ax_id': 1,
+                'ax_id': 0,
                 'plotsize': (plotsize[1], plotsize[0]),
-                'gridspec_kw': {'width_ratios': [10, 1], 'wspace': 0,
+                'gridspec_kw': {'width_ratios': [1, 10], 'wspace': 0,
                                 'hspace': 0.1},
                 'numplotsx': 2,
                 'numplotsy': 2,
@@ -13676,12 +13761,12 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             # Plot 2D data
             self.plot_dicts[figname + "_2D"] = {
                 'fig_id': figname,
-                'ax_id': 0,
+                'ax_id': 1,
                 'plotfn': self.plot_colorxy,
                 'xvals': coords[0],
                 'yvals': coords[1],
-                'zvals': pop/pop_scale_right,
-                'zrange': _cmap_lim/pop_scale_right,
+                'zvals': pop/pop_scale_left,
+                'zrange': _cmap_lim/pop_scale_left,
                 'xlabel': '',
                 'xunit': '',
                 'xlabels_rotation': 0,
@@ -13690,33 +13775,83 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'cmap': kw.get('cmap'),
                 'title': title,
                 'plotcbar': True,
-                'clabel': pop_label_right if pop_label_right else
-                          f"Total leakage, $P_N$ ({pop_unit_right})",
-                'cax_id': 3,
+                'clabel': pop_label_left if pop_label_left else
+                          f"Total leakage, $P_N$ ({pop_unit_left})",
+                'cax_id': 2,
+                'cbar_opposite_axis': True,
             }
 
-            self.plot_dicts[figname + f"_1D_scatter"] = {
+            key = figname + f"_1D_line"
+            if draw_lower_lines:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 3,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([x] * len(pop)),
+                    'yvals': pop / pop_scale_left,
+                    'line_kws': {'zorder': 0},
+                    'color': 'lightgray',
+                    'marker': '',
+                }
+            else:
+                # If this method got called previously in the other if branch,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            key = figname + f"_1D_scatter"
+            if draw_lower_points:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 3,
+                    'plotfn': self.plot_line,
+                    'xvals': x_scatter,
+                    'yvals': y_scatter/pop_scale_left,
+                    'color': cmap(norm(y_scatter)) if color_lower_points
+                        else 'lightgray',
+                    'scatter': True,
+                    'line_kws': {'zorder': 1},
+                    'xlabel': nice_labels[0],
+                    'ylabel': pop_label_right if pop_label_right else
+                              f"Leakage, $P_1$ ({pop_unit_right})",
+                }
+            else:
+                # If this method got called previously in the other if branch,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            self.plot_dicts[figname + f"_1D_line_max"] = {
                 'fig_id': figname,
-                'ax_id': 2,
+                'ax_id': 3,
                 'plotfn': self.plot_line,
-                'xvals': x_scatter,
-                'yvals': y_scatter/pop_scale_right,
-                'alpha': 0.3,
-                'yrange': _cmap_lim/pop_scale_right,
-                'color': cmap(norm(y_scatter)),
-                'scatter': True,
-                'line_kws': {'zorder': 1},
-                'xlabel': nice_labels[0],
-                'ylabel': pop_label_left if pop_label_left else
-                          f"Leakage, $P_1$ ({pop_unit_left})",
+                'xvals': x,
+                'yvals': y_max/pop_scale_left,
+                'yerr': y_err/pop_scale_left,
+                'alpha': 1,
+                'line_kws': {'zorder': 2},
+                'color': 'k',
             }
-            if gate_yticks is not None:
-                # Set explicit values for the left yticks, and compute their
+            self.plot_dicts[figname + f"_1D_scatter_max"] = {
+                'fig_id': figname,
+                'ax_id': 3,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_left,
+                # yrange: so the plot matches the range of the left y axis
+                'yrange': _cmap_lim/pop_scale_left,
+                'alpha': 1,
+                'color': cmap(norm(y_max)) if color_max_points else 'k',
+                'scatter': True,
+                'line_kws': {'zorder': 3},
+                'opposite_axis': True,
+            }
+
+            if right_ticks is not None:
+                # Set explicit values for the right yticks, and compute their
                 # locations (corresponding to the scale of the colorbar axis)
 
                 # Conversion from 1-gate to n-gate leakage, to assign the
                 # locations of requested gate_yticks (1-gate leakage) to match
-                # the right axis (n-gate leakage)
+                # the left axis (n-gate leakage)
                 if (f_1ton := kw.get('f_1ton')) is None:
                     f_1ton = lambda p, n: np.sin(
                         np.arcsin(np.sqrt(np.abs(p))) * n) ** 2
@@ -13728,73 +13863,33 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     f_1ton_valid = lambda p, n: np.abs(np.arcsin(np.sqrt(
                         np.abs(p))) * n) <= np.pi / 2
 
-                self.plot_dicts[figname + f"_1D_scatter"].update({
-                    'ytick_loc': f_1ton(gate_yticks, n)/pop_scale_right,
-                    'ytick_labels': [f'{p/pop_scale_left:.{gate_yticks_prec}g}'
-                                     for p in gate_yticks],
+                self.plot_dicts[figname + f"_1D_scatter_max"].update({
+                    'ytick_loc': f_1ton(right_ticks, n)/pop_scale_left,
+                    'ytick_labels': [f'{p/pop_scale_right:.{right_ticks_pc}g}'
+                                     for p in right_ticks],
                 })
-                if not np.all(f_1ton_valid(gate_yticks, n)):
+                if not np.all(f_1ton_valid(right_ticks, n)):
                     log.warning("The required single-gate leakage y axis "
                                 "ticks are bigger than the range of the main "
                                 "period for n-gate leakage. This means that "
                                 "the ticks will oscillate on the y axis.")
             else:
                 # Fall back to using the existing yticks (as on the colorbar
-                # right axis), and format their labels
+                # left axis), and format their labels
 
                 if (f_nto1 := kw.get('f_nto1')) is None:
                     # Conversion from n-gate to 1-gate leakage, to determine
                     # which 1-gate leakage values correspond to the n-gate
-                    # leakage ticks of the right axis
+                    # leakage ticks of the left axis
                     f_nto1 = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(
                         p))) / n) ** 2
 
                 def formatter(p_n, _):
-                    p_1 = f_nto1(p_n*pop_scale_right, n)/pop_scale_left
-                    return f'{p_1:.{gate_yticks_prec}g}'
-                self.plot_dicts[figname + f"_1D_scatter"].update({
+                    p_1 = f_nto1(p_n*pop_scale_left, n)/pop_scale_right
+                    return f'{p_1:.{right_ticks_pc}g}'
+                self.plot_dicts[figname + f"_1D_scatter_max"].update({
                     'set_major_formatter': {'yaxis': formatter},
                 })
-
-            key = figname + f"_1D_line"
-            if draw_lower_lines:
-                self.plot_dicts[key] = {
-                    'fig_id': figname,
-                    'ax_id': 2,
-                    'plotfn': self.plot_line,
-                    'xvals': np.array([x]*len(pop)),
-                    'yvals': pop/pop_scale_right,
-                    'alpha': 0.1,
-                    'line_kws': {'zorder': 0},
-                    'color': 'k',
-                }
-            else:
-                # If this method got called previously with draw_lower_lines,
-                # this entry will be populated. Here resetting it to default.
-                self.plot_dicts[key] = {'plotfn': None}
-
-            self.plot_dicts[figname + f"_1D_line_max"] = {
-                'fig_id': figname,
-                'ax_id': 2,
-                'plotfn': self.plot_line,
-                'xvals': x,
-                'yvals': y_max/pop_scale_right,
-                'yerr': y_err/pop_scale_right,
-                'alpha': 1,
-                'line_kws': {'zorder': 0},
-                'color': 'k',
-            }
-            self.plot_dicts[figname + f"_1D_scatter_max"] = {
-                'fig_id': figname,
-                'ax_id': 2,
-                'plotfn': self.plot_line,
-                'xvals': x,
-                'yvals': y_max/pop_scale_right,
-                'alpha': 1,
-                'color': cmap(norm(y_max)),
-                'scatter': True,
-                'line_kws': {'zorder': 1},
-            }
 
             id_opt = np.argmin(y_max)
             self.leakage_ymax = {
@@ -13802,6 +13897,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'x_label': labels[0],
                 'y': y_max,
                 'yerr': y_err,
+                'n': n,
             }
             if labels[0] != 'num_cz_gates':
                 # opt only makes sense for an actual sweep point

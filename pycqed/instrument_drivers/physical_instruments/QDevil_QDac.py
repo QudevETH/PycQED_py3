@@ -6,6 +6,7 @@ from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 try:
     from qcodes_contrib_drivers.drivers.QDevil import QDAC1 as qdac_mod
+    from qcodes_contrib_drivers.drivers.QDevil import QDAC2 as qdac2_mod
 except ImportError:
     from qcodes.instrument_drivers.QDevil import QDevil_QDAC as qdac_mod
 import logging
@@ -256,3 +257,163 @@ class QDacSmooth(qdac_mod.QDac):
         ch_name = self.channel_map.get(chan-1, None)
         if ch_name is not None:
             self.parameters[f"volt_{ch_name}"].cache.set(v_set)
+
+class QDac2Smooth(qdac2_mod.QDac2):
+    """Driver for the QDevil QDAC with the ability to set voltages gradually/smoothly.
+
+    The voltages can be set in a different number of ways. Below is a
+    list of recommended ways in which fluxline/channel 17 (with "index" 16)
+    can be set to 0.1V. These examples rely on the channel with index 16 being
+    called "fluxline17" in channel_map (e.g. channel_map =
+    {..., 16: "fluxline17", ...}).
+        QDacSmooth.parameters["volt_fluxline17"](0.1)
+        QDacSmooth.volt_fluxline17(0.1)
+        QDacSmooth.set_smooth({"volt_fluxline17": 0.1})
+        QDacSmooth.set_smooth({16: 0.1})
+    In case the voltage should not be set smooth but should be set immediately
+    (e.g. for faster voltage setting), the qcodes method QDacSmooth.ch17.v(0.1),
+    can be used. However, this will result in an immediate change of the voltage
+    (i.e. the voltage will not be set smooth) and is therefore not generally
+    recommended.
+
+    Recommended ways to get/read the voltage from fluxline/channel 17 (with
+    "index" 16) are:
+        QDacSmooth.parameters["volt_fluxline17"]()
+        QDacSmooth.volt_fluxline17()
+        QDacSmooth.ch17.v()
+
+    Recommended ways to get/read the voltage from all fluxlines/channels (this
+    will give you a voltage dict with all fluxline voltages that can also be
+    directly passed into QDacSmooth.set_smooth()):
+        QDacSmooth.get_fluxline_voltages() (outputs {"fluxline1": 0.1, ...})
+        QDacSmooth.get_channel_voltages()  (outputs {0: 0.1, ...})
+    """
+
+    def __init__(self, name, ip_address, channel_map):
+        """Create a QDac2Smooth, which behaves the same as the QDacSmooth.
+
+        Args:
+            name (str): The name of the instrument.
+            ip_address (str): The IP address of the instrument.
+            channel_map (dict): A dictionary mapping channel numbers to channel names.
+        """
+        super().__init__(name, visalib='@py', address=f'TCPIP::{ip_address}::5025::SOCKET')
+        self.channel_map = channel_map
+        self.add_parameter('smooth_timestep', unit='s',
+                           label="Delay between sending the write commands"
+                                 "when changing the voltage smoothly",
+                           get_cmd=None, set_cmd=None,
+                           vals=vals.Numbers(0.002, 1), initial_value=0.01)
+
+        for ch_number, ch_name in self.channel_map.items():
+            stepname = f"volt_{ch_name}_step"
+            self.add_parameter(stepname, unit='V',
+                               label="Step size when changing the voltage " +
+                                     f"smoothly on module {ch_name}",
+                               get_cmd=None, set_cmd=None,
+                               vals=vals.Numbers(0, 20), initial_value=0.001)
+
+            self.add_parameter(name=f"volt_{ch_name}",
+                label=f"DC source voltage on channel {ch_name}", unit='V',
+                get_cmd=self.channels[ch_number].dc_constant_V,
+                set_cmd=lambda val, ch_number=ch_number: self.set_smooth(
+                    {ch_number: val}),
+            )
+        self.add_parameter('verbose',
+                           parameter_class=ManualParameter,
+                           vals=vals.Bool(), initial_value=False)
+
+    def set_smooth(self, voltagedict):
+        """Set the voltages as specified in ``voltagedict`` smoothly.
+
+        The voltages are changed on each module at a rate of
+        ``volt_#_step/smooth_timestep``.
+
+        Args:
+            voltagedict (Dict[float]): A dictionary where keys are names (from
+                the channel map) or module slot numbers (starting at 0) where
+                values are the desired output voltages.
+                Example:
+                    {"fluxline1": 0.1, "fluxline2": 0.45, "fluxline15: 2.3, ...}
+                    or
+                    {0: 0.1, 1: 0.45, 14: 2.3}
+        """
+
+        def print_progress(index, total, begintime):
+            if self.verbose() and total > 3:  # do not print for tiny changes
+                percdone = index / total * 100
+                elapsed_time = time.time() - begintime
+
+                # The trailing spaces are to overwrite some characters in case
+                # the previous progress message was longer.
+                progress_message = (
+                    "\r{name}\t{percdone}% completed \telapsed time: "
+                    "{t_elapsed}s \ttime left: {t_left}s     ").format(
+                    name=self.name,
+                    percdone=int(percdone),
+                    t_elapsed=round(elapsed_time, 1),
+                    t_left=round((100. - percdone) / (percdone) *
+                                 elapsed_time, 1) if
+                    percdone != 0 else '')
+
+                if percdone != 100:
+                    end_char = ''
+                else:
+                    end_char = '\n'
+                print('\r', progress_message, end=end_char)
+
+        v_sweep = {}
+        initial_voltages = self.get_channel_voltages()
+
+        # generate lists of V to apply over time
+        for ch_number, voltage in voltagedict.items():
+
+            if not isinstance(ch_number, int):
+                ch_number = list(self.channel_map.keys())[
+                    list(self.channel_map.values()).index(ch_number)]
+            old_voltage = initial_voltages[ch_number]
+
+            if np.abs(voltage - old_voltage) < 1e-10:
+                v_sweep[ch_number] = []
+            else:
+                stepparam = self.parameters[
+                    f"volt_{self.channel_map[ch_number]}_step"]()
+                v_sweep[ch_number] = np.arange(old_voltage, voltage, np.sign(
+                    voltage - old_voltage) * stepparam)
+                v_sweep[ch_number] = np.append(v_sweep[ch_number],
+                                               voltage)  # end on correct value
+        N_steps = max([len(v_sweep[ch_number]) for ch_number in v_sweep])
+        begintime = time.time()
+        for step in range(N_steps):
+            steptime = time.time()
+            for ch_number, v_list in v_sweep.items():
+                if step < len(v_list):
+                    self.channels[ch_number].dc_constant_V(v_list[step])
+            time.sleep(max(
+                self.parameters['smooth_timestep']() - (time.time() - steptime),
+                0))
+            print_progress(step + 1, N_steps, begintime)
+
+    def get_fluxline_voltages(self):
+        """Retrieve the fluxline voltages.
+
+        Returns:
+            dict: Keys are the channel names provided by the user in
+            channel_map, and the values are the fluxline voltages that are
+            currently set.
+            E.g. {"fluxline1": 0.1, "fluxline2": -1.4, "fluxline3": 0.3, ...}
+        """
+        return {ch_name: self.channels[chan].dc_constant_V()
+                for ch_name, chan in zip(self.channel_map.values(),
+                                         range(self.num_chans))}
+
+    def get_channel_voltages(self):
+        """Retrieve the channel voltages.
+
+        Returns:
+            dict: Keys are the channel numbers (starting at 0), and the values
+            are the fluxline voltages that are currently set.
+            E.g. {0: 0.1, 1: -1.4, 2: 0.3, ...}
+        """
+        return {chan: self.channels[chan].dc_constant_V()
+                for chan in range(len(self.channels))}
