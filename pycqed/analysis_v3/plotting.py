@@ -155,9 +155,19 @@ def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
 
 
 def get_axes_geometry_from_figure(fig):
-    return fig.axes[0].get_subplotspec().get_topmost_subplotspec().\
-        get_gridspec().get_geometry()
+    """Gets the geometry (rows, cols) of the subplot grid from a matplotlib figure.
 
+    Args:
+        fig: A matplotlib figure object to get the geometry from.
+
+    Returns:
+        tuple: A tuple of (rows, columns) representing the subplot grid geometry.
+            Returns (1,1) if the figure has no axes.
+    """
+    if len(fig.axes) > 0:
+        return fig.axes[0].get_subplotspec().get_topmost_subplotspec().\
+            get_gridspec().get_geometry()
+    return (1,1)
 
 def default_figure_title(data_dict, meas_obj_name, **params):
     timestamps = hlp_mod.get_param('timestamps', data_dict, raise_error=True,
@@ -1052,6 +1062,8 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 wspace=0, hspace=0)
 
         try:
+            # FIXME: This can result in a None in case the figure sucks
+            #        because garbage in -> ~~garbage out~~None out
             pdict['ax_geom'] = get_axes_geometry_from_figure(
                 figs[pdict['fig_id']])
         except AttributeError:
@@ -1207,10 +1219,18 @@ def plot_bar(pdict, axs, tight_fig=True):
         set_axis_label('x', axs, plot_xlabel, plot_xunit)
     if plot_ylabel is not None:
         set_axis_label('y', axs, plot_ylabel, plot_yunit)
+
     if plot_xtick_labels is not None:
-        axs.xaxis.set_ticklabels(plot_xtick_labels)
+        if plot_xtick_loc is None:
+            plot_xtick_loc = np.arange(len(plot_xtick_labels))
+        axs.xaxis.set_major_locator(plt.FixedLocator(plot_xtick_loc))
+        axs.xaxis.set_major_formatter(plt.FixedFormatter(plot_xtick_labels))
     if plot_ytick_labels is not None:
-        axs.yaxis.set_ticklabels(plot_ytick_labels)
+        if plot_ytick_loc is None:
+            plot_ytick_loc = np.arange(len(plot_ytick_labels))
+        axs.yaxis.set_major_locator(plt.FixedLocator(plot_ytick_loc))
+        axs.yaxis.set_major_formatter(plt.FixedFormatter(plot_ytick_labels))
+
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
@@ -1323,9 +1343,16 @@ def plot_bar3D(pdict, axs, tight_fig=True):
                   zsort=zsort, **plot_barkws)
 
     if plot_xtick_labels is not None:
-        axs.xaxis.set_ticklabels(plot_xtick_labels)
+        if plot_xtick_loc is None:
+            plot_xtick_loc = np.arange(len(plot_xtick_labels))
+        axs.xaxis.set_major_locator(plt.FixedLocator(plot_xtick_loc))
+        axs.xaxis.set_major_formatter(plt.FixedFormatter(plot_xtick_labels))
     if plot_ytick_labels is not None:
-        axs.yaxis.set_ticklabels(plot_ytick_labels)
+        if plot_ytick_loc is None:
+            plot_ytick_loc = np.arange(len(plot_ytick_labels))
+        axs.yaxis.set_major_locator(plt.FixedLocator(plot_ytick_loc))
+        axs.yaxis.set_major_formatter(plt.FixedFormatter(plot_ytick_labels))
+
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
@@ -1775,13 +1802,28 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
 
     # FIXME Ignores thranspose option. Is it ok?
     if plot_xtick_labels is not None:
-        axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
+        if plot_xtick_loc is None:
+            plot_xtick_loc = np.arange(len(plot_xtick_labels))
+        axs.xaxis.set_major_locator(plt.FixedLocator(plot_xtick_loc))
+        axs.xaxis.set_major_formatter(plt.FixedFormatter(plot_xtick_labels))
+        for tick in axs.get_xticklabels():
+            tick.set_rotation(90)
+            
     if plot_ytick_labels is not None:
-        axs.yaxis.set_ticklabels(plot_ytick_labels)
+        if plot_ytick_loc is None:
+            plot_ytick_loc = np.arange(len(plot_ytick_labels))
+        axs.yaxis.set_major_locator(plt.FixedLocator(plot_ytick_loc))
+        axs.yaxis.set_major_formatter(plt.FixedFormatter(plot_ytick_labels))
+
+#    if plot_xtick_labels is not None:
+#        axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
+#    if plot_ytick_labels is not None:
+#        axs.yaxis.set_ticklabels(plot_ytick_labels)
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
         axs.yaxis.set_ticks(plot_ytick_loc)
+
     if plot_origin == 'upper':
         axs.invert_yaxis()
 
@@ -1857,7 +1899,9 @@ def plot_colorbar(pdict=None, axs=None, cax=None,
         axs.cbar.set_label(plot_clabel)
 
     if tight_fig:
-        axs.figure.tight_layout()
+        # Check for warning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+        if hasattr(axs, 'get_geometry') and axs.get_geometry() is not None:
+            axs.figure.tight_layout()
 
 
 def plot_fit(pdict, axs):
