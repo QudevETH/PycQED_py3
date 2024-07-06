@@ -12,7 +12,6 @@ A brief explanation of the why, not the what or how. Assume the reader doesn't k
 the background and won't have time to dig-up information from comment threads.
 -->
 
-
 ## Relevant links
 <!--
 Information that the developer might need to refer to when implementing the issue.
@@ -23,7 +22,6 @@ Information that the developer might need to refer to when implementing the issu
 - [Similar implementation](https://see.com/-/merge_requests/<id>)
 -->
 
-
 ## Non-functional requirements
 <!--
 Add details for required items and delete others.
@@ -32,7 +30,6 @@ Add details for required items and delete others.
 - [ ] Documentation:
 - [ ] Performance:
 - [ ] Testing:
-
 
 ## Implementation plan
 <!--
@@ -53,7 +50,6 @@ e.g.:
 - [ ] ~frontend Step 2
 
 -->
-
 
 ## Verification steps
 <!--
