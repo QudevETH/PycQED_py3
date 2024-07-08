@@ -300,14 +300,52 @@ class QCNNExperiment(VariationalAlgorithm):
         self.prep_params_filename = prep_params_filename
         super().__init__(*args, **kw)
 
+    def pp9(self, h_index, param_index):
+        if h_index == 21:
+            gs_prep_param = (np.array(
+                [0, 3/2*np.pi, 0, 0, 3/2*np.pi, 0, 0, 3/2*np.pi, 0,
+                np.pi, np.pi, np.pi,
+                0, 0, 0, 0, 0, 0, 0, 0, 0,
+                np.pi, np.pi, np.pi,
+                0, 0, 0, 3/2*np.pi, 0, 3/2*np.pi, 0, 0, 0,
+                np.pi, np.pi,
+                3/2*np.pi, 1/2*np.pi, 3/2*np.pi, 1/2*np.pi, 1/2*np.pi,
+                 1/2*np.pi, 3/2*np.pi, 1/2*np.pi, 3/2*np.pi]
+            ) * 180 / np.pi)[::-1]
+            return gs_prep_param[param_index]
+        elif h_index == 22:
+            return 0
+        if not hasattr(self, 'prep_params_vs_h'):
+            if self.prep_params_filename is None:
+                raise ValueError("self.prep_params_filename is None!")
+            try:
+                with h5py.File(self.prep_params_filename,
+                               'r') as fileObject:
+                    # parameters are not saved as a 2D array of 21*44
+                    theta_opt = fileObject['THETAS_opt']
+                    phi_opt = fileObject['phi_opt']
+                    self.prep_params_vs_h = np.zeros((21, 44))
+                    for i in range(21):
+                        self.prep_params_vs_h[i][0:9] = theta_opt[i][0]
+                        self.prep_params_vs_h[i][9:11] = phi_opt[i][0:2]
+                        self.prep_params_vs_h[i][11:20] = theta_opt[i][1]
+                        self.prep_params_vs_h[i][20:23] = phi_opt[i][2:5]
+                        self.prep_params_vs_h[i][23:32] = theta_opt[i][2]
+                        self.prep_params_vs_h[i][32:35] = phi_opt[i][5:8]
+                        self.prep_params_vs_h[i][35:44] = theta_opt[i][3]
+                    self.prep_params_vs_h *= 180 / np.pi
+            except FileNotFoundError:
+                log.warning(
+                    "Can't find prep params file! Using zeros instead")
+                self.prep_params_vs_h = np.zeros((21, 44))
+        h_index = int(round(h_index))
+        return self.prep_params_vs_h[h_index, param_index]
+
     def pp(self, h_index, param_index):
         """Get a preparation parameter
 
         Short name for convenience when using in an op code
         """
-        if len(self.qubits) == 9:
-            # TODO extract parameters from file for 9 qb. Order might change
-            return 0
         # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 2
         # h_index = 21, prepare TP state with explicit parameters below
         # h_index = 22, prepare |0000> state by setting all params to 0
@@ -320,8 +358,7 @@ class QCNNExperiment(VariationalAlgorithm):
                        -np.pi,np.pi/2,-np.pi/2,0]) * 180 / np.pi
             return gs_prep_param[param_index]
         elif h_index == 22:
-            gs_prep_param = np.zeros(15)
-            return gs_prep_param[param_index]
+            return 0
         if not hasattr(self, 'prep_params_vs_h'):
             if self.prep_params_filename is None:
                 raise ValueError("self.prep_params_filename is None!")
@@ -409,7 +446,7 @@ class QCNNExperiment(VariationalAlgorithm):
             self._add_ry_block('RY3', range(len(self.qubits)),
                                ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
         elif len(self.qubits) == 9:
-            op_code = "cb.pp([h_index],{i})"
+            op_code = "cb.pp9([h_index],{i})"
             # TODO maybe remove prefix if not needed
             self._add_ry_block('RYp1', range(len(self.qubits)),
                                [op_code.format(i=i) for i in range(0, 9)])
