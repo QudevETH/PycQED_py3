@@ -338,6 +338,8 @@ class QCNNExperiment(VariationalAlgorithm):
     def _add_ry_block(self, prefix, qbns, params=None):
         if params is None:
             params = [f"{prefix}_{qbn}" for qbn in qbns]
+        qbns = [qbn if isinstance(qbn, str) else self.qubits[qbn].name
+                for qbn in qbns]
         self.params += [p for p in params if isinstance(p, str)]
         op_code_params = [':'+p if isinstance(p, str) else p for p in params]
         self._blocks.append(self.simultaneous_blocks(
@@ -355,6 +357,8 @@ class QCNNExperiment(VariationalAlgorithm):
         if params is None:
             params = [f"{prefix}_{qbns[0]}_{qbns[1]}"
                        for i, qbns in enumerate(qubit_lists)]
+        qubit_lists = [[qbn if isinstance(qbn, str) else self.qubits[qbn].name
+                        for qbn in qbns] for qbns in qubit_lists]
         self.params += [p for p in params if isinstance(p, str)]
         op_code_params = [':'+p if isinstance(p, str) else p for p in params]
         self._blocks.append(self.simultaneous_blocks(
