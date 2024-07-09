@@ -638,7 +638,7 @@ def prepare_rb_fitting(data_dict, data_to_proc_dict, cliffords, nr_seeds,
     do_simple_fit = hlp_mod.get_param(
         'do_simple_fit', data_dict, default_value=True, **params)
     d = hlp_mod.get_param('d', data_dict, raise_error=True, **params)
-    print('d: ', d)
+    log.info(f'd: {d}')
     guess_pars = {'A': {'value': 1},
                   'p': {'value': 0.99},
                   'B': {'value': 0}}
@@ -1026,14 +1026,14 @@ def prepare_irb_plot(data_dict, plot_dict_names_irb_plot=None,
     for label in ['rb', 'irb']:
         epc_value = hlp_mod.get_param(f'{mobjn}.{label}.EPC value',
                                       data_dict, **params)
-        print(epc_value)
+        log.info(epc_value)
         leg_label = ''
         if epc_value is not None:
             epc_stderr = hlp_mod.get_param(f'{mobjn}.{label}.EPC stderr',
                                            data_dict, **params)
             leg_label = f'{label.upper()}:\t' \
                         f'{100*epc_value:.2f}%$\\pm${100*epc_stderr:.2f}% EPC'
-        print(leg_label)
+        log.info(leg_label)
         plot_dicts_updated[f'legend_data_IRB_{label}'] = {
             'fig_id': figure_name,
             'plotfn': 'plot_line',
