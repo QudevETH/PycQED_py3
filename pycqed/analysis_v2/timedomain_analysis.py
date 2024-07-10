@@ -25,6 +25,7 @@ from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import matplotlib.pyplot as plt
 from pycqed.analysis.three_state_rotation import predict_proba_avg_ro
+import pycqed.analysis_v3.helper_functions as hlp_mod
 import logging
 
 from pycqed.utilities import math
@@ -119,6 +120,7 @@ class PhaseErrorsAnalysisMixin():
         Takes the value of self.pulse_par_name for each qubit from the HDF file
         and stores the values in self.raw_data_dict.
         """
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -148,8 +150,9 @@ class PhaseErrorsAnalysisMixin():
         trans_name = self.get_transition_name(qb_name)
         old_pulse_par_val = self.raw_data_dict[
             f'{trans_name}_{self.pulse_par_name}_' + qb_name]
+        # FIXME: the following condition is always False, isn't it?
         if old_pulse_par_val != old_pulse_par_val:
-            old_pulse_par_val = 0
+            old_pulse_par_val = 0  # FIXME: explain why
         old_pulse_par_val *= scaling_factor
         fit_val *= scaling_factor
         fit_stderr *= scaling_factor
@@ -163,7 +166,6 @@ class PhaseErrorsAnalysisMixin():
                    f'\nold envelope mod. freq. ={chr}{old_pulse_par_val:.4f} MHz'
 
 
-# Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -344,7 +346,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if self.numeric_params is None:
             self.numeric_params = []
 
-        if not hasattr(self, "job"):
+        if self.job is None:
             self.create_job(qb_names=qb_names, t_start=t_start, t_stop=t_stop,
                             label=label, data_file_path=data_file_path,
                             do_fitting=do_fitting, options_dict=options_dict,
@@ -394,8 +396,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             qbn: self.raw_data_dict['measurementstring'] for qbn in
             self.qb_names}
 
-        self.prep_params = self.get_param_value('preparation_params',
-                                                default_value=dict())
+        self.prep_params = self.get_reset_params(default_value=dict())
 
         # creates self.channel_map
         self.get_channel_map()
@@ -429,7 +430,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # update self.data_to_fit based on the rotation_type
         self.update_data_to_fit()
 
-        # creates self.data_filter and self.data_with_reset
+        # creates self.data_filter and self.data_with_filter
         self.get_data_filter()
 
         # These calls need to stay here because otherwise QScaleAnalysis will
@@ -464,16 +465,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if np.ndim(value_names) > 0:
                     value_names = value_names
                 if 'w' in value_names[0]:
-                    self.channel_map = a_tools.get_qb_channel_map_from_hdf(
-                        self.qb_names, value_names=value_names,
-                        file_path=self.raw_data_dict['folder'])
+                    # FIXME: avoid dependency ana_v2 - ana_v3
+                    self.channel_map = hlp_mod.get_qb_channel_map_from_file(
+                        self.qb_names,
+                        value_names=value_names,
+                        file_path=self.raw_data_dict["folder"],
+                    )
                 else:
                     self.channel_map = {}
                     for qbn in self.qb_names:
                         self.channel_map[qbn] = value_names
 
         if len(self.channel_map) == 0:
-            raise ValueError('No qubit RO channels have been found.')
+            raise ValueError("No qubit RO channels have been found.")
 
     def get_sweep_points(self):
         """
@@ -482,7 +486,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         Creates self.sp
         """
-        self.sp = self.get_param_value('sweep_points')
+        self.sp = self.get_param_value("sweep_points")
         if self.sp is not None:
             self.sp = SweepPoints(self.sp)
 
@@ -525,11 +529,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 is ignored).
         """
         # Looks for instance of CalibrationPoints (or its repr)
-        cal_points = self.get_param_value('cal_points')
-        last_ge_pulses = self.get_param_value('last_ge_pulses',
-                                              default_value=False)
-        if hasattr(last_ge_pulses, '__iter__') and \
-                len(last_ge_pulses) != len(self.qb_names):
+        cal_points = self.get_param_value("cal_points")
+        last_ge_pulses = self.get_param_value("last_ge_pulses", default_value=False)
+        if hasattr(last_ge_pulses, "__iter__") and len(last_ge_pulses) != len(
+            self.qb_names
+        ):
             last_ge_pulses = len(self.qb_names) * list(last_ge_pulses)
 
         # default value for cal_states_rotations
@@ -730,22 +734,25 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         Creates the following attribute:
             - self.data_filter: function that will be used in
                 create_meas_results_per_qb to filter/process the data
-            - self.data_with_reset: bool that is checked in
+            - self.data_with_filter: bool that is checked in
                 prepare_raw_data_plots
         """
         # flag to be used in prepare_raw_data_plots
-        self.data_with_reset = False
+        self.data_with_filter = False
         self.data_filter = self.get_param_value('data_filter')
         if self.data_filter is None:
             if 'active' in self.prep_params.get('preparation_type', 'wait'):
                 reset_reps = self.prep_params.get('reset_reps', 3)
                 self.data_filter = lambda x: x[reset_reps::reset_reps+1]
-                self.data_with_reset = True
+                self.data_with_filter = True
             elif "preselection" in self.prep_params.get('preparation_type',
                                                         'wait'):
                 self.data_filter = lambda x: x[1::2]  # filter preselection RO
+                self.data_with_filter = True
             else:
                 self.data_filter = lambda x: x
+        else:
+            self.data_with_filter = True
 
     def create_sweep_points_dict(self):
         """
@@ -965,7 +972,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 predict_proba=self.predict_proba,
                 classifier_params=self.get_param_value("classifier_params"),
                 states_map=self.get_param_value("states_map"),
-                thresholding=self.get_param_value("thresholding"),)
+                thresholding=self.get_param_value("thresholding", False),)
 
         # create projected_data_dict
         if self.rotate:
@@ -1299,6 +1306,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             self.channel_map, self.cal_states_dict_for_rotation,
                             self.data_to_fit, data_mostly_g=data_mostly_g,
                             column_PCA=column_PCA))
+
             else:
                 if self.rotation_type[qbn].lower() == 'cal_states' and \
                         len(cal_states_dict) == 3:
@@ -1868,14 +1876,18 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 unit = unit[0]
         return label, unit
 
-    def _get_single_shots_per_qb(self, raw=False):
+    def _get_single_shots_per_qb(self, raw=False, qb_names=None):
         """
         Gets single shots from the proc_data_dict and arranges
         them as arrays per qubit
         Args:
             raw (bool): whether or not to return raw shots (before
             data filtering)
-
+            qb_names (list): Qubits for which to extract the data. If None
+            (default): uses self.qb_names. This can be useful if extracting
+            data for qubits which are not in self.qb_names.
+            E.g.: Doing an experiment on qb1 (self.qb_names = ['qb1']) but
+            preselecting on qb2, meaning that we need the data from both.
         Returns: shots_per_qb: dict where keys are qb_names and
             values are arrays of shape (n_shots, n_value_names) for
             1D measurements and (n_shots*n_soft_sp, n_value_names) for
@@ -1888,18 +1900,31 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         key = 'meas_results_per_qb'
         if raw:
             key += "_raw"
-        for qbn in self.qb_names:
+        if qb_names is None:
+            qb_names = self.qb_names
+        for qbn in qb_names:
             # if "1D measurement" , shape is (n_shots, n_vn) i.e. one
             # column for each value_name (often equal to n_ro_ch)
             shots_per_qb[qbn] = \
                 np.asarray(list(
                     pdd[key][qbn].values())).T
+            n_vn = shots_per_qb[qbn].shape[-1]
+            if (sc := self.get_param_value('sweep_control'))\
+                    and sc[0] == 'soft':
+                # 1D soft sweep with single shots: turn into a 2D measurement
+                # with shape (n_soft_sp, n_shots, n_vn)
+                soft_control = True
+                nr_shots = self.get_param_value(
+                    "nr_shots", self._extract_param_from_det("nr_shots"))
+                shots_per_qb[qbn] = shots_per_qb[qbn].reshape((-1, nr_shots,
+                                                               n_vn))
+            else:
+                soft_control = False
             # if "2D measurement" reshape from (n_soft_sp, n_shots, n_vn)
             #  to ( n_shots * n_soft_sp, n_ro_ch)
             if np.ndim(shots_per_qb[qbn]) == 3:
-                assert self.get_param_value("TwoD", False) == True, \
+                assert self.get_param_value("TwoD", False) or soft_control, \
                     "'TwoD' is False but single shot data seems to be 2D"
-                n_vn = shots_per_qb[qbn].shape[-1]
                 # put softsweep as inner most loop for easier processing
                 shots_per_qb[qbn] = np.swapaxes(shots_per_qb[qbn], 0, 1)
                 # reshape to 2D array
@@ -1930,7 +1955,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 only be kept if both qb1 and qb2 are in the state specified by
                 preselection_state_int (usually, the ground state), while qb2 is preselected
                 independently of qb1.
-                 Defaults to None: in this case each qubit is preselected independently from others
+                If None (by default) or empty: in this case each qubit is
+                preselected independently from others.
             predict_proba (bool): whether or not to consider input as raw voltages shots.
                 Should be false if input shots are already probabilities, e.g. when using
                 classified readout.
@@ -1968,10 +1994,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # compute final mask taking into account all qubits in presel_qubits for each qubit
         presel_mask = {}
 
-        if preselection_qbs is None:
+        if preselection_qbs is None or len(preselection_qbs) == 0:
             # default is each qubit preselected individually
-            # note that the list includes the qubit name twice as the minimal
-            # number of arguments in logical_and.reduce() is 2.
             preselection_qbs = {qbn: [qbn] for qbn in presel_shots_per_qb}
 
         for qbn, presel_qbs in preselection_qbs.items():
@@ -1982,10 +2006,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         return presel_mask
 
-    def process_single_shots(self, predict_proba=True,
+    def process_single_shots(self, predict_proba=False,
                              classifier_params=None,
                              states_map=None,
-                             thresholding=True):
+                             thresholding=False):
         """
         Processes single shots from proc_data_dict("meas_results_per_qb")
         This includes assigning probabilities to each shot (optional),
@@ -2052,48 +2076,73 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.proc_data_dict['single_shots_per_qb'] = deepcopy(shots_per_qb)
 
         # determine number of shots
-        n_shots = self.get_param_value("n_shots")
-        if n_shots is None:
-            # FIXME: this extraction of number of shots won't work with soft repetitions.
-            n_shots_from_hdf = [
-                int(self.get_hdf_param_value(f"Instrument settings/{qbn}",
-                                             "acq_shots")) for qbn in self.qb_names]
-            if len(np.unique(n_shots_from_hdf)) > 1:
-                log.warning("Number of shots extracted from hdf are not all the same:"
-                            "assuming n_shots=max(qb.acq_shots() for qb in qb_names)")
-            n_shots = np.max(n_shots_from_hdf)
+        n_shots = self.get_param_value(
+            "nr_shots", self._extract_param_from_det("nr_shots"))
 
         # determine number of readouts per sequence
         if self.get_param_value("TwoD", False):
             n_seqs = self.sp.length(1)  # corresponds to number of soft sweep points
         else:
             n_seqs = 1
-        # n_reaouds  refers to the number of readouts per sequence after filtering out e.g.
-        # preselection readouts
-        n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots * n_seqs)
+        # n_readouts refers to the number of readouts per sequence after
+        # filtering out e.g. preselection readouts
+        n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots *
+                                                                 n_seqs)
+
+        # get qubits for which data should be extracted
+        preselection_qbs = self.get_param_value("preselection_qbs")
+        if preselection_qbs is None:
+            # by default, extract data for all qubits in self.qb_names
+            qb_names_to_extract = self.qb_names
+        else:
+            # Data should be extracted both for qubits in self.qb_names
+            # (qubits on which the experiment is performed), and for qubits
+            # used in preselection. These two sets may or not be distinct.
+            # Preselection will not work if data is not extracted for the
+            # preselection qubits as well.
+            # E.g. self.qb_names = ['qb1'] (only qubit to analyse) and
+            # preselection_qbs = {"qb1": ["qb1", "qb2"]},
+            # i.e. preselection is done for qb1 using ['qb1', 'qb2'] so we
+            # should exctract data no only for qb1 but also qb2.
+            qb_names_to_extract = [qbn for qbns in list(
+                preselection_qbs.values()) for qbn in qbns]
+            qb_names_to_extract = qb_names_to_extract + [
+                qbn for qbn in self.qb_names if qbn not in qb_names_to_extract]
 
         # get classification parameters
         if classifier_params is None:
-            classifier_params = {}
-            from numpy import array  # for eval
-            for qbn in self.qb_names:
-                classifier_params[qbn] = eval(self.get_hdf_param_value(
-                f'Instrument settings/{qbn}', "acq_classifier_params"))
+            classifier_params = self.get_data_from_timestamp_list({
+                f'{qbn}': f"Instrument settings.{qbn}.acq_classifier_params"
+                for qbn in qb_names_to_extract})
 
         # prepare preselection mask
         if preselection:
-            # get preselection readouts
-            shots_per_qb_before_filtering = self._get_single_shots_per_qb(raw=True)
+
+            # get preselection readouts for selected qubits
+            shots_per_qb_before_filtering = self._get_single_shots_per_qb(
+                raw=True, qb_names=qb_names_to_extract)
+
             n_ro_before_filtering = \
                 list(shots_per_qb_before_filtering.values())[0].shape[0] // \
                 (n_shots * n_seqs)
+            # The following lines assume a single preselection readout and
+            # an arbitrary number n_readouts_per_segment of other readouts.
+            # n_readouts = n_readouts_per_segment * n_segs
+            # n_ro_before_filtering = (1+n_readouts_per_segment) * n_segs
+            n_readouts_per_segment = n_readouts // (n_ro_before_filtering -
+                                                    n_readouts)
+            n_segs = n_readouts // n_readouts_per_segment
+            # FIXME follows the data format of _get_single_shots_per_qb,
+            #  hence the tiling by n_seqs. Array shapes should probably be
+            #  cleaned up, after fixing transposed arrays in proc_data_dict
+            #  as well, see FIXME in BaseDataAnalysis.__init__
             preselection_ro_mask = \
                 np.tile([True] * n_seqs +
-                        [False] * (n_ro_before_filtering - n_readouts) * n_seqs,
-                        n_shots * n_readouts)
+                        [False] * n_readouts_per_segment * n_seqs,
+                        n_shots * n_segs)
             presel_shots_per_qb = \
-                {qbn: presel_shots[preselection_ro_mask] for qbn, presel_shots in
-                 shots_per_qb_before_filtering.items()}
+                {qbn: ps[preselection_ro_mask]
+                 for qbn, ps in shots_per_qb_before_filtering.items()}
             # create boolean array of shots to keep.
             # each time ro is the ground state --> true otherwise false
             g_state_int = [k for k, v in states_map.items() if v == "g"][0]
@@ -2119,10 +2168,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         shots, classifier_params[qbn])
                 except ValueError as e:
                     log.error(f'If the following error relates to number'
-                              ' of features, probably wrong classifer parameters'
-                              ' were passed (e.g. a classifier trained with'
-                              ' a different number of channels than in the'
-                              f' current measurement): {e}')
+                              ' of features, probably wrong classifer'
+                              ' parameters were passed (e.g. a classifier'
+                              ' trained with a different number of channels'
+                              ' than in the current measurement): {e}')
                     raise e
 
             if thresholding:
@@ -2138,6 +2187,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
+            # Note: shots has been re-ordered in _get_single_shots_per_qb,
+            # compared to the raw data from the measurement
             for ro in range(n_readouts*n_seqs):
                 shots_single_ro = shots[ro::n_readouts*n_seqs]
                 presel_mask_single_ro = preselection_masks[qbn][ro::n_readouts*n_seqs]
@@ -2146,11 +2197,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 averaged_shots.append(
                     np.mean(shots_single_ro[presel_mask_single_ro], axis=0))
             if self.get_param_value("TwoD", False):
+                # Shape: (n_readouts*n_seqs, n), with n = n_prob or n_ch or 1
                 averaged_shots = np.reshape(averaged_shots, (n_readouts, n_seqs, -1))
+                # Shape: (n_readouts, n_seqs, n)
                 averaged_shots = np.swapaxes(averaged_shots, 0, 1) # return to original 2D shape
-            # reshape to (n_prob or n_ch or 1, n_readouts) if 1d
-            # or (n_prob or n_ch or 1, n_readouts, n_ssp) if 2d
+                # Shape: (n_seqs, n_readouts, n)
             averaged_shots = np.array(averaged_shots).T
+            # Shape: (n, n_readouts) if 1d, or (n, n_readouts, n_ssp) if 2d
 
             if preselection:
                 self.proc_data_dict['percent_data_after_presel'][qbn] = \
@@ -2201,38 +2254,33 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qb_name in self.qb_names:
             slice_idxs_list = slice_idxs_1d_raw_plot.get(qb_name, [])
             # Plot all raw data (including potential active reset readouts)
-            key = 'meas_results_per_qb_raw'
-            raw_data_dict = self.proc_data_dict[key][qb_name]
-            sweep_points = self.raw_data_dict['hard_sweep_points']
-            if plot_raw_data:
-                # standard raw data plot
-                self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                             xvals=sweep_points)
-            if TwoD and len(slice_idxs_list) > 0:
-                # plot slices of the 2D raw data
-                self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
-                                                  slice_idxs_list)
-
-            if 'preparation_params' in self.metadata:
-                if 'active' in self.metadata['preparation_params'].get(
-                        'preparation_type', 'wait') or \
-                        not self.data_with_reset:
-                    # Plot raw data without the active reset readouts
-                    key = 'meas_results_per_qb'
-                    raw_data_dict = self.proc_data_dict[key][qb_name]
-                    fig_suffix = 'filtered' if self.data_with_reset else ''
+            if self.data_with_filter:
+                # With, then without the active reset readouts
+                keys = ['meas_results_per_qb_raw', 'meas_results_per_qb']
+                fig_suffixes = ['', 'filtered']
+            else:
+                # Raw data (no active reset readouts)
+                keys = ['meas_results_per_qb']
+                fig_suffixes = ['']
+            # For each key, create a figure with corresponding fig_suffix
+            for key, fig_suffix in zip(keys, fig_suffixes):
+                raw_data_dict = self.proc_data_dict[key][qb_name]
+                if key == 'meas_results_per_qb_raw':
+                    sweep_points = self.raw_data_dict['hard_sweep_points']
+                elif key == 'meas_results_per_qb':
                     sweep_points = self.proc_data_dict[
                         'sweep_points_dict'][qb_name]['sweep_points']
-                    if plot_raw_data:
-                        # standard raw data plot
-                        self._prepare_raw_data_plots(qb_name, raw_data_dict,
-                                                     xvals=sweep_points,
-                                                     fig_suffix=fig_suffix)
-                    if TwoD and len(slice_idxs_list) > 0:
-                        # plot slices of the 2D raw data
-                        self._prepare_raw_1d_slices_plots(qb_name,
-                                                          raw_data_dict,
-                                                          slice_idxs_list)
+                else:
+                    raise ValueError
+                if plot_raw_data:
+                    # standard raw data plot
+                    self._prepare_raw_data_plots(qb_name, raw_data_dict,
+                                                 xvals=sweep_points,
+                                                 fig_suffix=fig_suffix)
+                if TwoD and len(slice_idxs_list) > 0:
+                    # plot slices of the 2D raw data
+                    self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
+                                                      slice_idxs_list)
 
     def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
                                      slice_idxs_list):
@@ -2656,6 +2704,51 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'zrange': self.get_param_value('zrange', None),
                         'title': title,
                         'clabel': data_axis_label}
+                    # If kwarg 'plot_TwoD_as_curves' in the options_dict of
+                    # the experiment is set to True, it plots the rows of
+                    # the 2D plot as multiple curves in one plot with the
+                    # z-value of the 2D-plot as the y-value of
+                    # the curve-plot.
+                    if self.get_param_value('plot_TwoD_as_curves',
+                                            default_value=False):
+                        color_map = mpl.colormaps['viridis']
+                        # normalization functions for the color of the
+                        # curves.
+                        # normalize converts [np.min(ssp), np.max(ssp)] ->
+                        # [0,1] in a linear mapping
+                        normalize = lambda y: (y-np.min(ssp))/(np.max(
+                            ssp)-np.min(ssp))
+                        # normalize_log converts [np.min(ssp), np.max(ssp)] ->
+                        # [0,1] in a logarithmic mapping
+                        normalize_log = lambda y: \
+                                np.log(1 + 9 * normalize(y)) / np.log(10)
+                        # z values of the 2D plot (yvals variable, list of
+                        # lists) are the y values (yv) of the curve plot.
+                        # y values of the 2D plot (ssp variable, list) are the
+                        # labels of the curves and define the color of
+                        # the curves.
+                        for i, (yv, sp) in enumerate(zip(yvals, ssp)):
+                            self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
+                                = {
+                                'plotfn': self.plot_line,
+                                'fig_id': fig_name + '_' + pn + "_curves",
+                                'xvals': xvals,
+                                'yvals': yv,
+                                'xlabel': xlabel,
+                                'xunit': xunit,
+                                'ylabel': data_axis_label,
+                                'yscale': 'log' if
+                                    self.get_param_value('logzscale', False)
+                                    else 'linear',
+                                'setlabel': f'{sp:2.1e} {yunit}',
+                                'do_legend': True,
+                                'legend_bbox_to_anchor': (1, 0.5),
+                                'legend_pos': 'center left',
+                                'line_kws': {
+                                    'color': color_map(normalize_log(sp)) if
+                                    self.get_param_value('logyscale', False)
+                                    else color_map(normalize(sp))},
+                                'title': title}
 
         if prep_1d_plot:
             if len(yvals.shape) > 1 and yvals.shape[0] == 1:
@@ -2931,6 +3024,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
     Analyses the results of the state tomography experiment and calculates
     the corresponding quantum state.
 
+    ```
     Possible options that can be passed in the options_dict parameter:
         cal_points: A data structure specifying the indices of the calibration
                     points. See the AveragedTimedomainAnalysis for format.
@@ -2971,6 +3065,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
              with more qubits require smaller tolerance to converge.
         rho_target (optional): A qutip density matrix that the result will be
                                compared to when calculating fidelity.
+        ```
     """
     def __init__(self, *args, **kwargs):
         auto = kwargs.pop('auto', True)
@@ -3655,7 +3750,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 suffix = '_amp' if p == 0 else '_freq'
                 mask = pdd['mask'][qb]
                 xlabel = r'Flux pulse amplitude' if p == 0 else \
-                    r'Derived qubit frequency'
+                    r'Derived qubit ge frequency'
 
                 if self.do_fitting:
                     # Plot T1 vs flux pulse amplitude
@@ -3702,7 +3797,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'yvals': 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask],
                     'xlabel': xlabel,
                     'xunit': 'V' if p == 0 else 'Hz',
-                    'ylabel': r'Pop. loss @ {:.0f} ns'.format(
+                    'ylabel': r'Pop. loss {} @ {:.0f} ns'.format(
+                        self.data_to_fit[qb],
                         self.lengths[qb][0]/1e-9
                     ),
                     'yunit': '',
@@ -3796,28 +3892,43 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         pdd['T2'] = {}
         pdd['T2_err'] = {}
         pdd['phase_contrast'] = {}
+        pdd['phase_contrast_stderr'] = {}
         nr_lengths = len(self.metadata['flux_lengths'])
         nr_amps = len(self.metadata['amplitudes'])
 
-        guess_pars_dict_default ={qb: dict(amplitude=dict(value=0.5),
-                                       decay=dict(value=1e-6),
-                                       ) for qb in self.qb_names}
+        guess_pars_dict_default = {
+            qb: dict(amplitude=dict(value=0.5, vary=True),
+                     decay=dict(value=1e-6, vary=True),
+                     # FIXME vary=True seems to prevent convergence
+                     n=dict(value=2, vary=False, min=1, max=2),
+                     ) for qb in self.qb_names}
 
         gaussian_decay_func = \
-            lambda x, amplitude, decay, n=2: amplitude * np.exp(-(x / decay) ** n)
+            lambda x, amplitude, decay, n: amplitude * np.exp(-(x / decay) ** n)
 
         for qb in self.qb_names:
             pdd['phase_contrast'][qb] = {}
+            pdd['phase_contrast_stderr'][qb] = {}
+            pdd['mask'][qb] = [True]*len(self.metadata['amplitudes'])
             exp_mod = self.get_param_value('exp_fit_mod',
                                            lmfit.Model(gaussian_decay_func))
             guess_pars_dict = self.get_param_value("guess_pars_dict",
                                                    guess_pars_dict_default)[qb]
             for i in range(nr_amps):
-                pdd['phase_contrast'][qb][f'amp_{i}'] = np.array([self.fit_res[
-                                                        f'cos_fit_{qb}_{i}_{j}'
-                                                    ].best_values['amplitude']
-                                                    for j in
-                                                    range(nr_lengths)])
+                pdd['phase_contrast'][qb][f'amp_{i}'] = np.array(
+                    [self.fit_res[f'cos_fit_{qb}_{i}_{j}'].best_values[
+                         'amplitude'] for j in range(nr_lengths)])
+                pdd['phase_contrast_stderr'][qb][f'amp_{i}'] = np.array(
+                    [self.fit_res[f'cos_fit_{qb}_{i}_{j}'].params[
+                         'amplitude'].stderr for j in range(nr_lengths)])
+                for key in ['phase_contrast', 'phase_contrast_stderr']:
+                    if None in pdd[key][qb][f'amp_{i}']:
+                        log.warning(f"None values in {key} cos fit for "
+                                    f"amplitude {i}! Skipping.")
+                        pdd['mask'][qb][i] = False
+                        continue  # No need to check all keys in that case
+
+
                 for par, params in guess_pars_dict.items():
                     exp_mod.set_param_hint(par, **params)
                 guess_pars = exp_mod.make_params()
@@ -3826,124 +3937,146 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     'fit_fn': exp_mod.func,
                     'guess_pars': guess_pars,
                     'fit_xvals': {'x': self.get_param_value('flux_lengths')},
-                    'fit_yvals': {'data': np.array([self.fit_res[
-                                                        f'cos_fit_{qb}_{i}_{j}'
-                                                    ].best_values['amplitude']
-                                                    for j in
-                                                    range(nr_lengths)])}}
+                    'fit_yvals': {
+                        'data': pdd['phase_contrast'][qb][f'amp_{i}']},
+                }
 
 
             self.run_fitting()
 
             pdd['T2'][qb] = np.array([
-                abs(self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay'])
+                self.fit_res[f'exp_fit_{qb}_{i}'].best_values['decay']
+                if f'exp_fit_{qb}_{i}' in self.fit_res else None
                 for i in range(len(self.metadata['amplitudes']))])
             pdd['T2_err'][qb] = np.array([
-                abs(self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr)
+                self.fit_res[f'exp_fit_{qb}_{i}'].params['decay'].stderr
+                if f'exp_fit_{qb}_{i}' in self.fit_res else None
                 for i in range(len(self.metadata['amplitudes']))])
 
-            pdd['mask'][qb] = []
             for i in range(len(self.metadata['amplitudes'])):
                 try:
-                    if self.fit_res[f'exp_fit_{qb}_{i}']\
-                                            .params['decay'].stderr >= 1e-5:
-                        pdd['mask'][qb].append(False)
-                    else:
-                        pdd['mask'][qb].append(True)
+                    if (pdd['T2_err'][qb][i] is None
+                            or pdd['T2_err'][qb][i] >= 1e-5):
+                        pdd['mask'][qb][i] = False
                 except TypeError:
-                    pdd['mask'][qb][i].append(False)
+                    pdd['mask'][qb][i] = False
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
         rdd = self.raw_data_dict
+        colormap = self.get_param_value('colormap', mpl.cm.viridis)
+        freqs = self.get_param_value('frequencies')
+        delays = self.get_param_value('flux_lengths')
 
         for qb in self.qb_names:
             mask = pdd['mask'][qb]
-            label = f'T2_fit_{qb}'
-            xvals = self.metadata['amplitudes'][mask] if \
-                self.metadata['frequencies'] is None else \
-                self.metadata['frequencies'][mask]
-            xlabel = r'Flux pulse amplitude' if \
-                self.metadata['frequencies'] is None else \
-                r'Derived qubit frequency'
-            self.plot_dicts[label] = {
-                'plotfn': self.plot_line,
-                'linestyle': '-',
-                'xvals': xvals,
-                'yvals': pdd['T2'][qb][mask],
-                'yerr': pdd['T2_err'][qb][mask],
-                'xlabel': xlabel,
-                'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
-                'ylabel': r'T2',
-                'yunit': 's',
-                'color': 'blue',
-            }
 
-            # Plot all fits in single figure
-            if not self.get_param_value('all_fits', True):
-                continue
-
-            colormap = self.get_param_value('colormap', mpl.cm.Blues)
             for i in range(len(self.metadata['amplitudes'])):
                 color = colormap(i/(len(self.metadata['amplitudes'])-1))
-                label = f'exp_fit_{qb}_{i}'
-                freqs = self.get_param_value('frequencies')
-                fitid = self.metadata['amplitudes'][i] if freqs is None else \
-                        self.get_param_value('frequencies')[i]
+                fitid = self.get_param_value('amplitudes')[i] if\
+                    freqs is None else self.get_param_value('frequencies')[i]
+
+                if self.get_param_value('all_fits', False):
+                    label = f'cos_fit_{qb}_{i}'
+                    # Raw data plot for pulse amplitude i, as a function of
+                    # phase, coloured by pulse length
+                    self.plot_dicts[label + '_data'] = {
+                        'ax_id': label,
+                        'plotfn': self.plot_line,
+                        'xvals': [self.metadata['phases']]*len(delays),
+                        'linestyle': '',
+                        'yvals': pdd['data_reshaped_no_cp'][qb][i],
+                        'color': [colormap(j/(len(delays)-1)) for j
+                                  in range(len(delays))],
+                        'xlabel': r'Phase',
+                        'xunit': '°',
+                        'ylabel': r'Excited state population',
+                        }
+                    # Corresponding cos fit
+                    for j in range(len(delays)):  # FIXME no loop would be nice
+                        self.plot_dicts[label + f"_{j}"] = {
+                            'ax_id': label,
+                            'plotfn': self.plot_fit,
+                            'color': colormap(j/(len(delays)-1)),
+                            'fit_res': self.fit_res[label + f"_{j}"],
+                            }
+                    # Same raw data, as a 2D plot
+                    self.plot_dicts[label + '_data_2D'] = {
+                        # 'ax_id': f'T2_fits_{qb}_phases',
+                        'plotfn': self.plot_colorxy,
+                        'yvals': self.metadata['phases'],
+                        'xvals': self.metadata['flux_lengths'],
+                        'zvals': pdd['data_reshaped_no_cp'][qb][i].T,
+                        'zrange': [0, 1],
+                        'xlabel': 'Flux pulse length',
+                        'xunit': 's',
+                        'ylabel': 'Phase',
+                        'yunit': '°',
+                        'plotcbar': True,
+                        'clabel': f"Excited state population (%)",
+                    }
+
+                if mask[i]:
+                    # Contrast (amplitude) from the cos fits, as a function of
+                    # pulse length, coloured by pulse amplitude
+                    label = f'exp_fit_{qb}_{i}'
+                    self.plot_dicts[label + 'data'] = {
+                        'ax_id': f'T2_fits_{qb}',
+                        'plotfn': self.plot_line,
+                        "xvals": delays,
+                        "yvals": pdd['phase_contrast'][qb][f'amp_{i}'],
+                        "yerr": pdd['phase_contrast_stderr'][qb][f'amp_{i}'],
+                        "marker": "o",
+                        'plot_init': self.options_dict.get('plot_init', False),
+                        'color': color,
+                        'setlabel': f'freq={fitid:.4f}' if freqs
+                            else f'amp={fitid:.4f}',
+                        'do_legend': False,
+                        'legend_bbox_to_anchor': (1, 1),
+                        'legend_pos': 'upper left',
+                        'linestyle': "none",
+                    }
+                    # Corresponding exponential fit
+                    self.plot_dicts[label] = {
+                        'title': rdd['measurementstring'] +
+                                '\n' + rdd['timestamp'],
+                        'ax_id': f'T2_fits_{qb}',
+                        'xlabel': r'Flux pulse length',
+                        'xunit': 's',
+                        'ylabel': r'Excited state population',
+                        'plotfn': self.plot_fit,
+                        'fit_res': self.fit_res[label],
+                        'plot_init': self.get_param_value('plot_init', False),
+                        'color': color,
+                        'setlabel': f'freq={fitid:.4f}' if freqs
+                                            else f'amp={fitid:.4f}',
+                        'do_legend': False,
+                        'legend_bbox_to_anchor': (1, 1),
+                        'legend_pos': 'upper left',
+                        }
+
+            if np.sum(mask):
+                label = f'T2_fit_{qb}'
+                xvals = self.metadata['amplitudes'][mask] if \
+                    self.metadata['frequencies'] is None else \
+                    self.metadata['frequencies'][mask]
+                xlabel = r'Flux pulse amplitude' if \
+                    self.metadata['frequencies'] is None else \
+                    r'Derived qubit ge frequency'
+                # Final T2(freq or amp) plot
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
                             '\n' + rdd['timestamp'],
-                    'ax_id': f'T2_fits_{qb}',
-                    'xlabel': r'Flux pulse length',
-                    'xunit': 's',
-                    'ylabel': r'Excited state population',
-                    'plotfn': self.plot_fit,
-                    'fit_res': self.fit_res[label],
-                    'plot_init': self.get_param_value('plot_init', False),
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                                        else f'amp={fitid:.4f}',
-                    'do_legend': False,
-                    'legend_bbox_to_anchor': (1, 1),
-                    'legend_pos': 'upper left',
-                    }
-                delays = self.get_param_value('flux_lengths')
-                phase_contrasts = np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
-                                            ].best_values['amplitude']
-                                            for j in
-                                            range(len(delays))])
-                phase_contrasts_stderr = \
-                    np.array([self.fit_res[f'cos_fit_{qb}_{i}_{j}'
-                              ].params['amplitude'].stderr
-                              for j in
-                              range(len(delays))])
-                self.plot_dicts[label + 'data'] = {
-                    'ax_id': f'T2_fits_{qb}',
                     'plotfn': self.plot_line,
-                    "xvals": delays,
-                    "yvals": phase_contrasts,
-                    "yerr": phase_contrasts_stderr,
-                    "marker": "o",
-                    'plot_init': self.options_dict.get('plot_init', False),
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                    else f'amp={fitid:.4f}',
-                    'do_legend': False,
-                    'legend_bbox_to_anchor': (1, 1),
-                    'legend_pos': 'upper left',
-                    'linestyle': "none",
-                }
-
-                label = f'phases_{qb}_ampl{i}'
-                self.plot_dicts[label] = {
-                    'ax_id': f'T2_fits_{qb}_phases',
-                    'plotfn': self.plot_line,
-                    'xvals': self.metadata['phases'],
-                    'linestyle': '',
-                    'yvals': pdd['data_reshaped_no_cp'][qb][i,:],
-                    'color': color,
-                    'setlabel': f'freq={fitid:.4f}' if freqs
-                                        else f'amp={fitid:.4f}',
+                    'linestyle': '-',
+                    'xvals': xvals,
+                    'yvals': pdd['T2'][qb][mask],
+                    'yerr': pdd['T2_err'][qb][mask],
+                    'xlabel': xlabel,
+                    'xunit': 'V' if self.metadata['frequencies'] is None else 'Hz',
+                    'ylabel': r'T2',
+                    'yunit': 's',
+                    'color': 'tab:green',
                 }
 
 
@@ -4705,16 +4838,6 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.default_options['base_plot_name'] = 'Rabi'
-        params_dict = {}
-        for qbn in self.qb_names:
-            trans_name = self.get_transition_name(qbn)
-            s = 'Instrument settings.'+qbn
-            params_dict[f'{trans_name}_amp180_'+qbn] = \
-                s+f'.{trans_name}_amp180'
-            params_dict[f'{trans_name}_amp90scale_'+qbn] = \
-                s+f'.{trans_name}_amp90_scale'
-        self.raw_data_dict.update(
-            self.get_data_from_timestamp_list(params_dict))
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
@@ -5006,14 +5129,16 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'colors': 'gray'}
 
                 trans_name = self.get_transition_name(qbn)
-                old_pipulse_val = self.raw_data_dict[
-                    f'{trans_name}_amp180_'+qbn]
+                old_pipulse_val = self.get_instrument_setting(
+                    f'{qbn}.{trans_name}_amp180')
+                # FIXME: the following condition is always False, isn't it?
                 if old_pipulse_val != old_pipulse_val:
-                    old_pipulse_val = 0
-                old_pihalfpulse_val = self.raw_data_dict[
-                    f'{trans_name}_amp90scale_'+qbn]
+                    old_pipulse_val = 0  # FIXME: explain why
+                old_pihalfpulse_val = self.get_instrument_setting(
+                    f'{qbn}.{trans_name}_amp90_scale')
+                # FIXME: the following condition is always False, isn't it?
                 if old_pihalfpulse_val != old_pihalfpulse_val:
-                    old_pihalfpulse_val = 0
+                    old_pihalfpulse_val = 0  # FIXME: explain why
                 old_pihalfpulse_val *= old_pipulse_val
 
                 textstr = ('  $\pi-Amp$ = {:.3f} V'.format(
@@ -5039,6 +5164,14 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class NPulsePhaseErrorCalibAnalysis(RabiAnalysis, PhaseErrorsAnalysisMixin):
+    """
+    Analysis class for calibrating phase errors in N-pulse sequences.
+
+    This class inherits from RabiAnalysis and PhaseErrorsAnalysisMixin, and is
+    used to analyze data from N-pulse sequences to calibrate phase errors. It
+    extracts data, prepares plots, and performs fitting to determine the phase
+    error values.
+    """
 
     def extract_data(self):
         super().extract_data()
@@ -5072,6 +5205,7 @@ class RabiFrequencySweepAnalysis(RabiAnalysis):
     def extract_data(self):
         super().extract_data()
         # Extract additional parameters from the HDF file.
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             params_dict[f'drive_ch_{qbn}'] = \
@@ -5268,6 +5402,7 @@ class ThermalPopulationAnalysis(RabiAnalysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             s = 'Instrument settings.'+qbn
@@ -5380,6 +5515,8 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
+        self.default_options['base_plot_name'] = 'T1'
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -5391,8 +5528,7 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        for qbn in self.qb_names:
-            data = self.proc_data_dict['data_to_fit'][qbn]
+        def add_fit_dict(qbn, data, key):
             sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
                 'msmt_sweep_points']
             if self.num_cal_points != 0:
@@ -5408,63 +5544,102 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                 guess_pars['offset'].value = 0
                 guess_pars['offset'].vary = False
             self.set_user_guess_pars(guess_pars)
-            key = 'exp_decay_' + qbn
             self.fit_dicts[key] = {
                 'fit_fn': exp_decay_mod.func,
                 'fit_xvals': {'t': sweep_points},
                 'fit_yvals': {'data': data},
                 'guess_pars': guess_pars}
 
+        for qbn in self.qb_names:
+            all_data = self.proc_data_dict['data_to_fit'][qbn]
+            if self.get_param_value('TwoD'):
+                for i, data in enumerate(all_data):
+                    key = f'exp_decay_{qbn}_{i}'
+                    add_fit_dict(qbn, data, key,)
+            else:
+                add_fit_dict(qbn, all_data, 'exp_decay_' + qbn)
+
+
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            fit_res = self.fit_dicts['exp_decay_' + qbn]['fit_res']
+        for k, fit_dict in self.fit_dicts.items():
+            # k is of the form exp_decay_qbn_i if TwoD else exp_decay_qbn
+            # replace k with qbn_i or qbn
+            k = k.replace('exp_decay_', '')
+            fit_res = fit_dict['fit_res']
             for par in fit_res.params:
                 if fit_res.params[par].stderr is None:
                     log.warning(f'Stderr for {par} is None. Setting it to 0.')
                     fit_res.params[par].stderr = 0
-            self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
-            self.proc_data_dict['analysis_params_dict'][qbn]['T1'] = \
+            # stores as qbn if OneD or qbn_i if TwoD
+            self.proc_data_dict['analysis_params_dict'][k] = OrderedDict()
+            self.proc_data_dict['analysis_params_dict'][k]['T1'] = \
                 fit_res.best_values['tau']
-            self.proc_data_dict['analysis_params_dict'][qbn]['T1_stderr'] = \
+            self.proc_data_dict['analysis_params_dict'][k]['T1_stderr'] = \
                 fit_res.params['tau'].stderr
         self.save_processed_data(key='analysis_params_dict')
 
+
     def prepare_plots(self):
         super().prepare_plots()
+        bpn = self.get_param_value('base_plot_name')
 
         if self.do_fitting:
-            for qbn in self.qb_names:
-                # rename base plot
-                base_plot_name = f'T1_{qbn}_{self.data_to_fit[qbn]}'
+            for k, fit_dict in self.fit_dicts.items():
+                # k is of the form exp_decay_qbn_i if TwoD else exp_decay_qbn
+                # replace k with qbn_i or qbn
+                k = k.replace('exp_decay_', '')
+                # split into qbn and i. (k + '_') is needed because if k = qbn
+                # doing k.split('_') will only have one output and assignment to
+                # two variables will fail.
+                qbn, i = (k + '_').split('_')[:2]
+                sweep_points = self.proc_data_dict['sweep_points_dict'][qbn][
+                    'sweep_points']
+                first_sweep_param = self.get_first_sweep_param(
+                    qbn, dimension=1)
+                if len(i) and first_sweep_param is not None:
+                    # TwoD
+                    label, unit, vals = first_sweep_param
+                    title_suffix = (f'{i}: {label} = ' + ' '.join(
+                        SI_val_to_msg_str(vals[int(i)], unit,
+                                          return_type=lambda x: f'{x:0.4f}')))
+                else:
+                    # OneD
+                    title_suffix = ''
+                fit_res = fit_dict['fit_res']
+                base_plot_name = f'{bpn}_{k}_{self.data_to_fit[qbn]}'
+                dtf = self.proc_data_dict['data_to_fit'][qbn]
                 self.prepare_projected_data_plot(
                     fig_name=base_plot_name,
-                    data=self.proc_data_dict['data_to_fit'][qbn],
-                    plot_name_suffix=qbn+'fit',
-                    qb_name=qbn)
-
-                self.plot_dicts['fit_' + qbn] = {
+                    data=dtf[int(i)] if i != '' else dtf,
+                    sweep_points=sweep_points,
+                    plot_name_suffix=qbn + 'fit',
+                    qb_name=qbn, TwoD=False,
+                    title_suffix=title_suffix
+                )
+                self.plot_dicts['fit_' + k] = {
                     'fig_id': base_plot_name,
                     'plotfn': self.plot_fit,
-                    'fit_res': self.fit_dicts['exp_decay_' + qbn]['fit_res'],
+                    'fit_res': fit_res,
                     'setlabel': 'exp decay fit',
                     'do_legend': True,
                     'color': 'r',
                     'legend_ncol': 2,
                     'legend_bbox_to_anchor': (1, -0.15),
                     'legend_pos': 'upper right'}
-
                 trans_name = self.get_transition_name(qbn)
-                old_T1_val = self.raw_data_dict[f'{trans_name}_T1_'+qbn]
+                old_T1_val = self.raw_data_dict[f'{trans_name}_T1_' + qbn]
+                # FIXME: the following condition is always False, isn't it?
                 if old_T1_val != old_T1_val:
-                    old_T1_val = 0
+                    old_T1_val = 0  # FIXME: explain why
                 T1_dict = self.proc_data_dict['analysis_params_dict']
                 textstr = '$T_1$ = {:.2f} $\mu$s'.format(
-                            T1_dict[qbn]['T1']*1e6) \
+                    T1_dict[k]['T1'] * 1e6) \
                           + ' $\pm$ {:.2f} $\mu$s'.format(
-                            T1_dict[qbn]['T1_stderr']*1e6) \
-                          + '\nold $T_1$ = {:.2f} $\mu$s'.format(old_T1_val*1e6)
-                self.plot_dicts['text_msg_' + qbn] = {
+                    T1_dict[k]['T1_stderr'] * 1e6) \
+                          + '\nold $T_1$ = {:.2f} $\mu$s'.format(
+                    old_T1_val * 1e6)
+                self.plot_dicts['text_msg_' + k] = {
                     'fig_id': base_plot_name,
                     'ypos': -0.2,
                     'xpos': 0,
@@ -5487,9 +5662,12 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     - fit_gaussian_decay (bool; default: True): whether to fit with a Gaussian
         envelope for the oscillations in addition to the exponential decay
         envelope.
+    Note: if cal points have been measured, the fit amplitude is fixed to 0.5,
+        otherwise it is optimised.
     """
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -5514,8 +5692,14 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 guess_pars = fit_mods.exp_damp_osc_guess(
                     model=exp_damped_decay_mod, data=data, t=sweep_points,
                     n_guess=i+1)
-                guess_pars['amplitude'].vary = False
                 guess_pars['amplitude'].value = 0.5
+                if len(self.options_dict.get('cal_states', [])):
+                    # If there are cal states, we expect a 0.5 amplitude
+                    guess_pars['amplitude'].vary = False
+                else:
+                    # If no cal states, the oscillation amplitude in the IQ
+                    # plane depends on readout
+                    guess_pars['amplitude'].vary = True
                 guess_pars['frequency'].vary = True
                 guess_pars['tau'].vary = True
                 guess_pars['tau'].min = 0
@@ -5570,14 +5754,17 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
             trans_name = self.get_transition_name(qbn)
             old_qb_freq = self.raw_data_dict[f'{trans_name}_freq_'+qbn]
+            # FIXME: the following condition is always False, isn't it?
             if old_qb_freq != old_qb_freq:
-                old_qb_freq = 0
+                old_qb_freq = 0  # FIXME: explain why
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'old_qb_freq'] = old_qb_freq
+            legacy_sign = 1 if self.get_param_value('right_handed_basis')\
+                else -1  # -1 for old measurements with left-handed basis
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
-                'new_qb_freq'] = old_qb_freq + \
-                                 self.artificial_detuning_dict[qbn] - \
-                                 fit_res.best_values['frequency']
+                'new_qb_freq'] = old_qb_freq + legacy_sign * (
+                    fit_res.best_values['frequency']
+                    - self.artificial_detuning_dict[qbn])
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
                 'new_qb_freq_stderr'] = fit_res.params['frequency'].stderr
             self.proc_data_dict['analysis_params_dict'][outer_key][fit_type][
@@ -5948,6 +6135,7 @@ class ResidualZZAnalysis(RamseyAnalysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         task_list = self.get_param_value('task_list', default_value=[])
         for task in task_list:
@@ -6203,16 +6391,16 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
             if (fitparams0['c'].value > (0.5 + threshold)) or \
                     (fitparams0['c'].value < (0.5 - threshold)):
                 log.warning('The trace from the X90-X180 pulses is '
-                                'NOT within $\pm${} of the expected value '
-                                'of 0.5.'.format(threshold))
+                            'NOT within ±{} of the expected value '
+                            'of 0.5.'.format(threshold))
             # Warning if optimal_qscale is not within +/-threshold of 0.5
             y_optimal_qscale = optimal_qscale * fitparams2['slope'].value + \
                                  fitparams2['intercept'].value
             if (y_optimal_qscale > (0.5 + threshold)) or \
                     (y_optimal_qscale < (0.5 - threshold)):
                 log.warning('The optimal qscale found gives a population '
-                                'that is NOT within $\pm${} of the expected '
-                                'value of 0.5.'.format(threshold))
+                            'that is NOT within ±{} of the expected '
+                            'value of 0.5.'.format(threshold))
 
             # Calculate standard deviation
             intercept_diff_std_squared = \
@@ -6399,6 +6587,15 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         """Skip for this class. Take raw_data_dict from self.echo_analysis
         which is needed for a check in the BaseDataAnalsis.save_fit_results."""
         self.raw_data_dict = self.echo_analysis.raw_data_dict
+        # FIXME: refactor to use settings manager instead of raw_data_dict
+        params_dict = {}
+        for qbn in self.qb_names:
+            trans_name = self.get_transition_name(qbn)
+            params_dict[f'{trans_name}_T2_{qbn}'] = \
+                'Instrument settings.' + qbn + \
+                ('.T2' if trans_name == 'ge' else f'.T2_{trans_name}')
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def process_data(self):
         """Skip for this class. All relevant processing is done in
@@ -6407,34 +6604,45 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
-        for qbn in self.qb_names:
-            self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
 
+        # If OneD, qbn_idx will be of the form qb2
+        # If TwoD, qbn_idx wil lbe of the form qb2_1
+        for qbn_idx in (
+                self.echo_analysis.proc_data_dict[
+                    'analysis_params_dict'].keys()
+        ):
+            self.proc_data_dict['analysis_params_dict'][qbn_idx] = OrderedDict()
             params_dict = self.echo_analysis.proc_data_dict[
-                'analysis_params_dict'][qbn]
+                'analysis_params_dict'][qbn_idx]
             if 'T1' in params_dict:
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo'] = params_dict['T1']
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo_stderr'] = params_dict['T1_stderr']
             else:
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo'] = params_dict['exp_decay']['T2_star']
-                self.proc_data_dict['analysis_params_dict'][qbn][
+                self.proc_data_dict['analysis_params_dict'][qbn_idx][
                     'T2_echo_stderr'] = params_dict['exp_decay'][
                     'T2_star_stderr']
-
         self.save_processed_data(key='analysis_params_dict')
 
     def prepare_plots(self):
         if self.do_fitting:
-            for qbn in self.qb_names:
+            # If OneD, qbn_idx will be of the form qb2
+            # If TwoD, qbn_idx wil lbe of the form qb2_1
+            for qbn_idx in (
+                    self.echo_analysis.proc_data_dict[
+                        'analysis_params_dict'].keys()
+            ):
+                qbn = (qbn_idx + "_").split("_")[0]
                 # rename base plot
-                figure_name = f'Echo_{qbn}_{self.echo_analysis.data_to_fit[qbn]}'
+                figure_name = (f'Echo_{qbn_idx}_'
+                               f'{self.echo_analysis.data_to_fit[qbn]}')
                 echo_plot_key_t1 = [key for key in self.echo_analysis.plot_dicts
-                                    if 'T1_'+qbn in key]
+                                    if 'T1_'+qbn_idx in key]
                 echo_plot_key_rm = [key for key in self.echo_analysis.plot_dicts
-                                    if 'Ramsey_'+qbn in key]
+                                    if 'Ramsey_'+qbn_idx in key]
                 if len(echo_plot_key_t1) != 0:
                     echo_plot_name = echo_plot_key_t1[0]
                 elif len(echo_plot_key_rm) != 0:
@@ -6448,29 +6656,26 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                     'legend_bbox_to_anchor'] = (1, -0.15)
 
                 for plot_label in self.echo_analysis.plot_dicts:
-                    if qbn in plot_label:
+                    if qbn_idx in plot_label:
                         if 'raw' not in plot_label and \
                                 'projected' not in plot_label:
                             self.echo_analysis.plot_dicts[
                                 plot_label]['fig_id'] = figure_name
 
-                old_T2e_val = a_tools.get_instr_setting_value_from_file(
-                    file_path=self.echo_analysis.raw_data_dict['folder'],
-                    instr_name=qbn, param_name='T2{}'.format(
-                        '_ef' if 'f' in self.echo_analysis.data_to_fit[qbn]
-                        else ''))
+                trans_name = self.get_transition_name(qbn)
+                old_T2e_val = self.raw_data_dict[f'{trans_name}_T2_{qbn}']
                 T2_dict = self.proc_data_dict['analysis_params_dict']
                 textstr = 'Echo Measurement with'
                 art_det = self.artificial_detuning_dict[qbn]*1e-6
                 textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
                 textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
-                    T2_dict[qbn]['T2_echo']*1e6) \
+                    T2_dict[qbn_idx]['T2_echo']*1e6) \
                           + ' $\pm$ {:.2f} $\mu$s'.format(
-                    T2_dict[qbn]['T2_echo_stderr']*1e6) \
+                    T2_dict[qbn_idx]['T2_echo_stderr']*1e6) \
                           + '\nold $T_2$ echo = {:.2f} $\mu$s'.format(
                     old_T2e_val*1e6)
 
-                self.echo_analysis.plot_dicts['text_msg_' + qbn][
+                self.echo_analysis.plot_dicts['text_msg_' + qbn_idx][
                     'text_string'] = textstr
                 # Set text colour to black.
                 # When the change in qubit frequency is larger than artificial
@@ -6482,7 +6687,8 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 # since we do not use it to estimate the qubit frequency.
                 # Not resetting the colour here will cause an error in the case
                 # of multi-coloured text strings.
-                self.echo_analysis.plot_dicts['text_msg_' + qbn]['color'] = 'k'
+                self.echo_analysis.plot_dicts['text_msg_' + qbn_idx]['color'] \
+                    = 'k'
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
@@ -6689,6 +6895,7 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -6723,8 +6930,9 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             trans_name = self.get_transition_name(qbn)
             old_amp180 = self.raw_data_dict[
                 f'{trans_name}_amp180_'+qbn]
+            # FIXME: the following condition is always False, isn't it?
             if old_amp180 != old_amp180:
-                old_amp180 = 0
+                old_amp180 = 0  # FIXME explain why
 
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn][
@@ -6765,8 +6973,9 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 trans_name = self.get_transition_name(qbn)
                 old_amp180 = self.raw_data_dict[
                     f'{trans_name}_amp180_'+qbn]
+                # FIXME: the following condition is always False, isn't it?
                 if old_amp180 != old_amp180:
-                    old_amp180 = 0
+                    old_amp180 = 0  # FIXME: explain why
                 correction_dict = self.proc_data_dict['analysis_params_dict']
                 fit_res = self.fit_dicts['fit_' + qbn]['fit_res']
                 textstr = '$\pi$-Amp = {:.4f} mV'.format(
@@ -6988,7 +7197,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 'plotsize': plotsize,
                 'xvals': phases,
                 'xlabel': xlabel,
-                'xunit': xunit,
+                'xunit': 'rad',  # overriden from deg to rad in process_data
                 'yvals': data,
                 'ylabel': self.get_yaxis_label(qbn, prob_label),
                 'yunit': '',
@@ -7118,9 +7327,18 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                 amps_errs = np.nan_to_num(amps_errs)
                 # amps_errs.dtype = amps.dtype
                 if qbn in self.ramsey_qbnames:
-                    # phase_diffs
-                    phases = np.array([fr.best_values['phase'] for fr in
+                    # Extracting the phases:
+                    # the data were fitted using cos(phase+phase_offset), where
+                    # * phase (named t in the model) are the phase sweep points
+                    # * phase_offset (phase in the model) is a fitted offset
+                    # Here we want to know the phase at which the cosine is
+                    # maximum, which is phase = -phase_offset
+                    phases = -np.array([fr.best_values['phase'] for fr in
                                        fit_res_objs])
+                    # -1 for old measurements with left-handed basis
+                    legacy_sign = 1 if self.get_param_value(
+                        'right_handed_basis') else -1
+                    phases = legacy_sign*phases
                     phases_errs = np.array([fr.params['phase'].stderr for fr in
                                             fit_res_objs], dtype=np.float64)
                     phases_errs = np.nan_to_num(phases_errs)
@@ -7130,7 +7348,7 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
 
                     # compute phase diffs
                     if getattr(self, 'delta_tau', 0) is not None:
-                        # this can be false for Cyroscope with
+                        # this can be false for Cryoscope with
                         # estimation_window == None and odd nr of trunc lengths
                         phase_diffs = phases[0::2] - phases[1::2]
                         phase_diffs %= (2*np.pi)
@@ -7152,22 +7370,22 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                             'val': contrast, 'stderr': contrast_stderr}
 
                         # contrast_loss = (cos_amp_g - cos_amp_e)/ cos_amp_g
-                        population_loss = (amps[1::2] - amps[0::2])/amps[1::2]
+                        contrast_loss = (amps[1::2] - amps[0::2])/amps[1::2]
                         x = amps[1::2] - amps[0::2]
                         x_err = np.array(amps_errs[0::2]**2 + amps_errs[1::2]**2,
                                          dtype=np.float64)
                         y = amps[1::2]
                         y_err = amps_errs[1::2]
                         try:
-                            population_loss_stderrs = np.sqrt(np.array(
+                            contrast_loss_stderrs = np.sqrt(np.array(
                                 ((y * x_err) ** 2 + (x * y_err) ** 2) / (y ** 4),
                                 dtype=np.float64))
                         except:
-                            population_loss_stderrs = float("nan")
+                            contrast_loss_stderrs = float("nan")
                         self.proc_data_dict['analysis_params_dict'][
-                            f'population_loss_{qbn}'] = \
-                            {'val': population_loss,
-                             'stderr': population_loss_stderrs}
+                            f'contrast_loss_{qbn}'] = \
+                            {'val': contrast_loss,
+                             'stderr': contrast_loss_stderrs}
 
                 else:
                     self.proc_data_dict['analysis_params_dict'][
@@ -7268,10 +7486,10 @@ class MultiCZgate_Calib_Analysis(MultiQubit_TimeDomain_Analysis):
                                    '{:.3f} $\\pm$ {:.3f}'.format(
                                        self.proc_data_dict[
                                            'analysis_params_dict'][
-                                           f'population_loss_{qbn}']['val'][0],
+                                           f'contrast_loss_{qbn}']['val'][0],
                                        self.proc_data_dict[
                                            'analysis_params_dict'][
-                                           f'population_loss_{qbn}'][
+                                           f'contrast_loss_{qbn}'][
                                            'stderr'][0])
                         pdap = self.proc_data_dict.get(
                             'percent_data_after_presel', False)
@@ -7726,16 +7944,6 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
                         loss of precision on FPGA if weights are too small
 
         """
-
-        if qb_names is not None:
-            self.params_dict = {}
-            for qbn in qb_names:
-                s = 'Instrument settings.' + qbn
-                for trans_name in ['ge', 'ef']:
-                    self.params_dict[f'ro_mod_freq_' + qbn] = \
-                        s + f'.ro_mod_freq'
-            self.numeric_params = list(self.params_dict)
-
         self.qb_names = qb_names
         super().__init__(**kwargs)
         if auto:
@@ -7760,7 +7968,8 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
             if np.ndim(value_names) > 0:
                 value_names = value_names
             if 'w' in value_names[0]:
-                self.channel_map = a_tools.get_qb_channel_map_from_hdf(
+                # FIXME: avoid dependency ana_v2 - ana_v3
+                self.channel_map = hlp_mod.get_qb_channel_map_from_file(
                     self.qb_names, value_names=value_names,
                     file_path=self.raw_data_dict['folder'])
             else:
@@ -7858,10 +8067,7 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         rdd = self.raw_data_dict
         ana_params = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
-            mod_freq = float(
-                rdd[0].get(f'ro_mod_freq_{qbn}',
-                           self.get_hdf_param_value(f"Instrument settings/{qbn}",
-                                                    'ro_mod_freq')))
+            mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
             tbase = rdd[0]['hard_sweep_points']
             basis_labels = pdd["analysis_params_dict"][
                 'optimal_weights_basis_labels'][qbn]
@@ -7970,8 +8176,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.preselection = \
-            self.get_param_value("preparation_params",
-                                 {}).get("preparation_type", "wait") == "preselection"
+            self.get_reset_params(default_value={})\
+                                .get("preparation_type", "wait") == "preselection"
         default_states_info = defaultdict(dict)
         default_states_info.update({"g": {"label": r"$|g\rangle$"},
                                "e": {"label": r"$|e\rangle$"},
@@ -8428,8 +8634,17 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         data["prep_states"][:n_shots_to_plot],
                         **kwargs)
 
+                    # FIXME HACK
+                    # With Matplotlib 3.8.3, this plot ends up with an extra
+                    # blank axis as the first one which breaks the logic below
+                    # I did not hunt through the mess to find the root cause
+                    # of the change; instead, the lines of code below check if
+                    # this first blank axis was created, and, if so, deletes it
+                    if fig.get_axes()[0].get_xlabel() == "":
+                        fig.delaxes(fig.get_axes()[0])
                     # plot clf_boundaries
                     main_ax = fig.get_axes()[0]
+
                     self.plot_clf_boundaries(data['X'], self.clf_[qbn], ax=main_ax,
                                              cmap=tab_x)
                     # plot means and std dev
@@ -8525,6 +8740,12 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def extract_data(self):
         super().extract_data()
+        params_dict = {
+            'pulse_period': 'Instrument settings.TriggerDevice.pulse_period',
+        }
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
+
         if self.qb_names is None:
             # try to get qb_names from cal_points
             try:
@@ -8571,9 +8792,9 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        if "ro_separation" in self.get_param_value("preparation_params"):
-            ro_sep = \
-                self.get_param_value("preparation_params")["ro_separation"]
+
+        if "ro_separation" in self.prep_params:
+            ro_sep = self.prep_params["ro_separation"]
         else:
             return
 
@@ -8681,7 +8902,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                             fig_key = f"populations_{qbn}_{prep_state}{keys[k]}"
                             self.plot_dicts[plt_key] = {
                                 'plotfn': self.plot_line,
-                                'fig_id':fig_key,
+                                'fig_id': fig_key,
                                 'xvals': np.arange(len(pop)),
                                 'xlabel': "Reset cycle, $n$",
                                 'xunit': "",
@@ -8691,13 +8912,15 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'ylabel': 'Population, $P$',
                                 'yunit': '',
                                 'yscale': self.get_param_value("yscale", "log"),
+                                'yrange': self.get_param_value("yrange", None),
+                                'grid': True,
                                 'setlabel': self._get_pop_label(state, k,
                                                                 not self._has_reset_pulses(seq_nr),
                                                                 ),
                                 'title': self.raw_data_dict['timestamp'] + ' ' +
                                          self.raw_data_dict['measurementstring']
                                          + " " + prep_state,
-                                'titlepad': 0.2,
+                                'titlepad': 0.25,
                                 'linestyle': '-',
                                 'color': f'C{i}',
                                 'alpha': 0.5 if seq_nr == 0 else 1,
@@ -8705,42 +8928,43 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'legend_ncol': legend_ncol,
                                 'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                 'legend_pos': legend_pos,
-                                'legend_fontsize': 5}
+                            }
 
                             # add feedback params info to plot
                             textstr = self._get_feedback_params_text_str(qbn)
                             self.plot_dicts[f'text_msg_{qbn}_' \
                                             f'{prep_state}{keys[k]}'] = {
                                 'fig_id': f"populations_{qbn}_{prep_state}{keys[k]}",
-                                'ypos': -0.21,
+                                'ypos': -0.32,
                                 'xpos': 0,
                                 'horizontalalignment': 'left',
                                 'verticalalignment': 'top',
                                 'plotfn': self.plot_text,
-                                "fontsize": "x-small",
                                 'text_string': textstr}
 
-                            # add thermal population line
-                            g_state_prep_g = \
-                                data_qbi.get("pg", {}).get('prep_g', None)
-                            # taking first ro of first sequence as estimate for
-                            # thermal population
-                            if g_state_prep_g is not None and seq_nr == 0:
-                                p_therm = 1 - g_state_prep_g.flatten()[0]
-                                self.plot_dicts[plt_key + "_thermal"] = {
-                                    'plotfn': self.plot_line,
-                                    'fig_id': fig_key,
-                                    'xvals': np.arange(len(pop)),
-                                    'yvals': p_therm * np.ones_like(pop),
-                                    'setlabel': "$P_\mathrm{therm}$",
-                                    'linestyle': '--',
-                                    'marker': "",
-                                    'color': 'k',
-                                    'do_legend': True,
-                                    'legend_ncol': legend_ncol,
-                                    'legend_bbox_to_anchor': legend_bbox_to_anchor,
-                                    'legend_pos': legend_pos,
-                                    'legend_fontsize': 5}
+                            # add thermal population line (for each plot j)
+                            if i == 0:
+                                g_state_prep_g = \
+                                    data_qbi.get("pg", {}).get('prep_g', None)
+                                # taking first ro of first sequence as estimate
+                                # for thermal population
+                                if g_state_prep_g is not None and seq_nr == 0:
+                                    p_therm = 1 - g_state_prep_g.flatten()[0]
+                                    self.plot_dicts[plt_key + "_thermal"] = {
+                                        'plotfn': self.plot_line,
+                                        'fig_id': fig_key,
+                                        'xvals': np.arange(len(pop)),
+                                        'yvals': p_therm * np.ones_like(pop),
+                                        'setlabel': "$P_\\mathrm{therm}$",
+                                        'linestyle': '--',
+                                        'marker': "",
+                                        'color': 'k',
+                                        'do_legend': True,
+                                        'legend_ncol': legend_ncol,
+                                        'legend_bbox_to_anchor':
+                                            legend_bbox_to_anchor,
+                                        'legend_pos': legend_pos,
+                                    }
 
                             # plot fit results
                             fit_key = \
@@ -8778,7 +9002,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
-                                'legend_fontsize': 5}
+                                }
 
                                 self.plot_dicts[fit_key + 'data'] = {
                                     'plotfn': self.plot_line,
@@ -8803,7 +9027,6 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'legend_ncol': legend_ncol,
                                     'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                     'legend_pos': legend_pos,
-                                    'legend_fontsize': 5
                                     }
 
     def _has_reset_pulses(self, seq_nr):
@@ -8817,9 +9040,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         from matplotlib.ticker import MaxNLocator
         for axname, ax in self.axs.items():
             if "populations" in axname:
-                if "ro_separation" in self.get_param_value("preparation_params"):
-                    ro_sep = \
-                        self.get_param_value("preparation_params")["ro_separation"]
+                if "ro_separation" in self.prep_params:
+                    ro_sep = self.prep_params["ro_separation"]
                     timeax = ax.twiny()
                     timeax.set_xlabel(r"Time ($\mu s$)")
                     timeax.set_xlim(0, ax.get_xlim()[1] * ro_sep * 1e6)
@@ -8873,12 +9095,17 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
     def _get_feedback_params_text_str(self, qbn):
         str = "Reset cycle time: "
         ro_sep = self.prep_params.get("ro_separation", None)
-        str += f"{1e6 * ro_sep:.2f}$\mu s$" if ro_sep is not None else "Unknown"
+        str += f"{1e6 * ro_sep:.2f} $\mu s$" if ro_sep is not None else \
+            "Unknown"
         str += "\n"
 
         str += "RO to feedback time: "
         prow = self.prep_params.get("post_ro_wait", None)
-        str += f"{1e6 * prow:.2f}$\mu s$" if ro_sep is not None else "Unknown"
+        str += f"{1e6 * prow:.2f} $\mu s$" if ro_sep is not None else "Unknown"
+        str += "\n"
+        str += "Trigger rate: "
+        pp = self.raw_data_dict['pulse_period']
+        str += f"{1e6 * pp:.2f} $\mu s$" if pp is not None else "Unknown"
         str += "\n"
         thresholds = self.get_param_value('thresholds', {})
         str += "Threshold(s):\n{}".format(
@@ -8898,6 +9125,16 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
+
+    def extract_data(self):
+        super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
+        params_dict = {}
+        for qbn in self.qb_names:
+            params_dict[f'fp_length_{qbn}'] = \
+                f'Instrument settings.{qbn}.flux_pulse_pulse_length'
+        self.raw_data_dict.update(
+            self.get_data_from_timestamp_list(params_dict))
 
     def process_data(self):
         super().process_data()
@@ -8931,7 +9168,6 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_yvals': {'data': data},
                 'guess_pars': guess_pars}
 
-
     def analyze_fit_results(self):
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for qbn in self.qb_names:
@@ -8939,10 +9175,7 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_res'].best_values['mu_A']
             mu_B = self.fit_dicts['two_error_func_' + qbn][
                 'fit_res'].best_values['mu_B']
-            fp_length = a_tools.get_instr_setting_value_from_file(
-                file_path=self.raw_data_dict['folder'],
-                instr_name=qbn, param_name='flux_pulse_pulse_length')
-
+            fp_length = self.raw_data_dict[f'fp_length_{qbn}']
 
             self.proc_data_dict['analysis_params_dict'][qbn] = OrderedDict()
             self.proc_data_dict['analysis_params_dict'][qbn]['delay'] = \
@@ -9006,9 +9239,7 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
                            ' $\pm$ {:.2f} ns'.format(
                     apd[qbn]['fp_length_stderr'] * 1e9)
                 textstr += '\n  set = {:.2f} ns'.format(
-                    1e9 * a_tools.get_instr_setting_value_from_file(
-                        file_path=self.raw_data_dict['folder'],
-                        instr_name=qbn, param_name='flux_pulse_pulse_length'))
+                    1e9 * self.raw_data_dict[f'fp_length_{qbn}'])
 
                 self.plot_dicts['text_msg_' + qbn] = {
                     'fig_id': base_plot_name,
@@ -9600,18 +9831,16 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                          do_fitting=do_fitting, **kwargs)
         self.timers = {}
 
-        if not hasattr(self, "job"):
+        if self.job is None:
             self.create_job(t_start=t_start, t_stop=t_stop,
                             label=label, data_file_path=data_file_path,
                             do_fitting=do_fitting, options_dict=options_dict,
                             extract_only=extract_only, params_dict=params_dict,
                             numeric_params=numeric_params, **kwargs)
-        self.params_dict = {f"{tm_mod.Timer.HDF_GRP_NAME}":
-                                f"{tm_mod.Timer.HDF_GRP_NAME}",
-                            "repetition_rate":
-                                "Instrument settings/TriggerDevice.pulse_period",
+        self.params_dict = {
+            f"{tm_mod.Timer.HDF_GRP_NAME}": f"{tm_mod.Timer.HDF_GRP_NAME}",
+            "repetition_rate": "Instrument settings.TriggerDevice.pulse_period",
                             }
-
 
         if auto:
             self.run_analysis()
@@ -9622,7 +9851,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         for t, v in timers_dicts.items():
             self.timers[t] = tm_mod.Timer(name=t, **v)
 
-        self.nr_averages = self._extract_nr_averages()
+        self.extract_nr_runs_per_segment()
 
         # Extract and build raw measurement timer
         self.timers['BareMeasurement'] = self.bare_measurement_timer(
@@ -9728,14 +9957,23 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         return tm
 
-    def _extract_nr_averages(self):
+    def extract_nr_runs_per_segment(self):
+        """Extracts the total number of times each segment has been measured
+
+        Sets self.nr_averages and self.nr_shots, by extracting them either
+        from the metadata (see self.get_param_value), or from the options_dict.
+        Note that for average readout, the number of averages is > 1 in the
+        detectors while nr_shots is =1 (and vice-versa for single-shot readout).
+        Warning: this code currently does not support soft averages or soft
+        repetitions /!\
+        """
         try:
-            sa = self.get_hdf_param_value('Instrument settings/MC', "soft_avg")
+            sa = self.get_instrument_setting('MC.soft_avg')
             if sa is not None and sa != 1:
                 log.warning('Currently, soft averages are not taken into account'
                           'when extracting the number of averages. This might lead'
                           'to unexpected timings.')
-            sr = self.get_hdf_param_value('Instrument settings/MC', "soft_repetitions")
+            sr = self.get_instrument_setting('MC.soft_repetitions')
             if sr is not None and sr != 1:
                 log.warning('Currently, soft repetitions are not taken into account'
                           'when extracting the number of shots. This might lead'
@@ -9744,21 +9982,17 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # in case some of the attributes do not exist
             pass
         #TODO Currently does not support soft averages or soft repetitions
-        det_metadata = self.metadata.get("Detector Metadata", None)
-        nr_averages = self.get_param_value('nr_averages', None)
-        if det_metadata is not None and nr_averages is None:
-            # multi detector function: look for child "detectors"
-            # assumes at least 1 child and that all children have the same
-            # number of averages
-            nr_averages = det_metadata.get('nr_averages',
-                                           det_metadata.get('nr_shots', None))
-            if nr_averages is None:
-                det = list(det_metadata.get('detectors', {}).values())[0]
-                nr_averages = det.get('nr_averages', det.get('nr_shots', None))
-        if nr_averages is None:
-            raise ValueError('Could not extract nr_averages/nr_shots from hdf file.'
-                             'Please specify "nr_averages" in options_dict.')
-        return nr_averages
+        for param in ['nr_averages', 'nr_shots']:
+            val = self.get_param_value(
+                param, self._extract_param_from_det(param))
+            if val is None:
+                # Note that both nr_averages and nr_shots are required,
+                # see self.bare_experiment_time.
+                raise ValueError(
+                    f'Could not extract "{param}" from hdf file. Please make '
+                    f'sure that your measurement stores it (or pass it '
+                    f'via the options_dict).')
+            setattr(self, param, val)
 
     def bare_measurement_time(self, nr_averages=None, repetition_rate=None,
                               count_nan_measurements=False):
@@ -9786,7 +10020,28 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # No scaling needed, since all hsp are contained in one hardware run
             n_hsp = 1
         else:
+            # Note that the number of shots is already included in n_hsp
             n_hsp = len(self.raw_data_dict['hard_sweep_points'])
+            prep_params = self.get_reset_params(default_value={})
+            if 'active' in prep_params['preparation_type']:
+                # If reset: n_hsp already includes the number of shots
+                # and the final readout is interleaved with n_reset readouts
+                n_resets = prep_params.get('reset_reps')
+                # in some cases the number of reset might not be part of the
+                # reset params if it was not provided at run time.
+                # So we tell the user about it and mention how the info can be provided.
+                if not n_resets:
+                    log.warning('reset_reps not found in reset_params obtained '
+                                'with self.get_reset_params(). Assuming'
+                                ' 3 repetitions. This will affect the timing'
+                                ' calculations of the bare_measurement_timer.'
+                                ' For manual adjustment, provide e.g., the following'
+                                ' to the options_dict: reset_params=dict(steps=["feedback"],'
+                                ' analysis_instructions=dict(qb1=[dict(preparation_type='
+                                '"active_reset", reset_reps=N_RESET_REPS)]))'
+                                )
+                    n_resets = 3
+                n_hsp = n_hsp // (1 + n_resets)
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
             repetition_rate = self.raw_data_dict["repetition_rate"]
@@ -9800,17 +10055,22 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
                                            nr_averages, perc_meas)
 
-    def bare_experiment_time(self, nr_averages=None):
+    def bare_experiment_time(self, nr_averages=None, nr_shots=None):
         """
         Computes the bare experiment time from the segments durations,
         which are extracted from the segment timers.
         Note: unlike bare_measurement_time,
             for now this function always accounts for the full experiment time
             even if the measurement was interrupted.
+        Note: Typically nr_shots = 1 for an averaged measurement, and
+            nr_averages = 1 for a single-shot measurement, so the total
+            number of runs is their product. This assumes that both were
+            passed in the hdf file by the detector function.
         Args:
-            nr_averages: Number of averages for each segment.
-                Defaults to self.nr_averages, which is extracted by
-                self._extract_nr_averages()
+            nr_averages: Number of averages for each segment. Defaults to
+                self.nr_averages
+            nr_shots: Number of shots for each segment. Defaults to
+                self.nr_shots
 
         Returns:
             Total experiment time (in seconds)
@@ -9818,6 +10078,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
 
         if nr_averages is None:
             nr_averages = self.nr_averages
+        if nr_shots is None:
+            nr_shots = self.nr_shots
         try:
             # duration of segments are stored with the .dt checkpoint end
             ckpts = self.timers['Sequences'].find_keys('.dt',
@@ -9831,7 +10093,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             self.proc_data_dict["segment_durations"] = \
                 {ck:d for ck, d in zip(ckpts, segment_durations)}
 
-            tot_secs = np.sum(segment_durations) * nr_averages
+            tot_secs = np.sum(segment_durations) * nr_averages * nr_shots
             return tot_secs
         except Exception as e:
             log.error(f'Could not compute bare experiment time : {e}.'
@@ -10443,30 +10705,1686 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
 
+class f0g1AcStarkAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    class for the analysis of Ac Stark calibration: get the Ac Stark shift for drive amplitude
+
+    this calibration is explained in 5.3 section of Dr. Philipp Kurpiers PhD Thesis, 2019
+
+    therefore we want to plot the population of the g state vs frequency for each value of the pulse amplitude.
+    In each plot do a fitting for the g state populations. This fitting is going to give us the value of the shift for
+    this amplitude. With all the values got from these fittings, we will be able to plot AcStark shift vs drive
+    amplitude, and do a fitting to get a function: drive amplitude to AcStark shift.
+    """
+
+    def process_data(self):
+        """
+        function that allow us to process the data before everything else
+        """
+        super().process_data() # call super function
+
+        # create a dictionary where we are going to save the pulse amplitude points
+        self.amps = OrderedDict()
+        for qb in self.qb_names:
+            if not 'amplitude' in self.mospm[qb]:
+                raise KeyError("Couldn't find sweep points corresponding to amplitude.")
+            else:
+                self.amps[qb] = self.sp.get_sweep_params_property('values', 1, 'amplitude')
+
+        # we get the frequencies that we used for each experiment and save it in this variable
+        self.frequencies = self.metadata['frequencies']
+
+    def prepare_fitting(self):
+        """
+        class that allow us to process the data to prepare the fitting that we want to do for our data:
+            we want to fit a Lorentzian to the g state populations -> the center wil tell us the shift
+
+        with that PycQED will do the fittings
+        """
+        pdd = self.proc_data_dict # get the data from the experiment
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        # we get the threshold (we want to fit only the data above it)
+        threshold = self.get_param_value('fit_threshold')
+        if threshold is None:
+            raise ValueError('Please provide fit_threshold.')
+
+
+        self.fit_dicts = OrderedDict()  # dictionary of the parameters for the fittings
+        model = fit_mods.GaussianModel_v2()  # we are going to fit a Guassian
+
+        for qb in self.qb_names: #loop for qubits
+            populations_g = pdd['projected_data_dict'][qb]['pg'] #population of ground state for each amplitude and freq
+
+            for i, amp in enumerate(self.amps[qb]):  # loop the amplitudes
+
+                #we only want to do the fitting with those values that are above the threshold
+                clip_array = np.int32(populations_g[i][:-nr_cp] > threshold[i])
+                # for each amplitude we check which values are above
+                # the threshold (each amp can have a different threshold)
+                y_axis_values = populations_g[i][:-nr_cp][clip_array != 0]
+                # using logical indexing ([clip_array!=0])
+                # we remove values below threshold
+                x_axis_values = self.frequencies[qb][i][clip_array != 0]
+                # we remove the frequencies of the points
+                # removed in the last line
+
+                #check if some values are in y_axis_values
+                if y_axis_values.size == 0: print(f'Amp={amp}: No ground population values bigger than the threshold.')
+
+                # we add the dictionary with the info for the fit
+                self.fit_dicts[f'gaussian_fit_{qb}_ampl_{amp:.10f}'] = {
+                    'model': model,  # gaussian fit
+                    'fit_xvals': {'x': x_axis_values},  # x axis -> clipped frequencies
+                    'fit_yvals': {'data': y_axis_values}, }  # y axis -> clipped populations
+
+    def analyze_fit_results(self):
+        """
+        function that allow to take the data from the fittings and do another fitting with that data:
+        the fitting done here is shift vs drive amplitude -> will fit an even polynomial
+        """
+
+        pdd = self.proc_data_dict # get the data from the experiment to add more data (the fittings)
+
+        # we create a dictionary for the fitting values : center (and its error)
+        # and for the latter fitting of these centers (and its error)
+        pdd['centers'] = OrderedDict()
+        pdd['centers_error'] = OrderedDict()
+        pdd['IFCoefs'] = OrderedDict()
+        pdd['IFCoefs_error'] = OrderedDict()
+
+        for qb in self.qb_names: #loop for qubits
+
+            # for each qubit and each amplitude we get the value of the center of the fit and its error
+            pdd['centers'][qb] = []  # list of centers for each qubit -> now empty
+            pdd['centers_error'][qb] = []  # list of center errors for each qubit -> now empty
+            for amp in self.amps[qb]:
+                best_values = self.fit_res[f'gaussian_fit_{qb}_ampl_{amp:.10f}'].best_values  # get the fit values
+                pdd['centers'][qb].append(best_values['center'])  # add the center value of the fit in the list
+                error = self.fit_res[f'gaussian_fit_{qb}_ampl_{amp:.10f}'].params['center'].stderr  # get the center error
+                # check if the error is None (if so -> 0) and then add it
+                if error is None: error = 0
+                pdd['centers_error'][qb].append(error)
+
+            fit_degree = int(self.metadata['fit_degree'])  # variable that says the degree of the fit, from metadata
+            model = fit_mods.PolynomialModel(degree=fit_degree)  # we are going to fit a polynomial of fit_degree degree
+
+            # we create a dictionary that will force all odd coefficients to be 0, since we want to fit even polynomial
+            guess_dict = {}
+            for i in range(fit_degree + 1):
+                if i % 2: guess_dict[f'c{i}'] = {'value': 0, 'vary': False}
+
+            # we change the guesses if the user has given some
+            guess_dict_user = self.get_param_value('guess_dict', default_value={})
+            if guess_dict_user:
+                for key in guess_dict_user: guess_dict[key] = guess_dict_user[key]
+
+            # we add the dictionary with the info for the fit
+            self.fit_dicts[f'evenPoly_fit_{qb}'] = {
+                'model': model,  # fit polynomial
+                'fit_xvals': {'x': self.amps[qb]},  # x axis -> amplitudes
+                'fit_yvals': {'data': pdd['centers'][qb]},  # y axis -> centers
+                'guess_dict': guess_dict, }  # restrictions -> we want an even polynomial
+
+            # we run the fitting for the dictionary above
+            super().run_fitting(keys_to_fit=f'evenPoly_fit_{qb}')
+            # we get the fit values -> our f0g1_AcStark_IFCoefs
+            pdd['IFCoefs'][qb] = self.fit_res[f'evenPoly_fit_{qb}'].best_values
+            # we get the error of each parm
+            pdd['IFCoefs_error'][qb] = OrderedDict()
+            for key in pdd['IFCoefs'][qb].keys():
+                pdd['IFCoefs_error'][qb][key] = self.fit_res[f'evenPoly_fit_{qb}'].params[key].stderr
+
+    def prepare_plots(self):
+        """
+        function for preparing the plots that we want to show:
+            - a plot for each amplitude value with its fitting for the g state
+            - a plot for showing the values of the last plots fittings and its respectively fitting:
+                gTilde vs drive amplitude
+        """
+        pdd = self.proc_data_dict  # get the data from the experiment (with the new data added before)
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        for qb in self.qb_names:  # loop qubits
+            populations_g = pdd['projected_data_dict'][qb]['pg'] #g population for each point of this qubit
+
+            for i, amp in enumerate(self.amps[qb]): #loop amplitude points
+                fig_id = f'Ampl{amp:.10f}_{qb}'  #id of the figure
+
+                # Pg (all of them)
+                label = f'AcStark_ampl{amp:.10f}_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'Ampl {amp:.2f} V ({qb})',
+                    'plotfn': self.plot_line, #which type of plot -> points
+                    'xvals': self.frequencies[qb][i], # x values -> the frequencies used for this pulse amplitude
+                    'yvals': populations_g[i][:-nr_cp], # plot g state populations for this points
+                    'linestyle': 'none',
+                    'color': '#adbbff' if self.do_fitting else '#3b5bff', #use a light blue color if doing the fitting
+                    'xlabel': 'freq',
+                    'xunit': 'Hz',
+                    'ylabel': r'Ground state population',
+                }
+
+
+                if self.do_fitting: #if we are doing the fitting
+
+                    # Pg (only those used for the fitting)
+                    label = f'AcStark_ampl{amp:.10f}_thres_{qb}'
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_line, #which type of plot -> points
+                        'xvals': self.fit_dicts[f'gaussian_fit_{qb}_ampl_{amp:.10f}']['fit_xvals']['x'], # x values ->
+                                                                                    # the frequencies used for the fitting
+                        'yvals': self.fit_dicts[f'gaussian_fit_{qb}_ampl_{amp:.10f}']['fit_yvals']['data'], # y values ->
+                                                                                    # the populations used for the fitting
+                        'linestyle': 'none',
+                        'color': '#3b5bff', #use a dark blue color
+                    }
+
+                    # Pg - fit
+                    label = f'gaussian_fit_{qb}_ampl_{amp:.10f}'  # label for this data: pg fit
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_fit,  # which type of plot -> fit
+                        'fit_res': self.fit_res[label], # plot the fit for this drive amplitude
+                        'plot_init': self.options_dict.get('plot_init', False),
+                        'color': 'black',
+                        'axisbelow': True
+                    }
+
+            # after the plots of each amplitude, let us show a plot with the data of these last
+            # plots fittings. Therefore we want to show Ac Strak shift vs amplitude
+            if self.do_fitting:  # if we are doing the fitting
+                fig_id = f'AcStark_{qb}'
+                label = f'evenPoly_fit_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'$\\nu$ vs Ampl ({qb})',
+                    'plotfn': self.plot_fit, #which type of plot -> fit
+                    'fit_res': self.fit_res[label], # plot the fit of shift vs drive amplitude
+                    'plot_init': self.options_dict.get('plot_init', False),
+                    'xlabel': 'amplitude',
+                    'xunit': 'V',
+                    'ylabel': '$\\nu$',
+                    'yunit': 'Hz',
+                    'color': 'black',
+                }
+
+                label = f'AcStark_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line, # which type of plot -> points
+                    'linestyle': 'none',
+                    'xvals': self.amps[qb], # x axis -> drive amplitudes
+                    'yvals': pdd['centers'][qb], # plot the shift values for this amplitudes
+                    'yerr': pdd['centers_error'][qb],
+                    'color': 'green',
+                }
+
+                # here we add the explicit equation for the fitting found g/2pi = c0 + c2 x^2 + c4 x^4 + ...
+                coefs = pdd['IFCoefs'][qb].values()
+                coefs_error = pdd['IFCoefs_error'][qb].values()
+
+                text = f"$\\nu = $"
+                for k, (coef, coef_error) in enumerate(zip(coefs, coefs_error)):
+                    if not coef == 0:
+                        text += f"$({coef*1e-6:.3f} \pm {coef_error*1e-6 :.3f}) \cdot 10^6 x^{k}$ + "
+
+                label = f'fitting_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'ypos': -0.2,
+                    'xpos': -0.1,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': text[:-2]}
+
+
+class f0g1RabiRateAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    class for the analysis of rabi rate calibration: get the amplitude of gTilde for a drive amplitude
+
+    this calibration is explained in 5.3 section of Dr. Philipp Kurpiers PhD Thesis, 2019
+
+    therefore we want to plot the population of the g, e and f state vs pulse length for each value of the pulse amplitude.
+    In each plot do a fitting for the f state populations. This fitting is going to give us the value of gTilde for
+    this amplitude. With all the values got from these fittings, we will be able to plot gTilde vs drive amplitude, and
+    do a fitting to get a function: drive amplitude to gTilde.
+    """
+
+    def process_data(self):
+        """
+        class that allow us to process the data before everything else
+        """
+        super().process_data()  # call super function
+
+        # create two dictionaries where we are going to save the pulse amplitude and length swept points
+        self.amps = OrderedDict()
+        for qb in self.qb_names:
+            if not 'pulse_length' in self.mospm[qb]:
+                raise KeyError("Couldn't find sweep points corresponding to pulse length.")
+            elif not 'amplitude' in self.mospm[qb]:
+                raise KeyError("Couldn't find sweep points corresponding to amplitude.")
+            else:
+                self.amps[qb] = self.sp.get_sweep_params_property('values', 1, 'amplitude')  # here the ampltudes
+
+        # here we get the data of the lengths from the metadata
+        self.lengths = self.metadata['lengths']
+        self.num_lengths = self.metadata['lengPointsPerAmp']
+
+    def prepare_fitting(self):
+        """
+        class that allow us to process the data to prepare the fitting that we want to do for our data:
+            we want to fit a DampedOscillationModel to the f state populations -> we will get gTilde as a polynomial
+            that depends on amp
+            (look at the DampedOscillationModel in analysis/fitting_models.py)
+
+        with that PycQED will do the fittings,
+        to do the fittings, what we do is:
+         - only do one fitting: we put all the values that we want to do the fit in one 1D-array
+         - this 1D-array will have the f populations for amplitude 1 then the populations of amplitude 2, etc
+             (this array will be the y values)
+         - then the x values will have to be the lengths used for each experiment repeated 'number of amplitudes' times
+             so if we have done a calibration with 3 different amplitudes and the lengths used were [1,2,3,4,5] the
+             array for the x values wil be: [1,2,3,4,5,1,2,3,4,5,1,2,3,4,5]
+         - we need to have another array that specifies the amplitude used in the experiment, following the last example
+             if the values for the 3 amplitudes were [5, 7, 9] the array that we need is [5,5,5,5,5,7,7,7,7,7,9,9,9,9,9]
+        """
+        pdd = self.proc_data_dict  # get the data from the experiment
+        nr_cp = self.num_cal_points  # get number of calibration points, usually 3 (we don't want the populations from
+        # this points)
+
+        self.fit_dicts = OrderedDict()  # dictionary that will have the information to do the fittings
+        model = fit_mods.DampedOscillationModel  # we are going to fit the data to a DampedOscillationModel
+
+        for qb in self.qb_names:  # loop our qubits
+            populations = pdd['projected_data_dict'][qb]  # populations for this qubi
+
+            amps_values = np.repeat(self.amps[qb], self.num_lengths)  # create the array for the amplitudes
+            x_values = self.lengths[qb].reshape(self.lengths[qb].size) # create the array for the x values (lengths of pulses)
+
+            y_values = deepcopy(populations['pf'])  # create the array for the y values (populations of f state)
+            for _ in range(
+                    nr_cp):  # we need to modify y_values to get rid of the calibartions points (so, we delete nr_cp columns)
+                y_values = np.delete(y_values, -1, axis=1)
+            y_values = y_values.reshape(y_values.size)  # this array has to be 1D
+
+            # we create the guess_dict, here we say with which value start the fitting and which should be varied
+            guess_dict = {}
+            fit_degree = int(self.metadata['fit_degree'])  # fit degree specified by the user
+            for i in [1, 3, 5]:
+                if i > fit_degree:
+                    guess_dict[f'c{i}'] = {'value': 0, 'vary': False}  # want an odd polynomial of degree = fit_degree
+                else:
+                    guess_dict[f'c{i}'] = {
+                        'value': self.metadata['f0g1_RabiRate_Coefs'][qb][i] * 1e-6}  # start with the coef that now qb has
+
+            kappa = self.get_param_value('fit_kappa')
+            if not (kappa is None or kappa == 0):  # if kappa is given by the user we fixed with that value
+                guess_dict[f'kappa'] = {'value': kappa * 1e-6, 'vary': False}
+            else:  # if kappa is not given by the user we start with the value that qubit has now
+                guess_dict[f'kappa'] = {'value': self.metadata['f0g1_kappa'][qb]* 1e-6}
+
+            # gamma: this parameter of the fit is 1/T1_ef of the qubit
+            guess_dict[f'gamma'] = {'value': 1 / self.metadata['T1_ef'][qb] * 1e-6 * 2 * np.pi, 'vary': False}
+
+            # we change the guesses if the user has given some
+            guess_dict_user = self.get_param_value('guess_dict', default_value={})
+            if guess_dict_user:
+                for key in guess_dict_user: guess_dict[key] = guess_dict_user[key]
+
+            self.fit_dicts[f'fit_{qb}'] = {  # create the dictonary for our fitting (PycQED will do it)
+                'model': model,  # use the DampedOscillationModel model
+                'fit_xvals': {'t': x_values * 1e6,
+                              'amp': amps_values},  # x axis -> lengths and amplitudes
+                'fit_yvals': {'data': y_values},  # y axis -> populations of f
+                'guess_dict': guess_dict,  # guess_dict (see above)
+            }
+
+    def analyze_fit_results(self):
+        """
+        function that allow to take the data from the fitting and put the values of the values in some arrays
+        to be able to get this values from the update function
+        """
+        fit_degree = int(self.metadata['fit_degree'])
+
+        pdd = self.proc_data_dict  # get the data from the experiment to add more data (the fittings)
+
+        pdd['Coefs'] = OrderedDict()
+        pdd['Coefs_error'] = OrderedDict()
+        pdd['kappa'] = OrderedDict()
+        pdd['kappa_error'] = OrderedDict()
+
+        for qb in self.qb_names:  # loop for qubtis
+            best_values = self.fit_res[f'fit_{qb}'].best_values  # we get the parameters from the fit
+            pdd['Coefs'][qb] = np.array([best_values[f'c{i}'] if i % 2 else 0 for i in
+                                range(fit_degree + 1)]) * 1e6  # we put them in an array
+            # we get the error of each param
+            pdd['Coefs_error'][qb] = []
+            for key in [f'c{i}' if i % 2 else 0 for i in range(fit_degree + 1)]:
+                if key == 0:
+                    pdd['Coefs_error'][qb].append(0)
+                else:
+                    error = self.fit_res[f'fit_{qb}'].params[key].stderr
+                    pdd['Coefs_error'][qb].append(error if error else 0)
+            pdd['Coefs_error'][qb] =  np.array(pdd['Coefs_error'][qb]) * 1e6
+
+            pdd['kappa'][qb] = best_values['kappa'] * 1e6
+            error = self.fit_res[f'fit_{qb}'].params['kappa'].stderr
+            pdd['kappa_error'][qb] = error * 1e6 if error else 0
+
+
+    def prepare_plots(self):
+        """
+        function for preparing the plots that we want to show:
+            - a plot for each amplitude value with its fitting for the f state
+            - a plot for showing the values of the last plots fittings and its respectively fitting:
+                gTilde vs drive amplitude
+        """
+
+        pdd = self.proc_data_dict  # get the data from the experiment (with the new data added before)
+        nr_cp = self.num_cal_points  # get number of calibration points, usually 3 (we don't want the populations from
+        # this points)
+
+        for qb in self.qb_names:  # loop qubits
+            populations = pdd['projected_data_dict'][qb]  # populations for each point of this qubit
+
+            for i, amp in enumerate(self.amps[qb]):  # loop amplitude points
+
+                lengths_fit = np.linspace(np.min(self.lengths[qb][i]), np.max(self.lengths[qb][i]),
+                                          500)  # we create a list to plot the fitting
+
+                fig_id = f'Ampl{amp:.10f}_{qb}'  # id of the figure
+
+                # Pg
+                label = f'Rabi_ampl{amp:.10f}_pg_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'Ampl {amp:.2f} V ({qb})',
+                    'plotfn': self.plot_line,  # which type of plot -> points
+                    'xvals': self.lengths[qb][i],  # x values are the lengths of the pulse
+                    'yvals': populations['pg'][i][:-nr_cp],  # plot g state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_g$',
+                    'xlabel': 'pulse length',
+                    'xunit': 's',
+                    'ylabel': r'States population',
+                }
+
+                # Pe
+                label = f'Rabi_ampl{amp:.10f}_pe_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': self.lengths[qb][i],
+                    'yvals': populations['pe'][i][:-nr_cp],  # plot e state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_e$',
+                }
+
+                # Pf
+                label = f'Rabi_ampl{amp:.10f}_pf_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': self.lengths[qb][i],
+                    'yvals': populations['pf'][i][:-nr_cp],  # plot f state populations
+                    'linestyle': 'none',
+                    'do_legend': True,
+                    'setlabel': '$P_f$',
+                    'legend_pos': 'center right'
+                }
+
+                # Pf - fit
+                if self.do_fitting:  # if we are doing the fitting
+                    label = f'fit_{qb}_ampl_{amp:.10f}'  # label for this data: pg fit
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_line,  # which type of plot -> fit
+                        'xvals': lengths_fit,  # x value for the fitting
+                        'yvals': self.fit_res[f'fit_{qb}'].eval(t=lengths_fit * 1e6, amp=amp),
+                        # plot the fit for the f state with the x values and this amplitude
+                        'marker': "None",
+                        'setlabel': 'fit $P_f$',
+                        'color': 'black',
+                        'axisbelow': True,
+                    }
+
+            if self.do_fitting:  # if we are doing the fitting
+                # after the plots of each amplitude, let us show a plot with the data of  gTilde vs amplitude
+                fig_id = f'Rabi_rate_{qb}'
+                label = f'oddPoly_fit_linear_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'$\~g/2\pi$ vs Ampl ({qb})',
+                    'plotfn': self.plot_line,
+                    'xvals': np.linspace(np.min(self.amps[qb]), np.max(self.amps[qb]), 100),
+                    'yvals': np.polyval(np.flip(pdd['Coefs'][qb][0:2]),
+                                        np.linspace(np.min(self.amps[qb]), np.max(self.amps[qb]), 100)) / (2 * np.pi),
+                    'xlabel': 'amplitude',
+                    'xunit': 'V',
+                    'ylabel': '$\~g/2\pi$',
+                    'yunit': 'Hz',
+                    'marker': 'None',
+                    'linestyle': 'dashed',
+                    'color': '#c2c2c2',
+                }
+
+                label = f'oddPoly_fit_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': np.linspace(np.min(self.amps[qb]), np.max(self.amps[qb]), 100),
+                    'yvals': np.polyval(np.flip(pdd['Coefs'][qb]),
+                                        np.linspace(np.min(self.amps[qb]), np.max(self.amps[qb]), 100)) / (2*np.pi),
+                    'marker': 'None',
+                    'color': 'black',
+                }
+
+                label = f'Rabi_rate_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,  # which type of plot -> points
+                    'linestyle': 'none',
+                    'xvals': self.amps[qb],  # x axis -> drive amplitudes
+                    'yvals': np.polyval(np.flip(pdd['Coefs'][qb]), self.amps[qb]) / (2*np.pi),
+                    # plot the gTilde values for this amplitudes
+                    #                 'yerr': pdd['gTilde_error'][qb],
+                    'color': 'green',
+                }
+
+
+                # here we add the explicit equation for the fitting found g/2pi = c1 x + c3 x^3 + ...
+                fit_degree = int(self.metadata['fit_degree'])
+
+                best_values = self.fit_res[f'fit_{qb}'].best_values  # we get the parameters from the fit
+                coefs = [best_values[f'c{k}'] for k in range(fit_degree + 1) if k % 2]  # we put them in an array
+
+                parmams = self.fit_res[f'fit_{qb}'].params  # we get all the parameters
+                coefs_error = [parmams[f'c{k}'].stderr for k in range(fit_degree + 1) if
+                               k % 2]  # we put the error in the array
+
+                text = f"$\~g/2\pi = $"
+                for k, (coef, coef_error) in enumerate(zip(coefs, coefs_error)):
+                    text += f"$({coef / (2 * np.pi):.3f} \pm {coef_error / (2 * np.pi):.3f}) \cdot 10^6 x^{k * 2 + 1}$ + "
+
+                label = f'Rabi_rate_fitting_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'ypos': -0.2,
+                    'xpos': 0,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': text[:-2]}
+
+
+class f0g1PitchAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    class for the analysis of f0g1 pitch calibration: check whether the calibrations of AcStark and RabiRate work correctly
+
+    in this analysis we want to see the subfigures b) and e) of the figure 5.5 of the Dr. Philipp Kurpiers PhD Thesis, 2019
+
+    therefore we want to plot the populations of g, e and f states vs time (pulse length) for each gamma value
+    """
+
+    def process_data(self):
+        """
+        function that allow us to process the data before everything else
+        """
+        super().process_data() # call super function
+
+        pdd = self.proc_data_dict # get the data from the experiment
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        # we create some empty dictionaries where we will append the data needed for the analysis
+        self.pulseTrunc = OrderedDict() #in this dictionary we are going to put the swept values used for pulseTrunc
+        self.gamma1 = OrderedDict() #in this dictionary we are going to put the swept values used for gamma1
+        self.gamma2 = OrderedDict() #in this dictionary we are going to put the swept values used for gamma2
+
+        pdd['times'] = OrderedDict() #in this dictionary going to put the pulse length used for each pulseTrunc point
+
+        pdd['pg_max'] = OrderedDict() #here the max popultion of g state for all points
+        pdd['pf_min'] = OrderedDict() #here the min popultion of f state for all points
+
+        for i_qb, qb in enumerate(self.qb_names):
+            if not 'pulseTrunc' in self.mospm[qb]:
+                raise KeyError("Couldn't find sweep points corresponding to pulse truncation.")
+            elif not 'gamma1' in self.mospm[qb] or not 'gamma2' in self.mospm[qb]:
+                raise KeyError("Couldn't find sweep points corresponding to gamma1 or gamma2.")
+            else:
+
+                #fill pulseTrunc[qb], gamma1[qb], gamma2[qb] with the pertinetns values
+                self.pulseTrunc[qb] = self.sp.get_sweep_params_property('values', 0, 'pulseTrunc')
+                self.gamma1[qb] = self.sp.get_sweep_params_property('values', 1, 'gamma1')
+                self.gamma2[qb] = self.sp.get_sweep_params_property('values', 1, 'gamma2')
+
+                # calculate the pulse length for each truncation and the max/min populations
+                pdd['times'][qb] = []  # list of time arrays (pulse lengths) -> now empty
+                pdd['pg_max'][qb] = []  # list of max ground state population -> now empty
+                pdd['pf_min'][qb] = []  # list of min f state population -> now empty
+                for i, (gamma1, gamma2) in enumerate(zip(self.gamma1[qb], self.gamma2[qb])):
+                    # for each gamma we add the different pulse lengths in the times list
+                    # for each pulse truncation point we get the length of the pulse (for each gamma we have an array of times)
+                    pdd['times'][qb].append(self.pulseLength(gamma1, gamma2,
+                                                             photonTrunc=self.metadata['photonTrunc'][i_qb],
+                                                             pulseTrunc=self.pulseTrunc[qb],
+                                                             junctionTrunc=self.metadata['junctionTrunc'][i_qb],
+                                                             junctionSigma=self.metadata['junctionSigma'][i_qb]) * 1e9)
+
+                    # for each gamma we add in the lists the actual max/min populations
+                    populations = pdd['projected_data_dict'][qb]
+                    pdd['pg_max'][qb].append(np.max(populations['pg'][i][:-nr_cp]))
+                    pdd['pf_min'][qb].append(np.min(populations['pf'][i][:-nr_cp]))
+
+    def pulseLength(self, gamma1, gamma2, photonTrunc, pulseTrunc, junctionTrunc, junctionSigma):
+        """calculates the pulse length for the parameters used in the experiment
+
+        Args:
+            gamma1 (float): exponential rate of the rising edge of the emitted photon
+            gamma2 (float): exponential rate of the falling edge of the emitted photon
+            photonTrunc (float), pulseTrunc (float):  dictate how to truncate the pulse. For pulseTrunc=1, the pulse is
+                truncated at -photonTrunc*2/gamma1 and photonTrunc*2/gamma2. For pulseTrunc<1, the pulse is truncated
+                such that it has the same start time, but a pulse length of pulseTrunc*pulseLength
+            junctionTrunc (float), junctionSigma (float): information about the junction bridging the AWG amplitude
+                from the truncated pulse value at the end and zero. These variables denot the junction trauncation,
+                width and type respectively
+
+        Returns:
+            tStop - tStart (float): length of the pulse
+        """
+
+        tRise = -photonTrunc * 2 / gamma1
+        tFall = tRise + photonTrunc * pulseTrunc * (2 / gamma2 + 2 / gamma1)
+        tStart = tRise - junctionTrunc * junctionSigma
+        tStop = tFall + junctionTrunc * junctionSigma
+
+        return tStop - tStart
+
+    def prepare_fitting(self):
+        """
+        function that allow us to process the data to prepare the fitting that we want to do for our data
+
+        with that PycQED will do the fittings
+        """
+        pdd = self.proc_data_dict # get the data from the experiment (with the new data we added in 'process_data')
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        self.fit_dicts = OrderedDict() # dictionary that will have the information to do the fittings
+        model = fit_mods.TanhModel # we are going to fit the data to a tanh
+
+        for qb in self.qb_names: #loop our qubits
+            populations_g = pdd['projected_data_dict'][qb]['pg'] #populations of g state for this qubit
+            populations_f = pdd['projected_data_dict'][qb]['pf'] #populations of f state for this qubit
+
+            # for each gamma point we want to do a fit for g, e and f state
+            for i, (gamma1, gamma2) in enumerate(zip(self.gamma1[qb], self.gamma2[qb])):
+                self.fit_dicts[f'tanh_fit_pg_{gamma1 / 1e6:.5f}_{gamma2 / 1e6:.5f}{qb}'] = {
+                    'model': model, # use the tanh model
+                    'fit_xvals': {'t': pdd['times'][qb][i]}, # x axis -> times (pulse length)
+                    'fit_yvals': {'data': populations_g[i][:-nr_cp]}, } #y axis -> populations of g
+
+                self.fit_dicts[f'tanh_fit_pf_{gamma1 / 1e6:.5f}_{gamma2 / 1e6:.5f}{qb}'] = {
+                    'model': model, # use the tanh model
+                    'fit_xvals': {'t': pdd['times'][qb][i]}, # x axis -> times (pulse length)
+                    'fit_yvals': {'data': populations_f[i][:-nr_cp]}, } #y axis -> populations of f
+
+    def analyze_fit_results(self):
+        # get the max/min populations out of the fit
+        pdd = self.proc_data_dict
+        pdd['pg_max_fit'] = OrderedDict()
+        pdd['pf_min_fit'] = OrderedDict()
+
+        for qb in self.qb_names:
+
+            pdd['pg_max_fit'][qb] = []
+            pdd['pf_min_fit'][qb] = []
+            for gamma1, gamma2 in zip(self.gamma1[qb], self.gamma2[qb]):
+                best_values = self.fit_res[f'tanh_fit_pg_{gamma1 / 1e6:.5f}_{gamma2 / 1e6:.5f}{qb}'].best_values
+                best_values['b'] = 1 # this has to be deleted
+                pdd['pg_max_fit'][qb].append((best_values['b'] + 1) * best_values['a'])
+
+                best_values = self.fit_res[f'tanh_fit_pf_{gamma1 / 1e6:.5f}_{gamma2 / 1e6:.5f}{qb}'].best_values
+                best_values['b'] = 1  # this has to be deleted
+                pdd['pf_min_fit'][qb].append((best_values['b'] - 1) * best_values['a'])
+
+
+    def prepare_plots(self):
+        """
+        function for preparing the plots that we want to show:
+        a plot for each gamma value, with its fittings
+        """
+
+        pdd = self.proc_data_dict # get the data from the experiment (with the new data added before)
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        for i_qb, qb in enumerate(self.qb_names): # loop qubits
+            populations = pdd['projected_data_dict'][qb]
+
+            for i, (gamma1, gamma2) in enumerate(zip(self.gamma1[qb], self.gamma2[qb])): #loop gamma points
+                times = pdd['times'][qb][i] # x axis of our plots
+
+                fig_id = f'f0g1Pitch_{gamma1 / (2*np.pi*1e6):.5f}_{gamma2 / (2*np.pi*1e6):.5f}{qb}' #id of the figure
+
+                # Pg
+                label = f'gammas_{gamma1:.5f}_{gamma2:.5f}_pg_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'{qb} \n $\Gamma_1/2\pi$={gamma1 / (2*np.pi*1e6):.2f}MHz \n $\Gamma_2/2\pi$={gamma2 / (2*np.pi*1e6):.2f}MHz',
+                    'plotfn': self.plot_line, #which type of plot -> points
+                    'xvals': times,
+                    'yvals': populations['pg'][i][:-nr_cp], # plot g state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_g$',
+                    'color': '#4c66c7',
+                    'xlabel': 'Time',
+                    'xunit': 'ns',
+                    'ylabel': r'States population',
+                }
+
+                # Pe
+                label = f'gammas_{gamma1:.5f}_{gamma2:.5f}_pe_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': times,
+                    'yvals': populations['pe'][i][:-nr_cp], # plot e state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_e$',
+                    'color': 'orange',
+                }
+
+                # Pf
+                label = f'gammas_{gamma1:.5f}_{gamma2:.5f}_pf_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': times,
+                    'yvals': populations['pf'][i][:-nr_cp], # plot f state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_f$',
+                    'color': 'green',
+                    'do_legend': True,
+                    'legend_pos': 'center right',
+                    # # 'legend_ncol': 2,
+                    # 'legend_bbox_to_anchor': (1, -0.15), #position of the legend
+                    # 'legend_pos': 'upper right'
+                }
+
+                if self.do_fitting:  # if we are doing the fitting
+                    # Pg - fit
+                    label = f'tanh_fit_pg_{gamma1 / 1e6:.5f}_{gamma2 / 1e6:.5f}{qb}' #label for this data: pg fit
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_fit, #which type of plot -> fit
+                        'fit_res': self.fit_res[label], # plot the fit for the g state
+                        'plot_init': self.options_dict.get('plot_init', False),
+                        # 'setlabel': '$P_{g,max}:$ ' + f'{pdd["pg_max"][qb][i]:.3f}',
+                        'color': '#000a38',
+                        'axisbelow': True
+                    }
+
+                    # Pf - fit
+                    label = f'tanh_fit_pf_{gamma1 / 1e6:.5f}_{gamma2 / 1e6:.5f}{qb}' #label for this data: pf fit
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_fit,
+                        'fit_res': self.fit_res[label], # plot the fit for the f state
+                        'plot_init': self.options_dict.get('plot_init', False),
+                        # 'setlabel': '$P_{f,min}:$ ' + f'{pdd["pf_min"][qb][i]:.3f}',
+                        'color': '#002602',
+                        'axisbelow': True
+                    }
+
+                    #Pg, Pf - text of max values
+                    label = f'text_{gamma1 / 1e6:.5f}_{gamma2 / 1e6:.5f}{qb}'
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'ypos': -0.2,
+                        'xpos': -0.1,
+                        'horizontalalignment': 'left',
+                        'verticalalignment': 'top',
+                        'plotfn': self.plot_text,
+                        'text_string':   'fit  $P_{g, max}:$ '  + f'{pdd["pg_max_fit"][qb][i]:.3f} \t'
+                                       + 'data $P_{g, last}:$ ' + f'{populations["pg"][i][-(nr_cp+1)]:.3f} \n'
+                                       + 'fit  $P_{f, min}:$ '  + f'{pdd["pf_min_fit"][qb][i]:.3f} \t'
+                                       + 'data $P_{f, last}:$ ' + f'{populations["pf"][i][-(nr_cp+1)]:.3f}'
+                    }
+
+
+class f0g1PitchCatchAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    class for the analysis of f0g1 pitch and catch calibration: get the appropriate delay for the qbB f0g1 pulse
+
+    in this analysis we want to see the figure 5.4 of the Dr. Philipp Kurpiers PhD Thesis, 2019
+
+    therefore we want to plot the populations of g, e and f states vs time (delay) of qubit B
+    """
+
+    def process_data(self):
+        super().process_data()
+
+        self.delay = self.sp.get_sweep_params_property('values', 0,
+                                                        self.metadata\
+                                                        ['task_list'][0]\
+                                                        ['prefix'] \
+                                                       + 'delay')
+
+
+    def prepare_fitting(self):
+        """
+        function that allow us to process the data to prepare the fitting that we want to do for our data
+
+        with that PycQED will do the fittings
+        """
+
+        pdd = self.proc_data_dict  # get the data from the experiment (with the new data we added in 'process_data')
+        nr_cp = self.num_cal_points  # get number of calibration points, usually 3 (we don't want the populations from
+                                     # this points)
+
+        self.fit_dicts = OrderedDict()  # dictionary that will have the information to do the fittings
+        model = fit_mods.PolynomialModel(degree=2)   # we are going to fit the data to a polynomial of degree 2
+
+        qb = self.metadata['task_list'][0]['qbB']  # our qubit B, now works even
+        # if there is only one qubit (A -> A for example)
+        populations_f = pdd['projected_data_dict'][qb]['pf'][0][:-nr_cp]  #
+        # populations of f state for this qubit
+
+        self.fit_dicts[f'fit_pf_qbB'] = {
+            'model': model,  # use the tanh model
+            'fit_xvals': {'x': self.delay * 1e9},  # x axis -> times (pulse length)
+            'fit_yvals': {'data': populations_f}, }  # y axis -> populations
+        # of f
+
+
+    def analyze_fit_results(self):
+        """
+        function that allow to take the data from the fittings and do another fitting with that data:
+        the fitting done here is gTilde vs drive amplitude -> will fit an odd polynomial
+        """
+        pdd = self.proc_data_dict # get the data from the experiment to add more data (the fittings)
+
+        # we create a dictionary for the fitting values : center (and its error)
+        pdd['delay_fit'] = OrderedDict()
+        pdd['delay_fit_error'] = OrderedDict()
+        pdd['max_value'] = OrderedDict()
+
+        # for the qubit we get the value of the center of the fit and its error
+        best_values = self.fit_res[f'fit_pf_qbB'].best_values  # get the fit
+        # values
+        pdd['delay_fit'] = -best_values['c1'] / (2 * best_values['c2']) #get the center of the polynomial
+        pdd['max_value'] = round(best_values['c2'] * (pdd['delay_fit'] ** 2)
+                                 + \
+                           best_values['c1'] * pdd['delay_fit'] + best_values[
+                               'c0'],2) #fitted max value
+
+        error_c1 = self.fit_res[f'fit_pf_qbB'].params['c1'].stderr  # get
+        # the fit error for c1
+        error_c2 = self.fit_res[f'fit_pf_qbB'].params['c2'].stderr  # get
+        # the fit error for c2
+        # check if the error is None (if so -> 0) and then add it
+        if error_c1 is None: error_c1 = 0
+        if error_c2 is None: error_c2 = 0
+        pdd['delay_fit_error'] = error_c1 * np.abs(1 / (2 * best_values['c2'])) + \
+                                 error_c2 * np.abs(best_values['c1'] / (2 * best_values['c2']**2))
+
+
+    def prepare_plots(self):
+        """
+        function for preparing the plots that we want to show:
+        a plot for each gamma value, with its fittings
+        """
+
+        pdd = self.proc_data_dict # get the data from the experiment (with the new data added before)
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        for i_qb, qb in enumerate(self.qb_names):  # loop qubits
+            populations = pdd['projected_data_dict'][qb]
+
+            fig_id = f'f0g1PitchCatch_{qb}' #id of the figure
+
+            if i_qb == 1:
+                # Pf
+                label = f'pf_{qb}' #label for this data: pf
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'f0g1 Pitch and Catch {qb}',
+                    'plotfn': self.plot_line, #which type of plot -> points
+                    'yvals': populations['pf'][0][:-nr_cp], # plot f state
+                    # populations
+                    'xvals': self.delay * 1e9,
+                    'linestyle': 'none',
+                    'setlabel': '$P_f$',
+                    'xlabel': 'delay',
+                    'xunit': 'ns',
+                    'ylabel': r'States population',
+                    'color': '#4dba1e'
+                }
+
+                if self.do_fitting:
+                    # Pf - fit
+                    label = f'fit_pf_qbB'
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_fit,  # which type of plot -> fit
+                        'fit_res': self.fit_res[label],  # plot the fit for
+                        # the f state
+                        'plot_init': self.options_dict.get('plot_init', False),
+                        'setlabel': 'fit $P_f$',
+                        'color': '#000a38',
+                        'axisbelow': True
+                    }
+
+                    # center fit
+                    label = f'center_fit_qbB'  # label for this data: center
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_line,  # which type of plot -> line
+                        'yvals': [0,1],  # plot g state populations
+                        'xvals': [pdd['delay_fit'], pdd['delay_fit']],
+                        'marker': "None",
+                        'linestyle': 'dashed',
+                        'setlabel': f'${pdd["delay_fit"]:.1f} ns$',
+                        'color': '#c7c7c7',
+                        'axisbelow': True
+                    }
+
+            else:
+                # Pf
+                label = f'pf_{qb}'  # label for this data: pf
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'f0g1 Pitch and Catch {qb}',
+                    'plotfn': self.plot_line,  # which type of plot -> points
+                    'yvals': populations['pf'][0][:-nr_cp],  # plot f state
+                    # populations
+                    'xvals': self.delay * 1e9,
+                    'linestyle': 'none',
+                    'xlabel': 'delay',
+                    'xunit': 'ns',
+                    'color': '#4dba1e',
+                    'ylabel': r'States population',
+                    'setlabel': '$P_f$',
+                }
+
+
+            # Pe
+            label = f'pe_{qb}' #label for this data: pe
+            self.plot_dicts[label] = {
+                'fig_id': fig_id,
+                'plotfn': self.plot_line,
+                'xvals': self.delay * 1e9,
+                'yvals': populations['pe'][0][:-nr_cp], # plot e state populations
+                'linestyle': 'none',
+                'setlabel': '$P_e$',
+                'color': '#f0691c'
+            }
+
+            # Pg
+            label = f'pg_{qb}' #label for this data: pg
+            self.plot_dicts[label] = {
+                'fig_id': fig_id,
+                'plotfn': self.plot_line,
+                'xvals': self.delay * 1e9,
+                'yvals': populations['pg'][0][:-nr_cp], # plot g state
+                # populations
+                'linestyle': 'none',
+                'setlabel': '$P_g$',
+                'do_legend': True,
+                'color': '#1c83df',
+                'legend_pos': 'upper right',
+                'frameon': True
+            }
+
+            # Max Pf data
+            label = f'max_achieved_Pf_data'  # label for this data: center
+            self.plot_dicts[label] = {
+                'fig_id': fig_id,
+                'plotfn': self.plot_line,  # which type of plot -> line
+                'xvals': [self.delay[0] * 1e9, self.delay[-1] * 1e9],
+                'yvals': 2*[np.max(populations['pf'][0][:-nr_cp])],
+                'marker': "None",
+                'linestyle': 'dashed',
+                'setlabel': f'${100*np.max(populations["pf"][0][:-nr_cp]):.1f} (data)$',
+                'color': '#c7c7c7',
+                'axisbelow': True,
+                'grid': True
+            }
+
+            # Max Pf fit
+            label = f'max_achieved_Pf_fit'  # label for this data: center
+            self.plot_dicts[label] = {
+                'fig_id': fig_id,
+                'plotfn': self.plot_line,  # which type of plot -> line
+                'xvals': [self.delay[0] * 1e9, self.delay[-1] * 1e9],
+                'yvals': 2 * [np.max(populations['pf'][0][:-nr_cp])],
+                'marker': "None",
+                'linestyle': 'dashed',
+                'setlabel': f'${100 * pdd["max_value"]} (fit)$',
+                'color': '#c7c7c7',
+                'axisbelow': True,
+                'grid': True
+            }
+
+
+class efWithf0g1AcStarkAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    class for the analysis of Ac Stark calibration: get the Ac Stark shift of
+    an ef pulse for drive amplitude of a f0g1 pulse
+
+    this calibration is explained in 5.3 section of Dr. Philipp Kurpiers PhD
+    Thesis, 2019
+
+    therefore we want to plot the population of the g state vs ef frequency for
+    each value of the f0g1 amplitude.
+    In each plot we do a fitting for the g state populations. This fitting is
+    going to give us the value of the shift for this f0g1 amplitude.
+    With all the values got from these fittings, we will be able to plot ef-AcStark
+    shift vs f0g1 amplitude, and do a fitting to get a function:
+     f0g1 amplitude to ef AcStark shift.
+    """
+
+    def process_data(self):
+        """
+        function that allow us to process the data before everything else
+        """
+        super().process_data() # call super function
+
+        # create a dictionary where we are going to save the pulse amplitude points
+        self.amps = OrderedDict()
+        for qb in self.qb_names:
+            if not 'amplitude' in self.mospm[qb]:
+                raise KeyError("Couldn't find sweep points corresponding to amplitude.")
+            else:
+                self.amps[qb] = self.sp.get_sweep_params_property('values', 1, 'amplitude')
+
+        # we get the frequencies that we used for each experiment and save it in this variable
+        self.frequencies = self.metadata['frequencies']
+
+    def prepare_fitting(self):
+        """
+        class that allow us to process the data to prepare the fitting that we
+            want to do for our data:
+            we want to fit a Lorentzian to the g state populations ->
+            the center wil tell us the shift
+
+        with that PycQED will do the fittings
+        """
+        pdd = self.proc_data_dict # get the data from the experiment
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        # we get the threshold (we want to fit only the data above it)
+        threshold = self.get_param_value('fit_threshold')
+        if threshold is None:
+            raise ValueError('Please provide fit_threshold.')
+
+
+        self.fit_dicts = OrderedDict()  # dictionary of the parameters for the fittings
+        model = fit_mods.GaussianModel_v2()  # we are going to fit a Guassian
+
+        for qb in self.qb_names: #loop for qubits
+            populations_g = pdd['projected_data_dict'][qb]['pg'] #population of ground state for each amplitude and freq
+
+            for i, amp in enumerate(self.amps[qb]):  # loop the amplitudes
+
+                #we only want to do the fitting with those values that are above the threshold
+                clip_array = np.int32(populations_g[i][:-nr_cp] > threshold) # for each amplitude we check which values
+                                                                             # are above the threshold
+                y_axis_values = populations_g[i][:-nr_cp][clip_array != 0]  # using logical indexing ([clip_array!=0])
+                                                                            # we remove values below threshold
+                x_axis_values = self.frequencies[qb][i][clip_array != 0]  # we remove the frequencies of the points
+                                                                          # removed in the last line
+
+                #check if some values are in y_axis_values
+                if y_axis_values.size == 0: print(f'Amp={amp}: No ground population values bigger than the threshold.')
+
+                # we add the dictionary with the info for the fit
+                self.fit_dicts[f'gaussian_fit_{qb}_ampl_{amp:.10f}'] = {
+                    'model': model,  # lorentzian fit
+                    'fit_xvals': {'x': x_axis_values},  # x axis -> clipped frequencies
+                    'fit_yvals': {'data': y_axis_values}, }  # y axis -> clipped populations
+
+    def analyze_fit_results(self):
+        """
+        function that allow to take the data from the fittings and do another fitting with that data:
+        the fitting done here is shift vs drive amplitude -> will fit an even polynomial
+        """
+
+        pdd = self.proc_data_dict # get the data from the experiment to add more data (the fittings)
+
+        # we create a dictionary for the fitting values : center (and its error)
+        # and for the latter fitting of these centers (and its error)
+        pdd['centers'] = OrderedDict()
+        pdd['centers_error'] = OrderedDict()
+        pdd['IFCoefs'] = OrderedDict()
+        pdd['IFCoefs_error'] = OrderedDict()
+
+        for qb in self.qb_names: #loop for qubits
+
+            # for each qubit and each amplitude we get the value of the center of the fit and its error
+            pdd['centers'][qb] = []  # list of centers for each qubit -> now empty
+            pdd['centers_error'][qb] = []  # list of center errors for each qubit -> now empty
+            for amp in self.amps[qb]:
+                best_values = self.fit_res[f'gaussian_fit_{qb}_ampl_{amp:.10f}'].best_values  # get the fit values
+                pdd['centers'][qb].append(best_values['center'])  # add the center value of the fit in the list
+                error = self.fit_res[f'gaussian_fit_{qb}_ampl_{amp:.10f}'].params['center'].stderr  # get the center error
+                # check if the error is None (if so -> 0) and then add it
+                if error is None: error = 0
+                pdd['centers_error'][qb].append(error)
+
+            fit_degree = int(self.metadata['fit_degree'])  # variable that says the degree of the fit, from metadata
+            model = fit_mods.PolynomialModel(degree=fit_degree)  # we are going to fit a polynomial of fit_degree degree
+
+            # we create a dictionary that will force all odd coefficients to be 0, since we want to fit even polynomial
+            guess_dict = {}
+            for i in range(fit_degree + 1):
+                if i % 2: guess_dict[f'c{i}'] = {'value': 0, 'vary': False}
+
+            # we change the guesses if the user has given some
+            guess_dict_user = self.get_param_value('guess_dict', default_value={})
+            if guess_dict_user:
+                for key in guess_dict_user: guess_dict[key] = guess_dict_user[key]
+
+            # we add the dictionary with the info for the fit
+            self.fit_dicts[f'evenPoly_fit_{qb}'] = {
+                'model': model,  # fit polynomial
+                'fit_xvals': {'x': self.amps[qb]},  # x axis -> amplitudes
+                'fit_yvals': {'data': pdd['centers'][qb]},  # y axis -> centers
+                'guess_dict': guess_dict, }  # restrictions -> we want an even polynomial
+
+            # we run the fitting for the dictionary above
+            try:
+                super().run_fitting(keys_to_fit=f'evenPoly_fit_{qb}')
+                # we get the fit values -> our ef_with_f0g1_AcStark_IFCoefs
+                pdd['IFCoefs'][qb] = self.fit_res[f'evenPoly_fit_{qb}'].best_values
+                # we get the error of each parm
+                pdd['IFCoefs_error'][qb] = OrderedDict()
+                for key in pdd['IFCoefs'][qb].keys():
+                    pdd['IFCoefs_error'][qb][key] = self.fit_res[f'evenPoly_fit_{qb}'].params[key].stderr
+            except:
+                self.do_fitting=False
+                print("error during fitting")
+
+    def prepare_plots(self):
+        """
+        function for preparing the plots that we want to show:
+            - a plot for each amplitude value with its fitting for the g state
+            - a plot for showing the values of the last plots fittings and its respectively fitting:
+                gTilde vs drive amplitude
+        """
+        pdd = self.proc_data_dict  # get the data from the experiment (with the new data added before)
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        for qb in self.qb_names:  # loop qubits
+            populations_g = pdd['projected_data_dict'][qb]['pg'] #g population for each point of this qubit
+
+            for i, amp in enumerate(self.amps[qb]): #loop amplitude points
+                fig_id = f'Ampl{amp:.10f}_{qb}'  #id of the figure
+
+                # Pg (all of them)
+                label = f'AcStark_ampl{amp:.10f}_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'f0g1 Ampl {amp:.2f} V ({qb})',
+                    'plotfn': self.plot_line, #which type of plot -> points
+                    'xvals': self.frequencies[qb][i], # x values -> the frequencies used for this pulse amplitude
+                    'yvals': populations_g[i][:-nr_cp], # plot g state populations for this points
+                    'linestyle': 'none',
+                    'color': '#adbbff' if self.do_fitting else '#3b5bff', #use a light blue color if doing the fitting
+                    'xlabel': 'freq',
+                    'xunit': 'Hz',
+                    'ylabel': r'Ground state population',
+                }
+
+
+                if self.do_fitting: #if we are doing the fitting
+                    # Pg (only those used for the fitting)
+                    label = f'AcStark_ampl{amp:.10f}_thres_{qb}'
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_line, #which type of plot -> points
+                        'xvals': self.fit_dicts[f'gaussian_fit_{qb}_ampl_{amp:.10f}']['fit_xvals']['x'], # x values ->
+                                                                                    # the frequencies used for the fitting
+                        'yvals': self.fit_dicts[f'gaussian_fit_{qb}_ampl_{amp:.10f}']['fit_yvals']['data'], # y values ->
+                                                                                    # the populations used for the fitting
+                        'linestyle': 'none',
+                        'color': '#3b5bff', #use a dark blue color
+                    }
+
+                    # Pg - fit
+                    label = f'gaussian_fit_{qb}_ampl_{amp:.10f}'  # label for this data: pg fit
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_fit,  # which type of plot -> fit
+                        'fit_res': self.fit_res[label], # plot the fit for this drive amplitude
+                        'plot_init': self.options_dict.get('plot_init', False),
+                        'color': 'black',
+                        'axisbelow': True
+                    }
+
+            # after the plots of each amplitude, let us show a plot with the data of these last
+            # plots fittings. Therefore we want to show Ac Strak shift vs amplitude
+            if self.do_fitting:  # if we are doing the fitting
+                fig_id = f'AcStark_{qb}'
+                label = f'evenPoly_fit_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'$\\nu$ vs Ampl ({qb})',
+                    'plotfn': self.plot_fit, #which type of plot -> fit
+                    'fit_res': self.fit_res[label], # plot the fit of shift vs drive amplitude
+                    'plot_init': self.options_dict.get('plot_init', False),
+                    'xlabel': 'amplitude',
+                    'xunit': 'V',
+                    'ylabel': '$\\nu$',
+                    'yunit': 'Hz',
+                    'color': 'black',
+                }
+
+                label = f'AcStark_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line, # which type of plot -> points
+                    'linestyle': 'none',
+                    'xvals': self.amps[qb], # x axis -> drive amplitudes
+                    'yvals': pdd['centers'][qb], # plot the shift values for this amplitudes
+                    'yerr': pdd['centers_error'][qb],
+                    'color': 'green',
+                }
+
+                # here we add the explicit equation for the fitting found g/2pi = c0 + c2 x^2 + c4 x^4 + ...
+                coefs = pdd['IFCoefs'][qb].values()
+                coefs_error = pdd['IFCoefs_error'][qb].values()
+
+                text = f"$\\nu = $"
+                for k, (coef, coef_error) in enumerate(zip(coefs, coefs_error)):
+                    if not coef == 0:
+                        text += f"$({coef*1e-6:.3f} \pm {coef_error*1e-6 :.3f}) \cdot 10^6 x^{k}$ + "
+
+                label = f'fitting_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'ypos': -0.2,
+                    'xpos': -0.1,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'top',
+                    'plotfn': self.plot_text,
+                    'text_string': text[:-2]}
+
+
+class f0g1ResetCalibAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    Class for the analysis of the reset calibration (ef Rabi while driven by f0g1).
+    This calibration is explained in 5.3 section of Dr. Paul Magnard PhD Thesis, 2021
+
+    We want to plot the population of the g, e and f state vs pulse length for each value of the pulse amplitude.
+    No fitting function so far.
+
+    """
+
+    def process_data(self):
+        """
+        class that allow us to process the data before everything else
+        """
+        super().process_data()  # call super function
+
+        # create two dictionaries where we are going to save the pulse amplitude and length swept points
+        self.amps = OrderedDict()
+        for qb in self.qb_names:
+            if not 'pulse_length' in self.mospm[qb]:
+                raise KeyError("Couldn't find sweep points corresponding to pulse length.")
+            elif not 'amplitude' in self.mospm[qb]:
+                raise KeyError("Couldn't find sweep points corresponding to amplitude.")
+            else:
+                self.amps[qb] = self.sp.get_sweep_params_property('values', 1, 'amplitude')  # here the ampltudes
+
+        # here we get the data of the lengths from the metadata
+        self.lengths = self.metadata['lengths']
+
+
+
+    def prepare_plots(self):
+        """
+        function for preparing the plots that we want to show : a plot for each amplitude value
+        """
+
+        pdd = self.proc_data_dict  # get the data from the experiment (with the new data added before)
+        nr_cp = self.num_cal_points  # get number of calibration points, usually 3 (we don't want the populations from
+        # this points)
+
+        for qb in self.qb_names:  # loop qubits
+            populations = pdd['projected_data_dict'][qb]  # populations for each point of this qubit
+
+            for i, amp in enumerate(self.amps[qb]):  # loop amplitude points
+
+                # lengths_fit = np.linspace(np.min(self.lengths[qb][i]), np.max(self.lengths[qb][i]),
+                #                           500)  # we create a list to plot the fitting
+
+                fig_id = f'Ampl{amp:.10f}_{qb}'  # id of the figure
+
+                # Pg
+                label = f'f0g1_ampl{amp:.10f}_pg_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': f'Ampl f0g1 {amp:.2f} V ({qb})',
+                    'plotfn': self.plot_line,  # which type of plot -> points
+                    'xvals': self.lengths[qb][i],  # x values are the lengths of the pulse
+                    'yvals': populations['pg'][i][:-nr_cp],  # plot g state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_g$',
+                    'xlabel': 'pulse length',
+                    'xunit': 's',
+                    'ylabel': r'States population',
+                }
+
+                # Pe
+                label = f'f0g1_ampl{amp:.10f}_pe_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': self.lengths[qb][i],
+                    'yvals': populations['pe'][i][:-nr_cp],  # plot e state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_e$',
+                }
+
+                # Pf
+                label = f'f0g1_ampl{amp:.10f}_pf_{qb}'
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': self.lengths[qb][i],
+                    'yvals': populations['pf'][i][:-nr_cp],  # plot f state populations
+                    'linestyle': 'none',
+                    'do_legend': True,
+                    'setlabel': '$P_f$',
+                    'legend_pos': 'center right'
+                }
+
+
+class f0g1DetuningAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    Class for the analysis of f0g1 pitch and catch detuning calibration: get
+    the appropriate detuning for the f0g1 pulses
+
+    We plot the populations of g states vs detuning of qbA and B
+    The fitting is impleneted only in case of a 1D sweep, otherwise the
+    parameters have to be updated manually
+    """
+
+    def process_data(self):
+        super().process_data()
+        try:
+            self.pitch_detuning = self.sp.get_sweep_params_property('values',
+                                                                     1,
+                                                                    'Pitch '+ \
+                                                                    'detuning')
+            self.catch_detuning = self.sp.get_sweep_params_property('values',
+                                                                     0,
+                                                                   'Catch '+\
+                                                                    'detuning')
+            self.sweep_2D = True
+        except Exception:
+            self.detuning = self.sp.get_sweep_params_property('values', 0,
+                                                               'detuning')
+            self.sweep_2D = False
+
+    def prepare_fitting(self):
+        """
+        function that allow us to process the data to prepare the fitting that we want to do for our data
+
+        with that PycQED will do the fittings
+        """
+
+        pdd = self.proc_data_dict  # get the data from the experiment (with the new data we added in 'process_data')
+        nr_cp = self.num_cal_points  # get number of calibration points, usually 3 (we don't want the populations from
+                                     # this points)
+
+        self.fit_dicts = OrderedDict()  # dictionary that will have the information to do the fittings
+        model = fit_mods.PolynomialModel(degree=2)   # we are going to fit the data to a polynomial of degree 2
+
+        qb = self.metadata['task_list'][0]['qbB']  # our qubit B
+        populations_f = pdd['projected_data_dict'][qb]['pf'][0][:-nr_cp]  # populations of f state for this qubit
+
+        if self.sweep_2D:
+            pass
+        else:
+            self.fit_dicts[f'fit_pf_qbB'] = {
+                'model': model,  # use the tanh model
+                'fit_xvals': {'x': self.detuning},  # x axis -> qbB f0g1 detuning
+                'fit_yvals': {'data': populations_f}, }  # y axis -> populations of f
+
+
+    def analyze_fit_results(self):
+        """
+        function that allow to take the data from the fittings and do another fitting with that data:
+        # the fitting done here is gTilde vs drive amplitude -> will fit an odd polynomial
+        """
+        pdd = self.proc_data_dict # get the data from the experiment to add more data (the fittings)
+
+        if not self.sweep_2D:
+            # we create a dictionary for the fitting values : center (and its error)
+            pdd['detuning_fit'] = OrderedDict()
+            pdd['detuning_fit_error'] = OrderedDict()
+
+            # for the qubit we get the value of the center of the fit and its error
+            best_values = self.fit_res[f'fit_pf_qbB'].best_values  # get the fit values
+            pdd['detuning_fit'] = -best_values['c1'] / (2 * best_values['c2']) #get the center of the polynomial
+
+            error_c1 = self.fit_res[f'fit_pf_qbB'].params['c1'].stderr  # get the fit error for c1
+            error_c2 = self.fit_res[f'fit_pf_qbB'].params['c2'].stderr  # get the fit error for c2
+            # check if the error is None (if so -> 0) and then add it
+            if error_c1 is None: error_c1 = 0
+            if error_c2 is None: error_c2 = 0
+            pdd['detuning_fit_error'] = error_c1 * np.abs(1 / (2 * best_values['c2'])) + \
+                                     error_c2 * np.abs(best_values['c1'] / (2 * best_values['c2']**2))
+
+    def prepare_plots(self):
+        """
+        function for preparing the plots that we want to show:
+        a plot for each gamma value, with its fittings
+        """
+
+        pdd = self.proc_data_dict # get the data from the experiment (with the new data added before)
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        for i_qb, qb in enumerate(self.qb_names):  # loop qubits
+            populations = pdd['projected_data_dict'][qb]
+
+            fig_id = f'f0g1 Detuning_{qb}' #id of the figure
+
+            if self.sweep_2D:
+                if i_qb==1: #qbB
+                    # Pf
+                    label = f'pf_{qb}'  # label for this data: pf
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'title': r'f0g1 Detuning $P(|f \rangle)$'+ f' {qb} '\
+                                 + self.raw_data_dict['timestamp'],
+                        'plotfn': self.plot_colorxy,  # which type of plot -> points
+                        'xvals': self.pitch_detuning,
+                        'yvals': self.catch_detuning ,
+                        'zvals': np.transpose(populations['pf'][:, :-nr_cp]),
+                        'linestyle': 'none',
+                        'xlabel': 'Pitch detuning',
+                        'xunit': 'Hz',
+                        'ylabel': 'Catch detuning',
+                        'yunit': 'Hz',
+                        'clabel': '$P_f$',
+                    }
+                    # Max Pf
+                    max_pf = np.max(populations["pf"][:, :-nr_cp])
+                    id_max_pf = np.unravel_index(populations["pf"][:, :-nr_cp].argmax(),\
+                                                 populations["pf"][:, :-nr_cp].shape)
+                    label = f'max_achieved_Pf'  # label for this data: center
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'plotfn': self.plot_line,  # which type of plot -> line
+                        'xvals': [self.pitch_detuning[id_max_pf[0]]],
+                        'yvals': [self.catch_detuning[id_max_pf[1]]],
+                        'marker': "o",
+                        'linestyle': 'dashed',
+                        'color': '#000a38',
+                        'axisbelow': True
+                    }
+                    text_str = f'Max $P_f$: {max_pf}\nOpt pitch delta: {self.pitch_detuning[id_max_pf[0]]/1e6} MHz \n'\
+                                f'Opt catch delta: {self.catch_detuning[id_max_pf[1]]/1e6} MHz'
+                    self.plot_dicts['text_msg'] = {
+                        'fig_id': fig_id,
+                        'ypos': -0.4,
+                        'xpos': 0,
+                        'horizontalalignment': 'left',
+                        'verticalalignment': 'bottom',
+                        'plotfn': self.plot_text,
+                        'text_string': text_str}
+                else: #qbA
+                    label = f'pf_{qb}'  # label for this data: pf
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'title': r'f0g1 Detuning $P(|f \rangle)$' + f' {qb} '\
+                                 + self.raw_data_dict['timestamp'],
+                        'plotfn': self.plot_colorxy,  # which type of plot -> points
+                        'xvals': self.pitch_detuning,
+                        'yvals': self.catch_detuning ,
+                        'zvals': np.transpose(populations['pf'][:, :-nr_cp]),
+                        'linestyle': 'none',
+                        'xlabel': 'Pitch detuning',
+                        'xunit': 'Hz',
+                        'ylabel': 'Catch detuning',
+                        'yunit': 'Hz',
+                        'clabel': '$P_f$',
+                    }
+
+            else: #sweep1D
+                if i_qb == 1: #qbB
+                    # Pg
+                    label = f'pf_{qb}' #label for this data: pf
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'title': f'f0g1 Pitch-Catch Detuning {qb} '+ \
+                             self.raw_data_dict['timestamp'],
+                        'plotfn': self.plot_line, #which type of plot -> points
+                        'yvals': populations['pf'][0][:-nr_cp], # plot f state populations
+                        'xvals': self.detuning,
+                        'linestyle': 'none',
+                        'setlabel': '$P_f$',
+                        'xlabel': 'Detuning of f0g1 catch',
+                        'xunit': 'Hz',
+                        'ylabel': r'States population',
+                    }
+
+                    if self.do_fitting:  # if we are doing the fitting
+                        # Pg - fit
+                        label = f'fit_pf_qbB'  # label for this data: pg fit
+                        self.plot_dicts[label] = {
+                            'fig_id': fig_id,
+                            'plotfn': self.plot_fit,  # which type of plot -> fit
+                            'fit_res': self.fit_res[label],  # plot the fit for the f state
+                            'plot_init': self.options_dict.get('plot_init', False),
+                            'setlabel': 'fit $P_f$',
+                            'color': '#000a38',
+                            'axisbelow': True
+                        }
+
+                        # center fit
+                        label = f'center_fit_qbB'  # label for this data: center
+                        self.plot_dicts[label] = {
+                            'fig_id': fig_id,
+                            'plotfn': self.plot_line,  # which type of plot -> line
+                            'yvals': [0,1],  # plot f state populations
+                            'xvals': [pdd['detuning_fit'], pdd['detuning_fit']],
+                            'marker': "None",
+                            'linestyle': 'dashed',
+                            'setlabel': f'${pdd["detuning_fit"]:.2f}$',
+                            'color': '#c7c7c7',
+                            'axisbelow': True
+                        }
+
+                else: #qbA
+                    # Pg
+                    label = f'pg_{qb}'  # label for this data: pf
+                    self.plot_dicts[label] = {
+                        'fig_id': fig_id,
+                        'title': f'f0g1 Pitch-Catch Detuning {qb} '+ \
+                             self.raw_data_dict['timestamp'],
+                        'plotfn': self.plot_line,  # which type of plot -> points
+                        'yvals': populations['pg'][0][:-nr_cp],  # plot f state populations
+                        'xvals': self.detuning,
+                        'linestyle': 'none',
+                        'xlabel': 'Detuning of f0g1 catch',
+                        'xunit': 'Hz',
+                        'ylabel': r'States population',
+                        'setlabel': '$P_g$',
+                    }
+
+
+                # Pe
+                label = f'pe_{qb}' #label for this data: pe
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': self.detuning,
+                    'yvals': populations['pe'][0][:-nr_cp], # plot e state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_e$'
+                }
+
+                # Pf
+                label = f'pf_{qb}' #label for this data: pf
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,
+                    'xvals': self.detuning,
+                    'yvals': populations['pf'][0][:-nr_cp], # plot f state populations
+                    'linestyle': 'none',
+                    'setlabel': '$P_f$',
+                    'do_legend': True,
+                    'legend_pos': 'upper right',
+                }
+
+
+class f0g1BandwidthAnalysis(MultiQubit_TimeDomain_Analysis):
+    """
+    Class for the analysis of f0g1 pitch and catch bandwidth calibration: get
+    the appropriate bandwidth for the f0g1 pulses
+
+    We plot the populations of g states vs bandwidth of qbA and B
+    No fitting is implemented, the parameters have to be updated manually
+    """
+
+    def process_data(self):
+        super().process_data()
+        self.pitch_kappa = self.sp.get_sweep_params_property('values',
+                                                                 1,
+                                                                'Pitch '+ \
+                                                                'kappa')
+        self.catch_kappa = self.sp.get_sweep_params_property('values',
+                                                                 0,
+                                                               'Catch '+\
+                                                                'kappa')
+
+    def prepare_plots(self):
+        """
+        function for preparing the plots that we want to show:
+        a plot for each gamma value, with its fittings
+        """
+
+        pdd = self.proc_data_dict # get the data from the experiment (with the new data added before)
+        nr_cp = self.num_cal_points # get number of calibration points, usually 3 (we don't want the populations from
+                                    # this points)
+
+        for i_qb, qb in enumerate(self.qb_names):  # loop qubits
+            populations = pdd['projected_data_dict'][qb]
+
+            fig_id = f'f0g1 Bandwidth_{qb}' #id of the figure
+
+            if i_qb==1: #qbB
+                # Pf
+                label = f'pf_{qb}'  # label for this data: pg
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': r'f0g1 Bandwidth $P(|f \rangle)$'+ f' {qb} '\
+                             + self.raw_data_dict['timestamp'],
+                    'plotfn': self.plot_colorxy,  # which type of plot -> points
+                    'xvals': self.pitch_kappa/(2*np.pi),
+                    'yvals': self.catch_kappa/(2*np.pi),
+                    'zvals': np.transpose(populations['pf'][:, :-nr_cp]),
+                    'linestyle': 'none',
+                    'xlabel': r'$\kappa_{pitch}$',
+                    'xunit': 'Hz',
+                    'ylabel': r'$\kappa_{catch}$',
+                    'yunit': 'Hz',
+                    'zlabel': r'f population',
+                    'setlabel': '$P_f$',
+                }
+                # Max Pf
+                max_pf = np.max(populations["pf"][:, :-nr_cp])
+                id_max_pf = np.unravel_index(populations["pf"][:, :-nr_cp].argmax(), \
+                                             populations["pf"][:, :-nr_cp].shape)
+                label = f'max_achieved_Pf'  # label for this data: center
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'plotfn': self.plot_line,  # which type of plot -> line
+                    'xvals': [self.pitch_kappa[id_max_pf[0]]/(2*np.pi)],
+                    'yvals': [self.catch_kappa[id_max_pf[1]]/(2*np.pi)],
+                    'marker': "o",
+                    'linestyle': 'dashed',
+                    'color': '#000a38',
+                    'axisbelow': True
+                }
+                text_str = f'Max $P_f$: {max_pf}\n' \
+                           f'Opt pitch kappa: {self.pitch_kappa[id_max_pf[0]] /(2*np.pi*1e6)} MHz \n' \
+                           f'Opt catch kappa: {self.catch_kappa[id_max_pf[1]] /(2*np.pi*1e6)} MHz'
+                self.plot_dicts['text_msg'] = {
+                    'fig_id': fig_id,
+                    'ypos': -0.45,
+                    'xpos': 0,
+                    'horizontalalignment': 'left',
+                    'verticalalignment': 'bottom',
+                    'plotfn': self.plot_text,
+                    'text_string': text_str}
+            else: #qbA
+                label = f'pg_{qb}'  # label for this data: pg
+                self.plot_dicts[label] = {
+                    'fig_id': fig_id,
+                    'title': r'f0g1 Detuning $P(|g \rangle)$' + f' {qb} '\
+                             + self.raw_data_dict['timestamp'],
+                    'plotfn': self.plot_colorxy,  # which type of plot -> points
+                    'xvals': self.pitch_kappa/(2*np.pi),
+                    'yvals': self.catch_kappa/(2*np.pi),
+                    'zvals': np.transpose(populations['pg'][:, :-nr_cp]),
+                    'linestyle': 'none',
+                    'xlabel': r'$\kappa_{pitch}$',
+                    'xunit': 'Hz',
+                    'ylabel': r'$\kappa_{catch}$',
+                    'yunit': 'Hz',
+                    'zlabel': r'States population',
+                    'setlabel': '$P_g$',
+                }
+
+
 class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     """
     Analysis class for the DriveAmpCalib measurement.
+
     The typical accepted input parameters are described in the parent class.
 
-    Additional parameters that this class recognises, which can be passed in the
-    options_dict:
-        - nr_pulses_pi (int; default: None): specifying into how many identical
-            pulses a pi rotation was divided ( nr_pulses_pi pulses with rotation
-            angle pi/nr_pulses_pi ). See docstring of the measurement class.
-            Can also be dict with qb names as keys.
-        - fixed scaling (int; default: None): specifying the amplitude scaling
-            for the pulse that wasn't swept. See docstring of the measurement
-            class. Can also be dict with qb names as keys.
-        - fitted_scaling_errors (dict; default: None): the keys are qubit names
-            and the values are arrays of fit results for each soft sweep
-            ex: {'qb10':  np.array([-0.00077432, -0.00055945])}
-        - maxeval (int; default: 400): number of evaluations for the optimiser
-        - T1 (float; default: value from hdf): qubit T1 to use for fit (fixed)
-        - T2 (float; default: value from hdf): qubit T2 to use as starting value
-            for the fit (dimensionless fraction T2/T2_guess is varied)
+    Args:
+        options_dict: Additional parameters that this class recognises:
+            nr_pulses_pi (int, optional): Specifying into how many identical
+                pulses a pi rotation was divided (nr_pulses_pi pulses with
+                rotation angle pi/nr_pulses_pi). See docstring of the
+                measurement class. Can also be dict with qb names as keys.
+                Defaults to None.
+            fixed_scaling (int, optional): Specifying the amplitude scaling
+                for the pulse that wasn't swept. See docstring of the
+                measurement class. Can also be dict with qb names as keys.
+                Defaults to None.
+            fitted_scaling_errors (dict, optional): The keys are qubit names
+                and the values are arrays of fit results for each soft sweep.
+                Example: {'qb10':  np.array([-0.00077432, -0.00055945])}
+                Defaults to None.
+            maxeval (int, optional): Number of evaluations for the optimiser.
+                Defaults to 400.
+            T1 (float, optional): Qubit T1 to use for fit (fixed).
+                Defaults to value from hdf.
+            T2 (float, optional): Qubit T2 to use as starting value for the
+                fit (dimensionless fraction T2/T2_guess is varied).
+                Defaults to value from hdf.
     """
     def extract_data(self):
         super().extract_data()
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params_dict = {}
         for qbn in self.qb_names:
             trans_name = self.get_transition_name(qbn)
@@ -10539,10 +12457,10 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             t_gate (float): gate length (s)
             gamma_1 (float): qubit energy relaxation rate
             gamma_phi (float): qubit dephasing rate
-            zth (float; default=1): z coordinate at equilibrium
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
 
-        Returns
-            y, z: coordinates of the qubit state vector after the evolution
+        Returns:
+            tuple: y, z: coordinates of the qubit state vector after the evolution
         """
         Omega = ang_scaling*np.pi/t_gate
         f_rabi = np.sqrt(Omega**2 - (1/16)*(gamma_1-2*gamma_phi)**2)
@@ -10563,63 +12481,93 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
     @staticmethod
     def apply_gate_mtx(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, nreps=1):
-        """
-        Calculates the time evolution of the y and z components of the qubit
-        state vector under the application of an X gate described by the
-        time-independent Hamiltonian (ang_scaling*pi/t_gate)*sigma_x/2.
+        """Calculates the time evolution of the y and z components of the qubit
+        This function implements the matrix version of apply_gate: y and z here
+        are y - yinf and z - zinf in apply_gate.
+
+        To be specific: Calculates the time evolution of the y and z
+        components of the qubit state vector under the application of
+        an X gate described by the time-independent Hamiltonian
+        (ang_scaling*pi/t_gate)*sigma_x/2.
+
         https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
-        This function implements the matrix version of apply_gate: y and z
-        here are y - yinf and z - zinf in apply_gate
 
         This function is used in sim_func when fixed_scaling is None.
 
         Args:
-            y (float): scaled y coordinate of the qubit state vector at the
-                start of the evolution
-            z (float): scaled z coordinate of the qubit state vector at the
-                start of the evolution
-            ang_scaling (float or array): fraction of a pi rotation
-                (see Hamiltonian above)
-            t_gate (float): gate length (s)
-            gamma_1 (float): qubit energy relaxation rate
-            gamma_phi (float): qubit dephasing rate
-            nreps (int; default: 1): number of times the gate is applied
+            y (float): Scaled y coordinate of the qubit state vector at the
+                start of the evolution.
+            z (float): Scaled z coordinate of the qubit state vector at the
+                start of the evolution.
+            ang_scaling (float or array): Fraction of a pi rotation
+                (see Hamiltonian above).
+            t_gate (float): Gate length (s).
+            gamma_1 (float): Qubit energy relaxation rate.
+            gamma_phi (float): Qubit dephasing rate.
+            nreps (int, optional): Number of times the gate is applied.
+                Defaults to 1.
 
-        Returns
-            y, z: scaled coordinates of the qubit state vector after the
-                evolution
+        Returns:
+            Tuple[float, float]: Scaled coordinates of the qubit state
+            vector after the evolution.
+
+        References:
+            https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
         """
         Omega = ang_scaling * np.pi / t_gate
-        f_rabi = np.sqrt(Omega ** 2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
+        f_rabi = np.sqrt(Omega**2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
         prefactor = np.exp(-(3 * gamma_1 + 2 * gamma_phi) * t_gate / 4)
-        mtx = prefactor * np.array([
-            [np.cos(f_rabi * t_gate) + np.sin(f_rabi * t_gate) * \
-                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi),
-             np.sin(f_rabi * t_gate) * Omega / f_rabi],
-            [-np.sin(f_rabi * t_gate) * Omega / f_rabi,
-             np.cos(f_rabi * t_gate) - np.sin(f_rabi * t_gate) * \
-                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi)]])
+        mtx = prefactor * np.array(
+            [
+                [
+                    np.cos(f_rabi * t_gate)
+                    + np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                    np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                ],
+                [
+                    -np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                    np.cos(f_rabi * t_gate)
+                    - np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                ],
+            ]
+        )
         mtx = np.linalg.matrix_power(mtx, nreps)
         res = mtx @ np.array([[y], [z]])
         return res[0][0], res[1][0]
 
     @staticmethod
-    def sim_func(nr_pi_pulses, sc_error, ideal_scaling,
-                 T2, t2_r=1, nr_pulses_pi=None,
-                 y0=0, z0=1, zth=1, fixed_scaling=None,
-                 T1=None, t_gate=None, mobjn=None, ts=None):
+    def sim_func(
+        nr_pi_pulses,
+        sc_error,
+        ideal_scaling,
+        T2,
+        t2_r=1,
+        nr_pulses_pi=None,
+        y0=0,
+        z0=1,
+        zth=1,
+        fixed_scaling=None,
+        T1=None,
+        t_gate=None,
+        mobjn=None,
+        ts=None,
+    ):
         """
         Simulation function for the excited qubit state populations for a trace
         of the N-pulse calibration experiment:
             - X90 - [ repeated groups of pulses ]^nr_pi_pulses -
 
         The repeated groups of pulses are either:
-         - nr_pulses_pi x R(pi/nr_pulses_pi)
-         or
-         - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
+        - nr_pulses_pi x R(pi/nr_pulses_pi)
+        or
+        - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
             if fixed_scaling is not None
 
-         See also the docstring of the measurement class DriveAmpCalib.
+        See also the docstring of the measurement class DriveAmpCalib.
 
         Args:
             nr_pi_pulses (array): number of repeated pulses applied to the qubit
@@ -10628,23 +12576,24 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 away from the ideal scaling. This error will be fitted
             ideal_scaling (float): ideal amplitude scaling factor
             T2 (float): qubit decoherence time in seconds to be used as a guess
-            t2_r (float; default=1): ratio T2_varied/T2. This ratio will be fitted
-            nr_pulses_pi (int; default=None): the number of pulses that together
-                implement a pi rotation.
-            y0 (float; default=0): y coordinate of the initial state
-            z0 (float; default=1): z coordinate of the initial state
-            zth (float; default=1): z coordinate at equilibrium
-            fixed_scaling (float; default: None): the amplitude scaling of
-                the first rotation in the description above
-            T1 (float; default: None): quit lifetime (s)
-            t_gate (float): gate length (s)
-            mobjn (str): name of the qubit
-            ts (str): measurement timestamp
+            t2_r (float, optional): ratio T2_varied/T2. This ratio will be fitted.
+                Defaults to 1.
+            nr_pulses_pi (int, optional): the number of pulses that together
+                implement a pi rotation. Defaults to None.
+            y0 (float, optional): y coordinate of the initial state. Defaults to 0.
+            z0 (float, optional): z coordinate of the initial state. Defaults to 1.
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
+            fixed_scaling (float, optional): the amplitude scaling of
+                the first rotation in the description above. Defaults to None.
+            T1 (float, optional): quit lifetime (s). Defaults to None.
+            t_gate (float, optional): gate length (s). Defaults to None.
+            mobjn (str, optional): name of the qubit. Defaults to None.
+            ts (str, optional): measurement timestamp. Defaults to None.
             The last two parameers will be used to extract T1/t_gate if the
             latter are not specified (see docstring of sim_func)
 
-        Returns
-            e_pops (array): same length as nr_pi_pulses and containing the
+        Returns:
+            array: e_pops, same length as nr_pi_pulses and containing the
                 qubit excited state populations after the application of
                 nr_pi_pulses repeated groups of pulses
         """
@@ -10652,41 +12601,52 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
         if any([v is None for v in [T1, T2, t_gate]]):
             assert mobjn is not None
             assert ts is not None
+        if ts is not None:
+            from pycqed.utilities.settings_manager import SettingsManager
+
+            sm = SettingsManager()
         if t_gate is None:
-            from pycqed.analysis_v3 import helper_functions as hlp_mod
-            t_gate = \
-                hlp_mod.get_instr_param_from_hdf_file(mobjn, 'ge_sigma', ts) * \
-                hlp_mod.get_instr_param_from_hdf_file(mobjn, 'ge_nr_sigma', ts)
+            t_gate = sm.get_parameter(mobjn + ".ge_sigma", ts) * sm.get_parameter(
+                mobjn + ".ge_nr_sigma", ts
+            )
         if t_gate == 0:
-            raise ValueError('Please specify t_gate.')
+            raise ValueError("Please specify t_gate.")
         if T1 is None:
-            from pycqed.analysis_v3 import helper_functions as hlp_mod
-            T1 = hlp_mod.get_instr_param_from_hdf_file(mobjn, 'T1', ts)
+            T1 = sm.get_parameter(mobjn + ".T1", ts)
         if T1 == 0:
-            raise ValueError('Please specify T1.')
+            raise ValueError("Please specify T1.")
 
         T2 = t2_r * T2
         if nr_pulses_pi is None and fixed_scaling is None:
-            raise ValueError('Please specify either nr_pulses_pi or '
-                             'fixed_scaling.')
+            raise ValueError("Please specify either nr_pulses_pi or " "fixed_scaling.")
 
-        gamma_1 = 1/T1
-        gamma_2 = 1/T2
-        gamma_phi = gamma_2 - 0.5*gamma_1
+        gamma_1 = 1 / T1
+        gamma_2 = 1 / T2
+        gamma_phi = gamma_2 - 0.5 * gamma_1
 
         # apply initial pi/2 gate
         y00, z00 = NPulseAmplitudeCalibAnalysis.apply_gate(
-            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth)
+            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth
+        )
 
         # calculate yinf, zinf with amp_sc
         amp_sc = sc_error + ideal_scaling
-        if hasattr(amp_sc, '__iter__'):
+        if hasattr(amp_sc, "__iter__"):
             amp_sc = amp_sc[0]
         Omega = amp_sc * np.pi / t_gate
-        yinf = 2 * zth * Omega * gamma_1 / \
-               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
-        zinf = zth * gamma_1 * (gamma_1 + 2 * gamma_phi) / \
-               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
+        yinf = (
+            2
+            * zth
+            * Omega
+            * gamma_1
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
+        zinf = (
+            zth
+            * gamma_1
+            * (gamma_1 + 2 * gamma_phi)
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
 
         e_pops = np.zeros(len(nr_pi_pulses))
         for i, n in enumerate(nr_pi_pulses):
@@ -10696,8 +12656,8 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 # adds offset to initial values
                 y, z = y00 - yinf, z00 - zinf
                 y, z = NPulseAmplitudeCalibAnalysis.apply_gate_mtx(
-                    y, z, amp_sc, t_gate, gamma_1, gamma_phi,
-                    nreps=nr_pulses_pi * n)
+                    y, z, amp_sc, t_gate, gamma_1, gamma_phi, nreps=nr_pulses_pi * n
+                )
                 # get back the true y and z
                 y += yinf
                 z += zinf
@@ -10706,10 +12666,12 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 for j in range(n):
                     # apply pulse with varying scaling
                     y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth)
+                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
                     # apply pulse with fixed scaling
                     y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth)
+                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
             e_pops[i] = 0.5 * (1 - z)
         return e_pops
 
@@ -10774,6 +12736,9 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             self.fitted_amp_sc_errs = {qbn: np.zeros(len_sp2dd)
                                        for qbn in self.qb_names}
         # store fit results T1, T2 {qbn: len_nr_soft_sp}
+        # FIXME: stores fit results as {qbn: {soft_sp_index: {'Tx': val, ...}}}
+        #  while other analyses typically store as {qbn: {'Tx': [vals], ...}}.
+        #  Also, it probably does not make sense to index a dict with integers.
         self.fitted_coh_times = {qbn: {i: '' for i in range(len_sp2dd)}
                                  for qbn in self.qb_names}
         # store fit lines {qbn: 2D array (each row is a fit line)}
@@ -10996,7 +12961,8 @@ class DriveAmplitudeNonlinearityCurveAnalysis(ba.BaseDataAnalysis):
 
     def __init__(self, t_start, t_stop, qb_names=None, do_fitting=True,
                  auto=True, **kwargs):
-        super().__init__(t_start=t_start, t_stop=t_stop, do_fitting=do_fitting,
+        super().__init__(t_start=t_start, t_stop=t_stop,
+                         label='Drive_amp_calib', do_fitting=do_fitting,
                          **kwargs)
         self.qb_names = qb_names
         self.auto = auto
@@ -11293,96 +13259,18 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         'offset_guess_boundary': boundaries for the offset_freq fit in Hz (default: 2e8)
         'steps': number of evaulations used for the fitting, default 1e8, dual_annealing default 1e7
     """
-
-    def calculate_voltage_from_flux(self, vfc, flux):
-        """
-        Adapted from QuDev_transmon.py
-        """
-        return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
-
-    def calculate_flux_voltage(self, vfc, flux_amplitude_bias_ratio,
-                               frequency=None, flux=None):
-        """
-        Adapted from QuDev_transmon.py
-        """
-        # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
-        #  can be called both from the measurement and analysis side, to avoid code dupplication
-
-        bias = self.calculate_voltage_from_flux(vfc, flux)
-
-        if flux % 0.5:
-            pass  # do not shift (well-defined branch)
-        elif flux != 0:
-            # shift slightly in the direction of 0
-            flux += -np.sign(flux) * 0.25
-        else:
-            # shift slightly to the left to use rising branch as default
-            flux = -0.25
-        branch = flux * vfc['V_per_phi0'] + vfc['dac_sweet_spot']
-
-        val = fit_mods.Qubit_freq_to_dac_res(
-            frequency, **vfc, branch=branch, single_branch=True)
-        val = (val - bias) * flux_amplitude_bias_ratio
-        return val
-
-    def calculate_qubit_frequency(self, flux_amplitude_bias_ratio, amplitude,
-                                  vfc, model='transmon_res', bias=None):
-        # """
-        # Adapted from QuDev_transmon.py
-        # """
-        # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
-        #  can be called both from the measurement and analysis side, to avoid code dupplication
-        # TODO: extend to other transitions than ge (would require to do
-        #  the same to calculate_flux_voltage)
-        if flux_amplitude_bias_ratio is None:
-            if np.ndim(amplitude) > 0:
-                if ((model in ['transmon',
-                               'transmon_res'] and amplitude.any() != 0) or
-                        (model == [
-                            'approx'] and bias is not None and bias != 0)):
-                    raise ValueError(
-                        'flux_amplitude_bias_ratio is None, but is '
-                        'required for this calculation.')
-            else:
-                if ((model in ['transmon',
-                               'transmon_res'] and amplitude != 0) or
-                        (model == [
-                            'approx'] and bias is not None and bias != 0)):
-                    raise ValueError(
-                        'flux_amplitude_bias_ratio is None, but is '
-                        'required for this calculation.')
-
-        if model == 'approx':
-            ge_freq = fit_mods.Qubit_dac_to_freq(
-                amplitude + (0 if bias is None or np.all(bias == 0) else
-                             bias * flux_amplitude_bias_ratio), **vfc)
-        elif model == 'transmon':
-            kw = deepcopy(vfc)
-            kw.pop('coupling', None)
-            kw.pop('fr', None)
-            ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
-                0 if np.all(amplitude == 0)
-                else amplitude / flux_amplitude_bias_ratio), **kw)
-        elif model == 'transmon_res':
-            ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
-                0 if np.all(amplitude == 0)
-                else amplitude / flux_amplitude_bias_ratio), **vfc)
-        else:
-            raise NotImplementedError(
-                "Currently, only the models 'approx', 'transmon', and"
-                "'transmon_res' are implemented.")
-        return ge_freq
-
     def extract_data(self):
         super().extract_data()
         self.task_list = self.get_param_value('task_list')
         self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
+        # FIXME: refactor to use settings manager instead of raw_data_dict
         params = ['ge_freq', 'fit_ge_freq_from_dc_offset', 'fit_ge_freq_from_flux_pulse_amp',
                   'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
         for qbn in self.qb_names:
-            self.raw_data_dict.update({f"{p}_{qbn}":
-                                           self.get_hdf_param_value(f'Instrument settings/{qbn}', p)
-                                       for p in params})
+            params_dict = {f"{p}_{qbn}": f'Instrument settings.{qbn}.{p}'
+                           for p in params}
+            self.raw_data_dict.update(
+                self.get_data_from_timestamp_list(params_dict))
 
 
     def prepare_fitting(self):
@@ -11390,7 +13278,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['Delta'] = OrderedDict()
         self.proc_data_dict['int_freq_exp'] = OrderedDict()
 
-        def population_dynamics(t, Delta, J=7e6, offset_freq=0):
+        def pe_function(t, Delta, J=10e6, offset_freq=0):
             # From Nathan's master's thesis Eq. 2.6 - fitting function
             t = t*1e9
             J = 2*np.pi*J/1e9
@@ -11399,25 +13287,11 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
-                    4 * J ** 2 + Delta_off ** 2)
-            # J is already in angular frequency (see J_fft)
-
-        # def J_fft(t, Delta, data):
-        #     # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
-        #     # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
-        #     J_min = None
-        #     for Delta_index in range(len(Delta)):
-        #         S = sp.fft.fft(data[Delta_index])
-        #         S[0] = 0 # Ignore DC component
-        #         xf = sp.fft.fftfreq(len(t), (t.max()-t.min())/len(t))[0:len(t)//2]
-        #         J_fft = xf[np.abs(S[0:len(t)//2]).argmax()]/2 # 2J = 2pi/T (see thesis), but we want it in Hz
-        #         if J_min == None or J_min > J_fft:
-        #             J_min = J_fft
-        #     return J_min
-
+                    4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
         def cosine_model(x, amplitude, frequency, phase, offset):
             return amplitude * np.cos(
                 2.0 * np.pi * frequency * x + phase) + offset
+
         def J_fft(t, Delta, data):
             # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
             # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
@@ -11440,12 +13314,87 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 params['frequency'].min = 0.0
 
                 result = model.fit(data[Delta_index], params, x=t)
-                J = result.params['frequency'].value/2
+                J = result.params['frequency'].value / 2
 
                 if J_min == None or J_min > J:
                     J_min = J
                     Delta_argmin = Delta_index
             return J_min, Delta_argmin
+
+        def calculate_voltage_from_flux(vfc, flux):
+            return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
+
+        def calculate_flux_voltage(self, vfc, flux_amplitude_bias_ratio,
+                                   frequency=None, flux=None):
+            """
+            Adapted from QuDev_transmon.py
+            """
+            # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
+            #  can be called both from the measurement and analysis side, to avoid code dupplication
+
+            bias = self.calculate_voltage_from_flux(vfc, flux)
+
+            if flux % 0.5:
+                pass  # do not shift (well-defined branch)
+            elif flux != 0:
+                # shift slightly in the direction of 0
+                flux += -np.sign(flux) * 0.25
+            else:
+                # shift slightly to the left to use rising branch as default
+                flux = -0.25
+            branch = flux * vfc['V_per_phi0'] + vfc['dac_sweet_spot']
+
+            val = fit_mods.Qubit_freq_to_dac_res(
+                frequency, **vfc, branch=branch, single_branch=True)
+            val = (val - bias) * flux_amplitude_bias_ratio
+            return val
+
+        def calculate_qubit_frequency(self, flux_amplitude_bias_ratio, amplitude,
+                                      vfc, model='transmon_res', bias=None):
+            # """
+            # Adapted from QuDev_transmon.py
+            # """
+            # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
+            #  can be called both from the measurement and analysis side, to avoid code dupplication
+            # TODO: extend to other transitions than ge (would require to do
+            #  the same to calculate_flux_voltage)
+            if flux_amplitude_bias_ratio is None:
+                if np.ndim(amplitude) > 0:
+                    if ((model in ['transmon',
+                                   'transmon_res'] and amplitude.any() != 0) or
+                            (model == [
+                                'approx'] and bias is not None and bias != 0)):
+                        raise ValueError(
+                            'flux_amplitude_bias_ratio is None, but is '
+                            'required for this calculation.')
+                else:
+                    if ((model in ['transmon',
+                                   'transmon_res'] and amplitude != 0) or
+                            (model == [
+                                'approx'] and bias is not None and bias != 0)):
+                        raise ValueError(
+                            'flux_amplitude_bias_ratio is None, but is '
+                            'required for this calculation.')
+                if model == 'approx':
+                    ge_freq = fit_mods.Qubit_dac_to_freq(
+                        amplitude + (0 if bias is None or np.all(bias == 0) else
+                                     bias * flux_amplitude_bias_ratio), **vfc)
+                elif model == 'transmon':
+                    kw = deepcopy(vfc)
+                    kw.pop('coupling', None)
+                    kw.pop('fr', None)
+                    ge_freq = fit_mods.Qubit_dac_to_freq_precise(bias + (
+                        0 if np.all(amplitude == 0)
+                        else amplitude / flux_amplitude_bias_ratio), **kw)
+                elif model == 'transmon_res':
+                    ge_freq = fit_mods.Qubit_dac_to_freq_res(bias + (
+                        0 if np.all(amplitude == 0)
+                        else amplitude / flux_amplitude_bias_ratio), **vfc)
+                else:
+                    raise NotImplementedError(
+                        "Currently, only the models 'approx', 'transmon', and"
+                        "'transmon_res' are implemented.")
+                return ge_freq
 
         def add_fit_dict(qbH_name, qbL_name, data, key):
             """ Creates the dictionary used for fitting
@@ -11516,9 +13465,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 except KeyError:
                     raise KeyError('For old data, the device name has to be given as an input "device_name" ')
 
-            amp = self.get_hdf_param_value("Instrument settings/" + device_name,
-                                           f"{cz_name}_{qbH_name}_{qbL_name}_amplitude")
-
+            path = f"{device_name}.{cz_name}_{qbH_name}_{qbL_name}_amplitude"
+            amp = self.get_instrument_setting(path)
             qbL_tuned_freq_arr = self.calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
                 vfc=qbL_vfc, model= model, bias=qbL_bias)
@@ -11539,8 +13487,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             Delta_mod = np.delete(Delta, indices[0])
             pe = data[reduction_arr].reshape(len(Delta_mod), len(t_mod))
 
-            pe_model = lmfit.Model(population_dynamics,
-                                   independent_vars=['t', 'Delta'])
+            pe_model = lmfit.Model(pe_function, independent_vars=['t', 'Delta'])
 
             J_guess = self.get_param_value('J_guess', J_fft(t_mod, Delta_mod,
                                                             pe)[0])
@@ -11625,7 +13572,6 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 = amplitude2
 
         self.save_processed_data(key='analysis_params_dict')
-
 
     def prepare_plots(self):
         super().prepare_plots()
@@ -11733,3 +13679,432 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         The interaction time required for an arbitrary C-Phase gate for a given detuning and qubit coupling.
         """
         return n * 2 * np.pi / np.sqrt(4 * (2*np.pi*J) ** 2 + (2 * np.pi * Delta) ** 2)
+
+
+class LeakageAmplificationAnalysis(ChevronAnalysis):
+
+    def __init__(self, do_fitting=False, options_dict=None, *args, **kwargs):
+        if options_dict is None:
+            options_dict = {}
+        options_dict.setdefault('plot_raw_data', False)
+        options_dict.setdefault('plot_proj_data', False)
+        super().__init__(do_fitting=do_fitting, options_dict=options_dict,
+                         *args, **kwargs)
+
+    def prepare_plots(self):
+        super().prepare_plots()
+        self.plot_leakage_amp()
+
+    def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05,
+                         xtransform=None,
+                         draw_lower_lines=True, draw_lower_points=True,
+                         color_lower_points=True, color_max_points=True,
+                         pop_scale_right=None, pop_scale_left=None,
+                         pop_unit_right=None, pop_unit_left=None,
+                         pop_label_right=None, pop_label_left=None,
+                         right_ticks=None, right_ticks_pc=2, **kw):
+        """
+        Plots leakage amplification results (2D map, and 1D with maximum line)
+
+        Args:
+            cmap_lim: z range limit for the 2D data plot. These should be
+                chosen such that the rescaled data fit in the lower plot.
+                Default (None): chooses a small margin around the data.
+            cmap_margin (float): Margin for z range, relative to cmap_lim
+            xtransform (function): Optional x-axis transformation
+            draw_lower_points (bool): In the projected data panel (bottom),
+                whether to plot each row of data below the maximum
+            draw_lower_lines (bool): In the projected data panel (bottom),
+                whether to draw lines to connect each row of data points
+            color_lower_points (bool): If True, colours the lower points
+                according to the color bar.
+            color_max_points (bool): If True, colours the max points
+                according to the color bar.
+            pop_scale_right (float): Scaling factor for right axis
+            pop_scale_left (float): Scaling factor for left axis
+            pop_unit_right (str): Unit for right axis
+            pop_unit_left (str): Unit for left axis
+            pop_label_right (str): Right axis label (overrides pop_unit_right)
+            pop_label_left (str): Left axis label (overrides pop_unit_left)
+            right_ticks (list): Set explicit values for the right yticks. If
+                None (default), they are set to match the (automatic)
+                locations of the left axis ticks.
+            right_ticks_pc (int): Precision (digits) of the right tick labels
+            **kw (dict): Additional formatting arguments, currently 'title',
+                'cmap'.
+
+        Note: all data are handled in terms of total leakage for n gates. The y
+        label of the bottom plot shows the leakage for 1 gate.
+        The colorbar has the same limits as the ylim of the bottom panel
+        (before rescaling), such that the colorbar can serve as a second y axis.
+        """
+
+        _default_units = (1e-2, '%')
+
+        if pop_scale_right is None:
+            pop_scale_right, pop_unit_right = _default_units
+        if pop_scale_left is None:
+            pop_scale_left, pop_unit_left = _default_units
+
+        y_err_f = lambda pop, n: np.sqrt(pop * (1-pop) / n)
+
+        ts = self.timestamps[0]
+
+        for task in self.metadata['task_list']:
+            qbn = task['qbc']
+            pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
+                [:, :-3]
+            sp = SweepPoints(task['sweep_points'])
+            sp_dims = sp.length() + [self.metadata['compression_factor']]
+            acq_averages = self.get_instrument_setting(f'{qbn}.acq_averages')
+            n = task['num_cz_gates']
+
+            # Re-organise data to keep the delay as vertical axis
+            label_orthogonal = 'buffer_length_start'
+            label_orthogonal = list(task['sweep_points'][0])[0]
+            if sp.find_parameter(label_orthogonal) == 0:
+                pop = pop.T
+                sp[0], sp[1] = sp[1], sp[0]
+            labels = [list(sp[i])[0] for i in range(len(sp))]
+            coords = [sp[l] for l in labels]
+            if xtransform:
+                coords[0] = xtransform(coords[0])
+
+            # Process labels
+            nice_labels = [
+                list(sp.get_sweep_params_description(l)) + [l] for l in labels
+            ]
+            nice_labels = [
+                [l[2] if l[2] else l[3],  # param description or just param name
+                 f' ({l[1]})' if len(l[1]) else '']
+                for l in nice_labels
+            ]
+            # Adapt axis scaling/units
+            for i in range(len(labels)):
+                if nice_labels[i][1] == ' (s)':
+                    nice_labels[i][1] = ' (ns)'
+                    coords[i] = coords[i] * 1e9
+            nice_labels = [
+                label + unit
+                for label, unit in nice_labels
+            ]
+            for i, l in enumerate(labels):
+                if 'pulse_off' in l:
+                    labels[i] = 'num_cz_gates'
+                    coords[i] = sp['num_cz_gates']
+                    nice_labels[i] = 'Number of CZ gates'
+            cz_pulse_name = task.get('cz_pulse_name',
+                                     self.metadata['cz_pulse_name'])
+            title = kw.get('title', (
+                f"{ts} Leakage ampl. {qbn}{task['qbt']}\n"
+                f"{sp_dims[0]} seg. * {sp_dims[2]} hard seq. * "
+                f"{int(np.ceil(sp_dims[1] / sp_dims[2]))} soft seq.\n"
+                f"{n} {cz_pulse_name} gates, {acq_averages} avg."
+            ))
+            plot_params = self.get_default_plot_params(set_pars=False)
+            plotsize = plot_params['figure.figsize']
+            figname = f'leakage_amplification_{qbn}'
+
+            cmap = plt.colormaps.get_cmap(kw.get('cmap'))
+            if cmap_lim is None:
+                _cmap_lim = [pop.min(), pop.max()]
+                height = _cmap_lim[1]-_cmap_lim[0]
+                _cmap_lim = np.array([_cmap_lim[0]-cmap_margin*height,
+                                      _cmap_lim[1]+cmap_margin*height])
+            else:
+                _cmap_lim = np.array(cmap_lim)
+            norm = mpl.colors.Normalize(vmin=_cmap_lim[0], vmax=_cmap_lim[1])
+
+            x = coords[0]
+            y_max = np.max(pop, axis=0)
+            x_scatter = np.array([x]*len(pop)).flatten()
+            y_scatter = np.array(pop).flatten()
+            y_err = y_err_f(y_max, acq_averages)
+
+            # Create the figure + disable the top left axis
+            self.plot_dicts[figname + "_emptyaxis"] = {
+                'fig_id': figname,
+                'plotfn': None,
+                'ax_id': 0,
+                'plotsize': (plotsize[1], plotsize[0]),
+                'gridspec_kw': {'width_ratios': [1, 10], 'wspace': 0,
+                                'hspace': 0.1},
+                'numplotsx': 2,
+                'numplotsy': 2,
+                'sharex': 'col',
+                'sharey': False,
+                'set_axis_off': True,
+            }
+
+            # Plot 2D data
+            self.plot_dicts[figname + "_2D"] = {
+                'fig_id': figname,
+                'ax_id': 1,
+                'plotfn': self.plot_colorxy,
+                'xvals': coords[0],
+                'yvals': coords[1],
+                'zvals': pop/pop_scale_left,
+                'zrange': _cmap_lim/pop_scale_left,
+                'xlabel': '',
+                'xunit': '',
+                'xlabels_rotation': 0,
+                'ylabel': nice_labels[1],
+                'yunit': '',
+                'cmap': kw.get('cmap'),
+                'title': title,
+                'plotcbar': True,
+                'clabel': pop_label_left if pop_label_left else
+                          f"Total leakage, $P_N$ ({pop_unit_left})",
+                'cax_id': 2,
+                'cbar_opposite_axis': True,
+            }
+
+            key = figname + f"_1D_line"
+            if draw_lower_lines:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 3,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([x] * len(pop)),
+                    'yvals': pop / pop_scale_left,
+                    'line_kws': {'zorder': 0},
+                    'color': 'lightgray',
+                    'marker': '',
+                }
+            else:
+                # If this method got called previously in the other if branch,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            key = figname + f"_1D_scatter"
+            if draw_lower_points:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 3,
+                    'plotfn': self.plot_line,
+                    'xvals': x_scatter,
+                    'yvals': y_scatter/pop_scale_left,
+                    'color': cmap(norm(y_scatter)) if color_lower_points
+                        else 'lightgray',
+                    'scatter': True,
+                    'line_kws': {'zorder': 1},
+                    'xlabel': nice_labels[0],
+                    'ylabel': pop_label_right if pop_label_right else
+                              f"Leakage, $P_1$ ({pop_unit_right})",
+                }
+            else:
+                # If this method got called previously in the other if branch,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            self.plot_dicts[figname + f"_1D_line_max"] = {
+                'fig_id': figname,
+                'ax_id': 3,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_left,
+                'yerr': y_err/pop_scale_left,
+                'alpha': 1,
+                'line_kws': {'zorder': 2},
+                'color': 'k',
+            }
+            self.plot_dicts[figname + f"_1D_scatter_max"] = {
+                'fig_id': figname,
+                'ax_id': 3,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_left,
+                # yrange: so the plot matches the range of the left y axis
+                'yrange': _cmap_lim/pop_scale_left,
+                'alpha': 1,
+                'color': cmap(norm(y_max)) if color_max_points else 'k',
+                'scatter': True,
+                'line_kws': {'zorder': 3},
+                'opposite_axis': True,
+            }
+
+            if right_ticks is not None:
+                # Set explicit values for the right yticks, and compute their
+                # locations (corresponding to the scale of the colorbar axis)
+
+                # Conversion from 1-gate to n-gate leakage, to assign the
+                # locations of requested gate_yticks (1-gate leakage) to match
+                # the left axis (n-gate leakage)
+                if (f_1ton := kw.get('f_1ton')) is None:
+                    f_1ton = lambda p, n: np.sin(
+                        np.arcsin(np.sqrt(np.abs(p))) * n) ** 2
+                # Returns True on 1-gate leakage values for which f_1ton is
+                # injective (first period of the sin). Used to check if
+                # requested gate_yticks can be in 1-to-1 mapping with right
+                # ticks (n-gate leakage).
+                if (f_1ton_valid := kw.get('f_1ton_valid')) is None:
+                    f_1ton_valid = lambda p, n: np.abs(np.arcsin(np.sqrt(
+                        np.abs(p))) * n) <= np.pi / 2
+
+                self.plot_dicts[figname + f"_1D_scatter_max"].update({
+                    'ytick_loc': f_1ton(right_ticks, n)/pop_scale_left,
+                    'ytick_labels': [f'{p/pop_scale_right:.{right_ticks_pc}g}'
+                                     for p in right_ticks],
+                })
+                if not np.all(f_1ton_valid(right_ticks, n)):
+                    log.warning("The required single-gate leakage y axis "
+                                "ticks are bigger than the range of the main "
+                                "period for n-gate leakage. This means that "
+                                "the ticks will oscillate on the y axis.")
+            else:
+                # Fall back to using the existing yticks (as on the colorbar
+                # left axis), and format their labels
+
+                if (f_nto1 := kw.get('f_nto1')) is None:
+                    # Conversion from n-gate to 1-gate leakage, to determine
+                    # which 1-gate leakage values correspond to the n-gate
+                    # leakage ticks of the left axis
+                    f_nto1 = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(
+                        p))) / n) ** 2
+
+                def formatter(p_n, _):
+                    p_1 = f_nto1(p_n*pop_scale_left, n)/pop_scale_right
+                    return f'{p_1:.{right_ticks_pc}g}'
+                self.plot_dicts[figname + f"_1D_scatter_max"].update({
+                    'set_major_formatter': {'yaxis': formatter},
+                })
+
+            id_opt = np.argmin(y_max)
+            self.leakage_ymax = {
+                'x': coords[0],
+                'x_label': labels[0],
+                'y': y_max,
+                'yerr': y_err,
+                'n': n,
+            }
+            if labels[0] != 'num_cz_gates':
+                # opt only makes sense for an actual sweep point
+                self.leakage_ymax['x_opt'] = sp[labels[0]][id_opt]
+
+
+class SingleRowChevronAnalysis(ChevronAnalysis):
+    """Analysis for 1-dimensional Chevron QuantumExperiment
+
+    This is used for instance for the 1-D measurements performed as part of
+    CZ gate calibration
+    """
+
+    def extract_data(self):
+        # Necessary for data processing and plotting since sweep_points are 2D
+        self.default_options['TwoD'] = True
+        super().extract_data()
+
+    def prepare_projected_data_plots(self):
+        # FIXME this overrides the super method but does almost the same. One
+        #  should clean up the logic in the super to get rid of this, see below.
+        for qbn, dd in self.proc_data_dict['projected_data_dict'].items():
+            for k, v in dd.items():
+                # FIXME this plot is almost the same as in the super method,
+                #  but with plot_cal_points=True. The problem is that TwoD is
+                #  True, meaning that the super does not plot the cal points,
+                #  even though it correctly resolves that the data is really 1D.
+                self.prepare_projected_data_plot(
+                    fig_name=f'SingleRowChevron_{qbn}_{k}',
+                    data=v[0],
+                    data_axis_label=f'|{k[1:]}> state population',
+                    qb_name=qbn, TwoD=False, plot_cal_points=True,
+                )
+                # FIXME this is the same as the projected plot, just rescaled.
+                if k == 'pf':
+                    self.prepare_projected_data_plot(
+                        fig_name=f'Leakage_{qbn}',
+                        data=v[0],
+                        data_axis_label=f'|{k[1:]}> state population',
+                        qb_name=qbn, TwoD=False, plot_cal_points=True,
+                        yrange=(min(0,np.min(v[0][:-self.num_cal_points]))-0.01,
+                                max(0,np.max(v[0][:-self.num_cal_points]))+0.01)
+                    )
+
+    def get_leakage_best_val(self, qbH_name, qbL_name, minimize='auto',
+                             xtransform=None, xlabel=None, xunit=None,
+                             colors=None):
+        """Gets sweep parameter value corresponding to minimum/maximum leakage
+
+        Fits a second-order polynomial and extracts extremum qbH f population.
+        Args:
+            qbH_name, qbL_name: names of high- and low-frequency qubits
+            minimize (bool or 'auto'): Whether to explicitly look for a
+            minimum or maximum, by setting initial fit parameters to help the
+                fit converge. If minimize=='auto', this is guessed by comparing
+                the middle point to a linear fit through the end points.
+            save_fig: Whether to save the figure.
+            show_fig: Whether to show the figure.
+            fig: Optionally pass a figure on which to plot the data.
+            ax: Optional axis of fig on which to plot the data.
+            xtransform: Optional transformation to apply to sweep parameters in
+                the plot (e.g. change of units).
+            xlabel: x axis label. If None: extracted from the sweep points.
+            colors: Optionally set colours of the plot.
+        Returns:
+            Sweep parameter corresponding to the extremum of the fitted model.
+        Note that this method could be generalised to fit populations from
+            other states than the f state of the high-frequency qubit.
+        """
+
+        if colors is None:
+            colors = ['C0', 'C1']
+        data = self.proc_data_dict['projected_data_dict'][qbH_name][
+                   'pf'][0, :-3]
+        x = self.sp.get_sweep_params_property('values',
+                                              dimension=0).copy()
+        if minimize == 'auto':
+            minimize = data[len(data) // 2] < (data[0] + data[-1])/2
+        if minimize:
+            a = 100
+            c = 0
+        else:
+            a = -100
+            c = 1
+        if xtransform:
+            x = xtransform(x)
+        xlabel = xlabel or self.sp.get_sweep_params_property('label')
+        xunit = xunit or self.sp.get_sweep_params_property('unit')
+        fact = 1
+        while abs(max(x)) < 1e-3:
+            x *= 1e3
+            fact *= 1e3
+        model_func = lambda x, a, b, c: a * ((x - b) ** 2) + c
+        model = lmfit.Model(model_func)
+        self.fit_res = model.fit(data, x=x, a=a, c=c, b=np.mean(x))
+        best_val = self.fit_res.best_values['b'] / fact
+        x_resampled = np.linspace(x[0], x[-1], 100)
+        fig_title = f'Leakage_sweep_{qbH_name}_{qbL_name}'
+
+        self.plot_dicts[fig_title + '_fit'] = {
+            'fig_id': fig_title,
+            'title': fig_title,
+            'plotfn': self.plot_line,
+            'xvals': x_resampled / fact,
+            'yvals': model_func(x_resampled, **self.fit_res.best_values),
+            'xlabel': xlabel,
+            'xunit': '',
+            'ylabel': '$|2\\rangle$ state pop.',
+            'yunit': '',
+            'label': 'Fit',
+            'color': colors[1],
+            'marker': '',
+        }
+        self.plot_dicts[fig_title + '_data'] = {
+            'fig_id': fig_title,
+            'plotfn': self.plot_line,
+            'xvals': x / fact,
+            'yvals': data,
+            'label': 'Meas.',
+            'color': colors[0],
+            'linestyle': '',
+        }
+        self.plot_dicts[fig_title + '_best'] = {
+            'fig_id': fig_title,
+            'plotfn': self.plot_vlines,
+            'x': best_val,
+            'ymin': np.min(data),
+            'ymax': np.max(data),
+            'colors': 'gray',
+        }
+        return best_val
+

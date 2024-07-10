@@ -33,10 +33,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     AWG_CLASSES = [ZI_HDAWG_core]
     GRANULARITY = 16
-    ELEMENT_START_GRANULARITY = 8 / 2.4e9
-    MIN_LENGTH = 16 / 2.4e9
-    # TODO: Check if other values commented out should be removed
-    INTER_ELEMENT_DEADTIME = 8 / 2.4e9 # 80 / 2.4e9 # 0 / 2.4e9
     CHANNEL_AMPLITUDE_BOUNDS = {
         "analog": (0.01, 5.0),
         "marker": (0.01, 5.0),
@@ -45,7 +41,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         "analog": tuple(), # TODO: Check if there are indeed no bounds for the offset
         "marker": tuple(), # TODO: Check if there are indeed no bounds for the offset
     }
-    IMPLEMENTED_ACCESSORS = ["offset", "amp", "amplitude_scaling"]
+    IMPLEMENTED_ACCESSORS = ["offset", "amp", "amplitude_scaling", "delay"]
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
@@ -57,7 +53,36 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         "}}\n"
     )
 
+    @property
+    def ELEMENT_START_GRANULARITY(self):
+        """
+        Return element start granularity for the HDAWG based on current
+        sample clock rate.
+        """
+        return 8 / self.clock()
+
+    @property
+    def MIN_LENGTH(self):
+        """
+        Return element minimal length for the HDAWG based on current
+        sample clock rate.
+        """
+        return 16 / self.clock()
+
+    @property
+    def INTER_ELEMENT_DEADTIME(self):
+        """
+        Return inter element dead time for the HDAWG based on current
+        sample clock rate.
+        """
+        # Set to 0 because HDAWG supports back-to-back waveform
+        return 0
+
     def __init__(self, pulsar, awg):
+        # Store clock at init to warn users changing clocks after the init,
+        # which is currently not supported
+        self._clock_at_init = awg.clock_freq()
+
         super().__init__(pulsar, awg)
 
         # Set up multi-core compiler
@@ -102,15 +127,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         pulsar = self.pulsar
         name = self.awg.name
-
-        # Override _min_length parameter created in base class
-        # TODO: Check if this makes sense, it is a constant for the other AWGs
-        # Furthermore, it does not really make sense to manually set the minimum
-        # length which is a property of the instrument...
-        del pulsar.parameters[f"{name}_min_length"]
-        pulsar.add_parameter(f"{name}_min_length",
-                             initial_value=self.MIN_LENGTH,
-                            parameter_class=ManualParameter)
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
@@ -225,6 +241,18 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 get_cmd=self._hdawg_mod_mode_getter(awg_nr, output_nr),
                 docstring=f"Modulation mode of channel {ch_name}."
             )
+
+            # Hardware channel delay
+            pulsar.add_parameter(
+                f"{ch_name}_hw_channel_delay",
+                unit='s',
+                initial_value=0,
+                set_cmd=partial(self.awg_setter, id, "delay"),
+                get_cmd=partial(self.awg_getter, id, "delay"),
+                docstring=f"Additional delay of output waveforms on "
+                    f"channel {ch_name}, implemented on the hardware."
+            )
+
             # first channel of a pair
             if (int(id[2:]) - 1) % 2  == 0:
                 param_name = f"{ch_name}_mod_freq"
@@ -363,6 +391,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
             self.awg.set(f"awgs_{awg}_outputs_{output}_amplitude", value)
+        elif param == "delay":
+            self.awg.set(f'sigouts_{ch}_delay', value)
 
     def awg_getter(self, id:str, param:str):
 
@@ -391,6 +421,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             # ch1/ch3/... are output 0, ch2/ch4/... are output 0,
             output = (int(id[2:]) - 1) - 2 * awg
             return self.awg.get(f"awgs_{awg}_outputs_{output}_amplitude")
+        elif param == "delay":
+            return self.awg.get(f'sigouts_{ch}_delay')
 
     def _hdawg_direct_output_amp_setter(self, awg_nr):
         def s(val):
@@ -551,7 +583,24 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                     if self.awg._awg_program[awg_nr] is not None])
 
     def clock(self):
-        return self.awg.clock_freq()
+        if self.pulsar.awgs_prequeried:
+            clock = self.pulsar.clock(awg=self.awg.name)
+        else:
+            # This if-else statement is to prevent the infinite loop between
+            # this method and pulsar.clock(). If the AWG clock info is not
+            # pre-queried in pulsar, then the pulsar AWG interface will directly
+            # ask the device for the information.
+            clock = self.awg.clock_freq()
+
+        if clock != self._clock_at_init:
+            raise NotImplementedError('HDAWG8Pulsar: detected a change of ' +
+                                      'sampling rate from ' +
+                                      f'{self._clock_at_init} to {clock}. ' +
+                                      'Changing the sampling rate after ' +
+                                      'initialization is not supported. ' +
+                                      'Make sure to set the correct sampling '
+                                      'rate before initializing Pulsar.')
+        return clock
 
     def _hdawg_active_awgs(self):
         return [0,1,2,3]
@@ -851,6 +900,14 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             program_string=awg_str,
             timeout=600
         )
+
+    def _save_awg_str(
+            self,
+            awg_str,
+    ):
+        if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
+            self._awg.store_awg_source_string(self._awg_nr, awg_str)
+            # otherwise, configure_awg_from_string stores it automatically
 
     def _generate_command_table_entry(
             self,

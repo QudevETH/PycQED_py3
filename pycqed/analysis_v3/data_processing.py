@@ -385,6 +385,8 @@ def average_data(data_dict, keys_in, keys_out=None, **params):
     :param params: keyword arguments.:
         - shape (tuple of ints): shape into which to reshape array before
             averaging
+        - order (str, optional): {'C', 'F', 'A'}, see np documentation of
+            reshape. Used when reshaping the input data before averaging.
         - averaging_axis (int): axis along which to average
         - final_shape (tuple of ints): shape into which to cast the array after
             averaging
@@ -398,6 +400,7 @@ def average_data(data_dict, keys_in, keys_out=None, **params):
     if keys_out is None:
         keys_out = [f'average_data.{k}' for k in keys_in]
     shape = hlp_mod.get_param('shape', data_dict, **params)
+    order = hlp_mod.get_param('order', data_dict, default_value='C', **params)
     final_shape = hlp_mod.get_param('final_shape', data_dict, **params)
     averaging_axis = hlp_mod.get_param('averaging_axis', data_dict,
                                        default_value=-1, **params)
@@ -411,7 +414,7 @@ def average_data(data_dict, keys_in, keys_out=None, **params):
                              f'data from ch {keyi} with length '
                              f'{len(data_to_proc_dict[keyi])}.')
         data_to_avg = data_to_proc_dict[keyi] if shape is None else \
-            np.reshape(data_to_proc_dict[keyi], shape)
+            np.reshape(data_to_proc_dict[keyi], shape, order)
         avg_data = np.mean(data_to_avg, axis=averaging_axis)
         if final_shape is not None:
             avg_data = np.reshape(avg_data, final_shape)
@@ -1173,7 +1176,8 @@ def calculate_meas_ops_and_covariations_cal_points(
     meas_obj_names = hlp_mod.get_measurement_properties(
         data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
         **params)
-    prep_params = hlp_mod.get_param('preparation_params', data_dict, **params)
+
+    prep_params = hlp_mod.get_preparation_parameters(data_dict, **params)
 
     try:
         preselection_obs_idx = list(observables.keys()).index('pre')

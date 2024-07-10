@@ -3,6 +3,8 @@ import matplotlib
 from pycqed.gui import qt_compat as qt
 from matplotlib.backend_bases import MouseButton
 import matplotlib.pyplot as plt
+
+from pycqed.gui.gui_utilities import TriggerResizeEventMixin, reinitialize_toolbar
 from pycqed.measurement.waveform_control.pulsar import Pulsar
 from pycqed.gui import rc_params as gui_rc_params
 from pycqed.gui.qt_widgets.checkable_combo_box import CheckableComboBox
@@ -184,7 +186,7 @@ class WaveformViewer:
             self.app.exec_()
 
 
-class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
+class WaveformViewerMainWindow(TriggerResizeEventMixin, qt.QtWidgets.QWidget):
     """
     Main window of the waveform viewer GUI.
     """
@@ -445,7 +447,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             plt.close(oldfig)
             self.view.draw()
             self.cid_bpe = self.view.mpl_connect('pick_event', self.on_pick)
-            self._reinitialize_toolbar()
+            reinitialize_toolbar(self.toolbar)
 
             self.setWindowTitle(self._get_window_title_string())
             self._trigger_resize_event()
@@ -487,31 +489,10 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.selectbox_instruments.updateText()
         self.selectbox_instruments.blockSignals(False)
 
-    def _reinitialize_toolbar(self):
-        # upon changing the figure associated to the FigureCanvasQTAgg
-        # instance self.view, the zoom and pan tools of the toolbar can't be
-        # used to manipulate the figure unless the corresponding callback
-        # methods are reinitialized. Reinitialization of callback methods
-        # corresponds to the __init__ method of the FigureCanvasQTAgg class.
-        self.toolbar._id_press = self.toolbar.canvas.mpl_connect(
-            'button_press_event', self.toolbar._zoom_pan_handler)
-        self.toolbar._id_release = self.toolbar.canvas.mpl_connect(
-            'button_release_event', self.toolbar._zoom_pan_handler)
-        self.toolbar._id_drag = self.toolbar.canvas.mpl_connect(
-            'motion_notify_event', self.toolbar.mouse_move)
-        self.toolbar._pan_info = None
-        self.toolbar._zoom_info = None
-        self.toolbar.update()
 
     def _get_window_title_string(self):
         return self.experiment_name
 
-    def _trigger_resize_event(self):
-        # ugly hack to trigger a resize event (otherwise the figure in the
-        # canvas is not displayed properly)
-        size = self.size()
-        self.resize(self.width() + 1, self.height())
-        self.resize(size)
 
     def get_experiment_plot(self):
         """

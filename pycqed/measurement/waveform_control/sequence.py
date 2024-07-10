@@ -7,7 +7,7 @@
 import numpy as np
 import pycqed.measurement.waveform_control.pulsar as ps
 from collections import OrderedDict as odict
-from copy import deepcopy
+from copy import deepcopy, copy
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -77,7 +77,8 @@ class Sequence:
     def generate_waveforms_sequences(self, awgs=None,
                                      get_channel_hashes=False,
                                      resolve_segments=None,
-                                     trigger_groups=None):
+                                     trigger_groups=None,
+                                     awg_sequences=None):
         """
         Calculates and returns 
             * waveforms: a dictionary of waveforms used in the sequence,
@@ -95,6 +96,10 @@ class Sequence:
             sequence still need to be resolved. If not provided,
             self.is_resolved is checked to determine whether segments
             need to be resolved.
+        :param awg_sequences: (dict, optional) Sequences, as previously
+            returned by this method. Can be used for caching in case this
+            method is called multiple times. If provided, it is assumed that
+            this dict is complete (no error handling in case keys are missing).
         :return: a tuple of waveforms, sequences as described above if
             get_channel_hashes==False. Otherwise, a tuple channel_hashes,
             sequences.
@@ -145,7 +150,13 @@ class Sequence:
                 # Take element metadata from the resolved segments.
                 element_metadata = seg.element_metadata
                 elnames = seg.elements_on_awg.get(group, [])
-                for elname in elnames:
+                # Determine when each element starts in the current group
+                el_start_times = {
+                    elname: seg.element_start_length(elname, group)[0]
+                    for elname in elnames}
+                # Loop through elements in the order of their start time
+                for i in np.argsort(list(el_start_times.values())):
+                    elname = elnames[i]
                     # uelname = element name unique within the AWG
                     # If elements are shared between trigger groups of an AWG,
                     # this ensures that the following logic correctly orders
@@ -158,8 +169,11 @@ class Sequence:
                         sequences[awg][uelname].setdefault(cw, {})
                         for ch in seg.get_element_channels(elname,
                                                            trigger_group=group):
-                            h = seg.calculate_hash(elname, cw, ch)
                             chid = self.pulsar.get(f'{ch}_id')
+                            if awg_sequences:
+                                h = awg_sequences[awg][uelname][cw][chid]
+                            else:
+                                h = seg.calculate_hash(elname, cw, ch)
                             sequences[awg][uelname][cw][chid] = h
                             if get_channel_hashes:
                                 if ch not in channel_hashes:
@@ -222,6 +236,8 @@ class Sequence:
         :param awgs: a list of AWG names. If None, lengths will be harmonized
             for all AWGs.
         """
+        # Setting the property will prequery all AWG clock and amplitudes
+        sequences[0].pulsar.awgs_prequeried = True
         seq_groups = []
         if awgs is None:
             awgs = sequences[0].pulsar.awgs
@@ -258,6 +274,7 @@ class Sequence:
                 seg._test_overlap()
             # mark sequence as resolved
             seq.is_resolved = True
+        sequences[0].pulsar.awgs_prequeried = False
 
     def harmonize_amplitude(self, awg):
         """Rescale waveform amplitudes such that the largest pulse amplitude
@@ -517,7 +534,7 @@ class Sequence:
         elif len(sequences) == 1:
             # special case, return current sequence:
             return sequences
-        sequences = [deepcopy(s) for s in sequences]
+        sequences = [copy(s) for s in sequences]
         merged_seqs = [sequences[0]]
         if segment_limit is None:
             segment_limit = np.inf

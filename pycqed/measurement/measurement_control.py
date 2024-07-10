@@ -14,10 +14,14 @@ import numbers
 from scipy.optimize import fmin_powell
 
 import pycqed.version
-from pycqed.measurement import hdf5_data as h5d
 from pycqed.utilities import general
+from pycqed.utilities.io import hdf5 as h5d
 from pycqed.utilities.general import dict_to_ordered_tuples
 from pycqed.utilities.get_default_datadir import get_default_datadir
+
+# used for saving instrument settings
+from pycqed.instrument_drivers import instrument as pycqedins
+
 
 # used for axis labels
 from pycqed.measurement import sweep_points as sp_mod
@@ -25,6 +29,7 @@ from pycqed.measurement.calibration import calibration_points as cp_mod
 
 # Used for auto qcodes parameter wrapping
 from pycqed.measurement import sweep_functions as swf
+from pycqed.measurement import awg_sweep_functions as awg_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_det
 from pycqed.analysis.tools.data_manipulation import get_generation_means
@@ -84,6 +89,19 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
+        self.add_parameter('cyclic_soft_avg',
+                           label='Cyclic soft averaging',
+                           docstring='If set to True, soft averaging is '
+                                     'performed cyclically over the soft '
+                                     'sweep points. Consecutive soft '
+                                     'averaging currently only works if the '
+                                     'sweep in dim 0 is a hard sweep. '
+                                     'Otherwise it falls  back to measuring '
+                                     'cyclically in dim 1.'
+                                     'Default: True',
+                           parameter_class=ManualParameter,
+                           vals=vals.Bool(),
+                           initial_value=True)
         self.add_parameter('soft_repetitions',
                            label='Number of soft repetitions',
                            docstring='Repeat hard measurements multiple '
@@ -96,6 +114,16 @@ class MeasurementControl(Instrument):
                            parameter_class=ManualParameter,
                            vals=vals.Ints(1, int(1e8)),
                            initial_value=1)
+        self.add_parameter('program_only_on_change',
+                           label='Program AWGs only on change',
+                           docstring='Programs AWGs only if the soft sweep '
+                                     'parameters changed from the last '
+                                     'iteration. This speeds up measurements '
+                                     'e.g. when soft averaging with '
+                                     'cyclic_soft_avg = False.',
+                           parameter_class=ManualParameter,
+                           vals=vals.Bool(),
+                           initial_value=False)
 
         self.add_parameter('plotting_max_pts',
                            label='Maximum number of live plotting points',
@@ -129,10 +157,12 @@ class MeasurementControl(Instrument):
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
                            initial_value=False)
-        self.add_parameter('clean_interrupt',
-                           vals=vals.Bool(),
-                           parameter_class=ManualParameter,
-                           initial_value=False)
+        self.add_parameter(
+            'clean_interrupt', docstring=
+            'Whether data that has already been received from acquisition '
+            'instruments should be stored in case of a KeyboardInterrupt.',
+            vals=vals.Bool(), parameter_class=ManualParameter,
+            initial_value=True)
         self.add_parameter('compress_dataset',
                            vals=vals.Bool(),
                            parameter_class=ManualParameter,
@@ -178,6 +208,29 @@ class MeasurementControl(Instrument):
                            initial_value=None,
                            vals=vals.Strings())
 
+        self.add_parameter(
+            'settings_file_format',
+            docstring='File format of the file which contains the instrument'
+                      'settings.',
+            initial_value='hdf5',
+            vals=vals.Enum('hdf5', 'pickle', 'msgpack'),
+            parameter_class=ManualParameter)
+
+        self.add_parameter(
+            'settings_file_compression',
+            vals=vals.Bool(),
+            docstring='True if file should be compressed with blosc2. '
+                      'Does not support hdf5 files.',
+            initial_value=True,
+            parameter_class=ManualParameter
+        )
+
+        self.add_parameter('last_timestamp',
+                           initial_value=None,
+                           docstring='Timestamp of MC in the format '
+                                     '%Y%m%d_%H%M%S.',
+                           parameter_class=ManualParameter)
+
         # pyqtgraph plotting process is reused for different measurements.
         if self.live_plot_enabled():
             self.open_plotmon_windows()
@@ -202,6 +255,12 @@ class MeasurementControl(Instrument):
 
         self.parameter_checks = {}
 
+        # We initiallize the adaptive_function parameters
+        self.af_pars = {}
+        self.data_processing_function = self._default_data_processing_function
+        """Data processing function for adaptive measurements, see docstring
+        of _default_data_processing_function."""
+
     ##############################################
     # Functions used to control the measurements #
     ##############################################
@@ -210,15 +269,21 @@ class MeasurementControl(Instrument):
         '''
         Saves a snapshot of the current instrument settings without carrying
         out a measurement.
+        File format is taken from parameter "settings_file_format".
 
         :param label: (optional str) a label to be used in the filename
             (will be appended to the default label Instrument_settings)
         '''
         label = '' if label is None else '_' + label
         self.set_measurement_name('Instrument_settings' + label)
-        with h5d.Data(name=self.get_measurement_name(),
-                      datadir=self.datadir()) as self.data_object:
-            self.save_instrument_settings(self.data_object)
+        self.last_timestamp(self.get_datetimestamp())
+        if self.settings_file_format() == 'hdf5':
+            with h5d.Data(name=self.get_measurement_name(),
+                          datadir=self.datadir(),
+                          timestamp=self.last_timestamp()) as self.data_object:
+                self.save_instrument_settings(self.data_object)
+        else:
+            self.save_instrument_settings()
 
     def update_sweep_points(self):
         sweep_points = self.get_sweep_points()
@@ -229,7 +294,7 @@ class MeasurementControl(Instrument):
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
-            previous_attempts=0, **kw):
+            previous_attempts=0, store_sweep_indices=False, **kw):
         '''
         Core of the Measurement control.
 
@@ -256,6 +321,8 @@ class MeasurementControl(Instrument):
                     has already been tried. This is usually not passed by
                     the calling function, but only used by run() when it
                     calls itself recursively.
+            store_sweep_indices (bool): If True, when storing the data the
+                iteration indices are prepended instead of the sweep points.
         '''
 
         def try_finish():
@@ -274,6 +341,8 @@ class MeasurementControl(Instrument):
         self.print_measurement_start_msg()
 
         self.mode = mode
+        # When storing the data, prepend indices instead of the full sweep pts
+        self.store_sweep_indices = store_sweep_indices
         # used in determining data writing indices (deprecated?)
         self.iteration = 0
 
@@ -301,8 +370,11 @@ class MeasurementControl(Instrument):
         if self.skip_measurement():
             return return_dict
 
+        self.last_timestamp(self.get_datetimestamp())
         with h5d.Data(name=self.get_measurement_name(),
-                      datadir=self.datadir()) as self.data_object:
+                      datadir=self.datadir(),
+                      timestamp=self.last_timestamp()) \
+                as self.data_object:
             if exp_metadata is not None:
                 self.exp_metadata = deepcopy(exp_metadata)
             else:
@@ -310,6 +382,8 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
+            self.exp_metadata['sweep_control'] = [
+                s.sweep_control for s in getattr(self, 'sweep_functions', [])]
             self.save_exp_metadata(self.exp_metadata)
             exception = None
             try:
@@ -406,8 +480,9 @@ class MeasurementControl(Instrument):
             sweep_function.prepare()
         self.timer.checkpoint("MeasurementControl.measure.prepare.end")
 
-        if (self.sweep_functions[0].sweep_control == 'soft' and
-                self.detector_function.detector_control == 'soft'):
+        if self.sweep_functions[0].sweep_control == 'soft':
+            # Note that we allow the combination of soft sweep and hard
+            # detector (e.g., SSRO in soft sweep)
             self.detector_function.prepare()
             self.get_measurement_preparetime()
             self.measure_soft_static()
@@ -415,6 +490,7 @@ class MeasurementControl(Instrument):
         elif self.detector_function.detector_control == 'hard':
             self.get_measurement_preparetime()
             sweep_points = self.get_sweep_points()
+            last_val = {}
 
             while self.get_percdone() < 100:
                 start_idx = self.get_datawriting_start_idx()
@@ -428,6 +504,10 @@ class MeasurementControl(Instrument):
                     for i, sweep_function in enumerate(self.sweep_functions):
                         swf_sweep_points = sweep_points[:, i]
                         val = swf_sweep_points[start_idx]
+                        if self.program_only_on_change() and \
+                                last_val.get(i) == val:
+                            continue
+                        last_val[i] = val
                         # prepare in 2D sweeps is done in set_parameters (though not always
                         # for first upload). Therefore, a common checkpoint is used
                         # in the timer to collect upload times in a single place
@@ -449,8 +529,7 @@ class MeasurementControl(Instrument):
                     self.detector_function.prepare(sweep_points=sp)
                     self.measure_hard(filtered_sweep)
         else:
-            raise Exception('Sweep and Detector functions not '
-                            + 'of the same type. \nAborting measurement')
+            raise Exception('Hard sweep with soft detector not allowed.')
 
         self.check_keyboard_interrupt()
         self.update_instrument_monitor()
@@ -472,28 +551,69 @@ class MeasurementControl(Instrument):
     def measure_soft_static(self):
         for j in range(self.soft_avg()):
             self.soft_iteration = j
-            for i, sweep_point in enumerate(self.sweep_points):
+            sp = self.sweep_points
+            if self.detector_function.detector_control == 'hard':
+                # sp have been tiled for points*shots, but for a soft sweep
+                # with hard detector, we have to undo this because the soft
+                # sweep function needs each point only once even if
+                # multiple shots are returned by the hard detector.
+                sp = sp[0:len(sp) // self.acq_data_len_scaling]
+            for i, sweep_point in enumerate(sp):
                 self.measurement_function(sweep_point, index=i)
 
+    @Timer()
     def measure_soft_adaptive(self, method=None):
         '''
         Uses the adaptive function and keywords for that function as
         specified in self.af_pars()
+
+        FIXME this method is used in a very convoluted way:
+         - the user passes an adaptive_function, which is the optimiser and
+           itself expects a function returning data as its argument
+         - the user passes data_processing_function, which is an analysis
+         - measure_soft_adaptive calls the adaptive_function, passing
+           optimization_function to it
+         - optimization_function calls measurement_function (which calls
+           the detectors), and data_processing_function, and returns values
+         - adaptive_function gets the values, takes a decision, and returns
+           an optimal (set of) sweep point(s)
+         One possible cleaner way could be:
+         - measure_soft_adaptive calls the adaptive_function, passing
+           measurement_function to it
+         - data_processing_function is part of the adaptive_function and
+           just called by it
+         - adaptive_function finally takes the decisions, and returns
+           optimal sweep point(s)
+         In addition, one could replace the adaptive_function by a base
+         class, including a data_processing_function analysis and an
+         optimisation method (defaulting to doing a min/max optimisation as
+         currently in optimization_function).
         '''
         self.save_optimization_settings()
         self.adaptive_function = self.af_pars.pop('adaptive_function')
+        self.data_processing_function = self.af_pars.pop(
+            'data_processing_function', self._default_data_processing_function)
         if self._live_plot_enabled():
             self.initialize_plot_monitor()
             self.initialize_plot_monitor_adaptive()
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.prepare.start")
         for sweep_function in self.sweep_functions:
             sweep_function.prepare()
-        self.detector_function.prepare()
+        if self.detector_function.detector_control != 'hard':
+            # A hard detector requires sweep points, these will only be
+            # generated later in measurement_function, which then takes care of
+            # calling self.detector_function.prepare(sp).
+            self.detector_function.prepare()
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.prepare.end")
         self.get_measurement_preparetime()
 
         if self.adaptive_function == 'Powell':
             self.adaptive_function = fmin_powell
-        if (isinstance(self.adaptive_function, types.FunctionType) or
-                isinstance(self.adaptive_function, np.ufunc)):
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.adaptive_function.start")
+        if callable(self.adaptive_function):
             try:
                 # exists so it is possible to extract the result
                 # of an optimization post experiment
@@ -505,6 +625,8 @@ class MeasurementControl(Instrument):
         else:
             raise Exception('optimization function: "%s" not recognized'
                             % self.adaptive_function)
+        self.timer.checkpoint(
+            "MeasurementControl.measure_soft_adaptive.adaptive_function.end")
         self.save_optimization_results(self.adaptive_function,
                                        result=self.adaptive_result)
 
@@ -525,12 +647,16 @@ class MeasurementControl(Instrument):
             ones will be skipped (False). Default: None, in which case all
             acquisition elements will be played.
         """
+        if self.store_sweep_indices:
+            raise NotImplementedError("store_sweep_indices not yet "
+                                      "implemented for hard sweeps!")
         n_acquired = 0
         for i_rep in range(self.soft_repetitions()):
             # Tell the detector_function to call print_progress for intermediate
             # progress reports during get_detector_function.values.
             self.detector_function.progress_callback = (
                 lambda x, n=n_acquired: self.print_progress(x + n))
+            # Transpose because detectors return [len(value_names), num_points]
             this_new_data = np.array(self.detector_function.get_values()).T
             n_acquired += this_new_data.shape[0]
             new_data = this_new_data if i_rep == 0 else np.concatenate(
@@ -563,19 +689,19 @@ class MeasurementControl(Instrument):
         len_new_data = stop_idx-start_idx
         if len(np.shape(new_data)) == 1:
             old_vals = self.dset[start_idx:stop_idx,
-                                 len(self.sweep_functions)]
+                                 self._get_nr_sweep_point_columns()]
             new_vals = ((new_data + old_vals*self.soft_iteration) /
                         (1+self.soft_iteration))
 
             self.dset[start_idx:stop_idx,
-                      len(self.sweep_functions)] = new_vals
+                      self._get_nr_sweep_point_columns()] = new_vals
         else:
             old_vals = self.dset[start_idx:stop_idx,
-                                 len(self.sweep_functions):]
+                                 self._get_nr_sweep_point_columns():]
             new_vals = ((new_data + old_vals * self.soft_iteration) /
                         (1 + self.soft_iteration))
             self.dset[start_idx:stop_idx,
-                      len(self.sweep_functions):] = new_vals
+                      self._get_nr_sweep_point_columns():] = new_vals
         sweep_len = len(self.get_sweep_points().T) * self.acq_data_len_scaling
 
 
@@ -588,11 +714,11 @@ class MeasurementControl(Instrument):
             try:
                 if len(self.sweep_functions) != 1:
                     relevant_swp_points = self.get_sweep_points()[
-                        start_idx:start_idx+len_new_data:]
-                    self.dset[start_idx:, 0:len(self.sweep_functions)] = \
+                        start_idx:stop_idx]
+                    self.dset[start_idx:stop_idx, 0:len(self.sweep_functions)] = \
                         relevant_swp_points
                 else:
-                    self.dset[start_idx:, 0] = self.get_sweep_points()[
+                    self.dset[start_idx:stop_idx, 0] = self.get_sweep_points()[
                         start_idx:start_idx+len_new_data:].T
             except Exception:
                 # There are some cases where the sweep points are not
@@ -612,13 +738,21 @@ class MeasurementControl(Instrument):
         self.print_progress()
         return new_data
 
+    @Timer()
     def measurement_function(self, x, index=None):
         '''
         Core measurement function used for soft sweeps
+
+        FIXME: not tested for len(self.sweep_functions) > 2
         '''
-        if np.size(x) == 1:
+        if np.isscalar(x):
             x = [x]
-        if np.size(x) != len(self.sweep_functions):
+        # The len()==1 condition is a consistency check because batch_mode
+        # is currently only implemented for the case of a single sweep
+        # function (e.g., break in the if statement inside the for loop)
+        batch_mode = (len(self.sweep_functions) == 1 and
+                      self.sweep_functions[0].supports_batch_mode)
+        if np.size(x) != len(self.sweep_functions) and not batch_mode:
             raise ValueError(
                 'size of x "%s" not equal to # sweep functions' % x)
         # The following will be set to True (in the second-last iteration,
@@ -626,6 +760,27 @@ class MeasurementControl(Instrument):
         # last iteration, sweep dimension 0) in a filtered sweep.
         filter_out = False
         for i, sweep_function in enumerate(self.sweep_functions[::-1]):
+            if batch_mode:
+                # Here, x corresponds to a tuple of circuit parameters or a
+                # list of tuples of circuit parameters, see
+                # `BlockSoftHardSweep` for details.
+                x = np.atleast_2d(x)
+                self.timer.checkpoint(
+                    "MeasurementControl.measurement_function.set_parameter"
+                    ".start")
+                sweep_function.set_parameter(x)
+                self.timer.checkpoint(
+                    "MeasurementControl.measurement_function.set_parameter"
+                    ".end")
+                # Detector functions assume to receive the sweep points
+                # tiled, according to the number in acq_data_len_scaling.
+                # Example SSRO: acq_data_len_scaling equals the number of
+                # shots and prepare will get a sweep point for each shot of
+                # each segment, see IntegratingAveragingPollDetector.prepare.
+                self.detector_function.prepare(np.tile(
+                    np.zeros(sweep_function.sequence.n_acq_elements()),
+                    self.acq_data_len_scaling))
+                break
             # If statement below tests if the value is different from the
             # last value that was set, if it is the same the sweep function
             # will not be called. This is important when setting a parameter
@@ -676,7 +831,7 @@ class MeasurementControl(Instrument):
                     # set filter_out to True if filtered_sweep indicates
                     # that the point can be skipped
                     filter_out = (xindex < len(fsw) and not fsw[xindex])
-        
+
         # used for next iteration
         if filter_out and self.iteration > 0:
             # do not update dimension 0 if the sweep point was not set above
@@ -686,17 +841,35 @@ class MeasurementControl(Instrument):
         datasetshape = self.dset.shape
         # self.iteration = datasetshape[0] + 1
 
+        # vals.shape = [num_points, len(value_names)]
         if filter_out:
-            vals = np.ones(len(self.detector_function.value_names)) * np.nan
+            vals = np.ones((1, len(self.detector_function.value_names)))*np.nan
         else:
-            vals = self.detector_function.acquire_data_point()
+            # Transpose since detectors return [len(value_names), num_points],
+            # to get shape [num_points, len(value_names)]
+            # TODO confirm that all det.acquire_data_point can be deleted,
+            #  see comment in Multi_Detector.acquire_data_point
+            vals = np.array(self.detector_function.get_values()).T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
-        new_data = np.append(x, vals)
+        if self.store_sweep_indices:
+            x = self.iteration
+        # Because x is allowed to be a list of tuples (batch sampling),
+        # and the detector function may return 1D values, we unify their
+        # format before we can save them to the dset.
+        x = np.atleast_2d(x)
+        vals = np.atleast_2d(vals)
+        # Concatenates the sweep points x with the data vals,
+        # by prepending x as columns. If vals has more rows than x,
+        # x is repeated vertically.
+        new_data = np.concatenate(
+            (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
+            axis=-1
+        )
 
         old_vals = self.dset[start_idx:stop_idx, :]
         new_vals = ((new_data + old_vals*self.soft_iteration) /
@@ -716,6 +889,29 @@ class MeasurementControl(Instrument):
             self.print_progress()
         return vals
 
+    @staticmethod
+    def _default_data_processing_function(vals, dset):
+        """Default data processing function for adaptive measurements.
+
+        This is used in optimization_function (mode = adaptive) if no
+        custom function is provided via af_pars['data_processing_function'].
+
+        The default processing takes the first column if the data has two
+        columns. A potential use case of this is for data consisting of
+        magnitude and phase. In case of a single data column, the default
+        processing is an identity operation.
+
+        Args:
+            vals (array): Array with the output of measurement_function.
+            dset (array): The data set self.dset will be passed here. Not
+                used in the default processing, but included as an argument
+                to allow custom data processing functions to access the dset.
+        """
+        if len(np.shape(vals)) == 2:
+            vals = np.array(vals)[:, 0]
+        return vals
+
+    @Timer()
     def optimization_function(self, x):
         '''
         A wrapper around the measurement function.
@@ -734,18 +930,17 @@ class MeasurementControl(Instrument):
                 x[i] = float(x[i])/float(self.x_scale[i])
 
         vals = self.measurement_function(x)
-        # This takes care of data that comes from a "single" segment of a
-        # detector for a larger shape such as the UFHQC single int avg detector
-        # that gives back data in the shape [[I_val_seg0, Q_val_seg0]]
-        if len(np.shape(vals)) == 2:
-            vals = np.array(vals)[:, 0]
+        self.timer.checkpoint(
+            "MeasurementControl.data_processing_function.start")
+        vals = self.data_processing_function(vals, self.dset)
+        self.timer.checkpoint(
+            "MeasurementControl.data_processing_function.end")
         if self.minimize_optimization:
             if (self.f_termination is not None):
                 if (vals < self.f_termination):
                     raise StopIteration()
         else:
-            vals = self.measurement_function(x)
-            # when maximizing interrupt when larger than condition before
+            # when maximizing, interrupt when larger than condition before
             # inverting
             if (self.f_termination is not None):
                 if (vals > self.f_termination):
@@ -754,7 +949,7 @@ class MeasurementControl(Instrument):
 
         # to check if vals is an array with multiple values
         if hasattr(vals, '__iter__'):
-            if len(vals) > 1:
+            if len(vals) > 1 and self.par_idx is not None:
                 vals = vals[self.par_idx]
 
         return vals
@@ -1624,8 +1819,11 @@ class MeasurementControl(Instrument):
         '''
         try:
             if self._live_plot_enabled() and self.live_plot_2D_update() != 'off':
-                i = int((self.iteration) % self.ylen)
-                y_ind = i
+                if self.cyclic_soft_avg():
+                    i = int(self.iteration % self.ylen)
+                else:
+                    i = int(self.iteration // self.soft_avg())
+
                 cf = self.exp_metadata.get('compression_factor', 1)
                 data = self.detector_function.live_plot_transform(
                     self.dset[i * self.xlen:(i + 1) * self.xlen,
@@ -1639,14 +1837,14 @@ class MeasurementControl(Instrument):
                         y_end = y_start + cf
                         self.TwoD_array[y_start:y_end, :, j] = data_reshaped
                     else:
-                        self.TwoD_array[y_ind, :, j] = data_row
+                        self.TwoD_array[i, :, j] = data_row
                     self.secondary_QtPlot.traces[j]['config']['z'] = \
                         self.TwoD_array[:, :, j]
-
+                is_last_it = self.iteration + 1 == \
+                             (len(self.get_sweep_points()) * self.soft_avg()) \
+                             // self.xlen
                 if (time.time() - self.time_last_2Dplot_update >
-                        self.plotting_interval()
-                        or self.iteration + 1 == len(
-                            self.sweep_points) / self.xlen):
+                        self.plotting_interval() or is_last_it):
                     self.time_last_2Dplot_update = time.time()
                     self.secondary_QtPlot.update_plot()
         except Exception as e:
@@ -1720,12 +1918,19 @@ class MeasurementControl(Instrument):
             kwargs.update({'compression': "gzip", 'compression_opts': 9})
         return kwargs
 
+    def _get_nr_sweep_point_columns(self):
+        if self.store_sweep_indices:
+            return 1
+        else:
+            return np.sum([sweep_function.get_nr_parameters() \
+                for sweep_function in self.sweep_functions])
+
     def create_experimentaldata_dataset(self):
         data_group = self._get_experimentaldata_group()
         self.dset = data_group.create_dataset(
-            'Data', (0, len(self.sweep_functions) +
+            'Data', (0, self._get_nr_sweep_point_columns() +
                      len(self.detector_function.value_names)),
-            maxshape=(None, len(self.sweep_functions) +
+            maxshape=(None, self._get_nr_sweep_point_columns() +
                       len(self.detector_function.value_names)),
             dtype='float64', **self._get_create_dataset_kwargs())
         self.get_column_names()
@@ -1889,41 +2094,92 @@ class MeasurementControl(Instrument):
             res_dict = {'opt':  result}
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
-    def save_instrument_settings(self, data_object=None, *args):
+    def save_instrument_settings(self, data_object=None, mode='xb', *args):
         '''
         uses QCodes station snapshot to save the last known value of any
         parameter. Only saves the value and not the update time (which is
         known in the snapshot)
+        File format in which the snapshot is saved is specified in parameter
+        'settings_file_format'.
+        mode: define which mode you want to open the file in.
+            Default 'xb' creates the file and returns error if file exist
+            'wb' to overwrite existing file
         '''
 
-        import numpy
-        import sys
-        opt = numpy.get_printoptions()
-        numpy.set_printoptions(threshold=sys.maxsize)
+        if self.settings_file_format() == 'hdf5':
+            def save_settings_in_hdf(data_object):
+                if not hasattr(self, 'station'):
+                    log.warning('No station object specified, could not save '
+                                'instrument settings')
+                else:
+                    # # This saves the snapshot of the entire setup
+                    # snap_grp = data_object.create_group('Snapshot')
+                    # snap = self.station.snapshot()
+                    # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
 
-        if data_object is None:
-            data_object = self.data_object
-        if not hasattr(self, 'station'):
-            log.warning('No station object specified, could not save '
-                        'instrument settings')
+                    # Below is old style saving of snapshot, exists for the sake of
+                    # preserving deprecated functionality. Here only the values
+                    # of the parameters are saved.
+                    set_grp = data_object.create_group('Instrument settings')
+                    inslist = dict_to_ordered_tuples(self.station.components)
+                    for (iname, ins) in inslist:
+                        instrument_grp = set_grp.create_group(iname)
+                        inst_snapshot = ins.snapshot()
+                        self.store_snapshot_parameters(inst_snapshot,
+                                                       entry_point=instrument_grp,
+                                                       instrument=ins)
+                numpy.set_printoptions(**opt)
+            import numpy
+            import sys
+            opt = numpy.get_printoptions()
+            numpy.set_printoptions(threshold=sys.maxsize)
+            if data_object is None:
+                data_object = self.data_object
+            # checks if data object is closed and opens it if necessary in ,
+            # a context manager, such that it is closed after save method.
+            if not data_object.__bool__():
+                with h5d.Data(name=self.get_measurement_name(),
+                  datadir=self.datadir(),
+                  timestamp=self.last_timestamp(),
+                                       auto_increase=False) as data_object:
+                    save_settings_in_hdf(data_object)
+            else:
+                # hdf file was already opened and does not need to be
+                # closed at the end, because save_instrument_settings was
+                # called inside a context manager and may be used
+                # after calling save_instrument_settings (e.g. MC.run())
+                save_settings_in_hdf(data_object)
+
         else:
-            # # This saves the snapshot of the entire setup
-            # snap_grp = data_object.create_group('Snapshot')
-            # snap = self.station.snapshot()
-            # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
+            if self.settings_file_format() == 'msgpack':
+                from pycqed.utilities.io.msgpack import MsgDumper as Dumper
+            elif self.settings_file_format() == 'pickle':
+                from pycqed.utilities.io.pickle import PickleDumper as Dumper
+            else:
+                raise NotImplementedError(
+                    f"Format '{self.settings_file_format()}' not known.")
 
-            # Below is old style saving of snapshot, exists for the sake of
-            # preserving deprecated functionality. Here only the values
-            # of the parameters are saved.
-            set_grp = data_object.create_group('Instrument settings')
-            inslist = dict_to_ordered_tuples(self.station.components)
-            for (iname, ins) in inslist:
-                instrument_grp = set_grp.create_group(iname)
-                inst_snapshot = ins.snapshot()
-                self.store_snapshot_parameters(inst_snapshot,
-                                               entry_point=instrument_grp,
-                                               instrument=ins)
-        numpy.set_printoptions(**opt)
+            snapshot = self.station.snapshot()
+
+            # QCodes uses two containers for the snapshots of station.components
+            # objects if called via station.snapshot: 'instruments' if the
+            # object is an qcodes instrument else 'components'
+            # E.g. remote instruments are not recognized as qcodes instruments and
+            # must therefore be moved to staion['instruments'] by hand.
+            # These kind of 'special' instruments all inherit from
+            # pycqedins.FurtherInstrumentsDictMixIn.
+            for k in list(snapshot['components'].keys()):
+                if isinstance(self.station.components[k],
+                              pycqedins.FurtherInstrumentsDictMixIn):
+                    snapshot['instruments'][k] = snapshot['components'].pop(k)
+
+            dumper = Dumper(name=self.get_measurement_name(),
+                            datadir=self.datadir(),
+                            data=snapshot,
+                            compression=self.settings_file_compression(),
+                            timestamp=self.last_timestamp())
+            dumper.dump(mode=mode)
+
 
     def store_snapshot_parameters(self, inst_snapshot, entry_point,
                                   instrument):
@@ -2213,9 +2469,19 @@ class MeasurementControl(Instrument):
         else:
             max_sweep_points = np.shape(self.get_sweep_points())[0]
 
-        start_idx = int(self.total_nr_acquired_values % max_sweep_points)
-        self.soft_iteration = int(
-            self.total_nr_acquired_values//max_sweep_points)
+        if self.detector_function.detector_control == 'hard' and \
+                len(self.sweep_functions) > 1 and \
+                not self.cyclic_soft_avg():
+            y_ind = ((self.total_nr_acquired_values // self.xlen)
+                     // self.soft_avg())
+            start_idx = y_ind * self.xlen
+            self.soft_iteration = ((self.total_nr_acquired_values // self.xlen)
+                                   % self.soft_avg())
+        else:
+            start_idx = int(
+                self.total_nr_acquired_values % max_sweep_points)
+            self.soft_iteration = int(
+                self.total_nr_acquired_values // max_sweep_points)
 
         return start_idx
 
@@ -2239,12 +2505,9 @@ class MeasurementControl(Instrument):
             else:  # 1D Hard detector (returns values in chunks)
                 xlen = len(new_data)
         else:
-            if self.detector_function.detector_control == 'soft':
-                # FIXME: this is an inconsistency that should not be there.
-                xlen = np.shape(new_data)[1]
-            else:
-                # in case of an N-D Hard detector dataset
-                xlen = np.shape(new_data)[0]
+            # in case of an N-D Hard detector dataset
+            # new_data has shape [sweep points, value names]
+            xlen = np.shape(new_data)[0]
 
         start_idx = self.get_datawriting_start_idx()
         stop_idx = start_idx + xlen
@@ -2389,7 +2652,11 @@ class MeasurementControl(Instrument):
             "f_termination" None    terminates the loop if the measured value
                                     is smaller than this value
             "par_idx": 0            If a parameter returns multiple values,
-                                    specifies which one to use.
+                                    specifies which one to use. If set to
+                                    None, there will be no selection and all
+                                    values are passed on.
+            "data_processing_function":    function. Overwrites
+                                           _default_data_processing_function
 
         Common keywords (used in python nelder_mead implementation):
             "x0":                   list of initial values

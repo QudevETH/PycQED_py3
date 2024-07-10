@@ -1,8 +1,10 @@
 import traceback
 
 import time
+
+import h5py
 import numpy as np
-from pycqed.analysis_v3 import helper_functions
+from pycqed.analysis import analysis_toolbox as a_tools
 
 from pycqed.measurement.waveform_control.sequence import Sequence
 from pycqed.utilities.general import temporary_value
@@ -35,7 +37,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
     """
     TIMED_METHODS = ["run_analysis"]
-    _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
+    _metadata_params = {'cal_points', 'sweep_points',
                         'channel_map', 'meas_objs'}
     # The following string can be overwritten by child classes to provide a
     # default value for the kwarg experiment_name. None means that the name
@@ -52,7 +54,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                                                   awg_swf.SegmentSoftSweep),
                  harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
-                 callback_condition=lambda : True, **kw):
+                 callback_condition=lambda : True, mc_mode=None,
+                 mc_store_sweep_indices=False, **kw):
         """
         Initializes a QuantumExperiment.
 
@@ -146,6 +149,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 the callback.
             callback_condition (func): function returning a bool to decide whether or
                 not the callback function should be executed. Defaults to always True.
+            mc_mode (str): manually set the mode argument in the call to MC.run
+            mc_store_sweep_indices (bool): set MC.store_sweep_indices in MC.run
             **kw:
                 further keyword arguments are passed to the CircuitBuilder __init__
         """
@@ -177,6 +182,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.callback = callback
         self.callback_condition = callback_condition
         self.plot_sequence = plot_sequence
+        self.mc_mode = mc_mode
+        self.mc_store_sweep_indices = mc_store_sweep_indices
 
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
@@ -223,7 +230,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.exp_metadata.update(kw)
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
-                                  'data_type': data_type})
+                                  'data_type': data_type,
+                                  'right_handed_basis': True,
+                                  })
         self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
@@ -288,6 +297,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
             # configure measurement control (mc_points, detector functions)
             mode = self._configure_mc()
+            if self.mc_mode is None:
+                self.mc_mode = mode
 
             self.guess_label(**kw)
 
@@ -296,7 +307,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # run measurement
             try:
                 self.MC.run(name=self.label, exp_metadata=self.exp_metadata,
-                            mode=mode)
+                            mode=self.mc_mode,
+                            store_sweep_indices=self.mc_store_sweep_indices)
             except (Exception, KeyboardInterrupt) as e:
                 exception = e  # exception will be raised below
         self.extract_timestamp()
@@ -804,9 +816,12 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
     def save_timers(self, quantum_experiment=True, sequence=True, filepath=None):
         if self.MC is None or self.MC.skip_measurement():
             return
-        data_file = helper_functions.open_hdf_file(self.timestamp,
-                                                   filepath=filepath, mode="r+")
-        try:
+        if filepath is None:
+            # retrieve filepath from MC.datadir() and timestamp
+            folder = a_tools.get_folder(self.timestamp,
+                                        folder=self.MC.datadir())
+            filepath = a_tools.measurement_filename(folder)
+        with h5py.File(filepath, mode="r+") as data_file:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
                 timer_group = data_file.create_group(Timer.HDF_GRP_NAME)
@@ -830,9 +845,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
                     except AttributeError:
                         pass # in case some sequences don't have timers
-        except Exception as e:
-            data_file.close()
-            raise e
 
 
     def plot(self, sequences=0, segments=0, qubits=None,
