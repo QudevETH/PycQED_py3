@@ -1120,6 +1120,7 @@ class BaseDataAnalysis(object):
 
         if key_list == 'auto' or key_list is None:
             key_list = self.figs.keys()
+        key_list = [k for k in key_list if k in self.figs]
 
         try:
             os.mkdir(savedir)
@@ -1149,6 +1150,7 @@ class BaseDataAnalysis(object):
         """
         if key_list == 'auto' or key_list is None:
             key_list = self.figs.keys()
+        key_list = [k for k in key_list if k in self.figs]
         axes_to_pop = []
         for key in list(key_list):
             axes_to_pop.extend(self.figs[key].axes)
