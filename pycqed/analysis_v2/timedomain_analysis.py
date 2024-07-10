@@ -12487,7 +12487,7 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
         To be specific: Calculates the time evolution of the y and z
         components of the qubit state vector under the application of
-        an X gate described by the time-independent Hamiltonian
+        an X gate described by the time-independent Hamiltonian 
         (ang_scaling*pi/t_gate)*sigma_x/2.
 
         https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
@@ -13323,33 +13323,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
         def calculate_voltage_from_flux(vfc, flux):
             return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
-
-        def calculate_flux_voltage(self, vfc, flux_amplitude_bias_ratio,
-                                   frequency=None, flux=None):
-            """
-            Adapted from QuDev_transmon.py
-            """
-            # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
-            #  can be called both from the measurement and analysis side, to avoid code dupplication
-
-            bias = self.calculate_voltage_from_flux(vfc, flux)
-
-            if flux % 0.5:
-                pass  # do not shift (well-defined branch)
-            elif flux != 0:
-                # shift slightly in the direction of 0
-                flux += -np.sign(flux) * 0.25
-            else:
-                # shift slightly to the left to use rising branch as default
-                flux = -0.25
-            branch = flux * vfc['V_per_phi0'] + vfc['dac_sweet_spot']
-
-            val = fit_mods.Qubit_freq_to_dac_res(
-                frequency, **vfc, branch=branch, single_branch=True)
-            val = (val - bias) * flux_amplitude_bias_ratio
-            return val
-
-        def calculate_qubit_frequency(self, flux_amplitude_bias_ratio, amplitude,
+    
+        def calculate_qubit_frequency(flux_amplitude_bias_ratio, amplitude,
                                       vfc, model='transmon_res', bias=None):
             # """
             # Adapted from QuDev_transmon.py
@@ -13434,8 +13409,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             if model in ['transmon', 'transmon_res']:
                 qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbH_name}']
                 qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL_name}']
-                qbH_bias = self.calculate_voltage_from_flux(qbH_vfc, qbH_flux)
-                qbL_bias = self.calculate_voltage_from_flux(qbL_vfc, qbL_flux)
+                qbH_bias = calculate_voltage_from_flux(qbH_vfc, qbH_flux)
+                qbL_bias = calculate_voltage_from_flux(qbL_vfc, qbL_flux)
             else:
                 qbH_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbH_name}']
                 qbL_vfc = self.raw_data_dict[f'fit_ge_freq_from_flux_pulse_amp_{qbL_name}']
@@ -13467,10 +13442,10 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
             path = f"{device_name}.{cz_name}_{qbH_name}_{qbL_name}_amplitude"
             amp = self.get_instrument_setting(path)
-            qbL_tuned_freq_arr = self.calculate_qubit_frequency(
+            qbL_tuned_freq_arr = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbL_flux_amplitude_bias_ratio, amplitude=amp2,
                 vfc=qbL_vfc, model= model, bias=qbL_bias)
-            qbH_tuned_ef_freq = self.calculate_qubit_frequency(
+            qbH_tuned_ef_freq = calculate_qubit_frequency(
                 flux_amplitude_bias_ratio=qbH_flux_amplitude_bias_ratio, amplitude=amp,
                 vfc=qbH_vfc, model= model, bias=qbH_bias) + self.raw_data_dict[f'anharmonicity_{qbH_name}']
 
@@ -13547,6 +13522,33 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         return qbH_name, qbL_name
 
     def analyze_fit_results(self):
+        def calculate_voltage_from_flux(vfc, flux):
+            return vfc['dac_sweet_spot'] + vfc['V_per_phi0'] * flux
+        def calculate_flux_voltage(vfc, flux_amplitude_bias_ratio,
+                                   frequency=None, flux=None):
+            """
+            Adapted from QuDev_transmon.py
+            """
+            # TODO: possibly regroup this function as well as the one in qudev transmon into a separate module that
+            #  can be called both from the measurement and analysis side, to avoid code dupplication
+
+            bias = calculate_voltage_from_flux(vfc, flux)
+
+            if flux % 0.5:
+                pass  # do not shift (well-defined branch)
+            elif flux != 0:
+                # shift slightly in the direction of 0
+                flux += -np.sign(flux) * 0.25
+            else:
+                # shift slightly to the left to use rising branch as default
+                flux = -0.25
+            branch = flux * vfc['V_per_phi0'] + vfc['dac_sweet_spot']
+
+            val = fit_mods.Qubit_freq_to_dac_res(
+                frequency, **vfc, branch=branch, single_branch=True)
+            val = (val - bias) * flux_amplitude_bias_ratio
+            return val
+
         self.proc_data_dict['analysis_params_dict'] = OrderedDict()
         for k, fit_dict in self.fit_dicts.items():
             # k is of the form chevron_fit_qbH_qbL
@@ -13562,7 +13564,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             vfc = self.raw_data_dict[f'fit_ge_freq_from_dc_offset_{qbL}']
             flux_amplitude_bias_ratio = self.raw_data_dict[
                 f'flux_amplitude_bias_ratio_{qbL}']
-            amplitude2 = self.calculate_flux_voltage(vfc,
+            amplitude2 = calculate_flux_voltage(vfc,
                                                      flux_amplitude_bias_ratio,
                 frequency=-fit_res.best_values['offset_freq'] \
                           +self.proc_data_dict['int_freq_exp'][qbH],
