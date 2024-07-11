@@ -13471,6 +13471,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                     0]] = self.t_CARB(fit_res.best_values['J'], 0, 1)
             actual_interaction_freq = -fit_res.best_values['offset_freq'] \
                           +self.proc_data_dict['int_freq_exp'][qbH_name]
+            self.proc_data_dict['analysis_params_dict'][k][
+                'interaction_freq_' + self.measurement_strings[
+                    qbH_name].partition('_')[0]] = actual_interaction_freq
             amplitude2 = qbL.calculate_flux_voltage(
                 frequency=actual_interaction_freq)
             self.proc_data_dict['analysis_params_dict'][k][
