@@ -34,6 +34,8 @@ def get_default_datadir():
     
     # If no 'data' directory is found, return a default path
     datadir = os.path.join(current_dir, 'data')
+    if not os.path.exists(datadir):
+        os.mkdir(datadir)
 
     # Show the result
     logging.warn('Setting datadir to location: {}'.format(datadir))
