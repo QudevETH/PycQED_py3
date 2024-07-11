@@ -13431,7 +13431,8 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_yvals': {'data': pe_flat},
                 'method': 'dual_annealing',
                 'guess_pars': guess_pars,
-                'steps': self.get_param_value('steps', 1e8), # default for dual annealing is 1e7
+                'max_nfev': self.get_param_value('max_nfev',
+                                                 1e8*len(guess_pars)),
             }
 
         for task in self.get_param_value('task_list'):
