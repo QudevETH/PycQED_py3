@@ -2713,12 +2713,12 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         )
 
         # Inform user
-        # FIXME: Add to logging framework _and_ print
-        print("Added the following reset schemes:")
-        print(f"-- preselection: {preselection}")
-        print(f"-- feedback_reset: {feedback_reset}")
-        print(f"-- parametric_flux_reset: {parametric_flux_reset}")
-
+        log.info(
+            f"Adding the following reset schemes to {self.name}: "
+            f"{'preselection ' if preselection else ''}"
+            f"{'feedback_reset ' if feedback_reset else ''}"
+            f"{'parametric_flux_reset' if parametric_flux_reset else ''}"
+        )
 
         if preselection:
             submodule_name = reset.Preselection.DEFAULT_INSTANCE_NAME
@@ -2798,3 +2798,15 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             self.add_pulse_parameter(
                 op_name, parameter_prefix + '_basis_rotation',
                 'basis_rotation', initial_value={}, vals=None)
+
+        for transition_name in ['', '_ef']:
+            self.add_pulse_parameter(f'PFM{transition_name}',
+                                 f'parametric_flux_modulation'
+                                 f'{transition_name}_filter_bypass',
+                                 'filter_bypass', initial_value=None,
+                                 vals=vals.Enum(None, 'FIR', 'IIR', 'all'),
+                                 docstring=
+            "Allows to (partially) bypass filters for the FP operation. "
+            " 'FIR': bypasses FIR filters only. 'IIR': bypasses IIR filters only. "
+            "FIR is done individually on each pulse waveform with that "
+            "bypass in that case. 'all': bypasses both FIR and IIR filters.")

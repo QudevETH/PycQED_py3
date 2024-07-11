@@ -10027,8 +10027,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
                 # If reset: n_hsp already includes the number of shots
                 # and the final readout is interleaved with n_reset readouts
                 n_resets = prep_params.get('reset_reps')
-                # in some cases the number of reset might not be part of the
-                # reset params if it was not provided at run time.
+                # in some cases the number of reset might not be part of the 
+                # reset params if it was not provided at run time. 
                 # So we tell the user about it and mention how the info can be provided.
                 if not n_resets:
                     log.warning('reset_reps not found in reset_params obtained '
@@ -13277,7 +13277,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['Delta'] = OrderedDict()
         self.proc_data_dict['int_freq_exp'] = OrderedDict()
 
-        def pe_function(t, Delta, J=10e6, offset_freq=0):
+        def pe_function(t, Delta, J=10e6, offset_freq=0, t_offset=0):
             # From Nathan's master's thesis Eq. 2.6 - fitting function
             t = t*1e9
             J = 2*np.pi*J/1e9
@@ -13285,6 +13285,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             Delta = Delta/1e9
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
+            t += t_offset # to account for the effective sigma
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
                     4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
         def cosine_model(x, amplitude, frequency, phase, offset):
@@ -13348,6 +13349,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'guess_paramater_scale', 1.5)
             offset_guess_boundary = self.get_param_value(
                 'offset_guess_boundary', 10e6)
+            t_offset_boundary = self.get_param_value('t_offset_boundary', 5e-9)
             hdf_file_index = self.get_param_value('hdf_file_index', 0)
 
             qbH, qbL = self.get_qubit_objects_from_names([qbH_name, qbL_name])
@@ -13411,7 +13413,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                                     max=-Delta_mod[J_fft(
                                                     t_mod, Delta_mod,
                                         pe)[1]]+offset_guess_boundary)
-
+            pe_model.set_param_hint('t_offset', value=0,
+                                                min=0,
+                                                max=t_offset_boundary)
             guess_pars = pe_model.make_params()
             self.set_user_guess_pars(guess_pars)
 

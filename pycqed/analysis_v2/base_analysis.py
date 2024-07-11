@@ -656,7 +656,13 @@ class BaseDataAnalysis(object):
                 return dict(preparation_type="wait")
             else:
                 if qbn is None:
-                    qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    if reset_params['analysis_instructions']:
+                        qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    else:
+                        log.warning('reset_params[analysis_instructions] is empty.\n'
+                                    'Likely the reset used does not require any '
+                                    ' special instructions for data analysis.')
+                        return dict(preparation_type="wait")
                 if len(reset_params['analysis_instructions'][qbn]) == 0:
                     # empty list, i.e. no reset steps
                     return dict(preparation_type="wait")
@@ -2432,7 +2438,10 @@ class BaseDataAnalysis(object):
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
-            axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
+            # Ensure the colorbar is added to the figure that the axis
+            # is a part of
+            fig = axs.get_figure()
+            axs.cbar = fig.colorbar(cmap, cax=axs.cax, orientation=orientation)
         else:
             norm = mpl.colors.Normalize(0, 1)
             axs.cbar = mpl.colorbar.ColorbarBase(axs.cax, cmap=cmap, norm=norm)
