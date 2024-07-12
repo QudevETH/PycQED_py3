@@ -12364,23 +12364,12 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
 
-        # Probably not needed anymore but keep it for now to avoid
-        # re-implmenting it if needed. Was used to calculate fit parameters
-        # self.task_list = self.get_param_value('task_list')
-        # self.qb_names = self.get_param_value('qb_names',
-        #                                      self.get_qbs_from_task_list(
-        #                                          self.task_list))
-        #
-        # params = ['ge_freq', 'fit_ge_freq_from_dc_offset',
-        #           'fit_ge_freq_from_flux_pulse_amp',
-        #           'flux_amplitude_bias_ratio', 'flux_parking', 'anharmonicity']
-        # for qbn in self.qb_names:
-        #     self.raw_data_dict.update({f"{p}_{qbn}":
-        #                                    self.get_hdf_param_value(
-        #                                        f'Instrument settings/{qbn}', p)
-        #                                for p in params})
-
-    def coupling_strength(self, g_ro, w_p, delta_w):
+    @staticmethod
+    def coupling_strength(g_ro, w_p, delta_w):
+        """
+        Calculates the coupling strength between the qubit and the readout
+        resonator. See pf_function for more details.
+        """
         g = np.sqrt(2) * g_ro * sp.special.jv(1, delta_w / (2 * w_p))
         return g
 
@@ -12402,6 +12391,53 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
     #               'as an argument.')
     #     return g
 
+    @staticmethod
+    def pf_function(t, w_p=100e6, g_ro=100e6, kappa=10e6, scaling=1,
+                    # harmonic='first',
+                    # fs2=0, fs4=0, fs6=0
+                    delta_w=100e6,
+                    time_offset=0, pop_offset=0
+                    ):
+        """
+        Calculates the probability to be in the f state for SWAP with the
+        readout resoantor
+        From: 'Fast Flux-Activated Leakage Reduction for Superconducting
+        Quantum Circuits'. https://doi.org/10.48550/arXiv.2309.07060
+        :param t                time in s:
+        :param w_p              modulation frequency in Hz:
+        :param delta_w          modulation depth:
+        :param g_ro             coupling between qubit and readout resonator
+        :param kappa            linewidth of resonator:
+        :param harmonic         harmonic on which the interaction is done:
+        :param fs2, fs4, fs6    Fourier coefficients of the qubit frequency.
+                                For small modulation amplitudes fs2 is
+                                equal to the modulation depth:
+        :return:                probability to be in f state
+        """
+
+        t = t * 1e9 + time_offset * 1e9
+        w_p = w_p * 1e-9 * 2 * np.pi
+        kappa = kappa * 1e-9 * 2 * np.pi
+        g_ro = g_ro * 1e-9 * 2 * np.pi
+        delta_w = delta_w * 1e-9 * 2 * np.pi
+        # fs2, fs4, fs6 = fs2*1e-9, fs4*1e-9, fs6*1e-9 # Currently we don't
+        # use the higher order terms but might want to include them later
+
+        g = LeakageReductionUnitAnalysis.coupling_strength(g_ro, w_p, delta_w)
+
+        # Calculate time dynamics https://doi.org/10.1038/s41467-021-26205-y
+        if kappa == 4 * g:
+            pf = pop_offset + (t < -time_offset) * scaling + \
+                 (t >= -time_offset) * scaling * np.exp(-kappa * t / 2) * \
+                 (1 + kappa * t / 4) ** 2
+        else:
+            M = np.emath.sqrt(16 * g ** 2 - kappa ** 2) / 4
+            pf = pop_offset + (t < -time_offset) * scaling + \
+                 (t >= -time_offset) * scaling * np.exp(-kappa * t / 2) * \
+                 (np.cos(M * t) + kappa / (4 * M) * np.sin(M * t)) ** 2
+
+        return pf
+
     def prepare_fitting(self):
         """
         Prepares the fitting by creating the fit_dicts.
@@ -12409,52 +12445,6 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
         fully understand the dynamics yet
         """
         self.fit_dicts = OrderedDict()
-        def pf_function(t, w_p=100e6, g_ro=100e6, kappa=10e6, scaling=1,
-                        #harmonic='first',
-                        # fs2=0, fs4=0, fs6=0
-                        delta_w=100e6,
-                        time_offset=0, pop_offset=0
-                        ):
-            """
-            Calculates the probability to be in the f state for SWAP with the
-            readout resoantor
-            From: 'A Fast and Universal Leakage Reduction Unit',
-                   Sebastian Krinner, (Dated: August 2, 2022)
-            :param t                time:
-            :param w_p              modulation frequency in Hz:
-            :param delta_w          modulation depth:
-            :param g_ro             coupling between qubit and readout resonator
-            :param kappa            linewidth of resonator:
-            :param harmonic         harmonic on which the interaction is done:
-            :param fs2, fs4, fs6    Fourier coefficients of the qubit frequency.
-                                    For small modulation amplitudes fs2 is
-                                    equal to the modulation depth:
-            :return:                probability to be in f state
-            """
-
-            t = t * 1e9 + time_offset * 1e9
-            w_p =  w_p * 1e-9 * 2 * np.pi
-            kappa = kappa * 1e-9 * 2 * np.pi
-            g_ro = g_ro * 1e-9 * 2 * np.pi
-            delta_w = delta_w * 1e-9 * 2 * np.pi
-            # fs2, fs4, fs6 = fs2*1e-9, fs4*1e-9, fs6*1e-9 # Currently we don't
-            # # use the higher order terms but might want to include them later
-
-            g = self.coupling_strength(g_ro, w_p, delta_w)
-
-            # Calculate time dynamics https://doi.org/10.1038/s41467-021-26205-y
-            if kappa == 4 * g:
-                pf = pop_offset + (t < -time_offset) * scaling + \
-                     (t >= -time_offset) * scaling * np.exp(-kappa * t / 2) *\
-                     (1 + kappa * t / 4) ** 2
-            else:
-                M = np.emath.sqrt(16 * g ** 2 - kappa ** 2) / 4
-                pf = pop_offset + (t < -time_offset) * scaling + \
-                     (t >= -time_offset) * scaling * np.exp(-kappa * t / 2) * \
-                     (np.cos(M * t) + kappa / (4 * M) * np.sin(M * t)) ** 2
-
-            return pf
-
 
         def add_fit_dict(qbn, data, key):
             if self.num_cal_points != 0:
@@ -12485,7 +12475,8 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
             # self.harmonic = self.get_param_value('harmonic', 'first')
 
 
-            pf_model = lmfit.Model(pf_function, independent_vars=['t'])
+            pf_model = lmfit.Model(LeakageReductionUnitAnalysis.pf_function,
+                                   independent_vars=['t'])
             pf_model.set_param_hint('w_p', value=w_p, min=10e6, max=700e6,
                                     vary=False)
             pf_model.set_param_hint('kappa', value=kappa, min= 1e6, max=100e6,
