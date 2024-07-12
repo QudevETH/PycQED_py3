@@ -5286,16 +5286,43 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
             - amplitude: (float) amplitude of PFM pulse
             - pulse_length: (float) length of PFM pulse
             - frequency: (float) frequency of PFM pulse
-            - prepare_f: (bool) if True, prepares the f-level
+            - prepare_f: (bool) if True, applies an ef-pulse. Requires
+                                transition_name 'ef' to prepare the f-level
+            - prepare_h: (bool) if True, applies an fh-pulse. Requires
+                                transition_name 'fh' to prepare the h-level
+            - deplete_f: (bool) if True and prepare_h, applies two PFM pulses
+                                to first deplete the h-level and then the
+                                f-level. The parameters of the first pulse
+                                PFM_ef) can be modified with the kw arguments:
+                                    - flux_pulse_amplitude_0: (float) amplitude
+                                        of the first PFM pulse
+                                    - flux_pulse_length_0: (float) length of
+                                        the first PFM pulse
+                                    - flux_pulse_frequency_0: (float) frequency
+                                        of the first PFM pulse
+                                The parameters of the second pulse are swept.
         """
 
         prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
                                              **kw)
 
+        prepare_f = kw.get('prepare_f', False)
+        prepare_h = kw.get('prepare_h', False)
+        deplete_f = kw.get('deplete_f', False)
+
+        if prepare_f and transition_name != 'ef':
+            logging.warning('prepare_f is set to True, but transition_name '
+                            'is not ef. This will not prepare the f-level.')
+        elif prepare_h and transition_name != 'fh':
+            logging.warning('prepare_h is set to True, but transition_name '
+                            'is not fh. This will not prepare the h-level.')
+
         # Add ef pulse if specified; transition_name 'ef' only prepares e-level
         ef_pulse = self.block_from_ops(f'ef_pulse',
                                        [f'X180_ef {qb}'])
-
+        if prepare_h and deplete_f:
+            # We want to sweep the parameters of the PFM_ef pulse
+            transition_name = 'ef'
 
         # add modulation pulse
         modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
@@ -5309,23 +5336,22 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
                     if param_name in pulse_dict:
                         pulse_dict[param_name] = ParametricValue(param_name)
 
-        if kw.get('prepare_f', False):
+        if prepare_f:
             return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
                                           prepend_blocks + [ef_pulse] + [
                                               modulation_block])
-        elif kw.get('prepare_h', False):
+        elif prepare_h:
             fh_pulse = self.block_from_ops(f'fh_pulse',
                                            [f'X180_fh {qb}'])
-            if kw.get('deplete_f', False):
-                flux_pulse_amplitude_0 = kw.get('flux_pulse_amplitude_0', 0)
-                flux_pulse_length_0 = kw.get('flux_pulse_length_0', 4e-8)
-                flux_pulse_frequency_0 = kw.get('flux_pulse_frequency_0', 0)
-                pulse_modifs = {'all': {'amplitude': flux_pulse_amplitude_0,
-                                    'pulse_length': flux_pulse_length_0,
-                                    'frequency': flux_pulse_frequency_0}}
+            if deplete_f:
+                pulse_modifs = {'all': {}}
+                for pulse_kw in ['amplitude', 'pulse_length', 'frequency']:
+                    if kw.get(f"flux_pulse_{pulse_kw}_0", None) is not None:
+                        pulse_modifs['all'][pulse_kw] = kw[f"flux_pulse_" \
+                                                           f"{pulse_kw}_0"]
                 modulation_block_0 = self.block_from_ops(f'modulation_pulse_0_'
                                                          f'{qb}',
-                                               [f'PFM_ef {qb}'],
+                                               [f'PFM_fh {qb}'],
                                                pulse_modifs=pulse_modifs
                                                )
                 return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
