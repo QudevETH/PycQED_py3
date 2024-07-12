@@ -3,6 +3,7 @@
 # see https://stackoverflow.com/questions/42845972/typed-python-using-the-classes-own-type-inside-class-definition
 # for more details.
 from __future__ import annotations
+from copy import deepcopy
 
 
 class ParameterNotFoundError(Exception):
@@ -155,6 +156,7 @@ class Instrument(DelegateAttributes):
     """
 
     delegate_attr_dicts = ['parameters', 'submodules']
+    _not_initialized = True
 
     def __init__(self, name: str):
         """
@@ -171,11 +173,20 @@ class Instrument(DelegateAttributes):
         # instrument, e.g. pycqed.instrument_drivers.meta_instrument
         # .qubit_objects.QuDev_transmon.QuDev_transmon
         self.classname: str = None
+        self._not_initialized = False
 
     def __getattr__(self, key: str):
         try:
             return super().__getattr__(key)
         except AttributeError:
+            if self._not_initialized:
+                # if self.__init__() was not executed (e.g. when doing a
+                # deepcopy), self.station is not initialized. This would
+                # lead to an infinite loop of AttributeErrors in the
+                # following if-statement (if (station := self.station),
+                # since DelegateAttributes would look for the attribute
+                # station which would end up calling self.__getattr__() again.
+                raise
             # Try to load the missing parameter or submodules if a settings
             # manager is available
             if (station := self.station) and (ts := station.timestamp) and \
@@ -185,6 +196,17 @@ class Instrument(DelegateAttributes):
                 return super().__getattr__(key)
             else:
                 raise
+
+    def __deepcopy__(self, memodict={}):
+        # for a deepcopy the assigned station is not copied to avoid
+        # infinite loops
+        new_instance = Instrument(self.name)
+        new_instance.__dict__.update(memodict)
+        new_instance.parameters = deepcopy(self.parameters)
+        new_instance.functions = deepcopy(self.functions)
+        new_instance.submodules = deepcopy(self.submodules)
+        new_instance.classname = deepcopy(self.classname)
+        return new_instance
 
     def snapshot(self, reduced=False) -> dict[any, any]:
         """
