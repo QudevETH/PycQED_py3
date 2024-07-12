@@ -201,16 +201,14 @@ class Instrument(DelegateAttributes):
                 raise
 
     def __deepcopy__(self, memodict={}):
-        # for a deepcopy the assigned station is not copied to avoid
-        # infinite loops
+        # __deepcopy__ must be defined explicitly such that self.__getattr__
+        # finds this attribute and does not interpret it as a missing
+        # parameter, see docstring of __getattr__.
         cls = self.__class__
         new_inst = cls.__new__(cls)
         memodict[id(self)] = new_inst
         for k, v in self.__dict__.items():
-            if k == "station":  # the reference to pulsar cannot be deepcopied
-                setattr(new_inst, k, None)
-            else:
-                setattr(new_inst, k, deepcopy(v, memodict))
+            setattr(new_inst, k, deepcopy(v, memodict))
         return new_inst
 
     def snapshot(self, reduced=False) -> dict[any, any]:
