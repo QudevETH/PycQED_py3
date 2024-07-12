@@ -156,7 +156,7 @@ class Instrument(DelegateAttributes):
     """
 
     delegate_attr_dicts = ['parameters', 'submodules']
-    _not_initialized = True
+    _not_initialized = True  # needed in __getattr__, see comment there
 
     def __init__(self, name: str):
         """
@@ -186,6 +186,9 @@ class Instrument(DelegateAttributes):
                 # following if-statement (if (station := self.station),
                 # since DelegateAttributes would look for the attribute
                 # station which would end up calling self.__getattr__() again.
+                # This raise has the implication that loading
+                # missing parameters from the instrument settings on-the-fly
+                # is not available if self._not_initialized is True.
                 raise
             # Try to load the missing parameter or submodules if a settings
             # manager is available
