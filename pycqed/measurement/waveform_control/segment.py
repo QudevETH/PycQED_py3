@@ -1912,9 +1912,7 @@ class Segment:
                             # the waveform only after predistortion
                             pulses_to_add_after_filtering[
                                 f'bypass_{pulse.filter_bypass}'].append(
-                                (ps_mod,
-                                 pe_mod,
-                                 pulse_wfs))
+                                (channel, ps_mod, pe_mod, pulse_wfs))
                         else:
                             wfs[pulse.codeword][channel][ps_mod:pe_mod] += \
                                 pulse_wfs[channel]
@@ -1960,7 +1958,9 @@ class Segment:
 
                         # add remaining pulses to the channel waveforms,
                         # i.e. pulses that have the FIR bypass only
-                        for ps, pe, pwf in pulses_to_add_after_filtering[f'bypass_FIR']:
+                        for channel, ps, pe, pwf in pulses_to_add_after_filtering[f'bypass_FIR']:
+                            if channel != c:
+                                continue
                             wf[ps:pe] += pwf.get(c, 0)
 
                         iir_filters = distortion_dict.get('IIR', None)
@@ -1969,7 +1969,9 @@ class Segment:
                                                       iir_filters[1], wf)
                         # add pulses that have the IIR filter bypass, FIR filtering
                         # is done on the pulse waveform
-                        for ps, pe, pwf in pulses_to_add_after_filtering['bypass_IIR']:
+                        for channel, ps, pe, pwf in pulses_to_add_after_filtering['bypass_IIR']:
+                            if channel != c:
+                                continue
                             pwf_channel = pwf.get(c, None)
                             if pwf_channel is not None:
                                 wf[ps:pe] += self._fir_filtering(pwf_channel,
@@ -1977,7 +1979,9 @@ class Segment:
 
                         # add remaining pulses to the channel waveforms,
                         # i.e. pulses that have the full filter bypass
-                        for ps, pe, pwf in pulses_to_add_after_filtering[f'bypass_all']:
+                        for channel, ps, pe, pwf in pulses_to_add_after_filtering[f'bypass_all']:
+                            if channel != c:
+                                continue
                             wf[ps:pe] += pwf.get(c, 0)
 
                         wfs[codeword][c] = wf
