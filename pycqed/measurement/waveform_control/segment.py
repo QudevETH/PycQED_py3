@@ -1954,7 +1954,8 @@ class Segment:
                                     default_dt=1 / self.pulsar.clock(
                                         channel=c))
 
-                        wf = self._fir_filtering(wf, distortion_dict)
+                        wf = flux_dist.multiple_fir_filter(
+                            wf, distortion_dict)
 
                         # add remaining pulses to the channel waveforms,
                         # i.e. pulses that have the FIR bypass only
@@ -1975,8 +1976,9 @@ class Segment:
                                 continue
                             pwf_channel = pwf.get(c, None)
                             if pwf_channel is not None:
-                                wf_bypass_IIR[ps:pe] += self._fir_filtering(
-                                    pwf_channel, distortion_dict)
+                                wf_bypass_IIR[ps:pe] += \
+                                    flux_dist.multiple_fir_filter(
+                                        pwf_channel, distortion_dict)
 
                         # add remaining pulses to the channel waveforms,
                         # i.e. pulses that have the full filter bypass
@@ -2025,37 +2027,6 @@ class Segment:
                                 wfs[codeword][channel])
 
         return awg_wfs
-
-    @staticmethod
-    def _fir_filtering(wf, distortion_dict):
-        """
-        Apply Finite Impulse Response (FIR) filtering to a waveform.
-
-        Args:
-            wf (numpy.ndarray): The input waveform to be filtered.
-            distortion_dict (dict): A dictionary containing distortion parameters,
-                including FIR filter kernels.
-
-        Returns:
-            numpy.ndarray: The filtered waveform after applying the FIR filtering.
-
-        This function filters a waveform using FIR filter kernels specified in the
-        distortion_dict.  The filtering can be a single FIR kernel or a list
-        of kernels, allowing for multiple filtering operations.
-
-        Note:
-            This function uses the 'flux_dist' module for FIR filtering.
-
-        """
-        fir_kernels = distortion_dict.get('FIR', None)
-        if fir_kernels is not None:
-            if hasattr(fir_kernels, '__iter__') and not \
-                    hasattr(fir_kernels[0], '__iter__'):  # 1 kernel
-                wf = flux_dist.filter_fir(fir_kernels, wf)
-            else:
-                for kernel in fir_kernels:
-                    wf = flux_dist.filter_fir(kernel, wf)
-        return wf
 
     def get_element_codewords(self, element, awg=None, trigger_group=None):
         """
