@@ -13,11 +13,11 @@ cache:
     - ~/.cache/pip
     - ~/.cache/apt
 
+# FIXME: Build an image to make this fast
 .base_setup:
-  image: quay.io/jupyter/datascience-notebook:python-3.11.9 # because nlopt and qutip are lazy with pre-built packages
+  image: python:3.11-bookworm
   before_script:
     - apt-get update && apt-get install -y libegl1 libgl1 openssh-client git python3-pyqt6
-    #    - export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH # make sure libEGL.so.1 is found (PySide6 requirement)
     - pip install --upgrade pip
     - pip install '.[docs,linting,user,measurement_setup]'
     - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${QCODES_CONTRIB_DRIVERS_REPOSITORY}
@@ -30,17 +30,16 @@ cache:
     - chmod 700 ~/.ssh
     - ssh-keyscan $GIT_LAB_ADDRESS $DOC_URL >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
+    - echo "🐍 Using Python $(python --version)"
 
 pytest:
   extends: .base_setup
   stage: test_and_quality
-  before_script:
-    - echo "🐍 Using Python $(python --version)"
-    - pip install '.[test]'
   script:
     # FIXME: We have so many problems that this crashes the GitLab CI pipeline
     #    - echo "🔍 Running flake8..."
     #    - flake8 pycqed
+    - pip install '.[test]'
     - echo "🧪 Running tests..."
     - echo "📊 Running coverage..."
     - pytest -v --cov=pycqed --cov-report xml:coverage.xml --cov-report term -m "not hardware" --junitxml=junit.xml pycqed/tests
