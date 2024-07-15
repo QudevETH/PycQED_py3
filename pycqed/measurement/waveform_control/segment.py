@@ -1969,13 +1969,14 @@ class Segment:
                                                       iir_filters[1], wf)
                         # add pulses that have the IIR filter bypass, FIR filtering
                         # is done on the pulse waveform
+                        wf_bypass_IIR = np.zeros_like(wf)
                         for channel, ps, pe, pwf in pulses_to_add_after_filtering['bypass_IIR']:
                             if channel != c:
                                 continue
                             pwf_channel = pwf.get(c, None)
                             if pwf_channel is not None:
-                                wf[ps:pe] += self._fir_filtering(pwf_channel,
-                                                                 distortion_dict)
+                                wf_bypass_IIR[ps:pe] += self._fir_filtering(
+                                    pwf_channel, distortion_dict)
 
                         # add remaining pulses to the channel waveforms,
                         # i.e. pulses that have the full filter bypass
@@ -1984,7 +1985,7 @@ class Segment:
                                 continue
                             wf[ps:pe] += pwf.get(c, 0)
 
-                        wfs[codeword][c] = wf
+                        wfs[codeword][c] = wf + wf_bypass_IIR
 
                 # truncation and normalization
                 for codeword in wfs:
