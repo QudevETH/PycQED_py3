@@ -18,7 +18,6 @@ cache:
   image: python:3.11-bookworm
   before_script:
     - apt-get update && apt-get install -y libegl1 libgl1 openssh-client git python3-pyqt6
-    - pip install --upgrade pip
     - pip install '.[docs,linting,user,measurement_setup]'
     - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${QCODES_CONTRIB_DRIVERS_REPOSITORY}
     - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${VC707_PYTHON_INTERFACE_REPOSITORY}
