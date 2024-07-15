@@ -429,7 +429,13 @@ class MeasurementControl(Instrument):
                 # automatic retry is triggered) or raised.
                 exception = e
                 log.error(traceback.format_exc())
-            result = self.dset[()]
+            try:
+                result = self.dset[()]
+            except Exception:
+                # If we cannot get the data set here, we set it to None
+                # to inform self.finish that no data is available for
+                # persistent traces of the live plotting.
+                result = None
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
             # FIXME: Nathan 2020.12.03.
@@ -440,8 +446,9 @@ class MeasurementControl(Instrument):
             #  we're sure that experiment that are not based on Qexp still have some timers
             #  saved.
             self.save_timers(self.data_object)
-            return_dict = self.create_experiment_result_dict()
-            if exception is not None:  # exception occurred in above try-block
+            if exception is None:  # no exception occurred in above try-block
+                return_dict = self.create_experiment_result_dict()
+            else:
                 if previous_attempts + 1 < self.max_attempts():
                     # Maximum number of attempts not reached. Log to logger
                     # and to slack, and retry.
@@ -960,7 +967,7 @@ class MeasurementControl(Instrument):
         '''
         # this data can be plotted by enabling persist_mode
         n = len(self.sweep_par_names)
-        if self._live_plot_enabled():
+        if self._live_plot_enabled() and result is not None:
             self._persist_dat = np.concatenate([
                 result[:, :n],
                 self.detector_function.live_plot_transform(result[:, n:])
@@ -2107,32 +2114,9 @@ class MeasurementControl(Instrument):
         '''
 
         if self.settings_file_format() == 'hdf5':
-            def save_settings_in_hdf(data_object):
-                if not hasattr(self, 'station'):
-                    log.warning('No station object specified, could not save '
-                                'instrument settings')
-                else:
-                    # # This saves the snapshot of the entire setup
-                    # snap_grp = data_object.create_group('Snapshot')
-                    # snap = self.station.snapshot()
-                    # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
-
-                    # Below is old style saving of snapshot, exists for the sake of
-                    # preserving deprecated functionality. Here only the values
-                    # of the parameters are saved.
-                    set_grp = data_object.create_group('Instrument settings')
-                    inslist = dict_to_ordered_tuples(self.station.components)
-                    for (iname, ins) in inslist:
-                        instrument_grp = set_grp.create_group(iname)
-                        inst_snapshot = ins.snapshot()
-                        self.store_snapshot_parameters(inst_snapshot,
-                                                       entry_point=instrument_grp,
-                                                       instrument=ins)
-                numpy.set_printoptions(**opt)
-            import numpy
-            import sys
-            opt = numpy.get_printoptions()
-            numpy.set_printoptions(threshold=sys.maxsize)
+            if not hasattr(self, 'station'):
+                log.warning('No station object specified, could not save '
+                            'instrument settings')
             if data_object is None:
                 data_object = self.data_object
             # checks if data object is closed and opens it if necessary in ,
@@ -2142,13 +2126,15 @@ class MeasurementControl(Instrument):
                   datadir=self.datadir(),
                   timestamp=self.last_timestamp(),
                                        auto_increase=False) as data_object:
-                    save_settings_in_hdf(data_object)
+                    MeasurementControl.save_station_in_hdf(data_object,
+                                                            self.station)
             else:
                 # hdf file was already opened and does not need to be
                 # closed at the end, because save_instrument_settings was
                 # called inside a context manager and may be used
                 # after calling save_instrument_settings (e.g. MC.run())
-                save_settings_in_hdf(data_object)
+                MeasurementControl.save_station_in_hdf(data_object,
+                                                        self.station)
 
         else:
             if self.settings_file_format() == 'msgpack':
@@ -2180,8 +2166,33 @@ class MeasurementControl(Instrument):
                             timestamp=self.last_timestamp())
             dumper.dump(mode=mode)
 
+    @staticmethod
+    def save_station_in_hdf(data_object, station, snapshot_kwargs=None):
+        '''
+        Writes snapshot of station in HDF5-data object.
+        Args:
+            data_object (h5py.File): opened HDF5 data file
+            station (Station): QCodes or mock_qcodes_interface station object
+            snapshot_kwargs (**): optional snapshot parameters
+        '''
+        import numpy
+        import sys
+        set_grp = data_object.create_group('Instrument settings')
+        inslist = dict_to_ordered_tuples(station.components)
+        with numpy.printoptions(threshold=sys.maxsize):
+            for (iname, ins) in inslist:
+                instrument_grp = set_grp.create_group(iname)
+                if snapshot_kwargs is None:
+                    inst_snapshot = ins.snapshot()
+                else:
+                    inst_snapshot = ins.snapshot(*snapshot_kwargs)
+                MeasurementControl.store_snapshot_parameters(
+                    inst_snapshot,
+                    entry_point=instrument_grp,
+                    instrument=ins)
 
-    def store_snapshot_parameters(self, inst_snapshot, entry_point,
+    @staticmethod
+    def store_snapshot_parameters(inst_snapshot, entry_point,
                                   instrument):
         """
         Save the values of keys in the "parameters" entry of inst_snapshot.
@@ -2221,7 +2232,7 @@ class MeasurementControl(Instrument):
                     # that are in the snapshot_whitelist
                     continue
                 submod_grp = entry_point.create_group(key)
-                self.store_snapshot_parameters(
+                MeasurementControl.store_snapshot_parameters(
                     submod_snapshot, entry_point=submod_grp, instrument=subins)
 
         if 'parameters' in inst_snapshot:

@@ -2713,12 +2713,12 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         )
 
         # Inform user
-        # FIXME: Add to logging framework _and_ print
-        print("Added the following reset schemes:")
-        print(f"-- preselection: {preselection}")
-        print(f"-- feedback_reset: {feedback_reset}")
-        print(f"-- parametric_flux_reset: {parametric_flux_reset}")
-
+        log.info(
+            f"Adding the following reset schemes to {self.name}: "
+            f"{'preselection ' if preselection else ''}"
+            f"{'feedback_reset ' if feedback_reset else ''}"
+            f"{'parametric_flux_reset' if parametric_flux_reset else ''}"
+        )
 
         if preselection:
             submodule_name = reset.Preselection.DEFAULT_INSTANCE_NAME

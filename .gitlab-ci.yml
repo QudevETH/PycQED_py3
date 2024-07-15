@@ -1,66 +1,99 @@
-image: python:3.9-bookworm
+stages:
+  - test_and_quality
+  - build
+  - deploy
 
 variables:
-  # Change cache directories to be inside the project directory since we can
-  # only cache local items.
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   APT_CACHE_DIR: "$CI_PROJECT_DIR/.cache/apt"
-  # Needs to be specified to avoid errors with pip when network is slow
   PIP_DEFAULT_TIMEOUT: 60
-  # Variables set in the GitLab UI are not passed down to service containers.
-  DOC_PRIVATE_SSH_KEY: $DOC_PRIVATE_SSH_KEY
-  GIT_LAB_ADDRESS: $GIT_LAB_ADDRESS
-  QCODES_CONTRIB_DRIVERS_REPOSITORY: $QCODES_CONTRIB_DRIVERS_REPOSITORY
-  VC707_PYTHON_INTERFACE_REPOSITORY: $VC707_PYTHON_INTERFACE_REPOSITORY
-  DEVICE_DB_CLIENT_REPOSITORY: $DEVICE_DB_CLIENT_REPOSITORY
-  DOC_USER: $DOC_USER
-  DOC_URL: $DOC_URL
 
 cache:
   paths:
-    - .cache/pip
-    - .cache/apt
+    - ~/.cache/pip
+    - ~/.cache/apt
 
-# This is necessary to be able to copy the doc via SSH
-before_script:
-  # ============================================================================
-  # Dependencies for GUI
-  # ============================================================================
-  - apt-get update && apt-get install libgl1 -y
-  # ============================================================================
-  # Python virtual env
-  # ============================================================================
-  - pip install .[docs,linting,user,measurement_setup]
-  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${QCODES_CONTRIB_DRIVERS_REPOSITORY}
-  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${VC707_PYTHON_INTERFACE_REPOSITORY}
-  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${DEVICE_DB_CLIENT_REPOSITORY}
-  - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@github.com/pyGSTio/pyGSTi.git
-  # ============================================================================
-  # Configure SSH agent to be able to copy the doc via SSH
-  # ============================================================================
-  - mkdir -p $APT_CACHE_DIR
-  - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client git -y )'
-  - eval $(ssh-agent -s)
-  - echo "$DOC_PRIVATE_SSH_KEY" | ssh-add -
-  - mkdir -p ~/.ssh
-  - chmod 700 ~/.ssh
-  - ssh-keyscan $GIT_LAB_ADDRESS >> ~/.ssh/known_hosts
-  - ssh-keyscan $DOC_URL >> ~/.ssh/known_hosts
-  - chmod 644 ~/.ssh/known_hosts
+# FIXME: Build an image to make this fast
+.base_setup:
+  image: python:3.11-bookworm
+  before_script:
+    - apt-get update && apt-get install -y libegl1 libgl1 openssh-client git python3-pyqt6
+    - pip install '.[docs,linting,user,measurement_setup]'
+    - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${QCODES_CONTRIB_DRIVERS_REPOSITORY}
+    - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${VC707_PYTHON_INTERFACE_REPOSITORY}
+    - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${DEVICE_DB_CLIENT_REPOSITORY}
+    - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@github.com/pyGSTio/pyGSTi.git
+    - eval $(ssh-agent -s)
+    - echo "$DOC_PRIVATE_SSH_KEY" | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan $GIT_LAB_ADDRESS $DOC_URL >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - echo "🐍 Using Python $(python --version)"
 
-# Build the documentation, and copy it to the documentation webshare
+pytest:
+  extends: .base_setup
+  stage: test_and_quality
+  script:
+    # FIXME: We have so many problems that this crashes the GitLab CI pipeline
+    #    - echo "🔍 Running flake8..."
+    #    - flake8 pycqed
+    - pip install '.[test]'
+    - echo "🧪 Running tests..."
+    - echo "📊 Running coverage..."
+    - pytest -v --cov=pycqed --cov-report xml:coverage.xml --cov-report term -m "not hardware" --junitxml=junit.xml pycqed/tests
+  artifacts:
+    reports:
+      junit: junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - junit.xml
+      - coverage.xml
+  coverage: '/(?i)total.*? (100(?:\.0+)?|\d{1,2}(?:\.\d+)?)%/'
+
+codequality:
+  extends: .base_setup
+  stage: test_and_quality
+  script:
+    - pip install mypy mypy-gitlab-code-quality
+    - mypy pycqed --no-error-summary > pycqed-mypy.txt || true
+    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json 
+  artifacts:
+    reports:
+      codequality: pycqed-codequality.json
+    expire_in: 90 days # because Merge Requests progress slowly @QuDev
+  allow_failure: true
+
 pages:
+  extends: .base_setup
+  stage: build
   script:
     - cd docs
     - make html
-    # Using ${CI_PROJECT_PATH:6} to trim "qudev/" at beginning of the path
-    - DOC_UPLOAD_FOLDER=${CI_PROJECT_PATH:6}/$CI_COMMIT_BRANCH
-    - ssh ${DOC_USER}@${DOC_URL} "mkdir -p public/$DOC_UPLOAD_FOLDER"
-    - ssh ${DOC_USER}@${DOC_URL} "rm -rf public/$DOC_UPLOAD_FOLDER/*"
-    - scp -r ./build/html/* "${DOC_USER}@${DOC_URL}:public/$DOC_UPLOAD_FOLDER"
-    - echo "Documentation accessible at https://$DOC_URL/$DOC_UPLOAD_FOLDER/index.html"
+    - cd ..
+    - mv docs/build/html public
+  artifacts:
+    paths:
+      - public
   only:
-    # The documentation will only be built for the listed branches
     - qudev_master
     - /^Proj\/.*$/
     - /^doc\/.*$/
+
+deploy_docs:
+  extends: .base_setup
+  stage: deploy
+  script:
+    - DOC_UPLOAD_FOLDER=${CI_PROJECT_PATH:6}/$CI_COMMIT_BRANCH
+    - ssh ${DOC_USER}@${DOC_URL} "mkdir -p public/$DOC_UPLOAD_FOLDER"
+    - ssh ${DOC_USER}@${DOC_URL} "rm -rf public/$DOC_UPLOAD_FOLDER/*"
+    - scp -r public/* "${DOC_USER}@${DOC_URL}:public/$DOC_UPLOAD_FOLDER"
+    - echo "Documentation accessible at https://$DOC_URL/$DOC_UPLOAD_FOLDER/index.html"
+  only:
+    - qudev_master
+    - /^Proj\/.*$/
+    - /^doc\/.*$/
+  needs:
+    - pages
