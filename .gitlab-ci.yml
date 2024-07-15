@@ -14,7 +14,7 @@ cache:
     - ~/.cache/apt
 
 .base_setup:
-  image: python:3.10-bookworm
+  image: quay.io/jupyter/datascience-notebook:python-3.11.9 # because nlopt and qutip are lazy with pre-built packages
   before_script:
     - apt-get update && apt-get install -y libegl1 libgl1 openssh-client git python3-pyqt6
     #    - export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH # make sure libEGL.so.1 is found (PySide6 requirement)
