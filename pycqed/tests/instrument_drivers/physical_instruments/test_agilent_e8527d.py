@@ -1,5 +1,4 @@
 import pytest
-
 from pycqed.instrument_drivers.physical_instruments.E8527D import Agilent_E8527D
 
 
@@ -26,7 +25,6 @@ class TestAgilentE8527D:
         assert self.instrument.name == "test_agilent_e8527d"
 
     def test_parameters_exist(self):
-
         for p in self.PARAMETERS_TO_TEST:
             assert p in self.instrument.parameters
 
@@ -43,7 +41,6 @@ class TestAgilentE8527D:
             assert self.instrument.pulsemod_state.get() == bool(int(valid))
 
     def test_virtual_parameters(self):
-
         valid_values = {
             "frequency": 250000,
             "phase": 0.78,
