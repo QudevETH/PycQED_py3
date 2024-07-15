@@ -53,7 +53,7 @@ Further, general documentation and how to get started in depth can be found on
 
 ## Testing
 
-For testing, make sure your correct environment is activated.
+For testing, make sure your correct environment is activated. See [Installation](#installation)
 
 Then you can run the test suite in your _current_ environment via:
 
