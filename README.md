@@ -51,6 +51,9 @@ conda activate pycqed311
 Further, general documentation and how to get started in depth can be found on
 [documentation.qudev.phys.ethz.ch](https://documentation.qudev.phys.ethz.ch).
 
+## Testing
+
+For testing, make sure your correct environment is activated.
 
 ## License
 
