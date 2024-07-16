@@ -15,7 +15,7 @@ def fluxpulse_amplitude_sequence(amplitudes,
                                  cz_pulse_name,
                                  delay=None,
                                  cal_points=None,
-                                 prep_params=None,
+                                 reset_params=None,
                                  upload=True):
     '''
     Performs X180 pulse on top of a fluxpulse
@@ -25,8 +25,8 @@ def fluxpulse_amplitude_sequence(amplitudes,
        |          ----------           |X180|  ------------------------ |RO|
        |          ---    | --------- fluxpulse ---------- |
     '''
-    if prep_params is None:
-        prep_params = {}
+    if reset_params is None:
+        reset_params = {}
 
     seq_name = 'Fluxpulse_amplitude_sequence'
     ge_pulse = deepcopy(operation_dict['X180 ' + qb_name])
@@ -59,14 +59,16 @@ def fluxpulse_amplitude_sequence(amplitudes,
                                       {'FPA_Flux.amplitude': amplitudes})
 
     swept_pulses_with_prep = \
-        [add_preparation_pulses(p, operation_dict, [qb_name], **prep_params)
+        [add_preparation_pulses(p, operation_dict, [qb_name],
+                                reset_params=reset_params)
          for p in swept_pulses]
 
     seq = pulse_list_list_seq(swept_pulses_with_prep, seq_name, upload=False)
 
     if cal_points is not None:
         # add calibration segments
-        seq.extend(cal_points.create_segments(operation_dict, **prep_params))
+        seq.extend(cal_points.create_segments(operation_dict,
+                                              reset_params=reset_params))
 
     log.debug(seq)
     if upload:
@@ -126,7 +128,7 @@ def T2_freq_sweep_seq(amplitudes,
 
     flux_pulse = deepcopy(operation_dict[cz_pulse_name])
 
-    if (flux_lengths, n_pulses) == (None, None):
+    if flux_lengths is None and n_pulses is None:
         raise ValueError('Expected either flux_lengths or n_pulses but neither'
                          ' got provided.')
     elif flux_lengths is not None and n_pulses is not None:

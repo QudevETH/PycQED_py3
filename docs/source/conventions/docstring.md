@@ -18,6 +18,24 @@ def incorrect_docstring():
 '''Don't.'''
 ```
 
+### Using LaTeX
+
+You can use LaTeX in docstrings, however, keep in mind to mark your docstrings
+as 'raw' docstrings using an additional `r` ahead of the triple-" like so:
+```python
+def function(x, y, z):
+    r"""Some function.
+
+    .. math::
+
+      E = m \cdot c^2
+
+    Arguments:
+        x (int): Some parameter.
+        y (str): Other parameter.
+        z (float|List[float]): Third parameter.
+    """
+```
 ### Argument types
 
 The arguments type(s) should be included as follows, if the code does not
@@ -33,7 +51,6 @@ def function(x, y, z):
     """
 ```
 Always indicate the acceptable types for `*args` or `**kwargs` arguments.
-
 ## Modifying existing docstrings
 
 If you modify an existing docstring, use its current docstring format even if it

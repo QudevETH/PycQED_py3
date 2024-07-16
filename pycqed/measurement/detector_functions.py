@@ -674,6 +674,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         super().__init__(**kw)
         self.always_prepare = always_prepare
         self.prepare_and_finish_pulsar = prepare_and_finish_pulsar
+        self._pulsar_started = False
 
         if detectors is None:
             # if no detector is provided then itself is the only detector
@@ -700,11 +701,18 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                 self.channels += deepcopy(chs)
         else:
             self.channels = deepcopy(channels)
+        if len(self.channels) != len(set(self.channels)):
+            log.warning(
+                'Duplicate use of acquisition channel(s) detected. This can '
+                'happen when multiple measurement objects are configured to '
+                'use the same acq_I_channel/acq_Q_channel. Used channels '
+                f'for {self.acq_devs}: {self.channels}.')
         self.value_names = []
         self._channels_value_names_map = None
 
     def prepare(self, sweep_points=None):
-        self.prepare_pulsar()
+        if self.prepare_and_finish_pulsar and not self._pulsar_started:
+            self.prepare_pulsar()
         for acq_dev in self.acq_devs:
             acq_dev.timer = self.timer
 
@@ -716,9 +724,21 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
                     # AWG can be an awg_control_object which can be None
                     awgs_exclude += [awg.name]
             ps.Pulsar.get_instance().start(exclude=awgs_exclude)
+            self._pulsar_started = True
 
     def get_awgs(self):
         return [self.AWG]
+
+    def set_acq_length(self, val):
+        """Set the acquisition length (overwrite value given in init).
+
+        Has to be implemented in child classes where needed.
+
+        Args:
+            val (float): new acquisition length in seconds
+        """
+        raise NotImplementedError(
+            f'set_acq_length not implemented in {self.__class__}.')
 
     @Timer()
     def poll_data(self):
@@ -728,7 +748,8 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         the nr_sweep_points attribute of the detector functions.
 
         Returns:
-            raw data: dict of the form {acq_dev.name: raw data array}
+            raw data: dict of the form {acq_dev.name: raw_data_array}
+                where raw_data_array.shape = [number acquisition_nodes, points]
         """
         if self.AWG is not None:
             self.timer.checkpoint("PollDetector.poll_data.AWG_restart.start")
@@ -860,6 +881,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         acquisition.
         """
         if self.prepare_and_finish_pulsar:
+            self._pulsar_started = False
             ps.Pulsar.get_instance().stop()
         elif self.AWG is not None:
             self.AWG.stop()
@@ -904,7 +926,7 @@ class MultiPollDetector(PollDetector):
         """
         def __init__(self, master_awg, awgs=()):
             self.master_awg = master_awg
-            self.awgs = list(set(awgs))
+            self.awgs = list(set([a for a in awgs if a is not None]))
 
         def start(self, **kw):
             for awg in self.awgs:
@@ -1004,8 +1026,6 @@ class MultiPollDetector(PollDetector):
                 MeasurementControl
         """
         super().prepare()
-        if self.detector_control == 'hard' and sweep_points is None:
-            raise ValueError("Sweep points must be set for a hard detector")
         for d in self.detectors:
             d.prepare(sweep_points)
         self.progress_scaling = [
@@ -1017,6 +1037,10 @@ class MultiPollDetector(PollDetector):
         if isinstance(self.AWG, self.MultiAWGWrapper):
             return [self.AWG.master_awg] + self.AWG.awgs
         return [self.AWG]
+
+    def set_acq_length(self, val):
+        for d in self.detectors:
+            d.set_acq_length(val)
 
     def get_values(self):
         """
@@ -1224,6 +1248,9 @@ class AveragingPollDetector(PollDetector):
             averages=self.nr_averages,
             loop_cnt=int(self.nr_averages),
             mode='avg')
+
+    def set_acq_length(self, val):
+        self.acquisition_length = val
 
 
 class IntegratingAveragingPollDetector(PollDetector):
@@ -1472,6 +1499,7 @@ class IntegratingAveragingPollDetector(PollDetector):
         # Determine the number of sweep points and set them
         if sweep_points is None or self.single_int_avg:
             # this case will be used when it is a soft detector
+            assert self.detector_control == 'soft'
             # Note: single_int_avg overrides chunk_size
             # single_int_avg = True is equivalent to chunk_size = 1
             self.nr_sweep_points = self.values_per_point
@@ -1513,6 +1541,11 @@ class IntegratingAveragingPollDetector(PollDetector):
             mode=self._acq_mode, data_type=self.data_type,
         )
 
+    def set_acq_length(self, val):
+        self.integration_length = val
+        value_properties = self.acq_dev.get_value_properties(
+            self.data_type, self.integration_length)
+        self.scaling_factor = value_properties['scaling_factor']
 
 class ScopePollDetector(PollDetector):
     """
@@ -1753,7 +1786,8 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
     Detector used for integrated single-shot acquisition.
     """
 
-    def __init__(self, acq_dev, nr_shots: int = 4094, **kw):
+    def __init__(self, acq_dev, nr_shots: int = 4094,
+                 single_int_log: bool = False, **kw):
         """
         Init of the IntegratingSingleShotPollDetector.
         See the IntegratingAveragingPollDetector for the full dostring of the
@@ -1762,6 +1796,9 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         Args:
             acq_dev (instrument): data acquisition device
             nr_shots (int)     : number of acquisition shots
+            single_int_log (bool): set to True for a soft sweep (the
+                detector remains a hard detector because it returns several
+                values, the single shots)
 
         Keyword args:
             passed to the init of the parent class. In addition,
@@ -1774,8 +1811,16 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         self.name = '{}_integration_logging_det'.format(self.data_type)
         self.nr_shots = nr_shots
         self.acq_data_len_scaling = self.nr_shots  # to be used in MC
+        self.single_int_log = single_int_log
         # Disable MC live plotting by default for SSRO acquisition
         self.live_plot_allowed = kw.get('live_plot_allowed', False)
+
+    def prepare(self, sweep_points=None):
+        if self.single_int_log:
+            # If soft sweep (meaning each acq. is triggered in software):
+            # the number of values to be acquired is the number of shots
+            sweep_points = [0] * self.acq_data_len_scaling
+        super().prepare(sweep_points)
 
 
 class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):

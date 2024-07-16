@@ -10,14 +10,16 @@ from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans as KMeans
 import fractions, math
 fractions.gcd = math.gcd  # fractions.gcd (for neupy) is removed in python 3.9
+
+# These libraries might not be available. Please check pypproject.toml
 try:
     from neupy.algorithms import GRNN as grnn
 except Exception:
-    logging.warning('Could not import neupy')
+    logging.warning('Could not import neupy.')
 try:
     import tensorflow as tf
 except Exception:
-    logging.warning('Could not import tensorflow')
+    logging.warning('Could not import tensorflow.')
 
 
 class Estimator(metaclass=ABCMeta):
