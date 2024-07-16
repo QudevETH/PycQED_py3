@@ -1,10 +1,10 @@
-import pytest
-import tempfile
 import os
-import numpy
+import tempfile
 
+import numpy
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_base_instrument as zibi
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_PQSC as PQ
+import pytest
 
 
 @pytest.fixture(scope="class")
