@@ -1903,7 +1903,18 @@ class Segment:
                             extra_delay, awg=awg)
                         ps_mod = pulse_start + extra_delay_samples
                         pe_mod = pulse_end + extra_delay_samples
-                        if pulse.filter_bypass is not None:
+                        analog = self.pulsar.get(f"{channel}_type") == "analog"
+                        if analog:
+                            precalculate = self.pulsar.get(
+                                f"{channel}_distortion") == "precalculate"
+                        else:
+                            precalculate = False
+                        bypass = pulse.filter_bypass is not None
+                        # channel needs to be analog and precaluclate,
+                        # otherwise predisortion is anyway not applied below,
+                        # and we can just add pulse_wfs[channel] to
+                        # wfs already here
+                        if bypass and precalculate and analog:
                             assert pulse.filter_bypass in filter_bypasses, \
                                 (f'Filter bypass type: '
                                  f'{pulse.filter_bypass} not in '
@@ -1972,8 +1983,10 @@ class Segment:
                         # is done on the pulse waveform
                         wf_bypass_IIR = np.zeros_like(wf)
                         for channel, ps, pe, pwf in pulses_to_add_after_filtering['bypass_IIR']:
+                            print('IIR, channel, c', channel, c)
                             if channel != c:
                                 continue
+                            print('IIR 2, channel, c', channel, c)
                             pwf_channel = pwf.get(c, None)
                             if pwf_channel is not None:
                                 wf_bypass_IIR[ps:pe] += \
