@@ -216,6 +216,9 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 for ch_name in group:
                     pulsar.channel_groups.update({ch_name: group})
                 group = []
+        # The following is required for HDAWGGeneratorModule.trigger_group
+        for awg_module in self.awg_modules:
+            awg_module.update_i_channel_name()
 
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         super().create_channel_parameters(id, ch_name, ch_type)
@@ -898,19 +901,27 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
     @property
     def trigger_source(self):
-        trigger_source = self.pulsar.get(
-            f"{self._awg.name}_trigger_source")
+        trigger_source = self.pulsar.parameters[
+            self._awg_name + "_trigger_source"].cache.get()
         if isinstance(trigger_source, str):
             return trigger_source
         return trigger_source[self.trigger_group]
 
     @property
     def trigger_group(self):
-        pulsar = self.pulsar
-        return pulsar.get_trigger_group(
-            [ch for ch in pulsar.channels
-             if pulsar.get_channel_awg(ch) == self._awg
-             and pulsar.get(f'{ch}_id') == self.channel_ids[0]][0])
+        """The pulsar trigger group to which this AWG module belong.
+
+        Remark: for speed reasons, this is not implemented via calls to
+            pulsar.get_trigger_group.
+        """
+        # FIXME: some kind of caching should be implemented since this might
+        #  be called from trigger_source for each element.
+        trigger_groups = self.pulsar.parameters[
+            self._awg_name + "_trigger_groups"].cache.get()
+        for group, channels in trigger_groups.items():
+            if self.i_channel_name in channels:
+                return group
+        return f"{self._awg_name}_{self.pulsar.DEFAULT_TRG_GRP}"
 
     def _configure_awg_str(
             self,
