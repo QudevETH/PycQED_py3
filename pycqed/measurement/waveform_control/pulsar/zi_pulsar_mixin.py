@@ -524,6 +524,9 @@ class ZIGeneratorModule:
         self._awg = awg
         """Instrument driver of the parent device."""
 
+        self._awg_name = awg.name
+        """Cached name of the parent device (since qcodes .name is slow)."""
+
         self._device_type = "none"
         """Device type of this generator. This parameter should be rewritten 
         in the child classes."""
