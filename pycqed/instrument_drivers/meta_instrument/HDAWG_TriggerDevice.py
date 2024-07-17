@@ -63,6 +63,12 @@ class HDAWG_TriggerDevice(Instrument):
 
     @pulse_length.setter
     def pulse_length(self, value):
+        """
+        Set the pulse length in samples. The pulse length must be a multiple
+        of the waveform granularity.
+
+        :param value: the pulse length in samples
+        """
         # TODO this could become a qcodes parameter in unit of seconds
         if np.abs(value % self.GRANULARITY) > 1e-12:
             raise ValueError(
@@ -93,6 +99,12 @@ class HDAWG_TriggerDevice(Instrument):
                                            program_string=awg_str)
 
     def _pulse_period_set_parser(self, pulse_period):
+        """
+        Set the pulse period in seconds. The pulse period must be a multiple
+        of the waveform granularity.
+
+        :param pulse_period: the pulse period in seconds
+        """
         samples = pulse_period * self.awg.clock_freq()
         if np.abs(samples % self.GRANULARITY) > 1e-11:
             raise ValueError(
@@ -102,6 +114,12 @@ class HDAWG_TriggerDevice(Instrument):
         return samples - self.pulse_length
 
     def _pulse_period_get_parser(self, pulse_distance):
+        """
+        Get the pulse period in seconds. The pulse period is the sum of the
+        pulse distance and the pulse length.
+
+        :param pulse_distance: the pulse distance in samples
+        """
         samples = pulse_distance + self.pulse_length
         return samples / self.awg.clock_freq()
 
