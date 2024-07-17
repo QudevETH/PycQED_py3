@@ -320,7 +320,6 @@ class ZIPulsarMixin:
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append("playWaveDIO();")
-            
         elif command_table_index is not None:
             playback_string.append(f"executeTableEntry({command_table_index});")
         else:
@@ -1137,15 +1136,6 @@ class ZIGeneratorModule:
 
                 # Update (and thus activate) command table if specified.
                 if self._use_command_table:
-                    if cw != 'no_codeword':
-                        raise RuntimeError(
-                            f"On device: {self._awg.name}: Pulse sequencing "
-                            f"with DIO and with command table are turned on "
-                            f"at the same time. Please do not use them "
-                            f"simultaneously, as they conflicts with each "
-                            f"other in the sequencer code. "
-                        )
-
                     scaling_factor = metadata.get("scaling_factor", dict())
                     # entry_index = len(self._command_table)
                     
@@ -1158,14 +1148,12 @@ class ZIGeneratorModule:
 
                     # Find entry index
                     entry = self._generate_command_table_entry(
-                        entry_index=0,
+                        entry_index=None,
                         wave_index=self._wave_idx_lookup[element][cw],
                         amplitude=amplitude,
                         phase=phase,
                     )
                     update_entry = True
-
-                    entry_index = self.NORMAL_ENTRIES_START_INDEX
                     
                     # Check if the same entry already exists in the command
                     # table. If so, the existing entry will be reused and the
@@ -1175,8 +1163,7 @@ class ZIGeneratorModule:
                     if cw == 'no_codeword':
                         i_start = self.NORMAL_ENTRIES_START_INDEX
                         i_end = self.COMMAND_TABLE_MAX_SIZE
-                        codeword_type = 'no_codeword'
-
+                        entry_index = i_start
                         for existing_entry in self._command_table:
                             if i_start <= existing_entry["index"] < i_end:
                                 if self._compare_command_table_entry(
@@ -1195,9 +1182,17 @@ class ZIGeneratorModule:
                                 f"{self._awg_nr}: command table memory overflow. "
                                 f"Please check if you have defined too many "
                                 f"different waveforms or allocated too few space "
-                                f"for feedback or non-feedback pulses."
+                                f"for feedback or non-feedback pulses. "
+                                f"entry_index = {entry_index}, cw = {cw}."
                             )
-                    
+                    else:
+                        i_start = 0
+                        i_end = self.NORMAL_ENTRIES_START_INDEX
+                        entry_index = cw
+                        if cw in [existing_entry["index"]
+                                  for existing_entry in self._command_table
+                                  if i_start<=existing_entry["index"]<i_end]:
+                            update_entry = False
 
                     # records mapping between element-codeword and entry index
                     self._command_table_lookup[element] = entry_index
@@ -1428,6 +1423,7 @@ class ZIGeneratorModule:
         """
         awg_str = self._sequence_string_template.format(
             wave_definitions='\n'.join(self._wave_definitions),
+            # TODO remove
             codeword_table_defs='\n'.join(self._codeword_table_defs),
             playback_string='\n  '.join(self._playback_strings),
         )
