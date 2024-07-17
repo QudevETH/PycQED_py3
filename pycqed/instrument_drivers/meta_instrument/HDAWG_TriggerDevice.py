@@ -42,8 +42,9 @@ class HDAWG_TriggerDevice(Instrument):
             'pulse_length',
             label='Pulse length',
             get_cmd=(lambda self=self: self.PULSE_LENGTH),
-            set_cmd=(lambda val, self=self: setattr(self, 'PULSE_LENGTH',
-                                                    val)),
+            set_cmd=(lambda val, self=self:
+                     (setattr(self, 'PULSE_LENGTH', val),
+                      self.program_awg())[0]),
             unit='samples',
             vals=vals.PermissiveMultiples(self.GRANULARITY, 1e-12)
         )
