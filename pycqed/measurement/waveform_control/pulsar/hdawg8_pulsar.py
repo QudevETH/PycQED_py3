@@ -884,7 +884,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         else:
             prepend_zeros = 0
         self._playback_strings += self._awg_interface.zi_playback_string(
-            name=self._awg.name,
+            name=self._awg_name,
             device='hdawg',
             wave=wave,
             codeword=codeword,
