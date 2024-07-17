@@ -2268,8 +2268,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 if key == 'meas_results_per_qb_raw':
                     sweep_points = self.raw_data_dict['hard_sweep_points']
                     # Average the raw data over shots, to get usable plots
-                    # FIXME should this rather go to extract_data?
-                    # FIXME how to make this cleaner?
+                    # FIXME this might not be the best place for doing this,
+                    #  but cleaning this up would likely mean a major
+                    #  clean up/refactoring of extract_data
                     if self.get_param_value('data_type') == 'singleshot':
                         n_shots = self.get_param_value("nr_shots",
                             self._extract_param_from_det("nr_shots"))
