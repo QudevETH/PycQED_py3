@@ -7,7 +7,14 @@ log = logging.getLogger(__name__)
 
 
 class HDAWG_TriggerDevice(Instrument):
-    """Meta instrument to control an HDAWG channel pair as main trigger"""
+    """
+    Meta instrument to control an HDAWG channel pair as main trigger
+    source for other instruments.
+
+    The trigger output is a pulse train with a fixed period and a fixed
+    pulse length. The pulse period is set by the pulse_period parameter
+    and the pulse length is set by the pulse_length parameter.
+    """
     USER_REG_REPETITIONS = 0
     USER_REG_SEPARATION = 1
     GRANULARITY = 16
@@ -88,6 +95,9 @@ class HDAWG_TriggerDevice(Instrument):
         self.program_awg()
 
     def program_awg(self):
+        """
+        Program the AWG with the trigger waveform defined in the TEMPLATE.
+        """
         if self._awg_nr is None:  # during init
             return
         awg_str = self.TEMPLATE.format(
