@@ -570,6 +570,9 @@ class Pulsar(Instrument):
         awgs: Names of AWGs added to the pulsar.
     """
 
+    DEFAULT_TRG_GRP = _DEFAULT_TRG_GRP
+    """Default trigger group name"""
+
     def __init__(self, name:str='Pulsar', master_awg:str=None):
         """Pulsar constructor.
 
