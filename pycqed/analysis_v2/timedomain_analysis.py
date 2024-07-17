@@ -1906,24 +1906,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             shots_per_qb[qbn] = \
                 np.asarray(list(
                     pdd[key][qbn].values())).T
-            # if 1D measurement, shape is (n_shots*n_sp, n_vn) i.e. one
-            # column for each value_name (often equal to n_ro_ch)
-
-
-            # # if 2D measurement: shape is (n_soft_sp, n_shots*n_hard_sp, n_vn)
-            # n_vn = shots_per_qb[qbn].shape[-1]
-            # if (sc := self.get_param_value('sweep_control'))\
-            #         and sc[0] == 'soft':
-            #     # 1D soft sweep with single shots: turn into a 2D measurement
-            #     # with shape (n_soft_sp, n_shots, n_vn)
-            #     soft_control = True
-            #     nr_shots = self.get_param_value(
-            #         "nr_shots", self._extract_param_from_det("nr_shots"))
-            #     shots_per_qb[qbn] = shots_per_qb[qbn].reshape((nr_shots, -1,
-            #                                                    n_vn))
-            # else:
-            #     soft_control = False
-
+            # if 1D measurement, shape at this point is (n_shots*n_sp, n_vn)
+            # i.e. one column for each value_name (often equal to n_ro_ch)
 
             # if "2D measurement" reshape from
             #  (n_soft_sp, n_shots * n_hard_sp, n_vn)
