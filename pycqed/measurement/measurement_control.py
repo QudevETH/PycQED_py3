@@ -567,7 +567,6 @@ class MeasurementControl(Instrument):
                 sp = sp[0:len(sp) // self.acq_data_len_scaling]
             for i, sweep_point in enumerate(sp):
                 self.measurement_function(sweep_point, index=i)
-        print()  # New line after the self.print_progress_adaptive
 
     @Timer()
     def measure_soft_adaptive(self, method=None):
@@ -629,11 +628,11 @@ class MeasurementControl(Instrument):
                     self.adaptive_function(self.optimization_function,
                                            **self.af_pars)
             except StopIteration:
-                print('Reached f_termination: %s' % (self.f_termination))
+                print('\nReached f_termination: %s' % (self.f_termination))
         else:
             raise Exception('optimization function: "%s" not recognized'
                             % self.adaptive_function)
-        print()  # New line after the self.print_progress_adaptive TODO
+        print()  # New line after self.print_progress_adaptive
         self.timer.checkpoint(
             "MeasurementControl.measure_soft_adaptive.adaptive_function.end")
         self.save_optimization_results(self.adaptive_function,
