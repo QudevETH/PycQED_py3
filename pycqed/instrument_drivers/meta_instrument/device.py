@@ -54,6 +54,9 @@ class Device(Instrument):
             connectivity_graph: list of elements of the form [qb1, qb2] with qb1 and qb2 QudevTransmon objects or names
                          thereof. qb1 and qb2 should be physically connected on the device.
         """
+        # initialize self.qubits before super call to prevent a potential
+        # infinite recursion in __getattr__
+        self.qubits = []
         super().__init__(name, **kw)
 
         qb_names = [qb if isinstance(qb, str) else qb.name for qb in qubits]
