@@ -776,7 +776,7 @@ class ZIGeneratorModule:
             self,
             awg_sequence,
     ):
-        self._update_i_channel_name()
+        self.update_i_channel_name()
         self._update_use_placeholder_wave_flag()
         self._update_use_filter_flag(awg_sequence=awg_sequence)
         self._update_use_command_table_flag()
@@ -804,7 +804,7 @@ class ZIGeneratorModule:
         self._upload_sine_generation_config(
             sine_config=sine_config.get(self.i_channel_name, dict()))
 
-    def _update_i_channel_name(self):
+    def update_i_channel_name(self):
         """Get I channel name from self.pulsar.channels ."""
         self.i_channel_name = self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],
