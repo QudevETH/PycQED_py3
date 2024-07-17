@@ -7,8 +7,8 @@ def get_default_datadir():
     """
     Returns the default datadir in the repository folder.
 
-    This function attempts to locate the default data directory for PyCQED.
-    It first checks if the data directory exists in the PyCQED installation folder.
+    This function attempts to locate the default data directory for PycQED.
+    It first checks if the data directory exists in the PycCQED installation folder.
     If not found, it searches for a 'data' directory in the current working directory
     and its parent directories (up to two levels deep).
 
