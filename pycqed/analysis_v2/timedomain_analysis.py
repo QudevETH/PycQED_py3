@@ -5924,6 +5924,8 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
         apd = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
+            # Splitting to match the format "qbn_<x>" where <x> is an
+            # integer (sweep index)
             freqs[qbn] = \
                 {'val': np.array([d[self.fit_type]['new_qb_freq']
                                   for k, d in apd.items()
