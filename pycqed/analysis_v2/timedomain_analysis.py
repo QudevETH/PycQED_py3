@@ -3279,9 +3279,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             if a_weights.get_param_value('optimize'):
                 min_cost_index = list(min_cost_index)
                 min_cost_index.insert(1, 0)  # (index, value)
+                min_cost_index.insert(0, Ellipsis)
                 min_cost_index = tuple(min_cost_index)
             # extract the 1D optimal weights
-            weights = a_weights.cpp_results['weights'][0][:, *min_cost_index]
+            # weights = a_weights.cpp_results['weights'][0][:, *min_cost_index]
+            weights = a_weights.cpp_results['weights'][0][min_cost_index]
             # weights shape: (n_states,)
         assert isinstance(weights, np.ndarray)
         if len(weights.shape) == 1:
