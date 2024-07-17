@@ -10023,7 +10023,7 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
             # Note that the number of shots is already included in n_hsp
             n_hsp = len(self.raw_data_dict['hard_sweep_points'])
             prep_params = self.get_reset_params(default_value={})
-            if 'active' in prep_params['preparation_type']:
+            if 'active' in prep_params.get('preparation_type', []):
                 # If reset: n_hsp already includes the number of shots
                 # and the final readout is interleaved with n_reset readouts
                 n_resets = prep_params.get('reset_reps')
