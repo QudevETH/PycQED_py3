@@ -36,6 +36,7 @@ from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis_v3 import plotting as plot_mod
 from collections import OrderedDict
+from collections.abc import Mapping
 
 log = logging.getLogger(__name__)
 
@@ -1068,7 +1069,8 @@ class Device(Instrument):
                         # No value passed: getter
                         return {qb.name: qb.__getattr__(item)() for qb in
                                 qbs_with_attr}
-                    elif isinstance(p := args[0], dict) and\
+                    # Mapping: dict or OrderedDict
+                    elif isinstance(p := args[0], Mapping) and\
                             not common_value_all_qubits:
                         # Parse p to set p[qbn] to each qubit
                         [qb.__getattr__(item)(p[qb.name])
