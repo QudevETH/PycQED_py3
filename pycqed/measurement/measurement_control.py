@@ -382,8 +382,11 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
-            self.exp_metadata['sweep_control'] = [
-                s.sweep_control for s in getattr(self, 'sweep_functions', [])]
+            self.exp_metadata.update({
+                'sweep_control': [s.sweep_control for s in getattr(
+                    self, 'sweep_functions', [])],
+                'right_handed_basis': True,
+            })
             self.save_exp_metadata(self.exp_metadata)
             exception = None
             try:
