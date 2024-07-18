@@ -173,7 +173,8 @@ class Sequence:
                             if awg_sequences:
                                 h = awg_sequences[awg][uelname][cw][chid]
                             else:
-                                h = seg.calculate_hash(elname, cw, ch)
+                                h = seg.calculate_hash(elname, cw, ch,
+                                                       trigger_group=group)
                             sequences[awg][uelname][cw][chid] = h
                             if get_channel_hashes:
                                 if ch not in channel_hashes:
