@@ -190,6 +190,7 @@ class ZIPulsarMixin:
                     f", {wave_index});"
                 )
                 defined_wave_indices[wave_index] = wave
+
         return wave_definition
 
     @staticmethod
@@ -521,7 +522,7 @@ class ZIGeneratorModule:
     #NOTE: the internal shift is limited to 1024, thus the commands for reset, 
     ## ff and decoder need to be in the first 1024 command table entries. 
     FEEDBACK_ENTRIES_START_INDEX = 0  
-    NORMAL_ENTRIES_START_INDEX = 84
+    NORMAL_ENTRIES_START_INDEX = 4
     """Specifies the first command table entry for saving the decoder waveforms."""
 
     def __init__(
@@ -625,7 +626,6 @@ class ZIGeneratorModule:
 
         self._negate_q = False
         """Whether to flip the sign of the Q channel waveform."""
-
 
         self._generate_channel_ids(awg_nr=awg_nr)
         self._reset_has_waveform_flags()
@@ -1045,8 +1045,7 @@ class ZIGeneratorModule:
                 self._playback_strings += \
                     ZIPulsarMixin.zi_playback_string_loop_end(metadata)
                 continue
-            codeword_type = None
-            # TODO: enforce only same -fb codewords in Element..
+
             for cw in awg_sequence_element:
                 if cw == 'no_codeword':
                     if nr_cw != 0:
@@ -1127,8 +1126,6 @@ class ZIGeneratorModule:
                         self._wave_idx_lookup[element][cw] = [
                             i for i, v in self._defined_waves[1].items()
                             if v == wave][0]
-                        # assert len([i for i, v in self._defined_waves[1].items()if v == wave]==1, \
-                        #     f'More than one waveform defined in waveform table for {element}.')
                         reuse_definition = True
                     else:
                         self._wave_idx_lookup[element][cw] = next_wave_idx
@@ -1137,7 +1134,6 @@ class ZIGeneratorModule:
                 # Update (and thus activate) command table if specified.
                 if self._use_command_table:
                     scaling_factor = metadata.get("scaling_factor", dict())
-                    # entry_index = len(self._command_table)
                     
                     amplitude = self._extract_command_table_amplitude(
                         scaling_factor=scaling_factor
@@ -1154,7 +1150,7 @@ class ZIGeneratorModule:
                         phase=phase,
                     )
                     update_entry = True
-                    
+
                     # Check if the same entry already exists in the command
                     # table. If so, the existing entry will be reused and the
                     # new entry will not be uploaded.
