@@ -46,11 +46,13 @@ Remember that everytime you open a new terminal, you need to activate the virtua
 conda activate pycqed311
 ```
 
-Start a jupyter notebook without password
+In case you have to restart jupyter notebook often, you can start a jupyter notebook without password:
 
 ```bash
 jupyter notebook --NotebookApp.token='' --NotebookApp.password=''
 ```
+
+Warning: That is not recommended on a computer which is accessible outside of our local LAN.
 
 ## Documentation
 
