@@ -2674,7 +2674,8 @@ class Segment:
 
 class UnresolvedPulse:
     """
-    fast_mode: Disables consistency checks for speed reasons.
+    fast_mode: Disables checking that all parametric values have been
+        resolved, for speed reasons.
     pulse_pars: dictionary containing pulse parameters
     ref_pulse: 'segment_start', 'init_start', 'previous_pulse', pulse.name,
         or a list of multiple pulse.name.
