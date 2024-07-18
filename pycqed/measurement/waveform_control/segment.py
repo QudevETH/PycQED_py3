@@ -2108,7 +2108,7 @@ class Segment:
         return channels
 
     @_with_pulsar_tmp_vals
-    def calculate_hash(self, elname, codeword, channel, trigger_group):
+    def calculate_hash(self, elname, codeword, channel, trigger_group=None):
         if not self.pulsar.reuse_waveforms():
             # these hash entries avoid that the waveform is reused on another
             # channel or in another element/codeword
@@ -2120,6 +2120,10 @@ class Segment:
         else:
             hashlist = []
 
+        if trigger_group is None:
+            # It is possible to get trigger_group from channel as here,
+            # but this is rather slow, so it is better to pass it above
+            trigger_group = self.pulsar.get_trigger_group(channel)
         tstart, length = self.element_start_end[elname][trigger_group]
         hashlist.append(length)  # element length in samples
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
