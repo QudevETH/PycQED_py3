@@ -4,6 +4,8 @@ from pycqed.instrument_drivers.acquisition_devices.base import \
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
     .UHFQA_core import UHFQA_core
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import ZI_base_qudev
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import \
+    snapshot_whitelist as snw
 import logging
 log = logging.getLogger(__name__)
 
