@@ -995,7 +995,12 @@ def zipfolder(zip_filename, folder, directory):
                 zipObj.write(filePath, os.path.relpath(filePath, folder))
 
 
-def save_zibugreport(interactive=True, save_folder=None):
+def save_zibugreport(
+        station,
+        involved_channels=None,
+        interactive=True,
+        save_folder=None
+):
     """
     Saves a detailed bug report of ZI devices.
 
@@ -1030,6 +1035,9 @@ def save_zibugreport(interactive=True, save_folder=None):
 
     # get the pulsar instance
     from pycqed.measurement.waveform_control import pulsar as ps
+    import zhinst.toolkit as tk
+
+    session = tk.Session("localhost")
     pulsar = ps.Pulsar.get_instance()
 
     # create the save folder
@@ -1158,6 +1166,135 @@ def save_zibugreport(interactive=True, save_folder=None):
             os.system(f'notepad {f}')
         except Exception as e:
             exceptions['stdout'] = e
+
+    # export the SHF instrument settings
+    for SHF in station.SHFQCs:
+        # crate the top-level folder for this SHF
+        shf_data_dir = os.path.join(brdir, SHF.name)
+        os.mkdir(shf_data_dir)
+        os.mkdir(os.path.join(shf_data_dir, 'sg'))
+        os.mkdir(os.path.join(shf_data_dir, 'qa'))
+
+        # use zhinst toolkit to connect to the device to pull the waveforms
+        shf_tk = session.connect_device(SHF.serial)
+
+        # save SHFQC settings
+        dev_settings = SHF.daq.get(f'/{SHF.devname}/*', settingsonly=True,
+                                   flat=True)
+        np.save(os.path.join(shf_data_dir, f'shfqc_settings'), dev_settings)
+
+        if involved_channels and SHF.name not in involved_channels.keys():
+            continue
+
+        # save sg channel waveforms
+        wfm_dir = os.path.join(shf_data_dir, "sg\sg_waveforms")
+        os.mkdir(wfm_dir)
+        for sg_channel in range(6):
+            if involved_channels and f"sg{sg_channel + 1}" not in \
+                    involved_channels[SHF.name]:
+                continue
+            channel_dir = os.path.join(wfm_dir, f"sg{sg_channel}")
+            os.mkdir(channel_dir)
+            wave_idx = 0
+            while (
+            len(shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]())):
+                w = shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]()
+                np.save(os.path.join(channel_dir, f'wave_{wave_idx}'), w)
+                wave_idx += 1
+
+        # save sg channel commandtable
+        wfm_dir = os.path.join(shf_data_dir, "sg\sg_commandtables")
+        os.mkdir(wfm_dir)
+        for sg_channel in range(6):
+            if involved_channels and f"sg{sg_channel + 1}" not in \
+                    involved_channels[SHF.name]:
+                continue
+            w = eval(SHF.sgchannels[sg_channel].awg.commandtable.data().replace(
+                "false", "False"))
+            np.save(os.path.join(wfm_dir, f'commandtable_sg{sg_channel}'), w)
+
+        # save sg sequencer code
+        wfm_dir = os.path.join(shf_data_dir, "sg\sg_sequencer")
+        os.mkdir(wfm_dir)
+        for sg_channel in range(6):
+            if involved_channels and f"sg{sg_channel + 1}" not in \
+                    involved_channels[SHF.name]:
+                continue
+            w = SHF.sgchannels[sg_channel].awg.sequencer.program()
+            np.save(os.path.join(wfm_dir, f'sequencer_sg{sg_channel}'), w)
+
+        if involved_channels and f"qa1" not in involved_channels[SHF.name]:
+            continue
+
+        # save qa channel waveforms
+        wfm_dir = os.path.join(shf_data_dir, "qa\qa_waveforms")
+        os.mkdir(wfm_dir)
+        for i, wave in enumerate(SHF.qachannels[0].generator.waveforms):
+            w = wave.wave()
+            np.save(os.path.join(wfm_dir, f'wave_{i}'), w)
+
+        # save qa integration weights
+        wfm_dir = os.path.join(shf_data_dir, "qa\qa_int_weights")
+        os.mkdir(wfm_dir)
+        for i, wave in enumerate(
+                SHF.qachannels[0].readout.integration.weights):
+            w = wave.wave()
+            np.save(os.path.join(wfm_dir, f'weight_{i}'), w)
+
+        # save qa sequencer code
+        wfm_dir = os.path.join(shf_data_dir, "qa\qa_sequencer")
+        os.mkdir(wfm_dir)
+        w = SHF.qachannels[0].generator.sequencer.program()
+        np.save(os.path.join(wfm_dir, f'sequencer_qa{0}'), w)
+
+    # export the waveform files of the AWGs
+    for AWG in station.AWGs:
+        if involved_channels and AWG.name not in involved_channels.keys():
+            continue
+
+        # create the data directory of the AWG
+        awg_data_dir = os.path.join(brdir, AWG.name)
+        os.mkdir(awg_data_dir)
+
+        # save HDAWG waveforms
+        for i in range(4):
+            sn = AWG.daq.get(f'/{AWG.devname}/awgs/{i}/waveform/waves/*',
+                             settingsonly=False, flat=True,
+                             excludevectors=False)
+            np.save(os.path.join(awg_data_dir, f'waves_{i}'), sn)
+
+        # save HDAWG sequencer code
+        for i in range(4):
+            sn = pulsar.awg_interfaces[AWG.name].awg_mcc.awgs[
+                i].sequencer.program()
+            np.save(os.path.join(awg_data_dir, f'seqc_{i}'), sn)
+
+        sn = AWG.daq.get(f'/{AWG.devname}/*', settingsonly=True)
+        np.save(os.path.join(awg_data_dir, f'awg_settings'), sn)
+
+    # export the settings of the AWGs and UHFs
+    for dev in station.AWGs + station.UHFs:
+        try:
+            write_logfile(os.path.join(
+                brdir, f'{dev.name}_{dev.devname}_compiler_statusstring'),
+                getattr(dev, 'compiler_statusstring', ''))
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_compiler_statusstring'] = e
+        try:
+            write_logfile(
+                os.path.join(brdir, f'{dev.name}_{dev.devname}_snapshot'),
+                repr(dev.snapshot()))
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_snapshot'] = e
+
+    # log the error status of the HDAWGSs, UHFs and the PQSC
+    for dev in station.AWGs + station.UHFs + [station.PQSC]:
+        try:
+            write_logfile(
+                os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
+                repr(json.loads(dev.getv('raw/error/json/errors'))))
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_errors'] = e
 
     # print in kernel
     print(f'Bug report files saved to {brdir}')
