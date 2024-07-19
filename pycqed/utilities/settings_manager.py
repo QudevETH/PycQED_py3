@@ -490,7 +490,7 @@ def get_station_from_file(timestamp=None, folder=None, filepath=None,
         .get_station(param_path=param_path)
 
 
-def convert_settings_to_hdf(timestamp: str):
+def convert_settings_to_hdf(timestamp: str, skip_if_exists=False):
     """
     Creates/writes settings to a hdf5-file specified by a timestamp.
     Write the instrument settings into the preexisting hdf-file with the
@@ -519,4 +519,9 @@ def convert_settings_to_hdf(timestamp: str):
                                           ext=ext[1:])
         fn = fn[:-len(ext)] + '.hdf'
     with h5py.File(fn, 'a') as hdf_file:
-        MeasurementControl.save_station_in_hdf(hdf_file, station)
+        if 'Instrument settings' not in hdf_file:
+            MeasurementControl.save_station_in_hdf(hdf_file, station)
+        elif not skip_if_exists:
+            raise KeyError(
+                'HDF file with group Instrument settings already exists for '
+                'timestamp {timestamp}.')
