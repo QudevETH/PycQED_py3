@@ -493,8 +493,8 @@ class CircuitBuilder:
                         for do in decomposed_op
                     ]
                     p[4]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
-                    p[10]['basis_rotation'] = {qb_dec[0]: cphase/2+180}
-                    p[11]['basis_rotation'] = {qb_dec[1]: cphase/2}
+                    p[9]['basis_rotation'] = {qb_dec[0]: cphase/2+180}
+                    p[10]['basis_rotation'] = {qb_dec[1]: cphase/2}
                 else:
                     p = [self.copy_op(self.operation_dict[device_op])]
                     if cphase is not None:
