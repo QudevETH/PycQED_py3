@@ -1,7 +1,6 @@
 import serial
 import time
 import os
-import struct
 import matplotlib.pyplot as plt
 import scipy.optimize
 from datetime import datetime
@@ -9,18 +8,34 @@ from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 
+
 def bits_to_byte(bits):
     res = 0
     for b in bits[::-1]:
         res = (res << 1) | b
     return res
 
+
 IODIRA = 0x00
 IODIRB = 0x01
 OLATA = 0x14
 OLATB = 0x15
 
+
 class ColdSwitchController(Instrument):
+    """Driver for QuDev cold switch controller.
+
+    Attributes:
+        SOURCE_SINK_TABLE (dict): mapping of the output channels of the
+            cold-switch controller to the cold switches.
+        NB_SWITCH_POS (int): number of different cold switch positions for
+            one cold switch.
+        NB_COLD_SWITCHES (int): number of different physical  cold switches
+            which the controller is controlling.
+        LOG_FILENAME (str): filename of the log file. The number of the cold
+            switch is inserted at the parenthesis.
+        TIME_FORMAT (str): format of the timestamp inside the log file
+    """
 
     SOURCE_SINK_TABLE = {
            5: (1, 2),
@@ -39,6 +54,18 @@ class ColdSwitchController(Instrument):
                  nb_cold_switches=None,
                  source_sink_table=None,
                  power_supply_channel: str = 'ch1'):
+        """
+        Initialise the cold switch controller.
+        Args:
+            name (str): name of the cold switch.
+            port (str): serial port of the cold switch (e.g. "COM7")
+            power_supply (str): instrument name of the power supply device
+            log_dirpath (str): path of the log file folder
+            nb_cold_switches (int): see docstring of class
+            source_sink_table (int): see docstring of class
+            power_supply_channel (int): channel of the power supply which
+                supplies the power for switching the cold switches
+        """
         super().__init__(name)
         self.port = serial.Serial(port, 115200, timeout=5, writeTimeout=0)
         self.debug = False
@@ -96,24 +123,31 @@ class ColdSwitchController(Instrument):
             vals=vals.Ints(min_value=0, max_value=255),
             initial_value=180,
             parameter_class=ManualParameter,
+            docstring="Relative output amplitude of the current to the cold "
+                      "switch coils. 0 is minimum and 255 is maximum."
         )
         self.add_parameter(
             "min_switching_interval",
             vals=vals.Ints(min_value=0),
             initial_value=900,
             parameter_class=ManualParameter,
+            docstring="Minimum waiting time in seconds between two recurring "
+                      "switching events."
         )
         self.add_parameter(
             "max_switching_temperature",
             vals=vals.Numbers(min_value=0, max_value=100e-3),
             initial_value=18e-3,
             parameter_class=ManualParameter,
+            docstring="Maximum allowed temperature of self.temperature_param "
+                      "in Kelvin before a switching event."
         )
         self.add_parameter(
             "failsafe_duration",
             vals=vals.Ints(min_value=1, max_value=100),
             initial_value=1,
             parameter_class=ManualParameter,
+            docstring="Number of pulses for a failsafe switching event."
         )
 
     def close(self):
@@ -285,17 +319,25 @@ class ColdSwitchController(Instrument):
         self.power_supply_channel.output(0)
 
     def get_cold_switch_channel(self, switch_idx):
-        """TODO
+        """
+        Returns current cold switch position.
+        Returns the current cold switch channel (position) of cold switch
+        %switch_idx% based on the latest entry of the log file.
 
         Args:
             switch_idx: number of the switch (1-indexed)
+
+        Returns: the current cold switch channel (position)
         """
         with open(self._get_logfile_path(switch_idx), 'r') as f:
             current_channel = int(list(f)[-1].split(' to ')[1])
         return current_channel
 
     def change_cold_switch_channel(self, new_channel, switch_idx):
-        """TODO
+        """
+        Switches cold switch %switch_idx% to the new_channel.
+        Changes the cold switch %switch_idx% to the channel %new_channel%
+        if the new requested channel differs from the current position.
 
         Args:
             new_channel: new switch position (1-indexed)
@@ -313,6 +355,13 @@ class ColdSwitchController(Instrument):
             channel_number=new_channel, switch_idx=switch_idx)
 
     def write_to_logfile(self, switch_idx, old_channel, new_channel):
+        """
+        Writes a switching event from cold switch %switch_idx% to the log file.
+        Args:
+            switch_idx: number of the switch (1-indexed)
+            old_channel: old switch position (1-indexed)
+            new_channel: new switch position (1-indexed)
+        """
         with open(self._get_logfile_path(switch_idx), 'a') as f:
             f.write(datetime.now().strftime(self.TIME_FORMAT)
                     + f': {old_channel} to {new_channel}\n')
@@ -322,11 +371,19 @@ class ColdSwitchController(Instrument):
                             self.LOG_FILENAME.format(switch_idx))
 
     def get_last_switching_time(self, switch_idx=None):
-        """TODO
+        """
+        Returns the timestamp of the last switching event.
+        Returns the time when the last switching event of cold
+        switch %switch_idx% happened. If switch_idx==None the time of the
+        most recent switching event of any of the cold switches controlled
+        by this controller is returned.
+        returned.
 
         Args:
             switch_idx: number of the switch (1-indexed) or None to take all
             switches into account
+
+        Returns (datetime): Timestamp of the last switching event.
         """
         switch_idx = (range(self.NB_COLD_SWITCHES) if switch_idx is None
                       else [switch_idx])
@@ -340,6 +397,15 @@ class ColdSwitchController(Instrument):
         return max(times)
 
     def check_switching_allowed(self):
+        """
+        Checks if switching is allowed and raises an exception if not.
+        Checks if the time evolved since last switching event is greater
+        equal than self.min_switching_interval().
+        If self.temperature_param is given, it checks additionally if the
+        temperature of this parameter is below or equal
+        self.max_switching_temperature.
+        If one of the conditions is not satisfied, it raises an exception.
+        """
         if not (interv := self.min_switching_interval()):
             return
         timedelta = datetime.now() - self.get_last_switching_time()
