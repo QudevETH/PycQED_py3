@@ -2133,17 +2133,19 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             warning = ('Optimum for amplitude ratio is outside '\
                        'the measured range and no settings will be updated. '
                        'Best alpha according to fitting: {:.2f}'.format(_alpha))
-            log.warning(warning)
             if kwargs.get('raise_errors', False):
                 raise RuntimeError(warning)
+            else:
+                log.warning(warning)
             update = False
         if(_phi < limits[2] or _phi > limits[3]):
             warning = ('Optimum for phase correction is outside '
                        'the measured range and no settings will be updated. '
                        'Best phi according to fitting: {:.2f} deg'.format(_phi))
-            log.warning(warning)
             if kwargs.get('raise_errors', False):
                 raise RuntimeError(warning)
+            else:
+                log.warning(warning)
             update = False
 
         if update:
