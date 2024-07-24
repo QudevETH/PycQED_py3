@@ -650,19 +650,6 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
     qubits = dev.get_qubits(qubits)
     qb_names = dev.get_qubits(qubits, "str")
 
-    # Check if any qubits have reset configured
-    qubits_with_some_reset = {
-        qb.name for qb in qubits if len(qb.reset.steps()) > 0}
-    if len(qubits_with_some_reset) > 0:
-        qb_with_reset_names = ", ".join(sorted(qubits_with_some_reset))
-        log.warning(
-            "Qubits %s have some sort of reset configured which "
-            "is not compatible with find_optimal_weights(). "
-            "Set qb.reset.steps([]) for all measured qubits "
-            "(e.g. in a temporary_value).",
-            qb_with_reset_names
-        )
-
     if measure:
         uhf_names = np.array([qubit.instr_acq.get_instr().name for qubit in qubits])
         unique, counts = np.unique(uhf_names, return_counts=True)
@@ -730,6 +717,20 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 seq = sequence.Sequence("timetrace",
                                         cp.create_segments(operation_dict,
                                                            reset_params=reset_params))
+                # FIXME: understand limitations of scope mode
+                #        (e.g. segmenting) more fully
+                # For the moment, warn users when they have multiple
+                # acquisitions configured (e.g. due to pre-selection)
+                # for this measurement since it relies on the ZI UHF/SHF
+                # scope mode where no state information is available.
+                if seq.n_acq_elements() > 1:
+                    raise ValueError(
+                        f"The sequence has {seq.n_acq_elements()} "
+                        "readouts but only one is supported by scope "
+                        "mode. Check whether you have disabled readout-"
+                        "based reset for this measurement (e.g. in a "
+                        "temporary value)."
+                    )
                 # set sweep function and run measurement
                 MC.set_sweep_function(awg_swf.SegmentHardSweep(
                     sequence=seq, upload=upload))
