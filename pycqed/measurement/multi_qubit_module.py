@@ -653,12 +653,14 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
     # Check if any qubits have reset configured
     qubits_with_some_reset = {
         qb.name for qb in qubits if len(qb.reset.steps()) > 0}
-    if qubits_with_some_reset != {}:
+    if len(qubits_with_some_reset) > 0:
+        qb_with_reset_names = ", ".join(sorted(qubits_with_some_reset))
         log.warning(
-            f"Qubit(s) {qubits_with_some_reset} have some sort of reset"
-            " configured which is not compatible with "
-            "find_optimal_weights(). Set qb.reset.steps([]) for all "
-            "measured qubits (e.g. in a temporary_value)."
+            "Qubits %s have some sort of reset configured which "
+            "is not compatible with find_optimal_weights(). "
+            "Set qb.reset.steps([]) for all measured qubits "
+            "(e.g. in a temporary_value).",
+            qb_with_reset_names
         )
 
     if measure:
