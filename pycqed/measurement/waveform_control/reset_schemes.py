@@ -30,11 +30,9 @@ By default the following reset schemes are added by add_reset_schemes():
 - preselection: A preselection-based reset scheme with opt. flux compensation.
 - feedback_reset: A feedback-based active reset scheme.
 
-Once the 'steps' are defined, the reset steps are prepended to your pulses.
+After adding them, you can access them, and configure them like so:
 
-They can be temporariliy disabled by:
-
-    qb.reset.enabled(False) # disable reset schemes - enabled by default
+    qb.reset.preselection.enabled(False) # any scheme is enabled by default
 """
 
 import logging
