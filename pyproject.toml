@@ -31,6 +31,7 @@ dependencies = [
     "nlopt",
     "numpy",
     "pandas",
+    "pygsti",
     "pyqtgraph",
     "pyside6",
     "qcodes",
@@ -45,7 +46,13 @@ dependencies = [
 
 [project.optional-dependencies]
 docs = ["myst-parser", "sphinx", "sphinx-rtd-theme"]
-test = ["pytest", "pytest-cov", "pycycle"]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-sugar",
+    "flake8",
+    "pycycle",
+]
 linting = ["pylint"]
 # The following libraries are updating slowly
 # or not at all.

@@ -1130,7 +1130,11 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
     def get_operation_dict(self, operation_dict=None):
         operation_dict = super().get_operation_dict(operation_dict)
         operation_dict['Spec ' + self.name]['operation_type'] = 'Other'
-        operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
+        if operation_dict['Acq ' + self.name]['pulse_type'].endswith(
+                'WithFlux'):
+            # removes flux pulse for acquisition operation
+            operation_dict['Acq ' + self.name]['pulse_type'] = (
+                operation_dict)['Acq ' + self.name]['pulse_type'][:-8]
 
         if "f0g1" in self.transition_names:
             self._add_f0g1_to_operation_dict(operation_dict)
@@ -2130,14 +2134,22 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         _phi = analysis_params_dict['phase']
 
         if(_alpha < limits[0] or _alpha > limits[1]):
-            log.warning('Optimum for amplitude ratio is outside '
-                        'the measured range and no settings will be updated. '
-                        'Best alpha according to fitting: {:.2f}'.format(_alpha))
+            warning = ('Optimum for amplitude ratio is outside '\
+                       'the measured range and no settings will be updated. '
+                       'Best alpha according to fitting: {:.2f}'.format(_alpha))
+            if kwargs.get('raise_errors', False):
+                raise RuntimeError(warning)
+            else:
+                log.warning(warning)
             update = False
         if(_phi < limits[2] or _phi > limits[3]):
-            log.warning('Optimum for phase correction is outside '
-                        'the measured range and no settings will be updated. '
-                        'Best phi according to fitting: {:.2f} deg'.format(_phi))
+            warning = ('Optimum for phase correction is outside '
+                       'the measured range and no settings will be updated. '
+                       'Best phi according to fitting: {:.2f} deg'.format(_phi))
+            if kwargs.get('raise_errors', False):
+                raise RuntimeError(warning)
+            else:
+                log.warning(warning)
             update = False
 
         if update:
@@ -2798,3 +2810,15 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             self.add_pulse_parameter(
                 op_name, parameter_prefix + '_basis_rotation',
                 'basis_rotation', initial_value={}, vals=None)
+
+        for transition_name in ['', '_ef']:
+            self.add_pulse_parameter(f'PFM{transition_name}',
+                                 f'parametric_flux_modulation'
+                                 f'{transition_name}_filter_bypass',
+                                 'filter_bypass', initial_value=None,
+                                 vals=vals.Enum(None, 'FIR', 'IIR', 'all'),
+                                 docstring=
+            "Allows to (partially) bypass filters for the FP operation. "
+            " 'FIR': bypasses FIR filters only. 'IIR': bypasses IIR filters only. "
+            "FIR is done individually on each pulse waveform with that "
+            "bypass in that case. 'all': bypasses both FIR and IIR filters.")
