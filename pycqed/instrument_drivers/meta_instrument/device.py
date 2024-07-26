@@ -58,6 +58,10 @@ class Device(Instrument):
         # initialize self.qubits before super call to prevent a potential
         # infinite recursion in __getattr__
         self.qubits = []
+        # FIXME: the following is needed for a workaround in __getattr__ and
+        #  can be removed when this workaround is not needed anymore
+        self._during_add_parameter = False
+
         super().__init__(name, **kw)
 
         qb_names = [qb if isinstance(qb, str) else qb.name for qb in qubits]
@@ -1023,6 +1027,15 @@ class Device(Instrument):
         else:
             return fig
 
+    def add_parameter(self, *args, **kwargs):
+        # FIXME overriding the super method is only needed for a workaround
+        #  in __getattr__. Remove once this workaround is not needed anymore.
+        self._during_add_parameter = True
+        try:
+            super().add_parameter(*args, **kwargs)
+        finally:
+            self._during_add_parameter = False
+
     def __getattr__(self, item):
         """Attribute getter function
 
@@ -1045,6 +1058,13 @@ class Device(Instrument):
             # Example:
             # dev.ge_freq() ---> Returns {'qb1': 6.02e9, ...}
             # dev.ge_freq(5.0e9) ---> Sets the ge_freq of all qubits
+            # FIXME: this functionality should not be available while
+            #  qcodes creates a new parameter because recent qcodes version
+            #  complain about creating parameters with names of existing
+            #  attributes. The following is a simple workaround for this
+            #  problem until someone implements a real solution.
+            if self._during_add_parameter:
+                raise
             qbs_with_attr = [qb for qb in self.qubits if hasattr(qb, item)]
             if qbs_with_attr:
                 def func(*args, common_value_all_qubits=False):
