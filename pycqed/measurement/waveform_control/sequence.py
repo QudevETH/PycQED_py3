@@ -678,6 +678,20 @@ class Sequence:
 
     @staticmethod
     def compute_compression_seg_lim(n_soft_sp, n_seg, segment_limit=None):
+        """
+        Computes the maximum compression possible for a list of sequences
+
+        See compress_2D_sweep for details.
+        Args:
+            n_soft_sp: original number of sequence (soft sweep points)
+            n_seg: number of segments in one Sequence
+            segment_limit: maximum allowed number of segments per Sequence
+
+        Returns:
+            seg_lim_eff: number of segments in one compressed Sequence
+            factor: compression factor (size of a compressed Sequence / size of
+                an uncompressed Sequence, which is >= 1)
+        """
         from pycqed.utilities.math import factors
         if segment_limit is None:
             segment_limit = np.inf
