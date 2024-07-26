@@ -31,7 +31,6 @@ dependencies = [
     "nlopt",
     "numpy",
     "pandas",
-    "pygsti",
     "pyqtgraph",
     "pyside6",
     "qcodes",
