@@ -181,9 +181,6 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                 beats_per_trigger = int(beats_per_trigger + 0.5)
                 ro_mod_freq = 2 * beats_per_trigger / trigger_sep \
                                  - qb_obj.ge_mod_freq()
-                log.warning('To ensure commensurability the RO '
-                            'modulation frequency will temporarily be set '
-                            'to {} Hz.'.format(qb_obj.ro_mod_freq()))
                 return ro_mod_freq
 
     def sweep_block(self, sweep_points, qb, amplitude, **kw):
