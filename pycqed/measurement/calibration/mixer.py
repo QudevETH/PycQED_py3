@@ -47,6 +47,24 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             provided by kwargs or taken from "self.default_experiment_values"
         - alpha (list(float)): see qubit
         - phi_skew (list(float)): see qubit
+
+    Note that the following parameters are temporarily changed for this
+    experiment:
+        - qb.ro_freq: set to the drive sideband frequency
+        - qb.ro_mod_freq: first set to default_ro_mod_freq and then later
+            see refined, see docstring in self.commensurability_lo_trigger
+        - qb.acq_weights_type: set to SSB
+        - TriggerDevice.pulse_period: set to default_trigger_sep. The
+            trigger separation can be reduced compared to a qubit
+            measurement since there is no qubit which needs to decay in
+            between two measurement runs.
+        - TriggerDevice.prepend_zeros: set to 0 because no AWGs are
+            programmed and therefore no zeros need to be prepended.
+        - qb.ro_fixed_lo_freq: Set to None such that RO LO can be shifted to
+            the drive frequency regime.
+        - qb.acq_length: set to default_acq_length
+        - further parameters defined in qb.drive_mixer_calib_settings. These
+            settings overwrite the previously mentioned parameters.
     """
     kw_for_sweep_points = {
         'alpha': dict(param_name='alpha', unit='',
@@ -154,15 +172,12 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                                      int(np.floor(
                                          np.log10(1 / trigger_sep))) + 2)
         if not beats_per_trigger.is_integer():
-            log.warning('Difference of RO LO and drive LO frequency '
-                        'resulting from the chosen modulation frequencies '
-                        'is not an integer multiple of the trigger '
-                        'separation.')
+            # Difference of RO LO and drive LO frequency resulting from the
+            # chosen modulation frequencies is not an integer multiple of the
+            # trigger separation.
             if not force_ro_mod_freq:
-                if qb_obj.ro_fixed_lo_freq() is not None:
-                    log.warning(
-                        'Automatic adjustment of the RO IF might lead to '
-                        'wrong results since ro_fixed_lo_freq is set.')
+                # To ensure commensurability the RO modulation frequency will
+                # temporarily be set to ro_mod_freq Hz.
                 beats_per_trigger = int(beats_per_trigger + 0.5)
                 ro_mod_freq = 2 * beats_per_trigger / trigger_sep \
                                  - qb_obj.ge_mod_freq()
@@ -298,6 +313,24 @@ class MixerCarrier(twoqbcal.CalibBuilder):
             "self.default_experiment_values['offset']"
         - offset_i (list(float)): see qubit
         - offset_q (list(float)): see qubit
+
+    Note that the following parameters are temporarily changed for this
+    experiment:
+        - qb.ro_freq: set to the drive sideband frequency
+        - qb.ro_mod_freq: first set to default_ro_mod_freq and then later
+            see refined, see docstring in self.commensurability_lo_trigger
+        - qb.acq_weights_type: set to SSB
+        - TriggerDevice.pulse_period: set to default_trigger_sep. The
+            trigger separation can be reduced compared to a qubit
+            measurement since there is no qubit which needs to decay in
+            between two measurement runs.
+        - TriggerDevice.prepend_zeros: set to 0 because no AWGs are
+            programmed and therefore no zeros need to be prepended.
+        - qb.ro_fixed_lo_freq: Set to None such that RO LO can be shifted to
+            the drive frequency regime.
+        - qb.acq_length: set to default_acq_length.
+        - further parameters defined in qb.drive_mixer_calib_settings. These
+            settings overwrite the previously mentioned parameters.
     """
 
     kw_for_sweep_points = {
