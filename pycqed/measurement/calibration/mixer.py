@@ -12,6 +12,8 @@ import logging
 log = logging.getLogger(__name__)
 
 default_trigger_sep = 5e-6
+default_acq_length = 1e-6
+default_ro_mod_freq = 50e6
 
 
 class MixerSkewness(twoqbcal.CalibBuilder):
@@ -83,15 +85,17 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                     tmp_vals += [
                         # read out at the drive sideband frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() - 2 *
-                                 qb_obj.ge_mod_freq()),
+                                 qb_obj.default_ro_mod_freq()),
                         # resets ro_mod_freq after it gets changed in
                         # self.commensurability_lo_trigger
-                        (qb_obj.ro_mod_freq, qb_obj.ro_mod_freq()),
+                        (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         (qb_obj.acq_weights_type, 'SSB'),
                         (qb_obj.instr_trigger.get_instr().pulse_period,
                          trigger_sep),
                         (qb_obj.instr_pulsar.get_instr().prepend_zeros,
                          kw.get('prepend_zeros', 0)),
+                        (qb_obj.ro_fixed_lo_freq(), None),
+                        (qb_obj.acq_length, default_acq_length),
                         *qb_obj._drive_mixer_calibration_tmp_vals()
                     ]
             except Exception as x:
@@ -176,12 +180,14 @@ class MixerSkewness(twoqbcal.CalibBuilder):
 
         # extract acq_length if qubit object is available
         try:
+            # acquisition length might be different from default_acq_length
+            # if qb.acq_length is mentioned in qb.drive_mixer_calib_settings
             qb_obj = self.get_qubits(qb)[0][0]
             acq_length = qb_obj.acq_length()
         except Exception as x:
-            acq_length = 250e-9
+            acq_length = default_acq_length
             log.warning('Qubit object not found. Acquisition length is set '
-                        f'to default value {acq_length}.')
+                        f'to default value {default_acq_length}.')
         dp_block = self.block_from_pulse_dicts([dict(
                     pulse_type='GaussFilteredCosIQPulse',
                     pulse_length=acq_length,
@@ -339,14 +345,17 @@ class MixerCarrier(twoqbcal.CalibBuilder):
             try:
                 for qb_obj in self.get_qubits()[0]:
                     tmp_vals += [
+                        (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         # read out at the drive leakage frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() -
-                         qb_obj.ge_mod_freq()),
+                         default_ro_mod_freq),
                         (qb_obj.acq_weights_type, 'SSB'),
                         (qb_obj.instr_trigger.get_instr().pulse_period,
                          trigger_sep),
                         (qb_obj.instr_pulsar.get_instr().prepend_zeros,
                          kw.get('prepend_zeros', 0)),
+                        (qb_obj.ro_fixed_lo_freq(), None),
+                        (qb_obj.acq_length, default_acq_length),
                         *qb_obj._drive_mixer_calibration_tmp_vals()
                     ]
             except Exception as x:
@@ -428,7 +437,9 @@ class MixerCarrier(twoqbcal.CalibBuilder):
             qb_obj = self.get_qubits(qb)[0][0]
             acq_length = qb_obj.acq_length()
         except Exception as x:
-            acq_length = 250e-9
+            # acquisition length might be different from default_acq_length
+            # if qb.acq_length is mentioned in qb.drive_mixer_calib_settings
+            acq_length = default_acq_length
             log.warning('Qubit object not found. Acquisition length is set '
                         f'to default value {acq_length}.')
         dp_block = self.block_from_pulse_dicts([dict(
