@@ -689,7 +689,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         # sort by transmon state (lowest to highest)
                         csr.sort(key=lambda t: t[1])
                         # take letter of the highest transmon state
-                        data_to_fit[qbn] = f'p{csr[-1][0]}'
+                        data_to_fit[qbn] = f'p{csr[-1][0]}' if len(csr) else {}
 
         # make sure no extra qubit names exist in data_to_fit compared to
         # self.qb_names (can happen if user passes qb_names)
