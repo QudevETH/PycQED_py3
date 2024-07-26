@@ -389,7 +389,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         if self.qb_names is None:
             self.qb_names = self.get_param_value(
-                'ro_qubits', default_value=self.get_param_value('qb_names'))
+                'ro_qubits', default_value=self.get_param_value(
+                    'qb_names', default_value=self.get_param_value(
+                        'meas_objs')))
             if self.qb_names is None:
                 raise ValueError('Provide the "qb_names."')
         self.measurement_strings = {
