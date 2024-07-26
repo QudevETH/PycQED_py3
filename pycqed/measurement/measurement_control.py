@@ -2423,26 +2423,18 @@ class MeasurementControl(Instrument):
                            elapsed_time, 1) if percdone != 0 else '??'
             t_end = time.strftime('%H:%M:%S', time.localtime(time.time() +
                                   + t_left)) if percdone != 0 else '??'
-            # The trailing spaces are to overwrite some characters in case the
-            # previous progress message was longer. (Due to \r, the string
-            # output will start at the beginning of the current line and
-            # each character of the new string will overwrite a character
-            # of the previous output in the current line.)
             progress_message = (
-                "\r{timestamp}\t{percdone}% completed \telapsed time: "
-                "{t_elapsed}s \ttime left: {t_left}s\t(until {t_end})     "
-                "").format(
-                    timestamp=time.strftime('%H:%M:%S', time.localtime()),
-                    percdone=int(percdone),
-                    t_elapsed=round(elapsed_time, 1),
-                    t_left=t_left,
-                    t_end=t_end,)
+                f"\r{time.strftime('%H:%M:%S', time.localtime())}\t"
+                f"{int(percdone)}% completed\t"
+                f"elapsed time: {elapsed_time:.1f}s\t"
+                f"time left: {t_left}s\t(until {t_end})     "
+            ).ljust(80)  # Pad to fixed width to overwrite previous line
 
             if percdone != 100 or current_acq:
                 end_char = ''
             else:
                 end_char = '\n'
-            print('\r', progress_message, end=end_char)
+            print(progress_message, end=end_char)
 
     def print_progress_adaptive(self):
         """
@@ -2450,19 +2442,12 @@ class MeasurementControl(Instrument):
         """
         if self.verbose():
             elapsed_time = time.time() - self.begintime
-            # The trailing spaces are to overwrite some characters in case the
-            # previous progress message was longer. (Due to \r, the string
-            # output will start at the beginning of the current line and
-            # each character of the new string will overwrite a character
-            # of the previous output in the current line.)
             progress_message = (
-                "\r{timestamp}\t{iteration} iterations completed \telapsed "
-                "time: {t_elapsed}s     ").format(
-                    timestamp=time.strftime('%H:%M:%S', time.localtime()),
-                    iteration=self.iteration,
-                    t_elapsed=round(elapsed_time, 1),
-            )
-            print('\r', progress_message, end='')
+                f"\r{time.strftime('%H:%M:%S', time.localtime())}\t"
+                f"{self.iteration} iterations completed\t"
+                f"elapsed time: {elapsed_time:.1f}s"
+            ).ljust(80)  # Pad to fixed width to overwrite previous line
+            print(progress_message, end='')
 
     def is_complete(self):
         """
