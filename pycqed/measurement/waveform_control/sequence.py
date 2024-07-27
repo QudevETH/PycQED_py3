@@ -683,7 +683,7 @@ class Sequence:
 
         See compress_2D_sweep for details.
         Args:
-            n_soft_sp: original number of sequence (soft sweep points)
+            n_soft_sp: original number of sequences (soft sweep points)
             n_seg: number of segments in one Sequence
             segment_limit: maximum allowed number of segments per Sequence
 
