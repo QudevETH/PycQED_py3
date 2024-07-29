@@ -13704,7 +13704,9 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
 
         ts = self.timestamps[0]
 
-        for task in self.metadata['task_list']:
+        self.leakage_ymax = {}
+
+        for task_idx, task in enumerate(self.metadata['task_list']):
             qbn = task['qbc']
             pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
                 [:, :-3]
@@ -13924,7 +13926,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 })
 
             id_opt = np.argmin(y_max)
-            self.leakage_ymax = {
+            self.leakage_ymax[task_idx] = {
                 'x': coords[0],
                 'x_label': labels[0],
                 'y': y_max,
@@ -13933,7 +13935,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             }
             if labels[0] != 'num_cz_gates':
                 # opt only makes sense for an actual sweep point
-                self.leakage_ymax['x_opt'] = sp[labels[0]][id_opt]
+                self.leakage_ymax[task_idx]['x_opt'] = sp[labels[0]][id_opt]
 
 
 class SingleRowChevronAnalysis(ChevronAnalysis):
