@@ -2385,37 +2385,59 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', False)
-        prep_1d_plot = True
         for ax_id, ro_channel in enumerate(raw_data_dict):
             ro_unit = value_units.get(ro_channel, 'a.u.')
-            if TwoD:
-                sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
-                if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
-                    # Only prepare 2D plots when there is more than one soft
-                    # sweep point. When there is only one soft sweep point
-                    # we want to do 1D plots which are more meaningful
-                    prep_1d_plot = False
-                    for pn, ssp in sp2dd.items():
-                        ylabel, yunit = self.get_soft_sweep_label_unit(pn)
-                        self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
-                            'fig_id': plot_name + '_' + pn,
-                            'ax_id': ax_id,
-                            'plotfn': self.plot_colorxy,
-                            'xvals': xvals,
-                            'yvals': ssp,
-                            'zvals': raw_data_dict[ro_channel].T,
-                            'xlabel': xlabel,
-                            'xunit': xunit,
-                            'ylabel': ylabel,
-                            'yunit': yunit,
-                            'numplotsx': numplotsx,
-                            'numplotsy': numplotsy,
-                            'plotsize': (plotsize[0]*numplotsx,
-                                         plotsize[1]*numplotsy),
-                            'title': fig_title,
-                            'clabel': f'{ro_channel} ({ro_unit})'}
-
-            if prep_1d_plot:
+            sp2dd = self.proc_data_dict.get('sweep_points_2D_dict', {}).get(
+                qb_name)
+            if TwoD and len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1\
+                    and len(xvals) > 1:
+                # Only prepare 2D plots when there is more than one soft
+                # sweep point. When there is only one soft sweep point
+                # we want to do 1D plots which are more meaningful
+                for pn, ssp in sp2dd.items():
+                    ylabel, yunit = self.get_soft_sweep_label_unit(pn)
+                    self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
+                        'fig_id': plot_name + '_' + pn,
+                        'ax_id': ax_id,
+                        'plotfn': self.plot_colorxy,
+                        'xvals': xvals,
+                        'yvals': ssp,
+                        'zvals': raw_data_dict[ro_channel].T,
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'ylabel': ylabel,
+                        'yunit': yunit,
+                        'numplotsx': numplotsx,
+                        'numplotsy': numplotsy,
+                        'plotsize': (plotsize[0]*numplotsx,
+                                     plotsize[1]*numplotsy),
+                        'title': fig_title,
+                        'clabel': f'{ro_channel} ({ro_unit})'}
+            elif len(xvals) == 1:  # 1D along 2nd sweep dimension (rare)
+                # FIXME this logic probably does not work yet when using
+                #  slice_idxs_1d_raw_plot (which would mean creating a 0D
+                #  slice of this 1D plot, which does not make sense and
+                #  should not happen)
+                yvals = raw_data_dict[ro_channel]
+                yvals = yvals.flatten()
+                for pn, ssp in sp2dd.items():
+                    xlabel, xunit = self.get_soft_sweep_label_unit(pn)
+                    self.plot_dicts[plot_name + '_' + ro_channel] = {
+                        'fig_id': plot_name,
+                        'ax_id': ax_id,
+                        'plotfn': self.plot_line,
+                        'xvals': ssp,
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'yvals': yvals,
+                        'ylabel': f'{ro_channel} ({ro_unit})',
+                        'yunit': '',
+                        'numplotsx': numplotsx,
+                        'numplotsy': numplotsy,
+                        'plotsize': (plotsize[0]*numplotsx,
+                                     plotsize[1]*numplotsy),
+                        'title': fig_title}
+            else:  # 1D along first sweep dimension
                 yvals = raw_data_dict[ro_channel]
                 if len(yvals.shape) > 1 and yvals.shape[1] == 1:
                     # only one soft sweep point: prepare 1D plot which is
@@ -2700,79 +2722,103 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if xunit is None:
             xunit = xu
 
-        prep_1d_plot = True
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', default_value=False)
-        if TwoD:
-            sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
-            if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
-                # Only prepare 2D plots when there is more than one soft
-                # sweep points. When there is only one soft sweep point
-                # we want to do 1D plots which are more meaningful
-                prep_1d_plot = False
-                for pn, ssp in sp2dd.items():
-                    ylabel, yunit = self.get_soft_sweep_label_unit(pn)
-                    self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
-                        'plotfn': self.plot_colorxy,
-                        'fig_id': fig_name + '_' + pn,
-                        'xvals': xvals,
-                        'yvals': ssp,
-                        'zvals': yvals,
-                        'xlabel': xlabel,
-                        'xunit': xunit,
-                        'ylabel': ylabel,
-                        'yunit': yunit,
-                        'yrange': yrange,
-                        'zrange': self.get_param_value('zrange', None),
-                        'title': title,
-                        'clabel': data_axis_label}
-                    # If kwarg 'plot_TwoD_as_curves' in the options_dict of
-                    # the experiment is set to True, it plots the rows of
-                    # the 2D plot as multiple curves in one plot with the
-                    # z-value of the 2D-plot as the y-value of
-                    # the curve-plot.
-                    if self.get_param_value('plot_TwoD_as_curves',
-                                            default_value=False):
-                        color_map = mpl.colormaps['viridis']
-                        # normalization functions for the color of the
-                        # curves.
-                        # normalize converts [np.min(ssp), np.max(ssp)] ->
-                        # [0,1] in a linear mapping
-                        normalize = lambda y: (y-np.min(ssp))/(np.max(
-                            ssp)-np.min(ssp))
-                        # normalize_log converts [np.min(ssp), np.max(ssp)] ->
-                        # [0,1] in a logarithmic mapping
-                        normalize_log = lambda y: \
-                                np.log(1 + 9 * normalize(y)) / np.log(10)
-                        # z values of the 2D plot (yvals variable, list of
-                        # lists) are the y values (yv) of the curve plot.
-                        # y values of the 2D plot (ssp variable, list) are the
-                        # labels of the curves and define the color of
-                        # the curves.
-                        for i, (yv, sp) in enumerate(zip(yvals, ssp)):
-                            self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
-                                = {
-                                'plotfn': self.plot_line,
-                                'fig_id': fig_name + '_' + pn + "_curves",
-                                'xvals': xvals,
-                                'yvals': yv,
-                                'xlabel': xlabel,
-                                'xunit': xunit,
-                                'ylabel': data_axis_label,
-                                'yscale': 'log' if
-                                    self.get_param_value('logzscale', False)
-                                    else 'linear',
-                                'setlabel': f'{sp:2.1e} {yunit}',
-                                'do_legend': True,
-                                'legend_bbox_to_anchor': (1, 0.5),
-                                'legend_pos': 'center left',
-                                'line_kws': {
-                                    'color': color_map(normalize_log(sp)) if
-                                    self.get_param_value('logyscale', False)
-                                    else color_map(normalize(sp))},
-                                'title': title}
-
-        if prep_1d_plot:
+        sp2dd = self.proc_data_dict.get('sweep_points_2D_dict', {}).get(
+            qb_name)
+        if TwoD and len(sp2dd) and len(sp2dd[list(sp2dd)[0]]) > 1 and\
+                len(sweep_points) > 1:
+            # Only prepare 2D plots when there is more than one soft
+            # sweep points. When there is only one soft sweep point (or TwoD
+            # is set to False) we want to do 1D plots which are more meaningful
+            for pn, ssp in sp2dd.items():
+                ylabel, yunit = self.get_soft_sweep_label_unit(pn)
+                self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
+                    'plotfn': self.plot_colorxy,
+                    'fig_id': fig_name + '_' + pn,
+                    'xvals': xvals,
+                    'yvals': ssp,
+                    'zvals': yvals,
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'ylabel': ylabel,
+                    'yunit': yunit,
+                    'yrange': yrange,
+                    'zrange': self.get_param_value('zrange', None),
+                    'title': title,
+                    'clabel': data_axis_label}
+                # If kwarg 'plot_TwoD_as_curves' in the options_dict of
+                # the experiment is set to True, it plots the rows of
+                # the 2D plot as multiple curves in one plot with the
+                # z-value of the 2D-plot as the y-value of
+                # the curve-plot.
+                if self.get_param_value('plot_TwoD_as_curves',
+                                        default_value=False):
+                    color_map = mpl.colormaps['viridis']
+                    # normalization functions for the color of the
+                    # curves.
+                    # normalize converts [np.min(ssp), np.max(ssp)] ->
+                    # [0,1] in a linear mapping
+                    normalize = lambda y: (y-np.min(ssp))/(np.max(
+                        ssp)-np.min(ssp))
+                    # normalize_log converts [np.min(ssp), np.max(ssp)] ->
+                    # [0,1] in a logarithmic mapping
+                    normalize_log = lambda y: \
+                            np.log(1 + 9 * normalize(y)) / np.log(10)
+                    # z values of the 2D plot (yvals variable, list of
+                    # lists) are the y values (yv) of the curve plot.
+                    # y values of the 2D plot (ssp variable, list) are the
+                    # labels of the curves and define the color of
+                    # the curves.
+                    for i, (yv, sp) in enumerate(zip(yvals, ssp)):
+                        self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
+                            = {
+                            'plotfn': self.plot_line,
+                            'fig_id': fig_name + '_' + pn + "_curves",
+                            'xvals': xvals,
+                            'yvals': yv,
+                            'xlabel': xlabel,
+                            'xunit': xunit,
+                            'ylabel': data_axis_label,
+                            'yscale': 'log' if
+                                self.get_param_value('logzscale', False)
+                                else 'linear',
+                            'setlabel': f'{sp:2.1e} {yunit}',
+                            'do_legend': True,
+                            'legend_bbox_to_anchor': (1, 0.5),
+                            'legend_pos': 'center left',
+                            'line_kws': {
+                                'color': color_map(normalize_log(sp)) if
+                                self.get_param_value('logyscale', False)
+                                else color_map(normalize(sp))},
+                            'title': title}
+        elif len(sweep_points) == 1:  # 1D along 2nd sweep dimension (rare)
+            # FIXME this logic does not work yet when using
+            #  slice_idxs_1d_proj_plot (which would mean creating a 0D slice of
+            #  this 1D plot, which does not make sense and should not happen)
+            # Only 1 sweep point in 1st dimension: do a 1D plot along 2nd dim
+            yvals = yvals.flatten()
+            for pn, ssp in sp2dd.items():
+                xlabel, xunit = self.get_soft_sweep_label_unit(pn)
+                xvals = ssp  # xvals are 2nd dimension sweep points
+                self.plot_dicts[plot_dict_name] = {
+                    'plotfn': self.plot_line,
+                    'fig_id': fig_name + '_' + pn,
+                    'plotsize': plotsize,
+                    'xvals': xvals,
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': yvals,
+                    'ylabel': data_axis_label,
+                    'yunit': '',
+                    'yrange': yrange,
+                    'setlabel': data_label,
+                    'title': title,
+                    'linestyle': linestyle,
+                    'do_legend': do_legend_data and len(data_label),
+                    'legend_bbox_to_anchor': (1, 0.5),
+                    'legend_pos': 'center left'}
+        else:  # 1D along first sweep dimension
             if len(yvals.shape) > 1 and yvals.shape[0] == 1:
                 # only one soft sweep point: prepare 1D plot which is
                 # more meaningful
