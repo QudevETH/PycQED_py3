@@ -306,7 +306,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             - axis (str) can be either 'row' or 'col', specifying whether idxs
                 are row or column indices. Optionally prepending 's' indicates
                 to simultaneously plot all slices on a single figure,
-                and 'm' to add a plot of the mean of all traces (after 's').
+                and/or 'm' to plot the mean of all possible slices (after 's').
             - idxs can be an int (data index) or a str of the form
                 'idx_start:idx_end' interpreted as standard list/array indexing
                 arr[idx_start:idx_end]
