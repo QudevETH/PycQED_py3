@@ -192,7 +192,7 @@ class WaveformViewerMainWindow(TriggerResizeEventMixin, qt.QtWidgets.QWidget):
     """
     def __init__(self, sequences, qubit_channel_maps, experiment_name,
                  sequence_index=0, segment_index=0,  rc_params=None,
-                 *args, **kwargs):
+                 view_qubits=None, *args, **kwargs):
         """
         Instantiates the Qt Widgets of the main window, sets the layout and
         connects the relevant signals of the widgets to their slots.
@@ -209,6 +209,9 @@ class WaveformViewerMainWindow(TriggerResizeEventMixin, qt.QtWidgets.QWidget):
                 rc parameters in pycqed.gui.rc_params.gui_rc_params are loaded,
                 but they are updated with the parameters passed in the
                 rc_params dictionary
+            view_qubits: Which qubits to show by default when opening the
+                viewer. If None, don't show qubits. Other allowed values:
+                list of qubit names, or 'all'.
             *args:
             **kwargs:
         """
@@ -256,6 +259,13 @@ class WaveformViewerMainWindow(TriggerResizeEventMixin, qt.QtWidgets.QWidget):
         self.selectbox_qubits = CheckableComboBox()
         self.selectbox_qubits.default_display_text = 'Select...'
         self.selectbox_qubits.addItems(list(self.qubit_list))
+        if view_qubits:
+            if view_qubits == 'all':
+                view_qubits = self.qubit_list
+            for qbn in view_qubits:
+                self.selectbox_qubits.model().item(
+                    self.selectbox_qubits.findText(qbn)).setCheckState(
+                    qt.QtCore.Qt.CheckState.Checked)
 
         self.get_current_segment().resolve_segment(allow_overlap=True)
         self.get_current_segment().gen_elements_on_awg()

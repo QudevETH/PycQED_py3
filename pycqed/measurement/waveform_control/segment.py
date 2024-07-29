@@ -116,6 +116,8 @@ class Segment:
                 - Not copying time values between calls to Pulse.waveforms.
                   This might be an issue in case someone has the weird idea
                   to modify tvals in Pulse.waveforms.
+                - Not checking for unresolved ParametricValues when
+                  instantiating pulses
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
@@ -234,7 +236,7 @@ class Segment:
             pars_copy['element_name'] = 'default'
         pars_copy['element_name'] += suffix
 
-        new_pulse = UnresolvedPulse(pars_copy)
+        new_pulse = UnresolvedPulse(pars_copy, fast_mode=self.fast_mode)
 
         if new_pulse.ref_pulse == 'previous_pulse':
             if self.previous_pulse != None:
@@ -2108,7 +2110,7 @@ class Segment:
         return channels
 
     @_with_pulsar_tmp_vals
-    def calculate_hash(self, elname, codeword, channel):
+    def calculate_hash(self, elname, codeword, channel, trigger_group=None):
         if not self.pulsar.reuse_waveforms():
             # these hash entries avoid that the waveform is reused on another
             # channel or in another element/codeword
@@ -2120,8 +2122,11 @@ class Segment:
         else:
             hashlist = []
 
-        group = self.pulsar.get_trigger_group(channel)
-        tstart, length = self.element_start_end[elname][group]
+        if trigger_group is None:
+            # It is possible to get trigger_group from channel as here,
+            # but this is rather slow, so it is better to pass it above
+            trigger_group = self.pulsar.get_trigger_group(channel)
+        tstart, length = self.element_start_end[elname][trigger_group]
         hashlist.append(length)  # element length in samples
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
                 self.pulsar.get(f'{channel}_distortion') == 'precalculate':
@@ -2672,6 +2677,8 @@ class Segment:
 
 class UnresolvedPulse:
     """
+    fast_mode: Disables checking that all parametric values have been
+        resolved, for speed reasons.
     pulse_pars: dictionary containing pulse parameters
     ref_pulse: 'segment_start', 'init_start', 'previous_pulse', pulse.name,
         or a list of multiple pulse.name.
@@ -2685,7 +2692,13 @@ class UnresolvedPulse:
         multiple pulse names are listed in ref_pulse (default: 'max')
     """
 
-    def __init__(self, pulse_pars):
+    def __init__(self, pulse_pars, fast_mode=False):
+        if not fast_mode:
+            if any([hasattr(p, '_is_parametric_value') for p in
+                    pulse_pars.values()]):
+                raise ValueError("Trying to instantiate a pulse with "
+                                 "parameters still containing unresolved "
+                                 f"parametric values!\n{pulse_pars}")
         self.ref_pulse = pulse_pars.get('ref_pulse', 'previous_pulse')
         alignments = {'start': 0, 'middle': 0.5, 'center': 0.5, 'end': 1}
         if pulse_pars.get('ref_point', 'end') == 'end':

@@ -36,6 +36,7 @@ from pycqed.analysis_v2 import timedomain_analysis as tda
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis_v3 import plotting as plot_mod
 from collections import OrderedDict
+from collections.abc import Mapping
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +58,10 @@ class Device(Instrument):
         # initialize self.qubits before super call to prevent a potential
         # infinite recursion in __getattr__
         self.qubits = []
+        # FIXME: the following is needed for a workaround in __getattr__ and
+        #  can be removed when this workaround is not needed anymore
+        self._during_add_parameter = False
+
         super().__init__(name, **kw)
 
         qb_names = [qb if isinstance(qb, str) else qb.name for qb in qubits]
@@ -1022,6 +1027,15 @@ class Device(Instrument):
         else:
             return fig
 
+    def add_parameter(self, *args, **kwargs):
+        # FIXME overriding the super method is only needed for a workaround
+        #  in __getattr__. Remove once this workaround is not needed anymore.
+        self._during_add_parameter = True
+        try:
+            super().add_parameter(*args, **kwargs)
+        finally:
+            self._during_add_parameter = False
+
     def __getattr__(self, item):
         """Attribute getter function
 
@@ -1044,14 +1058,21 @@ class Device(Instrument):
             # Example:
             # dev.ge_freq() ---> Returns {'qb1': 6.02e9, ...}
             # dev.ge_freq(5.0e9) ---> Sets the ge_freq of all qubits
+            # FIXME: this functionality should not be available while
+            #  qcodes creates a new parameter because recent qcodes version
+            #  complain about creating parameters with names of existing
+            #  attributes. The following is a simple workaround for this
+            #  problem until someone implements a real solution.
+            if self._during_add_parameter:
+                raise
             qbs_with_attr = [qb for qb in self.qubits if hasattr(qb, item)]
             if qbs_with_attr:
-                def func(p=None, common_value_all_qubits=False):
+                def func(*args, common_value_all_qubits=False):
                     """Effective qcodes parameter acting on several qubits
 
                     Args:
-                        p: Value to set to the qubits. If None, the function
-                            acts as a getter instead.
+                        p := args[0]: Value to set to the qubits. If does not
+                            exist, the function acts as a getter instead.
                             p can be formatted in two ways:
                             - case 1: a value v to set to the qubits
                             - case 2: a dict of values to set to each qubit,
@@ -1060,12 +1081,17 @@ class Device(Instrument):
                             this whole dict should be set to each qubit. In
                             other words, it should be recognized as case 1
                             and not case 2.
+
+                    Note: p is extracted from args and not explicitly, to see
+                        a difference between no p (getter) and p=None (setter).
                     """
-                    if p is None:
+                    if not len(args):
                         # No value passed: getter
                         return {qb.name: qb.__getattr__(item)() for qb in
                                 qbs_with_attr}
-                    elif isinstance(p, dict) and not common_value_all_qubits:
+                    # Mapping: dict or OrderedDict
+                    elif isinstance(p := args[0], Mapping) and\
+                            not common_value_all_qubits:
                         # Parse p to set p[qbn] to each qubit
                         [qb.__getattr__(item)(p[qb.name])
                          for qb in qbs_with_attr if qb.name in p]
