@@ -90,7 +90,7 @@ class ColdSwitchController(Instrument):
             self.port.close()
             raise ConnectionError('Failed to connect to device.')
 
-        print('Connected...')
+        print(f'Connected to cold switch {name} at port {port}.')
 
         # all i/o expander pins set as outputs & low; this initialization
         # should be done in firmware later
@@ -338,6 +338,9 @@ class ColdSwitchController(Instrument):
         Switches cold switch %switch_idx% to the new_channel.
         Changes the cold switch %switch_idx% to the channel %new_channel%
         if the new requested channel differs from the current position.
+        The change is done in a two-step protocol: first it
+        disconnects the old channel via self._cold_switch_turn_off() and
+        then connects the new channel via self._cold_switch_turn_on().
 
         Args:
             new_channel: new switch position (1-indexed)
