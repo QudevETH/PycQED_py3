@@ -1327,7 +1327,7 @@ def get_multi_xeb_results_from_dd(dd2, dd1=None, **kw):
     Helper method to extract various error rates from analysed XEB measurements
 
     Args:
-        dd2 (dict): Previously analysed two-qubit multi-cphase XEB data dict TODO
+        dd2 (dict): Previously analysed two-qubit multi-cphase XEB data dict
         dd1 (dict): Previously analysed single-qubit XEB data dict
     """
     results = {}
