@@ -3,6 +3,8 @@ import matplotlib
 from pycqed.gui import qt_compat as qt
 from matplotlib.backend_bases import MouseButton
 import matplotlib.pyplot as plt
+
+from pycqed.gui.gui_utilities import TriggerResizeEventMixin, reinitialize_toolbar
 from pycqed.measurement.waveform_control.pulsar import Pulsar
 from pycqed.gui import rc_params as gui_rc_params
 from pycqed.gui.qt_widgets.checkable_combo_box import CheckableComboBox
@@ -184,13 +186,13 @@ class WaveformViewer:
             self.app.exec_()
 
 
-class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
+class WaveformViewerMainWindow(TriggerResizeEventMixin, qt.QtWidgets.QWidget):
     """
     Main window of the waveform viewer GUI.
     """
     def __init__(self, sequences, qubit_channel_maps, experiment_name,
                  sequence_index=0, segment_index=0,  rc_params=None,
-                 *args, **kwargs):
+                 view_qubits=None, *args, **kwargs):
         """
         Instantiates the Qt Widgets of the main window, sets the layout and
         connects the relevant signals of the widgets to their slots.
@@ -207,6 +209,9 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
                 rc parameters in pycqed.gui.rc_params.gui_rc_params are loaded,
                 but they are updated with the parameters passed in the
                 rc_params dictionary
+            view_qubits: Which qubits to show by default when opening the
+                viewer. If None, don't show qubits. Other allowed values:
+                list of qubit names, or 'all'.
             *args:
             **kwargs:
         """
@@ -254,6 +259,13 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.selectbox_qubits = CheckableComboBox()
         self.selectbox_qubits.default_display_text = 'Select...'
         self.selectbox_qubits.addItems(list(self.qubit_list))
+        if view_qubits:
+            if view_qubits == 'all':
+                view_qubits = self.qubit_list
+            for qbn in view_qubits:
+                self.selectbox_qubits.model().item(
+                    self.selectbox_qubits.findText(qbn)).setCheckState(
+                    qt.QtCore.Qt.CheckState.Checked)
 
         self.get_current_segment().resolve_segment(allow_overlap=True)
         self.get_current_segment().gen_elements_on_awg()
@@ -445,7 +457,7 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
             plt.close(oldfig)
             self.view.draw()
             self.cid_bpe = self.view.mpl_connect('pick_event', self.on_pick)
-            self._reinitialize_toolbar()
+            reinitialize_toolbar(self.toolbar)
 
             self.setWindowTitle(self._get_window_title_string())
             self._trigger_resize_event()
@@ -487,31 +499,10 @@ class WaveformViewerMainWindow(qt.QtWidgets.QWidget):
         self.selectbox_instruments.updateText()
         self.selectbox_instruments.blockSignals(False)
 
-    def _reinitialize_toolbar(self):
-        # upon changing the figure associated to the FigureCanvasQTAgg
-        # instance self.view, the zoom and pan tools of the toolbar can't be
-        # used to manipulate the figure unless the corresponding callback
-        # methods are reinitialized. Reinitialization of callback methods
-        # corresponds to the __init__ method of the FigureCanvasQTAgg class.
-        self.toolbar._id_press = self.toolbar.canvas.mpl_connect(
-            'button_press_event', self.toolbar._zoom_pan_handler)
-        self.toolbar._id_release = self.toolbar.canvas.mpl_connect(
-            'button_release_event', self.toolbar._zoom_pan_handler)
-        self.toolbar._id_drag = self.toolbar.canvas.mpl_connect(
-            'motion_notify_event', self.toolbar.mouse_move)
-        self.toolbar._pan_info = None
-        self.toolbar._zoom_info = None
-        self.toolbar.update()
 
     def _get_window_title_string(self):
         return self.experiment_name
 
-    def _trigger_resize_event(self):
-        # ugly hack to trigger a resize event (otherwise the figure in the
-        # canvas is not displayed properly)
-        size = self.size()
-        self.resize(self.width() + 1, self.height())
-        self.resize(size)
 
     def get_experiment_plot(self):
         """
