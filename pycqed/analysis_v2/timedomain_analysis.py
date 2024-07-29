@@ -2388,7 +2388,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 # Only prepare 2D plots when there is more than one soft
                 # sweep point. When there is only one soft sweep point
                 # we want to do 1D plots which are more meaningful
-                prep_1d_plot = False
                 for pn, ssp in sp2dd.items():
                     ylabel, yunit = self.get_soft_sweep_label_unit(pn)
                     self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
@@ -2409,6 +2408,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'title': fig_title,
                         'clabel': f'{ro_channel} ({ro_unit})'}
             elif len(xvals) == 1:  # 1D along 2nd sweep dimension (rare)
+                # FIXME this logic probably does not work yet when using
+                #  slice_idxs_1d_raw_plot (which would mean creating a 0D
+                #  slice of this 1D plot, which does not make sense and
+                #  should not happen)
                 yvals = raw_data_dict[ro_channel]
                 yvals = yvals.flatten()
                 for pn, ssp in sp2dd.items():
@@ -2703,6 +2706,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             qb_name)
         if TwoD and len(sp2dd) and len(sp2dd[list(sp2dd)[0]]) > 1 and\
                 len(sweep_points) > 1:
+            # Only prepare 2D plots when there is more than one soft
+            # sweep points. When there is only one soft sweep point (or TwoD
+            # is set to False) we want to do 1D plots which are more meaningful
             for pn, ssp in sp2dd.items():
                 ylabel, yunit = self.get_soft_sweep_label_unit(pn)
                 self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
@@ -2765,7 +2771,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                 else color_map(normalize(sp))},
                             'title': title}
         elif len(sweep_points) == 1:  # 1D along 2nd sweep dimension (rare)
-            # FIXME this logic does not work yet for 1D slices (0D slice of 1D)
+            # FIXME this logic does not work yet when using
+            #  slice_idxs_1d_proj_plot (which would mean creating a 0D slice of
+            #  this 1D plot, which does not make sense and should not happen)
             # Only 1 sweep point in 1st dimension: do a 1D plot along 2nd dim
             yvals = yvals.flatten()
             for pn, ssp in sp2dd.items():
@@ -2789,9 +2797,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'legend_bbox_to_anchor': (1, 0.5),
                     'legend_pos': 'center left'}
         else:  # 1D along first sweep dimension
-            # Only prepare 2D plots when there is more than one soft
-            # sweep points. When there is only one soft sweep point (or TwoD
-            # is set to False) we want to do 1D plots which are more meaningful
             if len(yvals.shape) > 1 and yvals.shape[0] == 1:
                 # only one soft sweep point: prepare 1D plot which is
                 # more meaningful
