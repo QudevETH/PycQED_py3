@@ -605,7 +605,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 f'Acquisition device {self.name} ({self.devname}): '
                 f'The number of acquisition results, {self._acq_n_results},'
                 f' is too large for the SHF (which supports a max of '
-                f' {self._acq_n_results_max}). '
+                f'{self._acq_n_results_max}). '
                 f'Please reduce the compression_seg_lim, the number of 1D '
                 f'sweep points, or the nr_shots.')
 
