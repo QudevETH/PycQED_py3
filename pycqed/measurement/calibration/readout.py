@@ -583,34 +583,38 @@ class OptimalWeights(CalibBuilder):
         cal_points = CalibrationPoints.multi_qubit(
             [t['qb'] for t in self.task_list], states, n_per_state=1)
         self.states = cal_points.states
+        sps = self.sweep_points  # convenience shortcut
 
         # ensure no sweep_points in dim 0 since used for sampling times
-        if len(self.sweep_points.length()) > 0 and \
-                self.sweep_points.length()[0] > 0:
-            log.warning(f'You tried adding sweep points to dimension 0 '
+        if len(sps.length()) > 0 and sps.length()[0] > 0:
+            s = '", "'.join([str(k) for k in
+                             sps.get_sweep_dimension(0).keys()])
+            log.warning(f'You added the sweep points "{s}" to dimension 0 '
                         f'which is used for the sampling times. '
                         f'Ignoring the sweep points of dimension 0.')
-            for par in self.sweep_points.get_parameters(dimension=0):
-                self.sweep_points.remove_sweep_parameter(par)
+            for par in sps.get_parameters(dimension=0):
+                sps.remove_sweep_parameter(par)
 
         # add dim 1 sweep_points (timetrace init states)
         try:
-            self.sweep_points.add_sweep_parameter(
+            sps.add_sweep_parameter(
                 'initialize', self.states, label='initial state', dimension=1)
         except AssertionError:
-            if 'initialize' in self.sweep_points.get_parameters():
+            if 'initialize' in sps.get_parameters():
+                pts = sps.get_sweep_params_description('initialize')[0]
                 log.warning(f'You tried sweeping "initialize". '
-                            f'This is already swept in dim 1. Ignoring the '
-                            f'manually added sweep of "initialize".')
-                self.sweep_points.remove_sweep_parameter('initialize')
-            elif len(self.sweep_points.get_parameters(dimension=1)):
-                log.warning(f'You tried adding {self.sweep_points.length()[1]} '
+                            f'This is already swept in dim 1 with the sweep '
+                            f'points {self.states}. Ignoring the '
+                            f'sweep of "initialize" with sweep points {pts}.')
+                sps.remove_sweep_parameter('initialize')
+            elif len(sps.get_parameters(dimension=1)):
+                log.warning(f'You tried adding {sps.length()[1]} '
                             f'sweep points to dimension 1 which is used to '
                             f'sweep the {len(self.states)} init states. '
                             f'Ignoring the sweep points of dimension 1.')
-                for par in self.sweep_points.get_parameters(dimension=1):
-                    self.sweep_points.remove_sweep_parameter(par)
-            self.sweep_points.add_sweep_parameter(
+                for par in sps.get_parameters(dimension=1):
+                    sps.remove_sweep_parameter(par)
+            sps.add_sweep_parameter(
                 'initialize', self.states, label='initial state', dimension=1)
 
 
