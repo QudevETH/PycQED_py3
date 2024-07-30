@@ -610,7 +610,7 @@ class MultiTaskingExperiment(QuantumExperiment):
                         prefix, [k for l in params_to_prefix for k in l])
                     qbs = self.find_qubits_in_tasks(self.qb_names, [task])
                     for qb in qbs:
-                        ppqb = self._prep_sweep_params[qb]
+                        ppqb = self._reset_sweep_params[qb]
                         for param in [k for l in params_to_prefix for k in l]:
                             if param in ppqb:
                                 ppqb[param] = prefix + ppqb[param]

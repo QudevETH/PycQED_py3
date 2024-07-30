@@ -337,11 +337,14 @@ class MeasureSSRO(CalibBuilder):
                     if param_name in pulse_dict:
                         pulse_dict[param_name] = ParametricValue(
                             param_name)
+                        # adding prefixed preselection and feedback RO pulse
+                        # sweeps to _reset_sweep_params, which is processed by
+                        # the respective _reset_block() function.
                         if sweep_preselection_ro_pulses:
-                            self._prep_sweep_params[qb][
+                            self._reset_sweep_params[qb][
                                 'preselection_'+param_name] = param_name
                         if sweep_feedback_ro_pulses:
-                            self._prep_sweep_params[qb][
+                            self._reset_sweep_params[qb][
                                 'feedback_'+param_name] = param_name
         return [ro_block]
 
