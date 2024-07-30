@@ -87,7 +87,7 @@ class MeasureSSRO(CalibBuilder):
     }
 
     def __init__(self, task_list=None, qubits=None, sweep_points=None,
-                 n_shots=2**15, states='ge', multiplexed_ssro=False,
+                 n_shots=10000, states='ge', multiplexed_ssro=False,
                  update_classifier=True, update_ro_params=True,
                  preselection=None, **kw):
         try:
