@@ -8302,7 +8302,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             verbose (bool) : see BaseDataAnalysis
             presentation_mode (bool) : see BaseDataAnalysis
             classif_method (str): how to classify the data.
-                'ncc' : default. Nearest Cluster Center
+                'ncc' : Nearest Cluster Center
                 'gmm': gaussian mixture model (default)
                 'threshold': finds optimal vertical and horizontal thresholds.
             retrain_classifier (bool): whether to retrain the classifier
