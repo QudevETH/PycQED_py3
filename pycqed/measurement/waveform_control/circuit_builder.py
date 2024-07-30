@@ -492,9 +492,15 @@ class CircuitBuilder:
                         self.copy_op(self.operation_dict[do])
                         for do in decomposed_op
                     ]
+                    if isinstance(cphase, ParametricValue):
+                        raise NotImplementedError
+                        # The following will not work with ParametricValue:
+                        # this should look like
+                        # p[4]['basis_rotation'] = -cphase/2+180
+                        # with cphase.func wrapping into a dict, as 'Z' below
                     p[4]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
-                    p[10]['basis_rotation'] = {qb_dec[0]: cphase/2+180}
-                    p[11]['basis_rotation'] = {qb_dec[1]: cphase/2}
+                    p[9]['basis_rotation'] = {qb_dec[0]: cphase/2+180}
+                    p[10]['basis_rotation'] = {qb_dec[1]: cphase/2}
                 else:
                     p = [self.copy_op(self.operation_dict[device_op])]
                     if cphase is not None:
@@ -520,8 +526,8 @@ class CircuitBuilder:
                         else:  # angle = parameter
                             func = (lambda x, qbn=qbn[0], sign=sign:
                                     {qbn: sign * x})
-                        p[0]['basis_rotation'] = {qbn[0]: ParametricValue(
-                            param, func=func, op_split=(op_name, qbn[0]))}
+                        p[0]['basis_rotation'] = ParametricValue(
+                            param, func=func, op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
                         p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
