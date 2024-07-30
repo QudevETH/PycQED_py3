@@ -8906,20 +8906,12 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
                         means_init=means, **kw)
                 gm.fit(X)
             else:  # restore GMM from instrument_setting
-                gm = GM()
-                params = self.get_instrument_setting(
+                clf_params = self.get_instrument_setting(
                     f"{qb_name}.acq_classifier_params")
-                if not isinstance(params, dict):
+                if not isinstance(clf_params, dict):
                     raise ValueError(f"Please make sure that {qb_name} has a "
                                      f"trained GMM classifier.")
-                for name in ['means_', 'covariances_', 'covariance_type',
-                             'weights_', 'precisions_cholesky_']:
-                    if name not in params.keys():
-                        raise ValueError(f"Classifier stored in instrument "
-                                         f"setting doesn't contain the "
-                                         f"parameter {name}.")
-                    setattr(gm, name, params[name])
-                setattr(gm, 'n_components', params['means_'].shape[0])
+                gm = a_tools.load_gm_from_clf_params(clf_params)
 
             pred_states = np.argmax(gm.predict_proba(X), axis=1)
 
