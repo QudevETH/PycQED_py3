@@ -1115,7 +1115,9 @@ class Cryoscope(CalibBuilder):
             for i, fpd in enumerate(flux_pulse_dicts):
                 pd_temp = {'element_name': 'dummy'}
                 pd_temp.update(self.get_pulses(fpd['op_code'])[0])
-                pulse_length = seg_mod.UnresolvedPulse(pd_temp).pulse_obj.length
+                pulse_length = seg_mod.UnresolvedPulse(pd_temp,
+                                                       fast_mode=self.fast_mode
+                                                       ).pulse_obj.length
                 if 'truncation_lengths' in fpd:
                     tr_lens = fpd['truncation_lengths']
                 elif 'spacing' in fpd:
@@ -4027,7 +4029,7 @@ class ActiveReset(CalibBuilder):
         # get preparation parameters for all qubits. Note: in the future we could
         # possibly modify prep_params to be different for each uhf, as long as
         # the number of readout is the same for all UHFs in the experiment
-        self.prep_params = deepcopy(self.get_prep_params())
+        self.prep_params = deepcopy(self.get_reset_params())
         # set explicitly some preparation params so that they can be retrieved
         # in the analysis
         for param in ('ro_separation', 'post_ro_wait'):
@@ -4103,10 +4105,10 @@ class ActiveReset(CalibBuilder):
         prep_params.pop('preparation_type', None)
 
         reset_type = f"active_reset_{'e' if len(self.prep_states) < 3 else 'ef'}"
-        reset_block = self.prepare(block_name="reset_ro_and_feedback_pulses",
-                                   qb_names=qubit,
-                                   preparation_type=reset_type,
-                                   reset_reps=self.reset_reps, **prep_params)
+        reset_block = self.reset(block_name="reset_ro_and_feedback_pulses",
+                                 qb_names=qubit,
+                                 preparation_type=reset_type,
+                                 reset_reps=self.reset_reps, **prep_params)
         # delay the reset block by appropriate time as self.prepare otherwise adds reset
         # pulses before segment start
         # reset_block.block_start.update({"pulse_delay": ro_sep * self.reset_reps})

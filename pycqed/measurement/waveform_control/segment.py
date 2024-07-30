@@ -27,7 +27,7 @@ import functools
 
 def _with_pulsar_tmp_vals(f):
     """A decorator enabling the usage of temporary values for plotting & hashing
-       
+
        The temporary values are collected from self.pulsar_tmp_vals.
     """
     @functools.wraps(f)
@@ -116,6 +116,8 @@ class Segment:
                 - Not copying time values between calls to Pulse.waveforms.
                   This might be an issue in case someone has the weird idea
                   to modify tvals in Pulse.waveforms.
+                - Not checking for unresolved ParametricValues when
+                  instantiating pulses
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
@@ -234,7 +236,7 @@ class Segment:
             pars_copy['element_name'] = 'default'
         pars_copy['element_name'] += suffix
 
-        new_pulse = UnresolvedPulse(pars_copy)
+        new_pulse = UnresolvedPulse(pars_copy, fast_mode=self.fast_mode)
 
         if new_pulse.ref_pulse == 'previous_pulse':
             if self.previous_pulse != None:
@@ -1848,6 +1850,10 @@ class Segment:
                 tvals = self.tvals(channel_set, element)
                 wfs = {}
                 element_start_time = self.get_element_start(element, group)
+                # FIXME: not so nice to hard code
+                #   names of bypasses here (and in pulse parameter)
+                filter_bypasses = ['FIR', 'IIR', 'all']
+                pulses_to_add_after_filtering = {f'bypass_{b}': [] for b in filter_bypasses}
                 for pulse in self.elements[element]:
                     # checks whether pulse is played on AWG
                     pulse_channels = pulse.masked_channels() & channel_set
@@ -1899,8 +1905,21 @@ class Segment:
                             extra_delay, awg=awg)
                         ps_mod = pulse_start + extra_delay_samples
                         pe_mod = pulse_end + extra_delay_samples
-                        wfs[pulse.codeword][channel][ps_mod:pe_mod] += \
-                            pulse_wfs[channel]
+                        if pulse.filter_bypass is not None:
+                            assert pulse.filter_bypass in filter_bypasses, \
+                                (f'Filter bypass type: '
+                                 f'{pulse.filter_bypass} not in '
+                                 f'{filter_bypasses}')
+                            # add these pulses to a list which will be added to
+                            # the waveform only after predistortion
+                            pulses_to_add_after_filtering[
+                                f'bypass_{pulse.filter_bypass}'].append(
+                                (ps_mod,
+                                 pe_mod,
+                                 pulse_wfs))
+                        else:
+                            wfs[pulse.codeword][channel][ps_mod:pe_mod] += \
+                                pulse_wfs[channel]
 
                 # for codewords: add the pulses that do not have a codeword to
                 # all codewords
@@ -1939,18 +1958,30 @@ class Segment:
                                     default_dt=1 / self.pulsar.clock(
                                         channel=c))
 
-                        fir_kernels = distortion_dict.get('FIR', None)
-                        if fir_kernels is not None:
-                            if hasattr(fir_kernels, '__iter__') and not \
-                            hasattr(fir_kernels[0], '__iter__'): # 1 kernel
-                                wf = flux_dist.filter_fir(fir_kernels, wf)
-                            else:
-                                for kernel in fir_kernels:
-                                    wf = flux_dist.filter_fir(kernel, wf)
+                        wf = self._fir_filtering(wf, distortion_dict)
+
+                        # add remaining pulses to the channel waveforms,
+                        # i.e. pulses that have the FIR bypass only
+                        for ps, pe, pwf in pulses_to_add_after_filtering[f'bypass_FIR']:
+                            wf[ps:pe] += pwf.get(c, 0)
+
                         iir_filters = distortion_dict.get('IIR', None)
                         if iir_filters is not None:
                             wf = flux_dist.filter_iir(iir_filters[0],
                                                       iir_filters[1], wf)
+                        # add pulses that have the IIR filter bypass, FIR filtering
+                        # is done on the pulse waveform
+                        for ps, pe, pwf in pulses_to_add_after_filtering['bypass_IIR']:
+                            pwf_channel = pwf.get(c, None)
+                            if pwf_channel is not None:
+                                wf[ps:pe] += self._fir_filtering(pwf_channel,
+                                                                 distortion_dict)
+
+                        # add remaining pulses to the channel waveforms,
+                        # i.e. pulses that have the full filter bypass
+                        for ps, pe, pwf in pulses_to_add_after_filtering[f'bypass_all']:
+                            wf[ps:pe] += pwf.get(c, 0)
+
                         wfs[codeword][c] = wf
 
                 # truncation and normalization
@@ -1991,6 +2022,37 @@ class Segment:
                                 wfs[codeword][channel])
 
         return awg_wfs
+
+    @staticmethod
+    def _fir_filtering(wf, distortion_dict):
+        """
+        Apply Finite Impulse Response (FIR) filtering to a waveform.
+
+        Args:
+            wf (numpy.ndarray): The input waveform to be filtered.
+            distortion_dict (dict): A dictionary containing distortion parameters,
+                including FIR filter kernels.
+
+        Returns:
+            numpy.ndarray: The filtered waveform after applying the FIR filtering.
+
+        This function filters a waveform using FIR filter kernels specified in the
+        distortion_dict.  The filtering can be a single FIR kernel or a list
+        of kernels, allowing for multiple filtering operations.
+
+        Note:
+            This function uses the 'flux_dist' module for FIR filtering.
+
+        """
+        fir_kernels = distortion_dict.get('FIR', None)
+        if fir_kernels is not None:
+            if hasattr(fir_kernels, '__iter__') and not \
+                    hasattr(fir_kernels[0], '__iter__'):  # 1 kernel
+                wf = flux_dist.filter_fir(fir_kernels, wf)
+            else:
+                for kernel in fir_kernels:
+                    wf = flux_dist.filter_fir(kernel, wf)
+        return wf
 
     def get_element_codewords(self, element, awg=None, trigger_group=None):
         """
@@ -2048,7 +2110,7 @@ class Segment:
         return channels
 
     @_with_pulsar_tmp_vals
-    def calculate_hash(self, elname, codeword, channel):
+    def calculate_hash(self, elname, codeword, channel, trigger_group=None):
         if not self.pulsar.reuse_waveforms():
             # these hash entries avoid that the waveform is reused on another
             # channel or in another element/codeword
@@ -2060,8 +2122,11 @@ class Segment:
         else:
             hashlist = []
 
-        group = self.pulsar.get_trigger_group(channel)
-        tstart, length = self.element_start_end[elname][group]
+        if trigger_group is None:
+            # It is possible to get trigger_group from channel as here,
+            # but this is rather slow, so it is better to pass it above
+            trigger_group = self.pulsar.get_trigger_group(channel)
+        tstart, length = self.element_start_end[elname][trigger_group]
         hashlist.append(length)  # element length in samples
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
                 self.pulsar.get(f'{channel}_distortion') == 'precalculate':
@@ -2612,6 +2677,8 @@ class Segment:
 
 class UnresolvedPulse:
     """
+    fast_mode: Disables checking that all parametric values have been
+        resolved, for speed reasons.
     pulse_pars: dictionary containing pulse parameters
     ref_pulse: 'segment_start', 'init_start', 'previous_pulse', pulse.name,
         or a list of multiple pulse.name.
@@ -2625,7 +2692,13 @@ class UnresolvedPulse:
         multiple pulse names are listed in ref_pulse (default: 'max')
     """
 
-    def __init__(self, pulse_pars):
+    def __init__(self, pulse_pars, fast_mode=False):
+        if not fast_mode:
+            if any([hasattr(p, '_is_parametric_value') for p in
+                    pulse_pars.values()]):
+                raise ValueError("Trying to instantiate a pulse with "
+                                 "parameters still containing unresolved "
+                                 f"parametric values!\n{pulse_pars}")
         self.ref_pulse = pulse_pars.get('ref_pulse', 'previous_pulse')
         alignments = {'start': 0, 'middle': 0.5, 'center': 0.5, 'end': 1}
         if pulse_pars.get('ref_point', 'end') == 'end':
