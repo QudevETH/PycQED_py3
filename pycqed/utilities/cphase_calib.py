@@ -1,8 +1,13 @@
-from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.analysis_v2 import timedomain_analysis as tda
 import matplotlib.pyplot as plt
 import numpy as np
 import lmfit
+from copy import deepcopy
+
+from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.analysis_v2 import timedomain_analysis as tda
+from pycqed.measurement.calibration import two_qubit_gates as twoqbcal
+import pycqed.measurement.sweep_points as sp_mod
+from pycqed.utilities.general import temporary_value
 
 #############################################################################
 #                   CZ related
@@ -136,11 +141,29 @@ unit_dict = dict(amplitude='V', amplitude2='V', pulse_length='s',
                  gaussian_filter_sigma='s', trans_length='s')
 
 
-def cal_two_qubit_gates(sweep_params, gate_list, sweep_range_dict=None, n_cz=1,
-                        cz_pulse_name='CZ_nzbasic', only_check_msmt=False,
-                        do_check_msmt=True, phi=None,
-                        nr_phases=8, measure=True, optimize=False,
-                        **kw):
+# FIXME Copied from a calibration script, not tested
+def get_spectators(dev, anc_data_qb_map, gate_list):
+    gate_list_ancqb = [qb[0].name for qb in gate_list]
+    gate_list_dataqb = [qb[1].name for qb in gate_list]
+    dd_qubit_list = list(np.unique([d for qb in gate_list_ancqb for d in anc_data_qb_map[qb] if
+                       d not in gate_list_dataqb]))
+    return dev.get_qubits(dd_qubit_list,'obj')
+
+
+# FIXME Copied from a calibration script, not tested
+def get_spectator_pulses(dev, spectators, opcode='X90'):
+    return [dev.get_operation_dict()[f'{opcode}{"s" if i != 0 else ""} {qb.name}'] for
+            i, qb in enumerate(spectators)]
+
+
+def cal_two_qubit_gates(
+        sweep_params, gate_list, dev,
+        sweep_range_dict=None, n_cz=1,
+        cz_pulse_name='CZ_nzbasic', only_check_msmt=False,
+        do_check_msmt=True, phi=None,
+        nr_phases=8, measure=True, optimize=False,
+        **kw
+):
     optimal_values = {}
     phi_target = kw.get('phi_target', phi if phi is not None else 180)
 
@@ -160,10 +183,7 @@ def cal_two_qubit_gates(sweep_params, gate_list, sweep_range_dict=None, n_cz=1,
     sweep_range_dict = default_sweep_range_dict
     sweep_range_dict = deepcopy(sweep_range_dict)
     dev.prepare_mwg()
-    tmp_vals = [
-        # (dev.preparation_params, prep_params),
-        # (TriggerDevice.pulse_period, kw.get('trigger_sep', 300e-6)),
-    ]
+    tmp_vals = []
     chev_tmp_vals = []
     for qbh, qbl in gate_list:
         if qbh.ge_freq() < qbl.ge_freq():
@@ -183,7 +203,7 @@ def cal_two_qubit_gates(sweep_params, gate_list, sweep_range_dict=None, n_cz=1,
             ]
         if 'chevron_soft_avg' in kw and kw['chevron_soft_avg'] is not None:
             chev_tmp_vals += [
-                (MC.soft_avg, kw['chevron_soft_avg']),
+                (dev.instr_mc.get_instr().soft_avg, kw['chevron_soft_avg']),
             ]
         tmp_vals += [  # use kwarg if it exists
             (qb.acq_weights_type, kw.get('acq_weights_type', qb.acq_weights_type()))
@@ -241,8 +261,11 @@ def cal_two_qubit_gates(sweep_params, gate_list, sweep_range_dict=None, n_cz=1,
                         if i == 0 and kw.get('spectator_map', False):
                             task['prepend_pulse_dicts'] = \
                                 get_spectator_pulses(
-                                    get_spectators(kw.get('spectator_map'),
-                                                   gate_list),
+                                    dev,
+                                    get_spectators(
+                                        dev,
+                                        kw.get('spectator_map'),
+                                        gate_list),
                                 opcode=kw.get('spectator_pulse_opcode', "X90"))
 
                         extra_prepend_pulses = kw.get('extra_prepend_pulses', [])
@@ -289,9 +312,11 @@ def cal_two_qubit_gates(sweep_params, gate_list, sweep_range_dict=None, n_cz=1,
                         ))
                         if i == 0 and kw.get('spectator_map', False): #why
                             task_list[-1]['prepend_pulse_dicts'] = \
-                                get_spectator_pulses(
-                                    get_spectators(kw.get('spectator_map'),
-                                                   gate_list),
+                                get_spectator_pulses(dev,
+                                    get_spectators(
+                                        dev,
+                                        kw.get('spectator_map'),
+                                        gate_list),
                                     opcode=kw.get('spectator_pulse_opcode', "X90"))
                         extra_prepend_pulses = kw.get('extra_prepend_pulses', [])
                         if i == 0 and extra_prepend_pulses:
@@ -318,11 +343,12 @@ def cal_two_qubit_gates(sweep_params, gate_list, sweep_range_dict=None, n_cz=1,
                 converged = []
                 for i, (qbh, qbl) in enumerate(gate_list):
                     if 'CPhase' in experiment_name:
-                        best_val, c = cz_calib_mod.get_optimal_amp(qbh, qbl,
-                                                               timestamp=None,
-                                                               # parfit=True,
-                                                               analysis_object=mmnt.analysis,
-                                                               phi=phi_target)
+                        best_val, c = get_optimal_amp(
+                            qbh, qbl, timestamp=None,
+                            # parfit=True,
+                            analysis_object=mmnt.analysis,
+                            phi=phi_target,
+                        )
                         converged.append(c)
                     else:
                         best_val, c = mmnt.analysis.get_leakage_best_val(
@@ -365,9 +391,11 @@ def cal_two_qubit_gates(sweep_params, gate_list, sweep_range_dict=None, n_cz=1,
                                       ))
                 if i == 0 and kw.get('spectator_map', False):
                     task_list[-1]['prepend_pulse_dicts'] = \
-                        get_spectator_pulses(
-                            get_spectators(kw.get('spectator_map'),
-                                           gate_list),
+                        get_spectator_pulses(dev,
+                            get_spectators(
+                                dev,
+                                kw.get('spectator_map'),
+                                gate_list),
                             opcode=kw.get('spectator_pulse_opcode', "X90"))
                 extra_prepend_pulses = kw.get('extra_prepend_pulses', [])
                 if i == 0 and extra_prepend_pulses:
@@ -391,15 +419,13 @@ def cal_two_qubit_gates(sweep_params, gate_list, sweep_range_dict=None, n_cz=1,
         return mmnts
 
 
-def cal_dyn_phase(gate_list, update=True, n_cz=1, cz_pulse_name='CZ_nzbasic',
-                  phi=180, reset_phases_before_measurement=True, nr_phases=5,
-                  trigger_sep=300e-6,
-                  **kw):
+def cal_dyn_phase(
+        gate_list, dev,
+        update=True, n_cz=1, cz_pulse_name='CZ_nzbasic',
+        reset_phases_before_measurement=True, nr_phases=5,
+        **kw):
     task_list = []
-    tmp_vals = [
-        # (dev.preparation_params, prep_params),
-        # (TriggerDevice.pulse_period,  trigger_sep),
-    ]
+    tmp_vals = []
     acq_averages = kw.pop('acq_averages', 2 ** 12)
     for i, (qbh, qbl) in enumerate(gate_list):
         tmp_vals += [(qbh.acq_averages,  acq_averages),
@@ -421,9 +447,11 @@ def cal_dyn_phase(gate_list, update=True, n_cz=1, cz_pulse_name='CZ_nzbasic',
         task_list[-1]['qubits_to_measure'] += add_qubits
         if i == 0 and kw.get('spectator_map', False):
             task_list[-1]['prepend_pulse_dicts'] = \
-                get_spectator_pulses(
-                    get_spectators(kw.get('spectator_map'),
-                                   gate_list),
+                get_spectator_pulses(dev,
+                    get_spectators(
+                        dev,
+                        kw.get('spectator_map'),
+                        gate_list),
                     opcode=kw.get('spectator_pulse_opcode', "X90"))
         extra_prepend_pulses = kw.get('extra_prepend_pulses', [])
         if i == 0 and extra_prepend_pulses:
@@ -433,7 +461,7 @@ def cal_dyn_phase(gate_list, update=True, n_cz=1, cz_pulse_name='CZ_nzbasic',
                                                    + task_list[-1].get(
                 'prepend_pulse_dicts', [])
     with temporary_value(*tmp_vals):
-        prepare_mwg()
+        dev.prepare_mwg()
         dynphase_obj = twoqbcal.DynamicPhase(
             task_list,
             dev=dev,
