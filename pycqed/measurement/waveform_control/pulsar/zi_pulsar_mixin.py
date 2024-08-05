@@ -437,9 +437,9 @@ class MultiCoreCompilerZhinstToolkit:
         self.sequencer_code_mcc = dict()
         """Sequencer strings to be compiled and uploaded by the multicore 
         compiler. This variable is a dictionary {module_name: 
-        (awg_core, sequencer_program)}, where awg_core is a ZI API node for 
-        operating the corresponding AWG module and sequencer_program is a 
-        string containing the sequencer code."""
+        (awg_core, kw)}, where awg_core is a ZI API node for
+        operating the corresponding AWG module and kw is a dict
+        containing kwargs for load_sequencer_program from zhinst.qcodes."""
 
         self.post_sequencer_code_upload = dict()
         """Upload functions to be executed after programming the sequencer 
@@ -453,12 +453,12 @@ class MultiCoreCompilerZhinstToolkit:
         self.sequencer_code_mcc.clear()
         self.post_sequencer_code_upload.clear()
 
-    def execute_mcc(self):
+    def execute_mcc(self, **kw):
         """Get the active session. Compile and upload the sequencer code.
         Fish post-sequencer-code programming (upload waveforms, command
         tables, enable outputs, etc.)."""
         self._update_session()
-        self._compile_and_upload_seqc()
+        self._compile_and_upload_seqc(**kw)
         self._finalize_upload_after_mcc()
 
     def _update_session(self):
@@ -467,16 +467,16 @@ class MultiCoreCompilerZhinstToolkit:
             self.session = list(self.sequencer_code_mcc.values())[0][
                 0].parent._tk_object._session
 
-    def _compile_and_upload_seqc(self):
+    def _compile_and_upload_seqc(self, **kw):
         """Compile the sequencer code and generate bitstreams to program the
         devices. Once this is done, upload the bitstreams to the devices."""
         futures = []
         with self.session.set_transaction(), ThreadPoolExecutor() as executor:
             # Compile sequencer code for all AWGs in parallel.
-            for awg_core, awg_string in self.sequencer_code_mcc.values():
+            for awg_core, kw in self.sequencer_code_mcc.values():
                 future_seqc = executor.submit(
                     awg_core.load_sequencer_program,
-                    awg_string
+                    **kw,
                 )
                 futures.append(future_seqc)
 
@@ -1469,9 +1469,16 @@ class ZIGeneratorModule:
         except KeyError:
             prev_dio_valid_polarity = None
 
+        kw = {}
+        if not self.pulsar.SHFQC_use_placeholder_waves():
+            # Need to pass these to the driver if using CSV files
+            kw["waveforms"] = ";".join([s + ".csv"
+                                        for s in self._defined_waves])
+
         if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
             self.multi_core_compiler.sequencer_code_mcc[self.module_name] = (
-                self._awg_interface.awg_mcc_generators[self._awg_nr], awg_str)
+                self._awg_interface.awg_mcc_generators[self._awg_nr],
+                dict(sequencer_program=awg_str, **kw))
             self._save_awg_str(awg_str=awg_str)
         else:
             if self.pulsar.use_mcc():
@@ -1480,7 +1487,7 @@ class ZIGeneratorModule:
                     f'{self._awg.name} ({self._awg.devname}), see debug '
                     f'log when adding the AWG to pulsar.')
             self._save_awg_str(awg_str=awg_str)
-            self._configure_awg_str(awg_str=awg_str)
+            self._configure_awg_str(awg_str=awg_str, **kw)
 
         if prev_dio_valid_polarity is not None:
             self._awg.set('awgs_{}_dio_valid_polarity'.format(self._awg_nr),
@@ -1489,6 +1496,7 @@ class ZIGeneratorModule:
     def _configure_awg_str(
             self,
             awg_str,
+            **kw,
     ):
         raise NotImplementedError("This method should be rewritten in child "
                                   "classes.")
