@@ -1048,13 +1048,6 @@ def save_zibugreport(
         f"bugreport_{time.strftime('%Y%m%d_%H%M%S', time.localtime())}")
     os.mkdir(brdir)
 
-    # save the waveform files
-    try:
-        zipfolder('waves', pulsar.awg_interfaces[
-            list(pulsar.awg_interfaces)[0]]._zi_wave_dir(), brdir)
-    except Exception as e:
-        exceptions['waves'] = e
-
     # get all connected ZI instruments
     instruments = get_all_connected_zi_instruments()
 
@@ -1067,82 +1060,6 @@ def save_zibugreport(
     versions_devs, exceps = get_zhinst_firmware_versions(instruments)
     exceptions.update(exceps)
     write_logfile('versions', repr(versions_devs), brdir)
-
-    # save the firmware git revision
-    for dev in instruments:
-        try:
-            fw_git_revision_node = \
-                f"/{dev.devname}/raw/system/revisions/firmware"
-            fw_git_revision_string = \
-                dev.daq.get(fw_git_revision_node, flat=True)[
-                    fw_git_revision_node][0]['vector']
-            fw_git_revision_dict = json.loads(fw_git_revision_string)
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_firmware_revision'),
-                repr(fw_git_revision_dict), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_firmware_revision'] = e
-
-    # save the bitstream git revision
-    for dev in instruments:
-        try:
-            bs_git_revision_node = \
-                f"/{dev.devname}/raw/system/revisions/bitstream"
-            bs_git_revision_string = \
-                dev.daq.get(bs_git_revision_node, flat=True)[
-                    bs_git_revision_node][0]['vector']
-            bs_git_revision_dict = json.loads(bs_git_revision_string)
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_bitstream_revision'),
-                repr(bs_git_revision_dict), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_bitstream_revision'] = e
-
-    # save awg_source_strings
-    for dev in instruments:
-        try:
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_awg_source_strings'),
-                repr(getattr(dev, '_awg_source_strings', {})), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_awg_source_strings'] = e
-
-    # save compiler status strings
-    for dev in instruments:
-        try:
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_compiler_statusstring'),
-                getattr(dev, 'compiler_statusstring', ''), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_compiler_statusstring'] = e
-
-    # save snapshots
-    for dev in instruments:
-        try:
-            write_logfile(
-                os.path.join(brdir, f'{dev.name}_{dev.devname}_snapshot'),
-                repr(dev.snapshot()), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_snapshot'] = e
-
-    # save errors reported by the devices
-    for dev in instruments:
-        try:
-            write_logfile(
-                os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
-                repr(json.loads(dev.getv('raw/error/json/errors'))), brdir)
-        except Exception as e:
-            try:
-                # for QCodes-based devices
-                err_dict = dev.daq.get(f'{dev.devname}/raw/error/json/errors',
-                                       settingsonly=False)
-                err_str = err_dict[dev.devname][
-                    'raw']['error']['json']['errors'][0]['vector']
-                write_logfile(
-                    os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
-                    repr(json.loads(err_str)), brdir)
-            except Exception as e:
-                exceptions[f'{dev.name}_{dev.devname}_errors'] = e
 
     # save last sequence from pulsar
     try:
@@ -1167,7 +1084,7 @@ def save_zibugreport(
         except Exception as e:
             exceptions['stdout'] = e
 
-    # export the SHF instrument settings
+    # export the waveform and sequencer code of the SHFQCs
     for SHF in station.SHFQCs:
         # crate the top-level folder for this SHF
         shf_data_dir = os.path.join(brdir, SHF.name)
@@ -1247,7 +1164,50 @@ def save_zibugreport(
         w = SHF.qachannels[0].generator.sequencer.program()
         np.save(os.path.join(wfm_dir, f'sequencer_qa{0}'), w)
 
-    # export the waveform files of the AWGs
+    # export the waveform and sequencer code of the SHFQAs
+    for SHF in station.SHFQAs:
+        # crate the top-level folder for this SHF
+        shf_data_dir = os.path.join(brdir, SHF.name)
+        os.mkdir(shf_data_dir)
+        os.mkdir(os.path.join(shf_data_dir, 'qa'))
+
+        # save SHFQC settings
+        dev_settings = SHF.daq.get(f'/{SHF.devname}/*', settingsonly=True,
+                                   flat=True)
+        np.save(os.path.join(shf_data_dir, f'shfqa_settings'), dev_settings)
+
+        if involved_channels and SHF.name not in involved_channels.keys():
+            continue
+
+        for qa_channel in range(4):
+
+            if involved_channels and f"qa{qa_channel + 1}" not in \
+                    involved_channels[SHF.name]:
+                continue
+
+            # save qa channel waveforms
+            wfm_dir = os.path.join(shf_data_dir, "qa\qa_waveforms")
+            os.mkdir(wfm_dir)
+            for i, wave in enumerate(
+                    SHF.qachannels[qa_channel].generator.waveforms):
+                w = wave.wave()
+                np.save(os.path.join(wfm_dir, f'wave_{i}'), w)
+
+            # save qa integration weights
+            wfm_dir = os.path.join(shf_data_dir, "qa\qa_int_weights")
+            os.mkdir(wfm_dir)
+            for i, wave in enumerate(
+                    SHF.qachannels[qa_channel].readout.integration.weights):
+                w = wave.wave()
+                np.save(os.path.join(wfm_dir, f'weight_{i}'), w)
+
+            # save qa sequencer code
+            wfm_dir = os.path.join(shf_data_dir, "qa\qa_sequencer")
+            os.mkdir(wfm_dir)
+            w = SHF.qachannels[qa_channel].generator.sequencer.program()
+            np.save(os.path.join(wfm_dir, f'sequencer_qa{qa_channel}'), w)
+
+    # export the waveform and sequencer code of the HDAWGs
     for AWG in station.AWGs:
         if involved_channels and AWG.name not in involved_channels.keys():
             continue
@@ -1269,32 +1229,66 @@ def save_zibugreport(
                 i].sequencer.program()
             np.save(os.path.join(awg_data_dir, f'seqc_{i}'), sn)
 
+        # save HDAWG settings
         sn = AWG.daq.get(f'/{AWG.devname}/*', settingsonly=True)
         np.save(os.path.join(awg_data_dir, f'awg_settings'), sn)
 
-    # export the settings of the AWGs and UHFs
-    for dev in station.AWGs + station.UHFs:
-        try:
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_compiler_statusstring'),
-                getattr(dev, 'compiler_statusstring', ''))
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_compiler_statusstring'] = e
-        try:
-            write_logfile(
-                os.path.join(brdir, f'{dev.name}_{dev.devname}_snapshot'),
-                repr(dev.snapshot()))
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_snapshot'] = e
+    # export the waveform and sequencer code of the UHFQAs
+    for UHF in station.UHFs:
+        if involved_channels and UHF.name not in involved_channels.keys():
+            continue
 
-    # log the error status of the HDAWGSs, UHFs and the PQSC
-    for dev in station.AWGs + station.UHFs + [station.PQSC]:
+        # create the data directory of the AWG
+        awg_data_dir = os.path.join(brdir, UHF.name)
+        os.mkdir(awg_data_dir)
+
+        # save HDAWG waveforms
+        for i in range(2):
+            sn = UHF.daq.get(f'/{UHF.devname}/awgs/{i}/waveform/waves/*',
+                             settingsonly=False, flat=True,
+                             excludevectors=False)
+            np.save(os.path.join(awg_data_dir, f'waves_{i}'), sn)
+
+        # save UHF sequencer code
+        for i in range(2):
+            sn = pulsar.awg_interfaces[UHF.name].awg_mcc.awgs[
+                i].sequencer.program()
+            np.save(os.path.join(awg_data_dir, f'seqc_{i}'), sn)
+
+        sn = UHF.daq.get(f'/{UHF.devname}/*', settingsonly=True)
+        np.save(os.path.join(awg_data_dir, f'uhf_settings'), sn)
+
+    # save the firmware git revision
+    for dev in instruments:
+        dev_data_dir = os.path.join(brdir, dev.name)
         try:
-            write_logfile(
-                os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
-                repr(json.loads(dev.getv('raw/error/json/errors'))))
+            fw_git_revision_node = \
+                f"/{dev.devname}/raw/system/revisions/firmware"
+            fw_git_revision_string = \
+                dev.daq.get(fw_git_revision_node, flat=True)[
+                    fw_git_revision_node][0]['vector']
+            fw_git_revision_dict = json.loads(fw_git_revision_string)
+            write_logfile(os.path.join(
+                dev_data_dir, f'{dev.name}_{dev.devname}_firmware_revision'),
+                repr(fw_git_revision_dict), dev_data_dir)
         except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_errors'] = e
+            exceptions[f'{dev.name}_{dev.devname}_firmware_revision'] = e
+
+    # save the bitstream git revision
+    for dev in instruments:
+        dev_data_dir = os.path.join(brdir, dev.name)
+        try:
+            bs_git_revision_node = \
+                f"/{dev.devname}/raw/system/revisions/bitstream"
+            bs_git_revision_string = \
+                dev.daq.get(bs_git_revision_node, flat=True)[
+                    bs_git_revision_node][0]['vector']
+            bs_git_revision_dict = json.loads(bs_git_revision_string)
+            write_logfile(os.path.join(
+                dev_data_dir, f'{dev.name}_{dev.devname}_bitstream_revision'),
+                repr(bs_git_revision_dict), dev_data_dir)
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_bitstream_revision'] = e
 
     # print in kernel
     print(f'Bug report files saved to {brdir}')
