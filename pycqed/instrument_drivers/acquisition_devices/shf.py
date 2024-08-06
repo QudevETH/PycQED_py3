@@ -375,7 +375,16 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 if not self.emulate_poll():
                     node = self.qachannels[i].spectroscopy.result.data.wave
                     self._subscribed_nodes.append(node)
-                    self._nodes_channel_mapping[node] = tuple([i])
+                    # adds the channels for storing real and imaginary values
+                    # of node to _nodes_channel_mapping. Channels are
+                    # added as a flatted dicitonary such that channel[0]
+                    # refers to the acquisition channel as for the other
+                    # acquisition modes
+                    channel = []
+                    for ch in channels:
+                        if ch[0] == i:
+                            channel += ch
+                    self._nodes_channel_mapping[node] = tuple(channel)
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'fft_power':
                 # Fit as many traces as possible in a single SHF call
@@ -632,8 +641,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 # complex number array raw_data is split up in real and
                 # imaginary part.
                 dataset.update(
-                    {(channel[0], 0): [np.real(raw_data)*scaling_factor],
-                     (channel[0], 1):  [np.imag(raw_data)*scaling_factor]})
+                    {(channel[0], channel[1]): [np.real(raw_data)*scaling_factor],
+                     (channel[2], channel[3]):  [np.imag(raw_data)*scaling_factor]})
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
                 # TODO: Why do we only look at the first element in scopes?
