@@ -2811,14 +2811,14 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                 op_name, parameter_prefix + '_basis_rotation',
                 'basis_rotation', initial_value={}, vals=None)
 
-        for transition_name in ['', '_ef']:
-            self.add_pulse_parameter(f'PFM{transition_name}',
-                                 f'parametric_flux_modulation'
-                                 f'{transition_name}_filter_bypass',
-                                 'filter_bypass', initial_value=None,
-                                 vals=vals.Enum(None, 'FIR', 'IIR', 'all'),
-                                 docstring=
-            "Allows to (partially) bypass filters for the FP operation. "
-            " 'FIR': bypasses FIR filters only. 'IIR': bypasses IIR filters only. "
-            "FIR is done individually on each pulse waveform with that "
-            "bypass in that case. 'all': bypasses both FIR and IIR filters.")
+        param = 'filter_bypass'
+        if param not in params.keys():
+            self.add_pulse_parameter(
+                op_name, f'{parameter_prefix}_{param}', param,
+                initial_value=None, vals=vals.Enum(None, 'FIR', 'IIR', 'all'),
+                docstring= "Allows to (partially) bypass filters for the FP "
+                           "operation. "
+                           "'FIR': bypasses FIR filters only.  "
+                           "'IIR': bypasses IIR filters only. FIR filtering"
+                           "is done on the level of individual pulse waveforms"
+                           "'all': bypasses both FIR and IIR filters.")
