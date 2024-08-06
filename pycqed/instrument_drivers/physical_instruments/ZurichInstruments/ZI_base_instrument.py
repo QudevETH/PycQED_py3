@@ -651,6 +651,7 @@ class ZI_base_instrument(Instrument):
                  interface: str= '1GbE',
                  server: str= 'localhost',
                  port: int= 8004,
+                 # 1 line different from Delft version: apilevel
                  apilevel: int= 6,
                  num_codewords: int= 0,
                  awg_module: bool=True,
