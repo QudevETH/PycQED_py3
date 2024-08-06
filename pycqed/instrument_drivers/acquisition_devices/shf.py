@@ -430,12 +430,12 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # Could use the ZI toolkit instead:
         # self._tk_object.qachannels["*"].oscs[0].gain(0)
         with self.set_transaction():
-            # TODO unsubscribe?
             for ch in self.qachannels.values():
                 ch.oscs[0].gain(0)
             for node in self._subscribed_nodes:
                 node.unsubscribe
             self._subscribed_nodes = []
+            self._nodes_channel_mapping = {}
 
     def acquisition_progress(self):
         n_acq = {}
