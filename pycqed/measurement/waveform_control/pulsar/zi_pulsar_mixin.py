@@ -1470,7 +1470,7 @@ class ZIGeneratorModule:
             prev_dio_valid_polarity = None
 
         kw = {}
-        if not self.pulsar.SHFQC_use_placeholder_waves():
+        if not self._use_placeholder_waves:
             # Need to pass these to the driver if using CSV files
             kw["waveforms"] = ";".join([s + ".csv"
                                         for s in self._defined_waves])
