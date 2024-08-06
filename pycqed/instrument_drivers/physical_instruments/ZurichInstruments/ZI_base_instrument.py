@@ -566,8 +566,7 @@ class MockAwgModule():
         self._index = None
         self._sourcestring = None
         self._compilation_count = {}
-        if not os.path.isdir('awg/waves'):
-            os.makedirs('awg/waves')
+        # 2 lines deleted from Delft version: do not create waves dir
 
     def get_compilation_count(self, index):
         if index not in self._compilation_count:
@@ -1032,6 +1031,9 @@ class ZI_base_instrument(Instrument):
     def _get_awg_directory(self):
         """
         Returns the AWG directory where waveforms should be stored.
+        # 2 lines added to Delft version: additional explanation
+        Note that this directory is not relevant when programming
+        via configure_awg_from_string.
         """
         return os.path.join(self._awgModule.get('awgModule/directory')['directory'][0], 'awg')
 
