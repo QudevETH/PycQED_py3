@@ -1149,11 +1149,12 @@ class ZIGeneratorModule:
                     if update_entry:
                         self._command_table.append(entry)
 
+                placeholder_wave_length = None
+                
                 if self._use_placeholder_waves:
                     # No need to add new definitions when reusing old ones
                     if reuse_definition:
                         continue
-
                     # Check if the longest placeholder wave length equals to
                     # the shortest one. If not, use the longest wave
                     # length to fit all waveforms.
@@ -1164,33 +1165,25 @@ class ZIGeneratorModule:
                         log.warning(f"Waveforms of unequal length on"
                                     f"{self._awg.name}, vawg{self._awg_nr},"
                                     f" {current_segment}, {element}.")
-
-                    # Add new wave definition and save wave index.
-                    self._wave_definitions += \
-                        self._awg_interface.zi_wave_definition(
-                            wave=wave,
-                            defined_waves=self._defined_waves,
-                            wave_index=self._wave_idx_lookup[element][cw],
-                            placeholder_wave_length=max(placeholder_wave_lengths),
-                            internal_mod=self._use_internal_mod,
-                        )
+                
+                    placeholder_wave_length =  max(placeholder_wave_lengths)
                 else:
                     # No indices will be assigned when not using placeholder
                     # waves.
-                    wave = list(wave)
-                    for i, h in enumerate(wave):
+                    for i, h in enumerate(list(wave)):
                         if h is not None:
                             wave[i] = self._with_divisor(h, self.channel_ids[i])
                     wave = tuple(wave)
-
-                    self._wave_definitions += \
-                        self._awg_interface.zi_wave_definition(
-                            wave=wave,
-                            wave_index=self._wave_idx_lookup[element][cw] if
-                            self._use_command_table else None,
-                            defined_waves=self._defined_waves,
-                            internal_mod=self._use_internal_mod,
-                        )
+                    
+                self._wave_definitions += \
+                    self._awg_interface.zi_wave_definition(
+                        wave=wave,
+                        defined_waves=self._defined_waves,
+                        wave_index=self._wave_idx_lookup[element][cw] if
+                        self._use_command_table or  self._use_placeholder_waves else None,
+                        placeholder_wave_length = placeholder_wave_length,
+                        internal_mod=self._use_internal_mod,
+                    )
 
             if not upload:
                 # _program_awg was called only to decide which AWG modules are
