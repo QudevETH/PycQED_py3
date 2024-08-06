@@ -636,16 +636,14 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                      (channel[0], 1):  [np.imag(raw_data)*scaling_factor]})
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
-                if self.scopes[0].enable() == 0:
-                    # TODO: what happens if enable!=1, why do we only look at
-                    #  the first element in scopes?
-                    timetrace = data[0]['vector']
-                    dataset[(channel[0], 0)] = [np.real(timetrace)]
-                    # use sign convention as is used by UHFQA in avg mode
-                    # to ensure compatibility with existing analysis classes
-                    # use natural sign in averaged mode
-                    sign = {'avg': -1, 'scope': 1}[self._acq_mode]
-                    dataset[(channel[0], 1)] = [sign*np.imag(timetrace)]
+                # TODO: Why do we only look at the first element in scopes?
+                timetrace = data[0]['vector']
+                dataset[(channel[0], 0)] = [np.real(timetrace)]
+                # use sign convention as is used by UHFQA in avg mode
+                # to ensure compatibility with existing analysis classes
+                # use natural sign in averaged mode
+                sign = {'avg': -1, 'scope': 1}[self._acq_mode]
+                dataset[(channel[0], 1)] = [sign*np.imag(timetrace)]
             else:
                 raise NotImplementedError("Mode not recognised!")
         return dataset
