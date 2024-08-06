@@ -717,6 +717,20 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 seq = sequence.Sequence("timetrace",
                                         cp.create_segments(operation_dict,
                                                            reset_params=reset_params))
+                # FIXME: understand limitations of scope mode
+                #        (e.g. segmenting) more fully
+                # For the moment, warn users when they have multiple
+                # acquisitions configured (e.g. due to pre-selection)
+                # for this measurement since it relies on the ZI UHF/SHF
+                # scope mode where no state information is available.
+                if seq.n_acq_elements() > 1:
+                    raise ValueError(
+                        f"The sequence has {seq.n_acq_elements()} "
+                        "readouts but only one is supported by scope "
+                        "mode. Check whether you have disabled readout-"
+                        "based reset for this measurement (e.g. in a "
+                        "temporary value)."
+                    )
                 # set sweep function and run measurement
                 MC.set_sweep_function(awg_swf.SegmentHardSweep(
                     sequence=seq, upload=upload))
