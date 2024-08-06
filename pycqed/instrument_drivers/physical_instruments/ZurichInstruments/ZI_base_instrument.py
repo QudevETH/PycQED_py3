@@ -8,8 +8,6 @@ import re
 import copy
 from datetime import datetime
 from functools import partial
-# 1 line added to Delft version: default awg dir
-from pycqed.utilities.general import default_awg_dir
 
 from qcodes.instrument.base import Instrument
 from qcodes.utils import validators
@@ -568,9 +566,8 @@ class MockAwgModule():
         self._index = None
         self._sourcestring = None
         self._compilation_count = {}
-        # 2 lines different from Delft version: default awg dir
-        os.makedirs(os.path.join(default_awg_dir(), 'waves'),
-                    exist_ok=True)
+        if not os.path.isdir('awg/waves'):
+            os.makedirs('awg/waves')
 
     def get_compilation_count(self, index):
         if index not in self._compilation_count:
@@ -1036,8 +1033,7 @@ class ZI_base_instrument(Instrument):
         """
         Returns the AWG directory where waveforms should be stored.
         """
-        # 1 line different from Delft version: default awg dir
-        return os.path.join(self._awgModule.get('awgModule/directory')['directory'][0], default_awg_dir())
+        return os.path.join(self._awgModule.get('awgModule/directory')['directory'][0], 'awg')
 
     def _initialize_waveform_to_zeros(self):
         """
