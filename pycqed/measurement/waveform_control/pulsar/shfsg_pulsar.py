@@ -58,8 +58,6 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
     _shfsg_sequence_string_template = (
         "{wave_definitions}\n"
         "\n"
-        "{codeword_table_defs}\n"
-        "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
         "}}\n"

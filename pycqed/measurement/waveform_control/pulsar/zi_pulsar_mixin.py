@@ -257,24 +257,6 @@ class ZIPulsarMixin:
     def zi_playback_string_loop_end(metadata):
         return ["}"] if metadata.get("end_loop", False) else []
 
-    def zi_codeword_table_entry(self, codeword, wave, placeholder_wave=False,
-                                internal_mod=False):
-        w1, w2 = self.zi_waves_to_wavenames(wave)
-        use_hack = True
-        if w1 is None and w2 is not None and use_hack and not placeholder_wave:
-            # This hack is needed due to a bug on the HDAWG.
-            # Remove this if case once the bug is fixed.
-            return [f"assignWaveIndex(zeros(1) + marker(1, 0),{w2},"
-                    f"{codeword});"]
-
-        elif w1 is None and w2 is not None and use_hack and placeholder_wave:
-            return [f"assignWaveIndex({w2}_but_zero, {w2},{codeword});"]
-        elif not (w1 is None and w2 is None):
-            return ["assignWaveIndex({}, {});".format(
-                        self._zi_wavename_pair_to_argument(
-                            w1, w2, internal_mod=internal_mod),codeword)]
-        else:
-            return []
 
     def zi_waves_to_wavenames(self, wave):
         wavenames = []
@@ -508,8 +490,6 @@ class ZIGeneratorModule:
     _sequence_string_template = (
         "{wave_definitions}\n"
         "\n"
-        "{codeword_table_defs}\n"
-        "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
         "}}\n"
@@ -577,12 +557,6 @@ class ZIGeneratorModule:
         self._wave_definitions = []
         """Wave definition strings to be added to the sequencer code."""
 
-        self._codeword_table = {}
-        """Codeword table for DIO wave triggering."""
-
-        self._codeword_table_defs = []
-        """Codeword table definitions to be added to the sequencer code."""
-
         self._command_table = []
         """Command table for pulse sequencing."""
 
@@ -649,17 +623,12 @@ class ZIGeneratorModule:
     def _reset_sequence_strings(
             self,
             reset_wave_definition: bool = True,
-            reset_codeword_table: bool = True,
             reset_playback_strings: bool = True,
             reset_command_table: bool = True,
     ):
         """Resets everything relates to sequence code strings."""
         if reset_wave_definition:
             self._wave_definitions = []
-
-        if reset_codeword_table:
-            self._codeword_table = {}
-            self._codeword_table_defs = []
 
         if reset_command_table:
             self._command_table = []
@@ -1087,22 +1056,6 @@ class ZIGeneratorModule:
                         self._check_ignore_waveforms():
                     continue
 
-                # Updates the codeword table if there exists codewords.
-                if nr_cw != 0:
-                    w1, w2 = self._awg_interface.zi_waves_to_wavenames(wave)
-                    if cw not in self._codeword_table:
-                        self._codeword_table_defs += \
-                            self._awg_interface.zi_codeword_table_entry(
-                                cw, wave, self._use_placeholder_waves,
-                                internal_mod=self._use_internal_mod
-                            )
-                        self._codeword_table[cw] = (w1, w2)
-                    elif self._codeword_table[cw] != (w1, w2) \
-                            and self.pulsar.reuse_waveforms():
-                        log.warning(f'Same codeword {cw} used for different '
-                                    f'waveforms: {self._codeword_table[cw]} '
-                                    f'vs {(w1, w2)}. Using first waveform. '
-                                    f'Ignoring element {element}.')
 
                 # Update self.has_waveforms flag of the corresponding channel
                 # ID if there are waveforms defined.
@@ -1419,8 +1372,6 @@ class ZIGeneratorModule:
         """
         awg_str = self._sequence_string_template.format(
             wave_definitions='\n'.join(self._wave_definitions),
-            # TODO remove
-            codeword_table_defs='\n'.join(self._codeword_table_defs),
             playback_string='\n  '.join(self._playback_strings),
         )
 

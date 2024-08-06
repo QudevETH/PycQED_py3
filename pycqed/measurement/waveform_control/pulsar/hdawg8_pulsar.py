@@ -46,8 +46,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
         "\n"
-        "{codeword_table_defs}\n"
-        "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
         "}}\n"
