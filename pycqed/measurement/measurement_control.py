@@ -385,6 +385,8 @@ class MeasurementControl(Instrument):
             self.exp_metadata.update({
                 'sweep_control': [s.sweep_control for s in getattr(
                     self, 'sweep_functions', [])],
+                # Indicates to the analysis a measurement performed after
+                # changes ensuring a right-handed single-qubit gate basis
                 'right_handed_basis': True,
             })
             self.save_exp_metadata(self.exp_metadata)
