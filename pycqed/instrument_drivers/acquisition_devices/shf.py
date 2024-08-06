@@ -57,6 +57,15 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     USER_REG_LOOP_COUNT = 0
     USER_REG_ACQ_LEN = 1
 
+    # First-in-first-out list with cached data from self.session.poll().
+    # This mutable list is accessed by all instances of this class where
+    # each instance extracts the data of its own nodes and populates it
+    # with data from self.session.poll().
+    # This list should only be accessed with self.get_cached_poll_data
+    # and self.cache_poll_data.
+    # Structure: [(node_object, dictionary of data), ...]
+    _cached_poll_data = []
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         chs = kwargs.get('valid_qachs', range(len(self.qachannels)))
@@ -501,6 +510,40 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self.scopes[0].stop()
         self.scopes[0].run(single=1)
 
+    def get_cached_poll_data(self):
+        """
+        Returns data from self._cached_poll_data for all nodes in
+        self._nodes_channel_mapping. Only the first matching entry
+        for a given node in the list is returned.
+        Returns (dict): dict with node objects as keys and tha data
+        inside a dictionary as the values.
+
+        """
+        data = {}
+        pop_index = []
+        for i, (k, v) in enumerate(self._cached_poll_data):
+            if k in self._nodes_channel_mapping and k not in data:
+                data[k] = v
+                pop_index.append(i)
+        for index in sorted(pop_index, reverse=True):
+            del self._cached_poll_data[index]
+        return data
+
+    def cache_poll_data(self):
+        """
+        Caches the polled data from self.session.poll() in the class
+        variable self._cached_poll_data.
+        This is done because polling the data from the dataserver
+        retunrs updated data from all subscribed nodes, not only the
+        ones from the specific SHF. To distribute the data to the
+        according SHF, the data is cached in an attribute accessible
+        by all SHF instances and then popped by self.get_cached_poll_data.
+        The cache list _cached_poll_data must not be overwritten.
+        """
+        data = self.session.poll()
+        for k in list(data):
+            self._cached_poll_data.append((k, data[k]))
+
     @Timer()
     def poll(self, *args, **kwargs):
         if self.emulate_poll():
@@ -547,12 +590,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 # FIXME this is blocking, to get enough data to average
                 #  in the driver (not the usual behaviour of poll)
                 self.scopes[0].wait_done(timeout=self.timeout())
-                polled_data = self.session.poll()
+                self.cache_poll_data()
+                polled_data = self.get_cached_poll_data()
                 data = polled_data.get(node, {})
-                print("data: ", data)
                 if data:
                     timetraces = np.concatenate((timetraces, data[0]['vector']))
-                # data = self.scopes[0].channels[i].wave()
                 # This is a 1-D complex time trace
 
             timetraces = timetraces[
@@ -570,7 +612,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             # don't care
             return dataset
 
-        polled_data = self.session.poll()
+        # polls and caches the data from the dataserver
+        self.cache_poll_data()
+        # extracts only the nodes from the respective SHF from the polled data
+        polled_data = self.get_cached_poll_data()
         dataset = {}
         for node, data in polled_data.items():
             channel = self._nodes_channel_mapping[node]
