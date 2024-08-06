@@ -1019,6 +1019,8 @@ class ZIGeneratorModule:
                 if cw == 'no_codeword':
                     if nr_cw != 0:
                         continue
+                assert self._use_command_table, f"Enable use_command_table for \
+                    feedback operations"
                 chid_to_hash = awg_sequence_element[cw]
 
                 # With current implementations, 'wave' has to be a tuple of
