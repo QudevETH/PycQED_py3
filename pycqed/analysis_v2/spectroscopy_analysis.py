@@ -1788,10 +1788,13 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             }
             if guess_vals is not None:
                 def_guessvals.update(guess_vals)
+            kwargs = {}
             if len(s21s) != 3:
                 def_guessvals.pop('chigf')
+                kwargs = {'chigf': None}
                 if len(s21s) != 2:
                     def_guessvals.pop('chige')
+                    kwargs = {'chige': None}
                     assert len(s21s) == 1
             pars = model.make_params(**def_guessvals)
             pars['kP'].min = 0
@@ -1803,7 +1806,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
             pars['wRg'].max = freq.max()
             fit = model.fit(
                 np.concatenate([np.abs(s21) for s21 in s21s]),
-                f=freq, params=pars)
+                f=freq, params=pars, **kwargs)
             res[qbn] = fit.best_values
 
             fig_key_list.append(f'ro_params_fit_{qbn}')
