@@ -1983,10 +1983,8 @@ class Segment:
                         # is done on the pulse waveform
                         wf_bypass_IIR = np.zeros_like(wf)
                         for channel, ps, pe, pwf in pulses_to_add_after_filtering['bypass_IIR']:
-                            print('IIR, channel, c', channel, c)
                             if channel != c:
                                 continue
-                            print('IIR 2, channel, c', channel, c)
                             pwf_channel = pwf.get(c, None)
                             if pwf_channel is not None:
                                 wf_bypass_IIR[ps:pe] += \
