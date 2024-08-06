@@ -451,7 +451,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             for ch in self.qachannels.values():
                 ch.oscs[0].gain(0)
             for node in self._subscribed_nodes:
-                node.unsubscribe
+                node.unsubscribe()
             self._subscribed_nodes = []
             self._nodes_channel_mapping = {}
 
