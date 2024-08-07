@@ -5272,7 +5272,7 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
         # calibration points
         kw['transition_name'] = '' if init_state == 'g' else (
             'ge' if init_state == 'e' else (
-                'ef' if init_state == 'f' else 'h'))
+                'ef' if init_state == 'f' else 'fh'))
         try:
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
@@ -5281,20 +5281,28 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
             self.exception = x
             traceback.print_exc()
 
-    def sweep_block(self, qb, sweep_points, init_state, lru_opcodes='auto',
-        num_LRUs=1, **kw):
+    def sweep_block(self, qb, sweep_points, init_state,
+                    lru_opcodes='auto', num_LRUs=1, **kw):
         """
-        This function creates the blocks for the leakage-reduction task,
-        see the pulse sequence in the class docstring.
+        This function creates the blocks for the leakage-reduction task. If
+        there are several PFM ppulses (lru_opcodes is a list), the parameters
+        of the last pulse in the list are swept. Parameters of the other pulses
+        can be swept by adding a suffix to the parameter name. The suffix
+        should be the last part of the parameter name, e.g. 'frequency_ge'.
+        Note that to modify explicitly the PFM between g and e, the suffix
+        should be 'ge' even though the opcode is 'PFM' without suffix. This
+        is in order to distinguish between no suffix and 'ge' suffix.
         :param qb: qubit name
         :param sweep_points: SweepPoints instance
-        :param init_state: 'g', 'e', 'f', or  'h'
+        :param init_state: 'g', 'e', 'f', or  'h'. Initial state
+                            of all segments except the calibration points.
         :param lru_opcodes: list of PFM opcodes for the LRU pulses e.g.
                             ['PFM_fh', 'PFM_ef'] (the order is taken as in the
                             list) or 'auto', in which case a single PFM
                             pulse is used to move to the next lower state
-                            e.g. PFM_fh for init_state 'h'. If 'auto' is
-                            used and init_state is 'g', 'PFM' is used.
+                            e.g. PFM_fh for init_state 'h'. If
+                            'auto' is used and init_state is
+                            'g', 'PFM' is used.
         :param num_LRUs: number of LRUs, default is 1. In case lru_opcodes is
                             a list larger than 1, all opcodes will be repeated
                             num_LRUs times.
@@ -5302,9 +5310,13 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
             Passed to parent method.
         """
 
-        # Remove transition_name from kw to avoid passing it to the parent
+        # Remove transition_name from kw to avoid passing it to the parent.
+        # transition_name is passed explicitly to the parent as '' to avoid
+        # creating addiitonal preparation pulses which are already covered
+        # by init_state.
         transition_name = kw.pop('transition_name')
-        prepend_blocks = super().sweep_block(qb, sweep_points, '', **kw)
+        prepend_blocks = super().sweep_block(qb, sweep_points, '',
+                                             **kw)
         if lru_opcodes == 'auto':
             lru_transition = 'fh' if init_state == 'h' else (
                 'ef' if init_state == 'f' else '')
@@ -5317,9 +5329,20 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
         # create ParametricValues from param_name in sweep_points
         for sweep_dict in sweep_points:
             for param_name in sweep_dict:
+                # get the suffix of the param_name if is exists, otherwise use
+                # the last suffix in lru_opcodes. the suffix is used to
+                # determine which pulse should be swept
+                suffix = param_name.split('_')[-1] if '_' in param_name else ''
+                pulse_param = '_'.join(
+                    param_name.split('_')[:-1]) if suffix in [
+                    'ge', 'ef', 'fh'] else param_name
+                suffix = suffix if suffix in ['ge', 'ef', 'fh'] else \
+                    lru_opcodes[-1].split('_')[-1].split(' ')[0]
                 for pulse_dict in modulation_block.pulses:
-                    if param_name in pulse_dict:
-                        pulse_dict[param_name] = ParametricValue(param_name)
+                    if (pulse_param in pulse_dict) and \
+                            (suffix in pulse_dict['op_code']):
+                        pulse_dict[pulse_param] = ParametricValue(
+                            param_name)
         modulation_block = [modulation_block] * num_LRUs
         return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
                                       prepend_blocks + modulation_block)
