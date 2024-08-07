@@ -972,7 +972,7 @@ class CircuitBuilder:
             parallel_qb_block = self.simultaneous_blocks(
                 f'parallel_qb_blk_{i}', qb_blocks, block_align=block_align)
 
-            prep = self.initialize(init_state=init_state,
+            prep = self.initialize(init_state='g',
                                    qb_names=cal_points.qb_names)
             ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
             cal_state_block = self.sequential_blocks(
