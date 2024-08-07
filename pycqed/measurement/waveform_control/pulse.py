@@ -42,7 +42,8 @@ class Pulse:
             Defaults to 0.
         channels (list of str, optional): A list of channel names that the pulse
             instance generates waveforms form. Defaults to empty list.
-
+        filter_bypass ('FIR', 'IIR', 'all' or None, optional): If not None,
+            skips the listed predistortion filters.
     Attrs:
         channel_mask: set[str]
             A set of channel names to be excluded from waveform generation.
@@ -78,6 +79,7 @@ class Pulse:
         self.codeword = kw.pop('codeword', 'no_codeword')
         self.pulse_off = kw.pop('pulse_off', False)
         self.is_net_zero = False
+        self.filter_bypass = kw.pop('filter_bypass', None)
         self.truncation_length = kw.pop('truncation_length', None)
         self.truncation_decay_length = kw.pop('truncation_decay_length', None)
         self.truncation_decay_const = kw.pop('truncation_decay_const', None)

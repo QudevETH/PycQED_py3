@@ -1176,7 +1176,8 @@ def calculate_meas_ops_and_covariations_cal_points(
     meas_obj_names = hlp_mod.get_measurement_properties(
         data_dict, props_to_extract=['mobjn'], enforce_one_meas_obj=False,
         **params)
-    prep_params = hlp_mod.get_param('preparation_params', data_dict, **params)
+
+    prep_params = hlp_mod.get_preparation_parameters(data_dict, **params)
 
     try:
         preselection_obs_idx = list(observables.keys()).index('pre')

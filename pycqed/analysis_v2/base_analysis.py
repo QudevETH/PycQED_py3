@@ -537,6 +537,146 @@ class BaseDataAnalysis(object):
                                                          1])
         return recursive_search(param_name, search_attrs[0])
 
+    def get_reset_params(self, qbn=None, default_value=None):
+        """Retrieves the reset parameters for the analysis.
+
+        It first checks if the legacy way of specifying reset parameters is used
+        by checking the value of 'preparation_params' and 'reset_params'
+        attributes:
+
+        - If 'reset_params' is not specified while 'preparation_params' is
+        present, a warning is logged indicating the deprecation of using
+        'preparation_params' and suggests using 'reset_params' instead. The
+        method assumes that the provided 'preparation_params' are in the
+        adequate format (legacy format) for the analysis and returns
+        'preparation_params' in this case.  
+        - If 'reset_params' is provided, the method calls the
+        'translate_reset_to_prep_params' method to translate the reset
+        parameters to preparation parameters required by the analysis framework.
+
+        Args:
+            qbn (Optional[str]): Qubit name of which the reset parameters
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
+            default_value (Optional): Default value to be returned if the reset
+                parameters do not match any known patterns. Defaults to None.
+
+        Returns:
+            dict or default_value: Dictionary containing the translated preparation
+                parameters if the reset parameters match a known pattern or
+                'preparation_params' if the legacy format is used. Otherwise,
+                returns the default_value.
+
+        """
+        # check if legacy way of specifying reset parameters is used
+        prep_params = self.get_param_value("preparation_params", None)
+        reset_params = self.get_param_value("reset_params", None)
+
+        if reset_params is None and prep_params is not None:
+            log.warning("Using 'preparation_params' to specify reset"
+                        " parameters is deprecated. Please use 'reset_params'"
+                        " instead. The code will assume that the provided"
+                        "'preparation_params' is using the adequate"
+                        "format (i.e. legacy format) for the analysis. ")
+            return prep_params
+        return self.translate_reset_to_prep_params(reset_params, qbn,
+                                                   default_value)
+    @staticmethod
+    def translate_reset_to_prep_params(reset_params, qbn=None,
+                                       default_value=None):
+        """
+        This static method performs the translation of reset parameters
+        (new framework for performing reset, used on the control measurement side)
+        to a preparation parameters dict (old framework)
+        required by the analysis framework. It handles cases
+        where the reset parameters are either a string or a dictionary.
+
+        Args:
+            reset_params (str or dict): The reset parameters to be translated.
+            qbn (Optional[str]): Qubit name of which the reset parameters
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
+            default_value (Optional): Default value to be returned if the reset
+                parameters do not match any known patterns. Defaults to None.
+
+        Returns:
+            dict or default_value: Dictionary containing the translated preparation
+                parameters if the reset parameters match a known pattern. Otherwise,
+                returns the default_value.
+
+        Note:
+            In case of legacy code where the reset parameters stored in the
+            experimental metadata or provided to the analysis is only a string
+            summarizing the reset type for all qubits, this method manually performs
+            the translation to the dictionary required by the analysis framework.
+
+            If the reset parameters are a string, the method maps specific values of
+            the string to the corresponding dictionary format. If the reset
+            parameters are a dictionary, it checks for the presence of
+            "analysis_instructions" and returns the last step of the analysis
+            instructions for the specified qubit.
+
+            If the reset parameters do not match any known patterns or if there is
+            missing data, appropriate warning messages are logged, and the
+            default_value is returned.
+
+            """
+        if isinstance(reset_params, str):
+            if reset_params == "preselection":
+                return dict(preparation_type="preselection")
+            elif reset_params == "feedback":
+                return dict(preparation_type="active_reset")
+            elif reset_params == "parametric_flux":
+                return dict(preparation_type="wait")
+            else:
+                log.warning(f"Reset parameters : '{reset_params}'"
+                            f"unknown for legacy analysis code. Analysis will"
+                            f"assume that the analysis can be performed "
+                            f"with the default behavior i.e. "
+                            f"preparation_type='wait' in the legacy code.")
+                return dict(preparation_type="wait")
+        # in most QE based measurements the stored reset params is a dict which
+        # stores instructions for the analysis.
+        elif isinstance(reset_params, dict):
+            if "analysis_instructions" not in reset_params:
+                log.warning(f'Reset params dictionary does not contain '
+                            f'"analysis_instructions": {reset_params}.'
+                            f' Analysis will proceed without any specific'
+                            f' reset-specific data processing.')
+                return dict(preparation_type="wait")
+            else:
+                if qbn is None:
+                    if reset_params['analysis_instructions']:
+                        qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    else:
+                        log.warning('reset_params[analysis_instructions] is empty.\n'
+                                    'Likely the reset used does not require any '
+                                    ' special instructions for data analysis.')
+                        return dict(preparation_type="wait")
+                if len(reset_params['analysis_instructions'][qbn]) == 0:
+                    # empty list, i.e. no reset steps
+                    return dict(preparation_type="wait")
+                elif len(reset_params['analysis_instructions'][qbn]) > 1:
+                # FIXME: Implement the support of multiple steps / analysis_instructions
+                    log.warning(f'Reset params dictionary contains several'
+                                f' steps: {reset_params["steps"]}, '
+                                f'currently the analysis will consider'
+                                f' only the last step for data '
+                                f'processing/filtering'
+                                )
+                return reset_params['analysis_instructions'][qbn][-1]
+        return default_value
+
     def get_instrument_settings(self, params_dict, timestamp=-1):
         """
         Returns a dictionary with the parameters loaded from the settings
@@ -904,8 +1044,7 @@ class BaseDataAnalysis(object):
                 self.raw_data_dict,
                 self.get_param_value('compression_factor', 1),
                 SweepPoints(self.get_param_value('sweep_points')),
-                cp, self.get_param_value('preparation_params',
-                                         default_value=dict()),
+                cp, self.get_reset_params(),
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
 
@@ -1591,6 +1730,8 @@ class BaseDataAnalysis(object):
         plot_xtick_labels = pdict.get('xtick_labels', None)
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_barkws = pdict.get('bar_kws', {})
@@ -1638,6 +1779,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -1800,12 +1944,15 @@ class BaseDataAnalysis(object):
         plot_xtick_rotation = pdict.get('xtick_rotation', 90)
         plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
         plot_grid = pdict.get('grid', None)
+        plot_opposite_axis = pdict.get('opposite_axis', False)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         # Ensures that 'color' can be passed both ways (and that it does not
         # collide with plot_linekws).
         plot_color = pdict.get('color', plot_linekws.pop('color') if
@@ -1884,6 +2031,9 @@ class BaseDataAnalysis(object):
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
 
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
+
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
             legend_title = pdict.get('legend_title', None)
@@ -1922,6 +2072,9 @@ class BaseDataAnalysis(object):
         if plot_ytick_labels is not None:
             axs.yaxis.set_ticklabels(plot_ytick_labels,
                                      rotation=plot_ytick_rotation)
+        if plot_opposite_axis:
+            axs.yaxis.set_label_position("right")
+            axs.yaxis.tick_right()
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -1943,6 +2096,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_nolabel = pdict.get('no_label', False)
         plot_title = pdict['title']
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         slice_idxs = pdict['sliceidxs']
         slice_label = pdict.get('slicelabel', '')
         slice_units = pdict.get('sliceunits', '')
@@ -1983,6 +2138,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -2244,6 +2402,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_yunit = pdict['yunit']
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         if plot_transpose:
             # transpose switches X and Y
             set_axis_label('x', axs, plot_ylabel, plot_yunit)
@@ -2257,6 +2417,8 @@ class BaseDataAnalysis(object):
                             verticalalignment='bottom',
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
     def plot_colorbar(self, cax=None, key=None, pdict=None, axs=None,
                       orientation='vertical', no_label=None):
@@ -2277,6 +2439,7 @@ class BaseDataAnalysis(object):
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        plot_cbar_opposite_axis = pdict.get('cbar_opposite_axis', False)
         if not isinstance(axs, Axes3D):
             cmap = axs.cmap
         else:
@@ -2296,7 +2459,10 @@ class BaseDataAnalysis(object):
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
-            axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
+            # Ensure the colorbar is added to the figure that the axis
+            # is a part of
+            fig = axs.get_figure()
+            axs.cbar = fig.colorbar(cmap, cax=axs.cax, orientation=orientation)
         else:
             norm = mpl.colors.Normalize(0, 1)
             axs.cbar = mpl.colorbar.ColorbarBase(axs.cax, cmap=cmap, norm=norm)
@@ -2306,9 +2472,16 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
-        if orientation == 'horizontal':
+        if orientation == 'horizontal' and not plot_cbar_opposite_axis:
+            # Defaults to top here (matplotlib defaults to bottom),
+            # unless plot_cbar_opposite_axis
             axs.cax.xaxis.set_label_position("top")
             axs.cax.xaxis.tick_top()
+        if orientation == 'vertical' and plot_cbar_opposite_axis:
+            # Defaults to right (as in matplotlib),
+            # unless plot_cbar_opposite_axis
+            axs.cax.yaxis.set_label_position("left")
+            axs.cax.yaxis.tick_left()
 
         if self.tight_fig:
             axs.figure.tight_layout()

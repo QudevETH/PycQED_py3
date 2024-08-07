@@ -36,8 +36,7 @@ class QubitHamiltonianParameters:
 
 
 class PopulateInitialHamiltonianModel(AutomaticCalibrationRoutine):
-    r"""
-    This routine populates a first guess for the Hamiltonian model of a
+    r"""This routine populates a first guess for the Hamiltonian model of a
     transmon.
 
     It is meant to run after the `InitialQubitParking` routine and before the

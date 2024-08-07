@@ -166,7 +166,6 @@ class PhaseErrorsAnalysisMixin():
                    f'\nold envelope mod. freq. ={chr}{old_pulse_par_val:.4f} MHz'
 
 
-# Analysis classes
 class AveragedTimedomainAnalysis(ba.BaseDataAnalysis):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -305,11 +304,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             projected data. If None, no slices are plotted.
          The two dicts above are of the form {qb_name: [(idxs, axis)]}, where
             - axis (str) can be either 'row' or 'col', specifying whether idxs
-                are row or column indices
+                are row or column indices. Optionally prepending 's' indicates
+                to simultaneously plot all slices on a single figure,
+                and/or 'm' to plot the mean of all possible slices (after 's').
             - idxs can be an int (data index) or a str of the form
                 'idx_start:idx_end' interpreted as standard list/array indexing
                 arr[idx_start:idx_end]
-            Example: {'qb14': [('8:13', 'row'), (0, 'col')]}.
+            Example: {'qb14': [('8:13', 'smrow'), (0, 'col')]}.
         Note:
             - to plot only 1D slices of 2D data, the standard plotting of raw
             and projected data can be disabled via the flags `plot_raw_data` and
@@ -390,15 +391,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         if self.qb_names is None:
             self.qb_names = self.get_param_value(
-                'ro_qubits', default_value=self.get_param_value('qb_names'))
+                'ro_qubits', default_value=self.get_param_value(
+                    'qb_names', default_value=self.get_param_value(
+                        'meas_objs')))
             if self.qb_names is None:
                 raise ValueError('Provide the "qb_names."')
         self.measurement_strings = {
             qbn: self.raw_data_dict['measurementstring'] for qbn in
             self.qb_names}
 
-        self.prep_params = self.get_param_value('preparation_params',
-                                                default_value=dict())
+        self.prep_params = self.get_reset_params(default_value=dict())
 
         # creates self.channel_map
         self.get_channel_map()
@@ -691,7 +693,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         # sort by transmon state (lowest to highest)
                         csr.sort(key=lambda t: t[1])
                         # take letter of the highest transmon state
-                        data_to_fit[qbn] = f'p{csr[-1][0]}'
+                        data_to_fit[qbn] = f'p{csr[-1][0]}' if len(csr) else {}
 
         # make sure no extra qubit names exist in data_to_fit compared to
         # self.qb_names (can happen if user passes qb_names)
@@ -2281,11 +2283,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                  fig_suffix=fig_suffix)
                 if TwoD and len(slice_idxs_list) > 0:
                     # plot slices of the 2D raw data
-                    self._prepare_raw_1d_slices_plots(qb_name, raw_data_dict,
-                                                      slice_idxs_list)
+                    self._prepare_raw_1d_slices_plots(
+                        qb_name, raw_data_dict, slice_idxs_list,
+                        fig_suffix=fig_suffix, sp_1D=sweep_points)
 
     def _prepare_raw_1d_slices_plots(self, qb_name, raw_data_dict,
-                                     slice_idxs_list):
+                                     slice_idxs_list, fig_suffix='',
+                                     sp_1D=None):
         """
         Prepares 1d plots of slices from a TwoD raw data plot.
 
@@ -2299,14 +2303,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 Example: [('8:13', 'row'), (0, 'col')]
         """
         for slice_idxs in slice_idxs_list:
-            idxs, axis, xvals, xlabel, xunit = \
-                self.get_1d_slice_params(qb_name, slice_idxs)
+            idxs, idxs_kw, axis, xvals, xlabel, xunit, sim = \
+                self.get_1d_slice_params(qb_name, slice_idxs, sp_1D=sp_1D)
             for idx in idxs:
-                fig_suffix = \
+                _fig_suffix = fig_suffix + '' if sim else\
                     f'{"_row" if axis == 0 else "_col"}_{idx}'
                 self._prepare_raw_data_plots(qb_name, raw_data_dict,
                                              xvals, idx, axis,
-                                             fig_suffix=fig_suffix,
+                                             fig_suffix=_fig_suffix,
                                              TwoD=False,
                                              xlabel=xlabel, xunit=xunit)
 
@@ -2381,37 +2385,59 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', False)
-        prep_1d_plot = True
         for ax_id, ro_channel in enumerate(raw_data_dict):
             ro_unit = value_units.get(ro_channel, 'a.u.')
-            if TwoD:
-                sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
-                if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
-                    # Only prepare 2D plots when there is more than one soft
-                    # sweep point. When there is only one soft sweep point
-                    # we want to do 1D plots which are more meaningful
-                    prep_1d_plot = False
-                    for pn, ssp in sp2dd.items():
-                        ylabel, yunit = self.get_soft_sweep_label_unit(pn)
-                        self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
-                            'fig_id': plot_name + '_' + pn,
-                            'ax_id': ax_id,
-                            'plotfn': self.plot_colorxy,
-                            'xvals': xvals,
-                            'yvals': ssp,
-                            'zvals': raw_data_dict[ro_channel].T,
-                            'xlabel': xlabel,
-                            'xunit': xunit,
-                            'ylabel': ylabel,
-                            'yunit': yunit,
-                            'numplotsx': numplotsx,
-                            'numplotsy': numplotsy,
-                            'plotsize': (plotsize[0]*numplotsx,
-                                         plotsize[1]*numplotsy),
-                            'title': fig_title,
-                            'clabel': f'{ro_channel} ({ro_unit})'}
-
-            if prep_1d_plot:
+            sp2dd = self.proc_data_dict.get('sweep_points_2D_dict', {}).get(
+                qb_name)
+            if TwoD and len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1\
+                    and len(xvals) > 1:
+                # Only prepare 2D plots when there is more than one soft
+                # sweep point. When there is only one soft sweep point
+                # we want to do 1D plots which are more meaningful
+                for pn, ssp in sp2dd.items():
+                    ylabel, yunit = self.get_soft_sweep_label_unit(pn)
+                    self.plot_dicts[f'{plot_name}_{ro_channel}_{pn}'] = {
+                        'fig_id': plot_name + '_' + pn,
+                        'ax_id': ax_id,
+                        'plotfn': self.plot_colorxy,
+                        'xvals': xvals,
+                        'yvals': ssp,
+                        'zvals': raw_data_dict[ro_channel].T,
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'ylabel': ylabel,
+                        'yunit': yunit,
+                        'numplotsx': numplotsx,
+                        'numplotsy': numplotsy,
+                        'plotsize': (plotsize[0]*numplotsx,
+                                     plotsize[1]*numplotsy),
+                        'title': fig_title,
+                        'clabel': f'{ro_channel} ({ro_unit})'}
+            elif len(xvals) == 1:  # 1D along 2nd sweep dimension (rare)
+                # FIXME this logic probably does not work yet when using
+                #  slice_idxs_1d_raw_plot (which would mean creating a 0D
+                #  slice of this 1D plot, which does not make sense and
+                #  should not happen)
+                yvals = raw_data_dict[ro_channel]
+                yvals = yvals.flatten()
+                for pn, ssp in sp2dd.items():
+                    xlabel, xunit = self.get_soft_sweep_label_unit(pn)
+                    self.plot_dicts[plot_name + '_' + ro_channel] = {
+                        'fig_id': plot_name,
+                        'ax_id': ax_id,
+                        'plotfn': self.plot_line,
+                        'xvals': ssp,
+                        'xlabel': xlabel,
+                        'xunit': xunit,
+                        'yvals': yvals,
+                        'ylabel': f'{ro_channel} ({ro_unit})',
+                        'yunit': '',
+                        'numplotsx': numplotsx,
+                        'numplotsy': numplotsy,
+                        'plotsize': (plotsize[0]*numplotsx,
+                                     plotsize[1]*numplotsy),
+                        'title': fig_title}
+            else:  # 1D along first sweep dimension
                 yvals = raw_data_dict[ro_channel]
                 if len(yvals.shape) > 1 and yvals.shape[1] == 1:
                     # only one soft sweep point: prepare 1D plot which is
@@ -2424,10 +2450,14 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                          '"twod_data_axis" must be specified '
                                          'in order to plot 1D a slice of the '
                                          'TwoD raw data.')
-                    yvals = np.take_along_axis(
-                        yvals.T,
-                        np.array([[twod_data_idx]]), twod_data_axis).flatten()
-                self.plot_dicts[plot_name + '_' + ro_channel] = {
+                    if twod_data_idx == 'mean':
+                        yvals = np.mean(yvals, axis=twod_data_axis).flatten()
+                    else:
+                        yvals = np.take_along_axis(
+                            yvals.T,
+                            np.array([[twod_data_idx]]), twod_data_axis).flatten()
+                self.plot_dicts[plot_name + '_' + ro_channel + '_' + str(
+                    twod_data_idx)] = {
                     'fig_id': plot_name,
                     'ax_id': ax_id,
                     'plotfn': self.plot_line,
@@ -2459,6 +2489,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
              default_options
         """
         plot_proj_data = self.get_param_value('plot_proj_data', True)
+        if not plot_proj_data:
+            return
         select_split = self.get_param_value('select_split')
         fig_name_suffix = self.get_param_value('fig_name_suffix', '')
         title_suffix = self.get_param_value('title_suffix', '')
@@ -2499,16 +2531,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                            data_key)
                     tf = f'{data_key}_{title_suf}' if \
                         len(title_suf) else data_key
-                    if plot_proj_data:
-                        # standard projected data plot
-                        self.prepare_projected_data_plot(
-                            fn, data, qb_name=qb_name,
-                            data_label=data_label,
-                            title_suffix=tf,
-                            plot_name_suffix=plot_name_suffix,
-                            fig_name_suffix=fig_name_suffix,
-                            data_axis_label=data_axis_label,
-                            plot_cal_points=plot_cal_points)
+
+                    # standard projected data plot
+                    self.prepare_projected_data_plot(
+                        fn, data, qb_name=qb_name,
+                        data_label=data_label,
+                        title_suffix=tf,
+                        plot_name_suffix=plot_name_suffix,
+                        fig_name_suffix=fig_name_suffix,
+                        data_axis_label=data_axis_label,
+                        plot_cal_points=plot_cal_points)
                     if TwoD and len(slice_idxs_list) > 0:
                         # plot slices of the 2D projected data
                         self.prepare_projected_1d_slices_plots(
@@ -2518,15 +2550,20 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                             data_axis_label=data_axis_label)
             else:
                 fig_name = 'projected_plot_' + qb_name
-                if plot_proj_data:
-                    # standard projected data plot
-                    self.prepare_projected_data_plot(
-                        fig_name, corr_data, qb_name=qb_name,
-                        plot_cal_points=(not TwoD))
+                # standard projected data plot
+                self.prepare_projected_data_plot(
+                    fig_name, corr_data, qb_name=qb_name,
+                    plot_cal_points=(not TwoD))
                 if TwoD and len(slice_idxs_list) > 0:
                     # plot slices of the 2D projected data
                     self.prepare_projected_1d_slices_plots(
-                        fig_name, qb_name, corr_data, slice_idxs_list)
+                        fig_name, corr_data, qb_name, slice_idxs_list,
+                        data_label='',
+                        # FIXME this might not be the best default value
+                        #  (might conflict with whatever mess happens in
+                        #  get_yaxis_label). Improve once a use case comes up.
+                        data_axis_label=qb_name,
+                    )
 
     def prepare_projected_1d_slices_plots(self, fig_name, data, qb_name,
                                           slice_idxs_list, title_suffix='',
@@ -2546,29 +2583,32 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             **kw: passed to prepare_projected_data_plot
         """
         for slice_idxs in slice_idxs_list:
-            idxs, axis, xvals, xlabel, xunit = self.get_1d_slice_params(
-                qb_name, slice_idxs)
-            for idx in idxs:
-                data_slice = np.take_along_axis(
-                    data, np.array([[idx]]), axis).flatten()
+            idxs, idxs_kw, axis, xvals, xlabel, xunit, sim =\
+                self.get_1d_slice_params(qb_name, slice_idxs)
+            for idx, idx_kw in zip(idxs, idxs_kw):
+                if idx == 'mean':
+                    data_slice = np.mean(data, axis=axis).flatten()
+                else:
+                    data_slice = np.take_along_axis(
+                        data, np.array([[idx]]), axis).flatten()
                 plot_name_suffix = \
                     f'{"_row" if axis == 0 else "_col"}_{idx}'
-                fn_slice = f'{fig_name}{plot_name_suffix}'
-                ts_slice = f'{title_suffix}{plot_name_suffix}'
+                fn_slice = f"{fig_name}{'' if sim else plot_name_suffix}"
+                ts_slice = f"{title_suffix}{'' if sim else plot_name_suffix}"
                 self.prepare_projected_data_plot(
                     fn_slice, data_slice, qb_name=qb_name,
                     sweep_points=xvals,
                     title_suffix=ts_slice, TwoD=False,
                     plot_name_suffix=plot_name_suffix,
                     xlabel=xlabel, xunit=xunit,
-                    plot_cal_points=axis == 0, **kw)
+                    plot_cal_points=axis == 0, **kw, **idx_kw)
 
     def prepare_projected_data_plot(
             self, fig_name, data, qb_name, title_suffix='', sweep_points=None,
             plot_cal_points=True, plot_name_suffix='', fig_name_suffix='',
             data_label='Data', data_axis_label='', do_legend_data=True,
             do_legend_cal_states=True, TwoD=None, yrange=None,
-            linestyle='none', xlabel=None, xunit=None):
+            linestyle=None, xlabel=None, xunit=None, color=None):
         """
         Prepares one projected data plot, typically one of the keys in
         proc_data_dict['projected_data_dict'].
@@ -2617,6 +2657,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             data_axis_label = self.get_yaxis_label(qb_name=qb_name)
         plotsize = self.get_default_plot_params(set_pars=False)['figure.figsize']
         plotsize = (plotsize[0], plotsize[0]/1.25)
+        linestyle = linestyle if linestyle is not None \
+            else self.get_param_value('linestyle', '')
 
         if sweep_points is None:
             sweep_points = self.proc_data_dict['sweep_points_dict'][qb_name][
@@ -2680,79 +2722,103 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if xunit is None:
             xunit = xu
 
-        prep_1d_plot = True
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', default_value=False)
-        if TwoD:
-            sp2dd = self.proc_data_dict['sweep_points_2D_dict'][qb_name]
-            if len(sp2dd) >= 1 and len(sp2dd[list(sp2dd)[0]]) > 1:
-                # Only prepare 2D plots when there is more than one soft
-                # sweep points. When there is only one soft sweep point
-                # we want to do 1D plots which are more meaningful
-                prep_1d_plot = False
-                for pn, ssp in sp2dd.items():
-                    ylabel, yunit = self.get_soft_sweep_label_unit(pn)
-                    self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
-                        'plotfn': self.plot_colorxy,
-                        'fig_id': fig_name + '_' + pn,
-                        'xvals': xvals,
-                        'yvals': ssp,
-                        'zvals': yvals,
-                        'xlabel': xlabel,
-                        'xunit': xunit,
-                        'ylabel': ylabel,
-                        'yunit': yunit,
-                        'yrange': yrange,
-                        'zrange': self.get_param_value('zrange', None),
-                        'title': title,
-                        'clabel': data_axis_label}
-                    # If kwarg 'plot_TwoD_as_curves' in the options_dict of
-                    # the experiment is set to True, it plots the rows of
-                    # the 2D plot as multiple curves in one plot with the
-                    # z-value of the 2D-plot as the y-value of
-                    # the curve-plot.
-                    if self.get_param_value('plot_TwoD_as_curves',
-                                            default_value=False):
-                        color_map = mpl.colormaps['viridis']
-                        # normalization functions for the color of the
-                        # curves.
-                        # normalize converts [np.min(ssp), np.max(ssp)] ->
-                        # [0,1] in a linear mapping
-                        normalize = lambda y: (y-np.min(ssp))/(np.max(
-                            ssp)-np.min(ssp))
-                        # normalize_log converts [np.min(ssp), np.max(ssp)] ->
-                        # [0,1] in a logarithmic mapping
-                        normalize_log = lambda y: \
-                                np.log(1 + 9 * normalize(y)) / np.log(10)
-                        # z values of the 2D plot (yvals variable, list of
-                        # lists) are the y values (yv) of the curve plot.
-                        # y values of the 2D plot (ssp variable, list) are the
-                        # labels of the curves and define the color of
-                        # the curves.
-                        for i, (yv, sp) in enumerate(zip(yvals, ssp)):
-                            self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
-                                = {
-                                'plotfn': self.plot_line,
-                                'fig_id': fig_name + '_' + pn + "_curves",
-                                'xvals': xvals,
-                                'yvals': yv,
-                                'xlabel': xlabel,
-                                'xunit': xunit,
-                                'ylabel': data_axis_label,
-                                'yscale': 'log' if
-                                    self.get_param_value('logzscale', False)
-                                    else 'linear',
-                                'setlabel': f'{sp:2.1e} {yunit}',
-                                'do_legend': True,
-                                'legend_bbox_to_anchor': (1, 0.5),
-                                'legend_pos': 'center left',
-                                'line_kws': {
-                                    'color': color_map(normalize_log(sp)) if
-                                    self.get_param_value('logyscale', False)
-                                    else color_map(normalize(sp))},
-                                'title': title}
-
-        if prep_1d_plot:
+        sp2dd = self.proc_data_dict.get('sweep_points_2D_dict', {}).get(
+            qb_name)
+        if TwoD and len(sp2dd) and len(sp2dd[list(sp2dd)[0]]) > 1 and\
+                len(sweep_points) > 1:
+            # Only prepare 2D plots when there is more than one soft
+            # sweep points. When there is only one soft sweep point (or TwoD
+            # is set to False) we want to do 1D plots which are more meaningful
+            for pn, ssp in sp2dd.items():
+                ylabel, yunit = self.get_soft_sweep_label_unit(pn)
+                self.plot_dicts[f'{plot_dict_name}_{pn}'] = {
+                    'plotfn': self.plot_colorxy,
+                    'fig_id': fig_name + '_' + pn,
+                    'xvals': xvals,
+                    'yvals': ssp,
+                    'zvals': yvals,
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'ylabel': ylabel,
+                    'yunit': yunit,
+                    'yrange': yrange,
+                    'zrange': self.get_param_value('zrange', None),
+                    'title': title,
+                    'clabel': data_axis_label}
+                # If kwarg 'plot_TwoD_as_curves' in the options_dict of
+                # the experiment is set to True, it plots the rows of
+                # the 2D plot as multiple curves in one plot with the
+                # z-value of the 2D-plot as the y-value of
+                # the curve-plot.
+                if self.get_param_value('plot_TwoD_as_curves',
+                                        default_value=False):
+                    color_map = mpl.colormaps['viridis']
+                    # normalization functions for the color of the
+                    # curves.
+                    # normalize converts [np.min(ssp), np.max(ssp)] ->
+                    # [0,1] in a linear mapping
+                    normalize = lambda y: (y-np.min(ssp))/(np.max(
+                        ssp)-np.min(ssp))
+                    # normalize_log converts [np.min(ssp), np.max(ssp)] ->
+                    # [0,1] in a logarithmic mapping
+                    normalize_log = lambda y: \
+                            np.log(1 + 9 * normalize(y)) / np.log(10)
+                    # z values of the 2D plot (yvals variable, list of
+                    # lists) are the y values (yv) of the curve plot.
+                    # y values of the 2D plot (ssp variable, list) are the
+                    # labels of the curves and define the color of
+                    # the curves.
+                    for i, (yv, sp) in enumerate(zip(yvals, ssp)):
+                        self.plot_dicts[f'{plot_dict_name}_{pn}_curve_{i}']\
+                            = {
+                            'plotfn': self.plot_line,
+                            'fig_id': fig_name + '_' + pn + "_curves",
+                            'xvals': xvals,
+                            'yvals': yv,
+                            'xlabel': xlabel,
+                            'xunit': xunit,
+                            'ylabel': data_axis_label,
+                            'yscale': 'log' if
+                                self.get_param_value('logzscale', False)
+                                else 'linear',
+                            'setlabel': f'{sp:2.1e} {yunit}',
+                            'do_legend': True,
+                            'legend_bbox_to_anchor': (1, 0.5),
+                            'legend_pos': 'center left',
+                            'line_kws': {
+                                'color': color_map(normalize_log(sp)) if
+                                self.get_param_value('logyscale', False)
+                                else color_map(normalize(sp))},
+                            'title': title}
+        elif len(sweep_points) == 1:  # 1D along 2nd sweep dimension (rare)
+            # FIXME this logic does not work yet when using
+            #  slice_idxs_1d_proj_plot (which would mean creating a 0D slice of
+            #  this 1D plot, which does not make sense and should not happen)
+            # Only 1 sweep point in 1st dimension: do a 1D plot along 2nd dim
+            yvals = yvals.flatten()
+            for pn, ssp in sp2dd.items():
+                xlabel, xunit = self.get_soft_sweep_label_unit(pn)
+                xvals = ssp  # xvals are 2nd dimension sweep points
+                self.plot_dicts[plot_dict_name] = {
+                    'plotfn': self.plot_line,
+                    'fig_id': fig_name + '_' + pn,
+                    'plotsize': plotsize,
+                    'xvals': xvals,
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': yvals,
+                    'ylabel': data_axis_label,
+                    'yunit': '',
+                    'yrange': yrange,
+                    'setlabel': data_label,
+                    'title': title,
+                    'linestyle': linestyle,
+                    'do_legend': do_legend_data and len(data_label),
+                    'legend_bbox_to_anchor': (1, 0.5),
+                    'legend_pos': 'center left'}
+        else:  # 1D along first sweep dimension
             if len(yvals.shape) > 1 and yvals.shape[0] == 1:
                 # only one soft sweep point: prepare 1D plot which is
                 # more meaningful
@@ -2771,6 +2837,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 'setlabel': data_label,
                 'title': title,
                 'linestyle': linestyle,
+                'color': color,
                 'do_legend': do_legend_data and len(data_label),
                 'legend_bbox_to_anchor': (1, 0.5),
                 'legend_pos': 'center left'}
@@ -2856,7 +2923,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         """
         self._plot_1d_slices_of_2d_data('proj', slice_idxs_1d_proj_plot)
 
-    def get_1d_slice_params(self, qb_name, slice_idxs):
+    def get_1d_slice_params(self, qb_name, slice_idxs, sp_1D=None):
         """
         Translates the information in slice_idxs into the relevant plot
         parameters used by the functions that prepare plots.
@@ -2874,26 +2941,28 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             xlabel (str): x-axis label
             xunit (str): x-axis unit
         """
+        simultaneous = False
+        if slice_idxs[1].startswith('s'):
+            simultaneous = True
+            slice_idxs = (slice_idxs[0], slice_idxs[1][1:])
+        add_mean = False
+        if slice_idxs[1].startswith('m'):
+            add_mean = True
+            slice_idxs = (slice_idxs[0], slice_idxs[1][1:])
         axis = 0 if slice_idxs[1] == 'row' else 1
+        xvals = sp_1D if sp_1D is not None else self.proc_data_dict[
+            'sweep_points_dict'][qb_name][
+            'sweep_points']
+        yvals = list(
+            self.proc_data_dict[
+                'sweep_points_2D_dict'][
+                qb_name].values())[0]
         if axis == 0:
-            xvals = self.proc_data_dict[
-                'sweep_points_dict'][qb_name][
-                'sweep_points']
-            yvals = list(
-                self.proc_data_dict[
-                    'sweep_points_2D_dict'][
-                    qb_name].values())[0]
             xlabel, xunit = None, None
         else:
+            xvals, yvals = yvals, xvals
             param_name = list(self.proc_data_dict[
                                   'sweep_points_2D_dict'][qb_name])[0]
-            xvals = list(
-                self.proc_data_dict[
-                    'sweep_points_2D_dict'][
-                    qb_name].values())[0]
-            yvals = self.proc_data_dict[
-                'sweep_points_dict'][qb_name][
-                'sweep_points']
             xlabel, xunit = \
                 self.get_soft_sweep_label_unit(
                     param_name)
@@ -2902,15 +2971,22 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if isinstance(idxs, str):
             if idxs == ':':
                 # take all slices along axis
-                idxs = np.arange(len(yvals))
+                idxs = list(range(len(yvals)))
             else:
                 # idxs of the form 'int:int' or ':'
-                idxs = np.arange(int(idxs.split(':')[0]),
-                                 int(idxs.split(':')[-1]))
+                idxs = list(range(int(idxs.split(':')[0]),
+                                  int(idxs.split(':')[-1])))
         else:
             idxs = [idxs]
+        idxs_kw = [{}] * len(idxs)
+        if add_mean:
+            idxs.append('mean')
+            idxs_kw.append(dict(
+                linestyle='-',
+                color='k',
+            ))
 
-        return idxs, axis, xvals, xlabel, xunit
+        return idxs, idxs_kw, axis, xvals, xlabel, xunit, simultaneous
 
     def get_first_sweep_param(self, qbn=None, dimension=0):
         """
@@ -3026,6 +3102,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
     Analyses the results of the state tomography experiment and calculates
     the corresponding quantum state.
 
+    ```
     Possible options that can be passed in the options_dict parameter:
         cal_points: A data structure specifying the indices of the calibration
                     points. See the AveragedTimedomainAnalysis for format.
@@ -3066,6 +3143,7 @@ class StateTomographyAnalysis(ba.BaseDataAnalysis):
              with more qubits require smaller tolerance to converge.
         rho_target (optional): A qutip density matrix that the result will be
                                compared to when calculating fidelity.
+        ```
     """
     def __init__(self, *args, **kwargs):
         auto = kwargs.pop('auto', True)
@@ -5164,6 +5242,14 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
 
 
 class NPulsePhaseErrorCalibAnalysis(RabiAnalysis, PhaseErrorsAnalysisMixin):
+    """
+    Analysis class for calibrating phase errors in N-pulse sequences.
+
+    This class inherits from RabiAnalysis and PhaseErrorsAnalysisMixin, and is
+    used to analyze data from N-pulse sequences to calibrate phase errors. It
+    extracts data, prepares plots, and performs fitting to determine the phase
+    error values.
+    """
 
     def extract_data(self):
         super().extract_data()
@@ -5924,11 +6010,15 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
         apd = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
+            # Splitting to match the format "qbn_<x>" where <x> is an
+            # integer (sweep index)
             freqs[qbn] = \
                 {'val': np.array([d[self.fit_type]['new_qb_freq']
-                                     for k, d in apd.items() if qbn in k]),
+                                  for k, d in apd.items()
+                                  if qbn == k.split('_')[0]]),
                  'stderr': np.array([d[self.fit_type]['new_qb_freq_stderr']
-                                     for k, d in apd.items() if qbn in k])}
+                                     for k, d in apd.items()
+                                     if qbn == k.split('_')[0]])}
         self.proc_data_dict['analysis_params_dict']['qubit_frequencies'] = freqs
 
         fit_dict_keys = self.prepare_fitting_qubit_freqs()
@@ -8168,8 +8258,8 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.preselection = \
-            self.get_param_value("preparation_params",
-                                 {}).get("preparation_type", "wait") == "preselection"
+            self.get_reset_params(default_value={})\
+                                .get("preparation_type", "wait") == "preselection"
         default_states_info = defaultdict(dict)
         default_states_info.update({"g": {"label": r"$|g\rangle$"},
                                "e": {"label": r"$|e\rangle$"},
@@ -8784,9 +8874,9 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
 
     def prepare_fitting(self):
         self.fit_dicts = OrderedDict()
-        if "ro_separation" in self.get_param_value("preparation_params"):
-            ro_sep = \
-                self.get_param_value("preparation_params")["ro_separation"]
+
+        if "ro_separation" in self.prep_params:
+            ro_sep = self.prep_params["ro_separation"]
         else:
             return
 
@@ -9032,9 +9122,8 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
         from matplotlib.ticker import MaxNLocator
         for axname, ax in self.axs.items():
             if "populations" in axname:
-                if "ro_separation" in self.get_param_value("preparation_params"):
-                    ro_sep = \
-                        self.get_param_value("preparation_params")["ro_separation"]
+                if "ro_separation" in self.prep_params:
+                    ro_sep = self.prep_params["ro_separation"]
                     timeax = ax.twiny()
                     timeax.set_xlabel(r"Time ($\mu s$)")
                     timeax.set_xlim(0, ax.get_xlim()[1] * ro_sep * 1e6)
@@ -10015,11 +10104,25 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         else:
             # Note that the number of shots is already included in n_hsp
             n_hsp = len(self.raw_data_dict['hard_sweep_points'])
-            prep_params = self.metadata['preparation_params']
+            prep_params = self.get_reset_params(default_value={})
             if 'active' in prep_params['preparation_type']:
                 # If reset: n_hsp already includes the number of shots
                 # and the final readout is interleaved with n_reset readouts
-                n_resets = prep_params['reset_reps']
+                n_resets = prep_params.get('reset_reps')
+                # in some cases the number of reset might not be part of the 
+                # reset params if it was not provided at run time. 
+                # So we tell the user about it and mention how the info can be provided.
+                if not n_resets:
+                    log.warning('reset_reps not found in reset_params obtained '
+                                'with self.get_reset_params(). Assuming'
+                                ' 3 repetitions. This will affect the timing'
+                                ' calculations of the bare_measurement_timer.'
+                                ' For manual adjustment, provide e.g., the following'
+                                ' to the options_dict: reset_params=dict(steps=["feedback"],'
+                                ' analysis_instructions=dict(qb1=[dict(preparation_type='
+                                '"active_reset", reset_reps=N_RESET_REPS)]))'
+                                )
+                    n_resets = 3
                 n_hsp = n_hsp // (1 + n_resets)
         n_ssp = len(self.raw_data_dict.get('soft_sweep_points', [0]))
         if repetition_rate is None:
@@ -12335,24 +12438,31 @@ class f0g1BandwidthAnalysis(MultiQubit_TimeDomain_Analysis):
 class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
     """
     Analysis class for the DriveAmpCalib measurement.
+
     The typical accepted input parameters are described in the parent class.
 
-    Additional parameters that this class recognises, which can be passed in the
-    options_dict:
-        - nr_pulses_pi (int; default: None): specifying into how many identical
-            pulses a pi rotation was divided ( nr_pulses_pi pulses with rotation
-            angle pi/nr_pulses_pi ). See docstring of the measurement class.
-            Can also be dict with qb names as keys.
-        - fixed scaling (int; default: None): specifying the amplitude scaling
-            for the pulse that wasn't swept. See docstring of the measurement
-            class. Can also be dict with qb names as keys.
-        - fitted_scaling_errors (dict; default: None): the keys are qubit names
-            and the values are arrays of fit results for each soft sweep
-            ex: {'qb10':  np.array([-0.00077432, -0.00055945])}
-        - maxeval (int; default: 400): number of evaluations for the optimiser
-        - T1 (float; default: value from hdf): qubit T1 to use for fit (fixed)
-        - T2 (float; default: value from hdf): qubit T2 to use as starting value
-            for the fit (dimensionless fraction T2/T2_guess is varied)
+    Args:
+        options_dict: Additional parameters that this class recognises:
+            nr_pulses_pi (int, optional): Specifying into how many identical
+                pulses a pi rotation was divided (nr_pulses_pi pulses with
+                rotation angle pi/nr_pulses_pi). See docstring of the
+                measurement class. Can also be dict with qb names as keys.
+                Defaults to None.
+            fixed_scaling (int, optional): Specifying the amplitude scaling
+                for the pulse that wasn't swept. See docstring of the
+                measurement class. Can also be dict with qb names as keys.
+                Defaults to None.
+            fitted_scaling_errors (dict, optional): The keys are qubit names
+                and the values are arrays of fit results for each soft sweep.
+                Example: {'qb10':  np.array([-0.00077432, -0.00055945])}
+                Defaults to None.
+            maxeval (int, optional): Number of evaluations for the optimiser.
+                Defaults to 400.
+            T1 (float, optional): Qubit T1 to use for fit (fixed).
+                Defaults to value from hdf.
+            T2 (float, optional): Qubit T2 to use as starting value for the
+                fit (dimensionless fraction T2/T2_guess is varied).
+                Defaults to value from hdf.
     """
     def extract_data(self):
         super().extract_data()
@@ -12429,10 +12539,10 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             t_gate (float): gate length (s)
             gamma_1 (float): qubit energy relaxation rate
             gamma_phi (float): qubit dephasing rate
-            zth (float; default=1): z coordinate at equilibrium
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
 
-        Returns
-            y, z: coordinates of the qubit state vector after the evolution
+        Returns:
+            tuple: y, z: coordinates of the qubit state vector after the evolution
         """
         Omega = ang_scaling*np.pi/t_gate
         f_rabi = np.sqrt(Omega**2 - (1/16)*(gamma_1-2*gamma_phi)**2)
@@ -12453,63 +12563,93 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
 
     @staticmethod
     def apply_gate_mtx(y, z, ang_scaling, t_gate, gamma_1, gamma_phi, nreps=1):
-        """
-        Calculates the time evolution of the y and z components of the qubit
-        state vector under the application of an X gate described by the
-        time-independent Hamiltonian (ang_scaling*pi/t_gate)*sigma_x/2.
+        """Calculates the time evolution of the y and z components of the qubit
+        This function implements the matrix version of apply_gate: y and z here
+        are y - yinf and z - zinf in apply_gate.
+
+        To be specific: Calculates the time evolution of the y and z
+        components of the qubit state vector under the application of
+        an X gate described by the time-independent Hamiltonian 
+        (ang_scaling*pi/t_gate)*sigma_x/2.
+
         https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
-        This function implements the matrix version of apply_gate: y and z
-        here are y - yinf and z - zinf in apply_gate
 
         This function is used in sim_func when fixed_scaling is None.
 
         Args:
-            y (float): scaled y coordinate of the qubit state vector at the
-                start of the evolution
-            z (float): scaled z coordinate of the qubit state vector at the
-                start of the evolution
-            ang_scaling (float or array): fraction of a pi rotation
-                (see Hamiltonian above)
-            t_gate (float): gate length (s)
-            gamma_1 (float): qubit energy relaxation rate
-            gamma_phi (float): qubit dephasing rate
-            nreps (int; default: 1): number of times the gate is applied
+            y (float): Scaled y coordinate of the qubit state vector at the
+                start of the evolution.
+            z (float): Scaled z coordinate of the qubit state vector at the
+                start of the evolution.
+            ang_scaling (float or array): Fraction of a pi rotation
+                (see Hamiltonian above).
+            t_gate (float): Gate length (s).
+            gamma_1 (float): Qubit energy relaxation rate.
+            gamma_phi (float): Qubit dephasing rate.
+            nreps (int, optional): Number of times the gate is applied.
+                Defaults to 1.
 
-        Returns
-            y, z: scaled coordinates of the qubit state vector after the
-                evolution
+        Returns:
+            Tuple[float, float]: Scaled coordinates of the qubit state
+            vector after the evolution.
+
+        References:
+            https://arxiv.org/src/1711.01208v2/anc/Supmat-Ficheux.pdf
         """
         Omega = ang_scaling * np.pi / t_gate
-        f_rabi = np.sqrt(Omega ** 2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
+        f_rabi = np.sqrt(Omega**2 - (1 / 16) * (gamma_1 - 2 * gamma_phi) ** 2)
         prefactor = np.exp(-(3 * gamma_1 + 2 * gamma_phi) * t_gate / 4)
-        mtx = prefactor * np.array([
-            [np.cos(f_rabi * t_gate) + np.sin(f_rabi * t_gate) * \
-                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi),
-             np.sin(f_rabi * t_gate) * Omega / f_rabi],
-            [-np.sin(f_rabi * t_gate) * Omega / f_rabi,
-             np.cos(f_rabi * t_gate) - np.sin(f_rabi * t_gate) * \
-                (gamma_1 - 2 * gamma_phi) / (4 * f_rabi)]])
+        mtx = prefactor * np.array(
+            [
+                [
+                    np.cos(f_rabi * t_gate)
+                    + np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                    np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                ],
+                [
+                    -np.sin(f_rabi * t_gate) * Omega / f_rabi,
+                    np.cos(f_rabi * t_gate)
+                    - np.sin(f_rabi * t_gate)
+                    * (gamma_1 - 2 * gamma_phi)
+                    / (4 * f_rabi),
+                ],
+            ]
+        )
         mtx = np.linalg.matrix_power(mtx, nreps)
         res = mtx @ np.array([[y], [z]])
         return res[0][0], res[1][0]
 
     @staticmethod
-    def sim_func(nr_pi_pulses, sc_error, ideal_scaling,
-                 T2, t2_r=1, nr_pulses_pi=None,
-                 y0=0, z0=1, zth=1, fixed_scaling=None,
-                 T1=None, t_gate=None, mobjn=None, ts=None):
+    def sim_func(
+        nr_pi_pulses,
+        sc_error,
+        ideal_scaling,
+        T2,
+        t2_r=1,
+        nr_pulses_pi=None,
+        y0=0,
+        z0=1,
+        zth=1,
+        fixed_scaling=None,
+        T1=None,
+        t_gate=None,
+        mobjn=None,
+        ts=None,
+    ):
         """
         Simulation function for the excited qubit state populations for a trace
         of the N-pulse calibration experiment:
             - X90 - [ repeated groups of pulses ]^nr_pi_pulses -
 
         The repeated groups of pulses are either:
-         - nr_pulses_pi x R(pi/nr_pulses_pi)
-         or
-         - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
+        - nr_pulses_pi x R(pi/nr_pulses_pi)
+        or
+        - R(fixed_scaling*pi)-R(pi-pi/nr_pulses_pi)
             if fixed_scaling is not None
 
-         See also the docstring of the measurement class DriveAmpCalib.
+        See also the docstring of the measurement class DriveAmpCalib.
 
         Args:
             nr_pi_pulses (array): number of repeated pulses applied to the qubit
@@ -12518,23 +12658,24 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 away from the ideal scaling. This error will be fitted
             ideal_scaling (float): ideal amplitude scaling factor
             T2 (float): qubit decoherence time in seconds to be used as a guess
-            t2_r (float; default=1): ratio T2_varied/T2. This ratio will be fitted
-            nr_pulses_pi (int; default=None): the number of pulses that together
-                implement a pi rotation.
-            y0 (float; default=0): y coordinate of the initial state
-            z0 (float; default=1): z coordinate of the initial state
-            zth (float; default=1): z coordinate at equilibrium
-            fixed_scaling (float; default: None): the amplitude scaling of
-                the first rotation in the description above
-            T1 (float; default: None): quit lifetime (s)
-            t_gate (float): gate length (s)
-            mobjn (str): name of the qubit
-            ts (str): measurement timestamp
+            t2_r (float, optional): ratio T2_varied/T2. This ratio will be fitted.
+                Defaults to 1.
+            nr_pulses_pi (int, optional): the number of pulses that together
+                implement a pi rotation. Defaults to None.
+            y0 (float, optional): y coordinate of the initial state. Defaults to 0.
+            z0 (float, optional): z coordinate of the initial state. Defaults to 1.
+            zth (float, optional): z coordinate at equilibrium. Defaults to 1.
+            fixed_scaling (float, optional): the amplitude scaling of
+                the first rotation in the description above. Defaults to None.
+            T1 (float, optional): quit lifetime (s). Defaults to None.
+            t_gate (float, optional): gate length (s). Defaults to None.
+            mobjn (str, optional): name of the qubit. Defaults to None.
+            ts (str, optional): measurement timestamp. Defaults to None.
             The last two parameers will be used to extract T1/t_gate if the
             latter are not specified (see docstring of sim_func)
 
-        Returns
-            e_pops (array): same length as nr_pi_pulses and containing the
+        Returns:
+            array: e_pops, same length as nr_pi_pulses and containing the
                 qubit excited state populations after the application of
                 nr_pi_pulses repeated groups of pulses
         """
@@ -12544,39 +12685,50 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
             assert ts is not None
         if ts is not None:
             from pycqed.utilities.settings_manager import SettingsManager
+
             sm = SettingsManager()
         if t_gate is None:
-            t_gate = sm.get_parameter(mobjn + '.ge_sigma', ts) * \
-                     sm.get_parameter(mobjn + '.ge_nr_sigma', ts)
+            t_gate = sm.get_parameter(mobjn + ".ge_sigma", ts) * sm.get_parameter(
+                mobjn + ".ge_nr_sigma", ts
+            )
         if t_gate == 0:
-            raise ValueError('Please specify t_gate.')
+            raise ValueError("Please specify t_gate.")
         if T1 is None:
-            T1 = sm.get_parameter(mobjn + '.T1', ts)
+            T1 = sm.get_parameter(mobjn + ".T1", ts)
         if T1 == 0:
-            raise ValueError('Please specify T1.')
+            raise ValueError("Please specify T1.")
 
         T2 = t2_r * T2
         if nr_pulses_pi is None and fixed_scaling is None:
-            raise ValueError('Please specify either nr_pulses_pi or '
-                             'fixed_scaling.')
+            raise ValueError("Please specify either nr_pulses_pi or " "fixed_scaling.")
 
-        gamma_1 = 1/T1
-        gamma_2 = 1/T2
-        gamma_phi = gamma_2 - 0.5*gamma_1
+        gamma_1 = 1 / T1
+        gamma_2 = 1 / T2
+        gamma_phi = gamma_2 - 0.5 * gamma_1
 
         # apply initial pi/2 gate
         y00, z00 = NPulseAmplitudeCalibAnalysis.apply_gate(
-            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth)
+            y0, z0, 0.5, t_gate, gamma_1, gamma_phi, zth=zth
+        )
 
         # calculate yinf, zinf with amp_sc
         amp_sc = sc_error + ideal_scaling
-        if hasattr(amp_sc, '__iter__'):
+        if hasattr(amp_sc, "__iter__"):
             amp_sc = amp_sc[0]
         Omega = amp_sc * np.pi / t_gate
-        yinf = 2 * zth * Omega * gamma_1 / \
-               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
-        zinf = zth * gamma_1 * (gamma_1 + 2 * gamma_phi) / \
-               (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega ** 2)
+        yinf = (
+            2
+            * zth
+            * Omega
+            * gamma_1
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
+        zinf = (
+            zth
+            * gamma_1
+            * (gamma_1 + 2 * gamma_phi)
+            / (gamma_1 * (gamma_1 + 2 * gamma_phi) + 2 * Omega**2)
+        )
 
         e_pops = np.zeros(len(nr_pi_pulses))
         for i, n in enumerate(nr_pi_pulses):
@@ -12586,8 +12738,8 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 # adds offset to initial values
                 y, z = y00 - yinf, z00 - zinf
                 y, z = NPulseAmplitudeCalibAnalysis.apply_gate_mtx(
-                    y, z, amp_sc, t_gate, gamma_1, gamma_phi,
-                    nreps=nr_pulses_pi * n)
+                    y, z, amp_sc, t_gate, gamma_1, gamma_phi, nreps=nr_pulses_pi * n
+                )
                 # get back the true y and z
                 y += yinf
                 z += zinf
@@ -12596,10 +12748,12 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                 for j in range(n):
                     # apply pulse with varying scaling
                     y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth)
+                        y, z, amp_sc, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
                     # apply pulse with fixed scaling
                     y, z = NPulseAmplitudeCalibAnalysis.apply_gate(
-                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth)
+                        y, z, fixed_scaling, t_gate, gamma_1, gamma_phi, zth=zth
+                    )
             e_pops[i] = 0.5 * (1 - z)
         return e_pops
 
@@ -13205,7 +13359,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
         self.fit_dicts = OrderedDict()
         self.proc_data_dict['Delta'] = OrderedDict()
 
-        def pe_function(t, Delta, J=10e6, offset_freq=0):
+        def pe_function(t, Delta, J=10e6, offset_freq=0, t_offset=0):
             # From Nathan's master's thesis Eq. 2.6 - fitting function
             t = t*1e9
             J = 2*np.pi*J/1e9
@@ -13213,6 +13367,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             Delta = Delta/1e9
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
+            t += t_offset # to account for the effective sigma
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
                     4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
 
@@ -13296,6 +13451,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             model = self.get_param_value('model', 'transmon_res')
             J_guess_boundary_scale = self.get_param_value('guess_paramater_scale', 2)
             offset_guess_boundary = self.get_param_value('offset_guess_boundary', 2e8)
+            t_offset_boundary = self.get_param_value('t_offset_boundary', 5e-9)
             hdf_file_index = self.get_param_value('hdf_file_index', 0)
 
             qbH_flux_amplitude_bias_ratio = self.raw_data_dict[f'flux_amplitude_bias_ratio_{qbH_name}']
@@ -13366,6 +13522,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                                     max=J_guess_boundary_scale*J_guess)
             pe_model.set_param_hint('offset_freq', value=0, min=-offset_guess_boundary,
                                     max=offset_guess_boundary)
+            pe_model.set_param_hint('t_offset', value=0,
+                                    min=0,
+                                    max=t_offset_boundary)
             guess_pars = pe_model.make_params()
             self.set_user_guess_pars(guess_pars)
 
@@ -13541,11 +13700,13 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
         self.plot_leakage_amp()
 
     def plot_leakage_amp(self, cmap_lim=None, cmap_margin=0.05,
-                         xtransform=None, draw_lower_lines=True,
+                         xtransform=None,
+                         draw_lower_lines=True, draw_lower_points=True,
+                         color_lower_points=True, color_max_points=True,
                          pop_scale_right=None, pop_scale_left=None,
                          pop_unit_right=None, pop_unit_left=None,
                          pop_label_right=None, pop_label_left=None,
-                         gate_yticks=None, gate_yticks_prec=2, **kw):
+                         right_ticks=None, right_ticks_pc=2, **kw):
         """
         Plots leakage amplification results (2D map, and 1D with maximum line)
 
@@ -13555,19 +13716,24 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 Default (None): chooses a small margin around the data.
             cmap_margin (float): Margin for z range, relative to cmap_lim
             xtransform (function): Optional x-axis transformation
+            draw_lower_points (bool): In the projected data panel (bottom),
+                whether to plot each row of data below the maximum
             draw_lower_lines (bool): In the projected data panel (bottom),
-                whether to draw lines to connect each row of data below the
-                maximum (line instead of scatter)
+                whether to draw lines to connect each row of data points
+            color_lower_points (bool): If True, colours the lower points
+                according to the color bar.
+            color_max_points (bool): If True, colours the max points
+                according to the color bar.
             pop_scale_right (float): Scaling factor for right axis
             pop_scale_left (float): Scaling factor for left axis
             pop_unit_right (str): Unit for right axis
             pop_unit_left (str): Unit for left axis
             pop_label_right (str): Right axis label (overrides pop_unit_right)
             pop_label_left (str): Left axis label (overrides pop_unit_left)
-            gate_yticks (list): Set explicit values for the left yticks. If
+            right_ticks (list): Set explicit values for the right yticks. If
                 None (default), they are set to match the (automatic)
-                locations of the right panel ticks.
-            gate_yticks_prec (int): Precision (digits) of the left tick labels
+                locations of the left axis ticks.
+            right_ticks_pc (int): Precision (digits) of the right tick labels
             **kw (dict): Additional formatting arguments, currently 'title',
                 'cmap'.
 
@@ -13578,6 +13744,7 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
         """
 
         _default_units = (1e-2, '%')
+
         if pop_scale_right is None:
             pop_scale_right, pop_unit_right = _default_units
         if pop_scale_left is None:
@@ -13587,7 +13754,9 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
 
         ts = self.timestamps[0]
 
-        for task in self.metadata['task_list']:
+        self.leakage_ymax = {}
+
+        for task_idx, task in enumerate(self.metadata['task_list']):
             qbn = task['qbc']
             pop = self.proc_data_dict['projected_data_dict'][qbn]['pf']\
                 [:, :-3]
@@ -13658,13 +13827,13 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             y_scatter = np.array(pop).flatten()
             y_err = y_err_f(y_max, acq_averages)
 
-            # Create the figure + disable the top right axis
+            # Create the figure + disable the top left axis
             self.plot_dicts[figname + "_emptyaxis"] = {
                 'fig_id': figname,
                 'plotfn': None,
-                'ax_id': 1,
+                'ax_id': 0,
                 'plotsize': (plotsize[1], plotsize[0]),
-                'gridspec_kw': {'width_ratios': [10, 1], 'wspace': 0,
+                'gridspec_kw': {'width_ratios': [1, 10], 'wspace': 0,
                                 'hspace': 0.1},
                 'numplotsx': 2,
                 'numplotsy': 2,
@@ -13676,12 +13845,12 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
             # Plot 2D data
             self.plot_dicts[figname + "_2D"] = {
                 'fig_id': figname,
-                'ax_id': 0,
+                'ax_id': 1,
                 'plotfn': self.plot_colorxy,
                 'xvals': coords[0],
                 'yvals': coords[1],
-                'zvals': pop/pop_scale_right,
-                'zrange': _cmap_lim/pop_scale_right,
+                'zvals': pop/pop_scale_left,
+                'zrange': _cmap_lim/pop_scale_left,
                 'xlabel': '',
                 'xunit': '',
                 'xlabels_rotation': 0,
@@ -13690,33 +13859,83 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                 'cmap': kw.get('cmap'),
                 'title': title,
                 'plotcbar': True,
-                'clabel': pop_label_right if pop_label_right else
-                          f"Total leakage, $P_N$ ({pop_unit_right})",
-                'cax_id': 3,
+                'clabel': pop_label_left if pop_label_left else
+                          f"Total leakage, $P_N$ ({pop_unit_left})",
+                'cax_id': 2,
+                'cbar_opposite_axis': True,
             }
 
-            self.plot_dicts[figname + f"_1D_scatter"] = {
+            key = figname + f"_1D_line"
+            if draw_lower_lines:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 3,
+                    'plotfn': self.plot_line,
+                    'xvals': np.array([x] * len(pop)),
+                    'yvals': pop / pop_scale_left,
+                    'line_kws': {'zorder': 0},
+                    'color': 'lightgray',
+                    'marker': '',
+                }
+            else:
+                # If this method got called previously in the other if branch,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            key = figname + f"_1D_scatter"
+            if draw_lower_points:
+                self.plot_dicts[key] = {
+                    'fig_id': figname,
+                    'ax_id': 3,
+                    'plotfn': self.plot_line,
+                    'xvals': x_scatter,
+                    'yvals': y_scatter/pop_scale_left,
+                    'color': cmap(norm(y_scatter)) if color_lower_points
+                        else 'lightgray',
+                    'scatter': True,
+                    'line_kws': {'zorder': 1},
+                    'xlabel': nice_labels[0],
+                    'ylabel': pop_label_right if pop_label_right else
+                              f"Leakage, $P_1$ ({pop_unit_right})",
+                }
+            else:
+                # If this method got called previously in the other if branch,
+                # this entry will be populated. Here resetting it to default.
+                self.plot_dicts[key] = {'plotfn': None}
+
+            self.plot_dicts[figname + f"_1D_line_max"] = {
                 'fig_id': figname,
-                'ax_id': 2,
+                'ax_id': 3,
                 'plotfn': self.plot_line,
-                'xvals': x_scatter,
-                'yvals': y_scatter/pop_scale_right,
-                'alpha': 0.3,
-                'yrange': _cmap_lim/pop_scale_right,
-                'color': cmap(norm(y_scatter)),
-                'scatter': True,
-                'line_kws': {'zorder': 1},
-                'xlabel': nice_labels[0],
-                'ylabel': pop_label_left if pop_label_left else
-                          f"Leakage, $P_1$ ({pop_unit_left})",
+                'xvals': x,
+                'yvals': y_max/pop_scale_left,
+                'yerr': y_err/pop_scale_left,
+                'alpha': 1,
+                'line_kws': {'zorder': 2},
+                'color': 'k',
             }
-            if gate_yticks is not None:
-                # Set explicit values for the left yticks, and compute their
+            self.plot_dicts[figname + f"_1D_scatter_max"] = {
+                'fig_id': figname,
+                'ax_id': 3,
+                'plotfn': self.plot_line,
+                'xvals': x,
+                'yvals': y_max/pop_scale_left,
+                # yrange: so the plot matches the range of the left y axis
+                'yrange': _cmap_lim/pop_scale_left,
+                'alpha': 1,
+                'color': cmap(norm(y_max)) if color_max_points else 'k',
+                'scatter': True,
+                'line_kws': {'zorder': 3},
+                'opposite_axis': True,
+            }
+
+            if right_ticks is not None:
+                # Set explicit values for the right yticks, and compute their
                 # locations (corresponding to the scale of the colorbar axis)
 
                 # Conversion from 1-gate to n-gate leakage, to assign the
                 # locations of requested gate_yticks (1-gate leakage) to match
-                # the right axis (n-gate leakage)
+                # the left axis (n-gate leakage)
                 if (f_1ton := kw.get('f_1ton')) is None:
                     f_1ton = lambda p, n: np.sin(
                         np.arcsin(np.sqrt(np.abs(p))) * n) ** 2
@@ -13728,84 +13947,45 @@ class LeakageAmplificationAnalysis(ChevronAnalysis):
                     f_1ton_valid = lambda p, n: np.abs(np.arcsin(np.sqrt(
                         np.abs(p))) * n) <= np.pi / 2
 
-                self.plot_dicts[figname + f"_1D_scatter"].update({
-                    'ytick_loc': f_1ton(gate_yticks, n)/pop_scale_right,
-                    'ytick_labels': [f'{p/pop_scale_left:.{gate_yticks_prec}g}'
-                                     for p in gate_yticks],
+                self.plot_dicts[figname + f"_1D_scatter_max"].update({
+                    'ytick_loc': f_1ton(right_ticks, n)/pop_scale_left,
+                    'ytick_labels': [f'{p/pop_scale_right:.{right_ticks_pc}g}'
+                                     for p in right_ticks],
                 })
-                if not np.all(f_1ton_valid(gate_yticks, n)):
+                if not np.all(f_1ton_valid(right_ticks, n)):
                     log.warning("The required single-gate leakage y axis "
                                 "ticks are bigger than the range of the main "
                                 "period for n-gate leakage. This means that "
                                 "the ticks will oscillate on the y axis.")
             else:
                 # Fall back to using the existing yticks (as on the colorbar
-                # right axis), and format their labels
+                # left axis), and format their labels
 
                 if (f_nto1 := kw.get('f_nto1')) is None:
                     # Conversion from n-gate to 1-gate leakage, to determine
                     # which 1-gate leakage values correspond to the n-gate
-                    # leakage ticks of the right axis
+                    # leakage ticks of the left axis
                     f_nto1 = lambda p, n: np.sin(np.arcsin(np.sqrt(np.abs(
                         p))) / n) ** 2
 
                 def formatter(p_n, _):
-                    p_1 = f_nto1(p_n*pop_scale_right, n)/pop_scale_left
-                    return f'{p_1:.{gate_yticks_prec}g}'
-                self.plot_dicts[figname + f"_1D_scatter"].update({
+                    p_1 = f_nto1(p_n*pop_scale_left, n)/pop_scale_right
+                    return f'{p_1:.{right_ticks_pc}g}'
+                self.plot_dicts[figname + f"_1D_scatter_max"].update({
                     'set_major_formatter': {'yaxis': formatter},
                 })
 
-            key = figname + f"_1D_line"
-            if draw_lower_lines:
-                self.plot_dicts[key] = {
-                    'fig_id': figname,
-                    'ax_id': 2,
-                    'plotfn': self.plot_line,
-                    'xvals': np.array([x]*len(pop)),
-                    'yvals': pop/pop_scale_right,
-                    'alpha': 0.1,
-                    'line_kws': {'zorder': 0},
-                    'color': 'k',
-                }
-            else:
-                # If this method got called previously with draw_lower_lines,
-                # this entry will be populated. Here resetting it to default.
-                self.plot_dicts[key] = {'plotfn': None}
-
-            self.plot_dicts[figname + f"_1D_line_max"] = {
-                'fig_id': figname,
-                'ax_id': 2,
-                'plotfn': self.plot_line,
-                'xvals': x,
-                'yvals': y_max/pop_scale_right,
-                'yerr': y_err/pop_scale_right,
-                'alpha': 1,
-                'line_kws': {'zorder': 0},
-                'color': 'k',
-            }
-            self.plot_dicts[figname + f"_1D_scatter_max"] = {
-                'fig_id': figname,
-                'ax_id': 2,
-                'plotfn': self.plot_line,
-                'xvals': x,
-                'yvals': y_max/pop_scale_right,
-                'alpha': 1,
-                'color': cmap(norm(y_max)),
-                'scatter': True,
-                'line_kws': {'zorder': 1},
-            }
-
             id_opt = np.argmin(y_max)
-            self.leakage_ymax = {
+            self.leakage_ymax[task_idx] = {
                 'x': coords[0],
                 'x_label': labels[0],
                 'y': y_max,
                 'yerr': y_err,
+                'n': n,
             }
             if labels[0] != 'num_cz_gates':
                 # opt only makes sense for an actual sweep point
-                self.leakage_ymax['x_opt'] = sp[labels[0]][id_opt]
+                self.leakage_ymax[task_idx]['x_opt'] = sp[labels[0]][id_opt]
 
 
 class SingleRowChevronAnalysis(ChevronAnalysis):
