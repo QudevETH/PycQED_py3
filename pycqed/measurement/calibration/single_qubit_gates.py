@@ -5262,11 +5262,17 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
                        label=r'modulation amplitude',
                        dimension=0),
     }
-    kw_for_task_keys = ['num_LRUs']
+    kw_for_task_keys = ['num_LRUs', 'init_state', 'lru_opcodes']
     default_experiment_name = 'Leakage_reduction_unit'
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
                  amps=None, length= None, **kw):
+        init_state = kw.get('init_state')
+        # Need to set transition_name here since it is used to determine the
+        # calibration points
+        kw['transition_name'] = '' if init_state == 'g' else (
+            'ge' if init_state == 'e' else (
+                'ef' if init_state == 'f' else 'h'))
         try:
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
@@ -5275,83 +5281,48 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
             self.exception = x
             traceback.print_exc()
 
-    def sweep_block(self, qb, sweep_points, transition_name, num_LRUs=1, **kw):
+    def sweep_block(self, qb, sweep_points, init_state, lru_opcodes='auto',
+        num_LRUs=1, **kw):
         """
         This function creates the blocks for the leakage-reduction task,
         see the pulse sequence in the class docstring.
         :param qb: qubit name
         :param sweep_points: SweepPoints instance
-        :param transition_name: currently we use 'ef' to prepare the e-level
-                                and 'ef' together with the kw argument
-                                'prepare_f' to prepare the f-level
-        :param kw: keyword arguments:
-            - amplitude: (float) amplitude of PFM pulse
-            - pulse_length: (float) length of PFM pulse
-            - frequency: (float) frequency of PFM pulse
-            - prepare_f: (bool) if True, applies an ef-pulse. Requires
-                                transition_name 'ef' to prepare the f-level
-            - prepare_h: (bool) if True, applies an fh-pulse. Requires
-                                transition_name 'fh' to prepare the h-level
-            - deplete_f: (bool) if True and prepare_h, applies two PFM pulses
-                                to first deplete the h-level and then the
-                                f-level. The parameters of the second pulse
-                                are swept.
+        :param init_state: 'g', 'e', 'f', or  'h'
+        :param lru_opcodes: list of PFM opcodes for the LRU pulses e.g.
+                            ['PFM_fh', 'PFM_ef'] (the order is taken as in the
+                            list) or 'auto', in which case a single PFM
+                            pulse is used to move to the next lower state
+                            e.g. PFM_fh for init_state 'h'. If 'auto' is
+                            used and init_state is 'g', 'PFM' is used.
+        :param num_LRUs: number of LRUs, default is 1. In case lru_opcodes is
+                            a list larger than 1, all opcodes will be repeated
+                            num_LRUs times.
+        :param kw: keyword arguments
+            Passed to parent method.
         """
 
-        prepend_blocks = super().sweep_block(qb, sweep_points, transition_name,
-                                             **kw)
-
-        prepare_f = kw.get('prepare_f', False)
-        prepare_h = kw.get('prepare_h', False)
-        deplete_f = kw.get('deplete_f', False)
-
-        if prepare_f and transition_name != 'ef':
-            logging.warning('prepare_f is set to True, but transition_name '
-                            'is not ef. This will not prepare the f-level.')
-        elif prepare_h and transition_name != 'fh':
-            logging.warning('prepare_h is set to True, but transition_name '
-                            'is not fh. This will not prepare the h-level.')
-
-        # Add ef pulse if specified; transition_name 'ef' only prepares e-level
-        ef_pulse = self.block_from_ops(f'ef_pulse',
-                                       [f'X180_ef {qb}'])
-        if prepare_h and deplete_f:
-            # We want to sweep the parameters of the PFM_ef pulse
-            transition_name = 'ef'
-
+        # Remove transition_name from kw to avoid passing it to the parent
+        transition_name = kw.pop('transition_name')
+        prepend_blocks = super().sweep_block(qb, sweep_points, '', **kw)
+        if lru_opcodes == 'auto':
+            lru_transition = 'fh' if init_state == 'h' else (
+                'ef' if init_state == 'f' else '')
+            lru_opcodes = [f'PFM_{lru_transition} {qb}']
+        else:
+            lru_opcodes = [f'{opcode} {qb}' for opcode in lru_opcodes]
         # add modulation pulse
-        modulation_block = self.block_from_ops(f'modulation_pulse_{qb}',
-                                               [f'PFM{transition_name} {qb}'] *
-                                               num_LRUs,
-                                               )
+        modulation_block = self.block_from_ops(f'modulation_pulses_{qb}',
+                                                lru_opcodes)
         # create ParametricValues from param_name in sweep_points
         for sweep_dict in sweep_points:
             for param_name in sweep_dict:
                 for pulse_dict in modulation_block.pulses:
                     if param_name in pulse_dict:
                         pulse_dict[param_name] = ParametricValue(param_name)
-
-        if prepare_f:
-            return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
-                                          prepend_blocks + [ef_pulse] + [
-                                              modulation_block])
-        elif prepare_h:
-            fh_pulse = self.block_from_ops(f'fh_pulse',
-                                           [f'X180_fh {qb}'])
-            if deplete_f:
-                modulation_block_0 = self.block_from_ops(
-                    f'modulation_pulse_0_{qb}', [f'PFM_fh {qb}'])
-                return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
-                                              prepend_blocks + [fh_pulse] +
-                                              [modulation_block_0] + [
-                                                  modulation_block])
-
-            return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
-                                          prepend_blocks + [fh_pulse] +
-                                          [modulation_block])
-        else:
-            return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
-                                          prepend_blocks + [modulation_block])
+        modulation_block = [modulation_block] * num_LRUs
+        return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
+                                      prepend_blocks + modulation_block)
 
     def run_analysis(self, analysis_kwargs=None, **kw):
         """
