@@ -1014,13 +1014,15 @@ class ZIGeneratorModule:
                 self._playback_strings += \
                     ZIPulsarMixin.zi_playback_string_loop_end(metadata)
                 continue
+            if nr_cw > 0 and not self._use_command_table:
+                raise ValueError(f"Set {self.pulsar.name}."
+                                 f"{self._awg.name}_use_command_table to "
+                                 f"True for feedback operations!")
 
             for cw in awg_sequence_element:
                 if cw == 'no_codeword':
                     if nr_cw != 0:
                         continue
-                assert self._use_command_table, f"Enable use_command_table for \
-                    feedback operations"
                 chid_to_hash = awg_sequence_element[cw]
 
                 # With current implementations, 'wave' has to be a tuple of
