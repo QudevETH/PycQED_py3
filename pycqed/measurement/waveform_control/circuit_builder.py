@@ -49,7 +49,8 @@ class CircuitBuilder:
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
-                'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef']}
+                'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef'],
+                'h': ['X180', 'X180_ef', 'X180_fh']}
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  filter_qb_names=None, **kw):
