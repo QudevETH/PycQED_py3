@@ -8,12 +8,12 @@ import sys
 import numpy as np
 import scipy as sp
 from scipy.interpolate import interp1d
-
-from pycqed.measurement.waveform_control import pulse
-
 # For Python < 3.10, itertools doesn't contain pairwise
+# FIXME remove once python minimum version >= 3.10
 if sys.version_info < (3, 10):
     from more_itertools import pairwise
+
+from pycqed.measurement.waveform_control import pulse
 
 log = logging.getLogger(__name__)
 
@@ -1311,7 +1311,8 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             # Compute the extra portion of the wave and add it to the
             # waveform after correctly scaling
             if sys.version_info < (3, 10):
-                pairwise_tstarts = pairwise(tstarts) # FIXME: Should be deleted when python 3.11 is standard
+                # FIXME: Should be deleted once python >= 3.10 is standard
+                pairwise_tstarts = pairwise(tstarts)
             else:
                 pairwise_tstarts = itertools.pairwise(tstarts)
             for amp_factor, (ts, te) in zip(
