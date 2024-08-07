@@ -132,8 +132,8 @@ class Device(Instrument):
 
         self.add_parameter('flux_crosstalk_calibs',
                            parameter_class=ManualParameter,
+                           set_parser=self.parser_flux_crosstalk_calibs,
                            )
-
 
         self.add_parameter('preparation_params', parameter_class=ManualParameter,
                            vals=vals.Dict(), set_parser=self._validate_preparation_params)
@@ -804,6 +804,16 @@ class Device(Instrument):
         for ch, v in channel_delays.items():
             # Set the qcodes parameter to the respective value
             pulsar.set(f"{ch}_hw_channel_delay", v)
+
+    @staticmethod
+    def parser_flux_crosstalk_calibs(calibs):
+        if not isinstance(calibs, dict):
+            # convert old format, see configure_flux_crosstalk_cancellation
+            return {'default': calibs}
+        else:
+            # ensure that each item is a list (might be a tuple, e.g. when
+            # reloading from an instrument settings file)
+            return {key: list(item) for key, item in calibs.items()}
 
     def configure_flux_crosstalk_cancellation(self, qubits='auto', rounds=-1):
         """
