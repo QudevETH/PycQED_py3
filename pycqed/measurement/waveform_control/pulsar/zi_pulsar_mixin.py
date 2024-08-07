@@ -1174,7 +1174,8 @@ class ZIGeneratorModule:
                 else:
                     # No indices will be assigned when not using placeholder
                     # waves.
-                    for i, h in enumerate(list(wave)):
+                    wave = list(wave)
+                    for i, h in enumerate(wave):
                         if h is not None:
                             wave[i] = self._with_divisor(h, self.channel_ids[i])
                     wave = tuple(wave)
@@ -1184,8 +1185,8 @@ class ZIGeneratorModule:
                         wave=wave,
                         defined_waves=self._defined_waves,
                         wave_index=self._wave_idx_lookup[element][cw] if
-                        self._use_command_table or  self._use_placeholder_waves else None,
-                        placeholder_wave_length = placeholder_wave_length,
+                        self._use_command_table or self._use_placeholder_waves else None,
+                        placeholder_wave_length=placeholder_wave_length,
                         internal_mod=self._use_internal_mod,
                     )
 

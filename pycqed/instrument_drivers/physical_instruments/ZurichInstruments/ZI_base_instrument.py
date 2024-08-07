@@ -1260,13 +1260,6 @@ class ZI_base_instrument(Instrument):
                 self.setv(
                     'awgs/{}/waveform/waves/{}'.format(awg_nr, dio_cw), wf_data)
 
-    # def _codeword_table_preamble(self, awg_nr):
-    #     """
-    #     Defines a snippet of code to use in the beginning of an AWG program in order to define the waveforms.
-    #     The generated code depends on the instrument type. For the HDAWG instruments, we use the setDIOWaveform
-    #     function. For the UHF-QA we simply define the raw waveforms.
-    #     """
-    #     raise NotImplementedError('Virtual method with no implementation!')
 
     def _configure_awg_from_variable(self, awg_nr):
         """
