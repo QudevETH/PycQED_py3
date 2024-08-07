@@ -1681,6 +1681,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
     phase and overwrites specific methods of tda.MultiQubit_TimeDomain_Analysis.
     """
     def process_data(self):
+        self.options_dict.setdefault('linestyle', '-')
         super().process_data()
 
         mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
