@@ -306,7 +306,7 @@ class ZIPulsarMixin:
                            prepend_zeros=0, placeholder_wave=False,
                            command_table_index=None,
                            internal_mod=False,
-                           allow_filter=False):
+                           allow_filter=False, trigger_source=None):
         playback_string = []
         if allow_filter:
             playback_string.append(
@@ -315,7 +315,8 @@ class ZIPulsarMixin:
             playback_string.append(f"playZero({prepend_zeros});")
         w1, w2 = self.zi_waves_to_wavenames(wave)
         use_hack = True # set this to false once the bugs with HDAWG are fixed
-        playback_string += self.zi_wait_trigger(name, device)
+        playback_string += self.zi_wait_trigger(name, device,
+                                                trigger_source=trigger_source)
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append("playWaveDIO();")
@@ -349,9 +350,10 @@ class ZIPulsarMixin:
             playback_string.append("}")
         return playback_string
 
-    def zi_wait_trigger(self, name, device):
+    def zi_wait_trigger(self, name, device, trigger_source=None):
         playback_string = []
-        trig_source = self.pulsar.get("{}_trigger_source".format(name))
+        trig_source = trigger_source or self.pulsar.get(
+            f"{name}_trigger_source")
         if trig_source == "Dig1":
             playback_string.append(
                 "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
@@ -521,6 +523,9 @@ class ZIGeneratorModule:
     ):
         self._awg = awg
         """Instrument driver of the parent device."""
+
+        self._awg_name = awg.name
+        """Cached name of the parent device (since qcodes .name is slow)."""
 
         self._device_type = "none"
         """Device type of this generator. This parameter should be rewritten 
@@ -774,7 +779,7 @@ class ZIGeneratorModule:
             self,
             awg_sequence,
     ):
-        self._update_i_channel_name()
+        self.update_i_channel_name()
         self._update_use_placeholder_wave_flag()
         self._update_use_filter_flag(awg_sequence=awg_sequence)
         self._update_use_command_table_flag()
@@ -802,7 +807,7 @@ class ZIGeneratorModule:
         self._upload_sine_generation_config(
             sine_config=sine_config.get(self.i_channel_name, dict()))
 
-    def _update_i_channel_name(self):
+    def update_i_channel_name(self):
         """Get I channel name from self.pulsar.channels ."""
         self.i_channel_name = self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],

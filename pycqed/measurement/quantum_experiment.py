@@ -231,7 +231,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
                                   'data_type': data_type,
-                                  'right_handed_basis': True,
                                   })
         self.waveform_viewer = None
 

@@ -45,10 +45,18 @@ def get_git_info():
     try:
         # Refers to the global qc_config
         PycQEDdir = pq.__path__[0]
-        githash = subprocess.check_output(['git', 'rev-parse',
-                                           '--short=10', 'HEAD'], cwd=PycQEDdir)
-        diff = subprocess.run(['git', '-C', PycQEDdir, "diff"],
-                              stdout=subprocess.PIPE).stdout.decode('utf-8')
+        kw = {}
+        if os.name == 'nt':
+            # Prevent cmd.exe window from popping up
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            kw['startupinfo'] = si
+
+        githash = subprocess.check_output(
+            ['git', 'rev-parse', '--short=10', 'HEAD'], cwd=PycQEDdir, **kw)
+        diff = subprocess.run(
+            ['git', '-C', PycQEDdir, "diff"],
+            stdout=subprocess.PIPE, **kw).stdout.decode('utf-8')
     except Exception:
         pass
     return githash, diff

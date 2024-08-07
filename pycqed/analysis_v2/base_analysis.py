@@ -656,7 +656,13 @@ class BaseDataAnalysis(object):
                 return dict(preparation_type="wait")
             else:
                 if qbn is None:
-                    qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    if reset_params['analysis_instructions']:
+                        qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    else:
+                        log.warning('reset_params[analysis_instructions] is empty.\n'
+                                    'Likely the reset used does not require any '
+                                    ' special instructions for data analysis.')
+                        return dict(preparation_type="wait")
                 if len(reset_params['analysis_instructions'][qbn]) == 0:
                     # empty list, i.e. no reset steps
                     return dict(preparation_type="wait")
@@ -1720,6 +1726,8 @@ class BaseDataAnalysis(object):
         plot_xtick_labels = pdict.get('xtick_labels', None)
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_barkws = pdict.get('bar_kws', {})
@@ -1767,6 +1775,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -1929,6 +1940,7 @@ class BaseDataAnalysis(object):
         plot_xtick_rotation = pdict.get('xtick_rotation', 90)
         plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
@@ -1936,6 +1948,7 @@ class BaseDataAnalysis(object):
         plot_grid = pdict.get('grid', None)
         plot_opposite_axis = pdict.get('opposite_axis', False)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         # Ensures that 'color' can be passed both ways (and that it does not
         # collide with plot_linekws).
         plot_color = pdict.get('color', plot_linekws.pop('color') if
@@ -2014,6 +2027,9 @@ class BaseDataAnalysis(object):
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
 
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
+
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
             legend_title = pdict.get('legend_title', None)
@@ -2076,6 +2092,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_nolabel = pdict.get('no_label', False)
         plot_title = pdict['title']
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         slice_idxs = pdict['sliceidxs']
         slice_label = pdict.get('slicelabel', '')
         slice_units = pdict.get('sliceunits', '')
@@ -2116,6 +2134,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -2377,6 +2398,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_yunit = pdict['yunit']
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         if plot_transpose:
             # transpose switches X and Y
             set_axis_label('x', axs, plot_ylabel, plot_yunit)
@@ -2390,6 +2413,8 @@ class BaseDataAnalysis(object):
                             verticalalignment='bottom',
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
     def plot_colorbar(self, cax=None, key=None, pdict=None, axs=None,
                       orientation='vertical', no_label=None):
@@ -2430,7 +2455,10 @@ class BaseDataAnalysis(object):
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
-            axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
+            # Ensure the colorbar is added to the figure that the axis
+            # is a part of
+            fig = axs.get_figure()
+            axs.cbar = fig.colorbar(cmap, cax=axs.cax, orientation=orientation)
         else:
             norm = mpl.colors.Normalize(0, 1)
             axs.cbar = mpl.colorbar.ColorbarBase(axs.cax, cmap=cmap, norm=norm)
