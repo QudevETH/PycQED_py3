@@ -172,8 +172,6 @@ class MultiTaskingExperiment(QuantumExperiment):
                                  '"qubits" or "task_list"')
             # Create task_list from qubits
             task_list = [{'qb': qb.name} for qb in qubits]
-        elif qubits is not None:
-            log.warning('Provided "task_list" and "qubits". Ignoring "qubits".')
         for task in task_list:
             if 'qb' in task and not isinstance(task['qb'], str):
                 task['qb'] = task['qb'].name
