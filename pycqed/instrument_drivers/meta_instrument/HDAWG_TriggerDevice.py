@@ -52,7 +52,8 @@ class HDAWG_TriggerDevice(Instrument):
                      (setattr(self, '_pulse_length', val),
                       self.program_awg())[0]),
             unit='samples',
-            vals=vals.PermissiveMultiples(self.GRANULARITY, 1e-12)
+            set_parser=int,
+            vals=vals.Multiples(self.GRANULARITY)
         )
         self.awg_nr = awg_nr  # this programs the AWG
 
