@@ -153,6 +153,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
 
+        Only necessary if self.emulate_poll()==True
+
         self._acq_poll_inds will be set to a dict of lists of zeros,
             with dict keys being indices of acquisition units and list entries
             corresponding to the integration channels of the acquisition unit.
@@ -162,9 +164,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             if self.emulate_poll():
                 channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
                 length = len(channels)
-            else:
-                # TODO check mapping of _acquisition_nodes to channel
-                length = len(self._acquisition_nodes)
             self._acq_poll_inds[i] = [0] * length
 
     def set_lo_freq(self, acq_unit, lo_freq):
