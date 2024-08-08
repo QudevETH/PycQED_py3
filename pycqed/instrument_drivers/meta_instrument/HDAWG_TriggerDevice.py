@@ -7,9 +7,7 @@ log = logging.getLogger(__name__)
 
 
 class HDAWG_TriggerDevice(Instrument):
-    """
-    Meta instrument to control an HDAWG channel pair as main trigger
-    source for other instruments.
+    """Meta instrument to control an HDAWG channel pair as main trigger
 
     The trigger output is a pulse train with a fixed period and a fixed
     pulse length. The pulse period is set by the pulse_period parameter
@@ -18,7 +16,7 @@ class HDAWG_TriggerDevice(Instrument):
     USER_REG_REPETITIONS = 0
     USER_REG_SEPARATION = 1
     GRANULARITY = 16
-    PULSE_LENGTH = 64  # samples
+    DEFAULT_PULSE_LENGTH = 64  # samples
 
     TEMPLATE = (
         "var reps = getUserReg({reps});\n"
@@ -32,18 +30,26 @@ class HDAWG_TriggerDevice(Instrument):
     )
 
     def __init__(self, name, awg, awg_nr):
+        """
+        Initialize the HDAWG trigger device with name, AWG and AWG number.
+
+        Arguments:
+            name (str): the name of the instrument
+            awg (ZI_HDAWG_qudev): the HDAWG instrument
+            awg_nr (int): index of the channel pair (0-indexed). The marker
+                will be output on both marker channel of the sequencer
+                specified by awg_nr
+        """
 
         super().__init__(name=name)
         self.awg = awg
-        self._awg_nr = None  # to avoid that the next line programs the AWG
-        # add pulse_length parameter, check that it is a multiple of the
-        # waveform granularity up to 1e-12.
+        self._pulse_length = self.DEFAULT_PULSE_LENGTH
         self.add_parameter(
             'pulse_length',
             label='Pulse length',
-            get_cmd=(lambda self=self: self.PULSE_LENGTH),
+            get_cmd=(lambda self=self: self._pulse_length),
             set_cmd=(lambda val, self=self:
-                     (setattr(self, 'PULSE_LENGTH', val),
+                     (setattr(self, '_pulse_length', val),
                       self.program_awg())[0]),
             unit='samples',
             vals=vals.PermissiveMultiples(self.GRANULARITY, 1e-12)
@@ -86,11 +92,7 @@ class HDAWG_TriggerDevice(Instrument):
         self.program_awg()
 
     def program_awg(self):
-        """
-        Program the AWG with the trigger waveform defined in the TEMPLATE.
-        """
-        if self._awg_nr is None:  # during init
-            return
+        """Program the AWG with the trigger waveform defined in TEMPLATE."""
         awg_str = self.TEMPLATE.format(
             reps=self.USER_REG_REPETITIONS,
             sep=self.USER_REG_SEPARATION,
@@ -100,11 +102,11 @@ class HDAWG_TriggerDevice(Instrument):
                                            program_string=awg_str)
 
     def _pulse_period_set_parser(self, pulse_period):
-        """
-        Set the pulse period in seconds. The pulse period must be a multiple
-        of the waveform granularity.
+        """Set the pulse period in seconds.
 
-        :param pulse_period: the pulse period in seconds
+        Arguments:
+            pulse_period (float): pulse period in seconds, must be a multiple
+                of the waveform granularity
         """
         samples = pulse_period * self.awg.clock_freq()
         if np.abs(samples % self.GRANULARITY) > 1e-11:
@@ -115,11 +117,13 @@ class HDAWG_TriggerDevice(Instrument):
         return samples - self.pulse_length()
 
     def _pulse_period_get_parser(self, pulse_distance):
-        """
-        Get the pulse period in seconds. The pulse period is the sum of the
-        pulse distance and the pulse length.
+        """Get pulse period. pulse period = pulse_distance + pulse_length
 
-        :param pulse_distance: the pulse distance in samples
+        Arguments:
+            pulse_distance: pulse distance in samples
+
+        Returns:
+            float: pulse period in seconds
         """
         samples = pulse_distance + self.pulse_length()
         return samples / self.awg.clock_freq()
