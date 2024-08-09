@@ -2020,6 +2020,8 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             kwargs:
                 prepend_zeros: temporary value for pulsar.prepend_zeros.
                     Defaults to 0.
+                raise_errors (bool): If True, raises an exception if the fit
+                    fails to converge within the measurement range
 
         Returns:
             alpha (float): The amplitude ratio that maximizes the suppression of 
