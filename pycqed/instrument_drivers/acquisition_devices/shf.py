@@ -114,16 +114,17 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
 
         self.add_parameter(
             'allow_scope',
-            unit='s',
             initial_value=(
                     len(self.qachannels) == len(self._all_qachs)),
             parameter_class=ManualParameter,
             docstring='Whether access to the scope module is allowed. When '
                       'sharing an SHF device between two setup, this should '
-                      'only be set to True while to other setup is inactive.',
+                      'only be set to True while the other setup is inactive.',
             vals=validators.Bool())
 
     def __getattribute__(self, item):
+        # returns only valid qa channels instead of all qa-channels
+        # if attribute valid_qachs is explicitly specified druing the init.
         if item == 'qachannels' and hasattr(self, '_valid_qachs'):
             return self._valid_qachs
         return super().__getattribute__(item)
