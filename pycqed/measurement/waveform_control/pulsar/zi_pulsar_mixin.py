@@ -1152,8 +1152,6 @@ class ZIGeneratorModule:
                     entry["index"] = entry_index
                     if update_entry:
                         self._command_table.append(entry)
-
-                placeholder_wave_length = None
                 
                 if self._use_placeholder_waves:
                     # No need to add new definitions when reusing old ones
@@ -1179,6 +1177,7 @@ class ZIGeneratorModule:
                         if h is not None:
                             wave[i] = self._with_divisor(h, self.channel_ids[i])
                     wave = tuple(wave)
+                    placeholder_wave_length = None
                     
                 self._wave_definitions += \
                     self._awg_interface.zi_wave_definition(
