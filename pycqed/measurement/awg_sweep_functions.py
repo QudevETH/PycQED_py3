@@ -78,7 +78,9 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
             are not known in advance.
         Args:
             circuit_builder (CircuitBuilder): Instance of CircuitBuilder that
-                is used to compile the block into sequences.
+                is used to compile the block into sequences. If it has a
+                'sequences' attribute (e.g. if it is a QuantumExperiment),
+                sequences created here will be appended to it.
             params (list[str]): List of the ParametricValues names in `block`.
             block (Block, optional): Block that contains ParametricValues and
                 is compiled into sequences using circuit_builder. Either block
