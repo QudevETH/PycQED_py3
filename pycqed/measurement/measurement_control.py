@@ -322,7 +322,7 @@ class MeasurementControl(Instrument):
                     the calling function, but only used by run() when it
                     calls itself recursively.
             store_sweep_indices (bool): If True, when storing the data the
-                iteration indices are prepended instead of the sweep points.
+                sweep indices are prepended instead of the sweep points.
         '''
 
         def try_finish():
