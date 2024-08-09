@@ -128,9 +128,12 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         self.sequence.rename('Sequence' + str(self.iteration))
         self.iteration += 1
 
-        if not self.circuit_builder.sequences:
-            self.circuit_builder.sequences = []
-        self.circuit_builder.sequences.append(self.sequence)
+        # A typical QuantumExperiment using a BlockSoftHardSweep will not have
+        # any sequences pre-defined, as these are created only here.
+        # If self.circuit_builder is a QuantumExperiment, storing sequences
+        # when creating them makes them available after running for inspection.
+        if hasattr(self.circuit_builder, 'sequences'):
+            self.circuit_builder.sequences.append(self.sequence)
 
         self.upload_sequence()
 
