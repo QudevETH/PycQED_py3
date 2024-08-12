@@ -104,8 +104,6 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                         # read out at the drive sideband frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() - 2 *
                                  qb_obj.default_ro_mod_freq()),
-                        # resets ro_mod_freq after it gets changed in
-                        # self.commensurability_lo_trigger
                         (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         (qb_obj.acq_weights_type, 'SSB'),
                         (qb_obj.instr_trigger.get_instr().pulse_period,
@@ -176,6 +174,10 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             # chosen modulation frequencies is not an integer multiple of the
             # trigger separation.
             if not force_ro_mod_freq:
+                if qb_obj.ro_fixed_lo_freq() is not None:
+                    log.warning(
+                        'Automatic adjustment of the RO IF might lead to '
+                        'wrong results since ro_fixed_lo_freq is set.')
                 # To ensure commensurability the RO modulation frequency will
                 # temporarily be set to ro_mod_freq Hz.
                 beats_per_trigger = int(beats_per_trigger + 0.5)
