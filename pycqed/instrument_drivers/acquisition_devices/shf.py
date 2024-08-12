@@ -304,8 +304,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 self.qachannels[i].oscs[0].gain(0)  # spectroscopy mode
 
         log.debug(f'{self.name}: units used: ' + repr(self._acq_units_used))
-        # TODO: ask ZI if only certain buffers can be cleared, important for
-        #  shared SHFs (https://github.com/zhinst/zhinst-qcodes/blob/f216288b4e91cf0d1da98c91023529628533c536/src/zhinst/qcodes/session.py#L628)
         for i in self._acq_units_used:
             self.qachannels[i].generator.userregs[0].value(
                 self._acq_loop_cnt)  # Used in seqc code
@@ -415,6 +413,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 raise NotImplementedError("Mode not recognised!")
         if not self.emulate_poll():
             for node in self._subscribed_nodes:
+                # unsubscribe from node to clear buffer, i.e. to not poll
+                # ancient data
                 node.unsubscribe()
                 node.subscribe()
 
