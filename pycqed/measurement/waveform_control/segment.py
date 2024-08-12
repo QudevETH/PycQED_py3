@@ -1103,9 +1103,12 @@ class Segment:
             new_end = t_end + length_comp + el_buffer
             awg = self.pulsar.get_awg_from_trigger_group(group)
             new_samples = self.time2sample(new_end - el_start, awg=awg)
-            # make sure that element length is multiple of
-            # sample granularity
+            # make sure that the element length exceeds min length for the AWG,
+            # and is a multiple of sample granularity
             gran = self.pulsar.get('{}_granularity'.format(awg))
+            min_length_samples = self.time2sample(
+                self.pulsar.get('{}_min_length'.format(awg)), awg=awg)
+            new_samples = max(new_samples, min_length_samples)
             if new_samples % gran != 0:
                 new_samples += gran - new_samples % gran
             self.element_start_end[el][group][1] = new_samples
