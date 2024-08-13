@@ -164,7 +164,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             if self.emulate_poll():
                 channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
                 length = len(channels)
-            self._acq_poll_inds[i] = [0] * length
+                self._acq_poll_inds[i] = [0] * length
 
     def set_lo_freq(self, acq_unit, lo_freq):
         super().set_lo_freq(acq_unit, lo_freq)
