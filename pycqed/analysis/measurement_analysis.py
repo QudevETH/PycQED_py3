@@ -4970,7 +4970,9 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
             label = 'f0={:.5f} GHz '.format(
                 self.fit_res.params['f0'].value * scale)
             try:
-                old_freq = eval(instr_set[self.qb_name].attrs['f_qubit'])
+                sm = setman.SettingsManager()
+                old_freq = sm.get_parameter(self.qb_name + '.ge_freq',
+                                            timestamp_underscore)
                 label += '\nold f0={:.5f} GHz' .format(
                     old_freq * scale)
             except (TypeError, KeyError, ValueError):
