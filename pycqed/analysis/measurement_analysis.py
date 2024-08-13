@@ -4931,13 +4931,16 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
 
         scale = SI_prefix_and_scale_factor(val=max(abs(ax_dist.get_xticks())),
                                            unit=self.sweep_unit[0])[0]
+
+        timestamp_underscore = list(a_tools.verify_timestamp(self.timestamp))
+        timestamp_underscore = '_'.join(timestamp_underscore)
         if analyze_ef:
             try:
                 sm = setman.SettingsManager()
                 old_freq = sm.get_parameter(self.qb_name + '.ge_freq',
-                                            self.timestamp)
+                                            timestamp_underscore)
                 old_freq_ef = sm.get_parameter(self.qb_name + '.ef_freq',
-                                               self.timestamp)
+                                               timestamp_underscore)
                 label = 'f0={:.5f} GHz ' \
                         '\nold f0={:.5f} GHz' \
                         '\nkappa0={:.4f} MHz' \
