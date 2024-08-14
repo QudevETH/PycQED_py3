@@ -124,7 +124,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
 
     def __getattribute__(self, item):
         # returns only valid qa channels instead of all qa-channels
-        # if attribute valid_qachs is explicitly specified druing the init.
+        # if attribute valid_qachs is explicitly specified during the init.
         if item == 'qachannels' and hasattr(self, '_valid_qachs'):
             return self._valid_qachs
         return super().__getattribute__(item)
