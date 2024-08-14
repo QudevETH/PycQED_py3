@@ -1115,7 +1115,9 @@ class Cryoscope(CalibBuilder):
             for i, fpd in enumerate(flux_pulse_dicts):
                 pd_temp = {'element_name': 'dummy'}
                 pd_temp.update(self.get_pulses(fpd['op_code'])[0])
-                pulse_length = seg_mod.UnresolvedPulse(pd_temp).pulse_obj.length
+                pulse_length = seg_mod.UnresolvedPulse(pd_temp,
+                                                       fast_mode=self.fast_mode
+                                                       ).pulse_obj.length
                 if 'truncation_lengths' in fpd:
                     tr_lens = fpd['truncation_lengths']
                 elif 'spacing' in fpd:

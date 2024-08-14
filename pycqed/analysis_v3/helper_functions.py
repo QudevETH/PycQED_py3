@@ -1785,7 +1785,13 @@ def translate_reset_to_prep_params(
         # Check preconeditions and catch not implemented corner cases
         else:
             if qbn is None:
-                qbn = list(reset_parameters['analysis_instructions'].keys())[0]
+                if reset_parameters['analysis_instructions']:
+                    qbn = list(reset_parameters['analysis_instructions'].keys())[0]
+                else:
+                    log.warning('reset_params[analysis_instructions] is empty.\n'
+                                'Likely the reset used does not require any special '
+                                ' instructions for data analysis.')
+                    return { 'preparation_type': 'wait'}
             if len(reset_parameters['analysis_instructions'][qbn]) == 0:
                 # empty list, i.e. no reset steps
                 return { 'preparation_type': 'wait'}

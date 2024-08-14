@@ -227,15 +227,13 @@ class MeasurementObject(Instrument):
             # TODO should really be vals.Lists(vals.Tuples(vals.Numbers))
             #      but a Tuple validator does not exist
             vals=vals.MultiType(vals.Enum(None), vals.Lists()),
-            docstring="List of tuples containing an amplitude scaling factor "
-            "(unitless) and a duration (in s) for this multiplier. "
-            "Amplitude scaling factors greater than 1 increase the "
-            "output amplitude while those less than 1 reduce it. "
-            "Defaults to None meaning that a constant amplitude is "
-            "applied the entire time. It is up to the user to provide "
-            "meaningful values (there is no warning if the total "
-            "duration of the steps is longer than the readout pulse "
-            "itself)."
+            docstring="List of tuples containing an amplitude scaling "
+                      "factor (unitless) and a duration (in s) for this"
+                      " multiplier. Amplitude scaling factors greater "
+                      "than 1 increase the output amplitude while those"
+                      " less than 1 reduce it. Defaults to None meaning"
+                      " that a constant amplitude is applied the entire"
+                      " time."
         )
 
         # switch parameters
