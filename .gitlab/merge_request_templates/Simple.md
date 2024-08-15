@@ -10,8 +10,8 @@ especially important if they didn't participate in the discussion.
 
 ## MR acceptance checklist
 
-- [ ] Does the code do what it's supposed to do?
-- [ ] Is the code tested?
+- [ ] Code tested on a virtual setup?
+- [ ] Code tested on (a) physical setup(s)? 
 - [ ] Were alternative solutions considered?
 - [ ] Is the code documented?
 
