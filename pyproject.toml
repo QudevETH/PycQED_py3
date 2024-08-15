@@ -29,7 +29,7 @@ dependencies = [
     "msgpack",
     "msgpack_numpy",
     "nlopt",
-    "numpy",
+    "numpy < 2.0.0",               # until compatibility issues are resolved
     "pandas",
     "pyqtgraph",
     "pyside6",
