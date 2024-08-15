@@ -20,14 +20,6 @@ Information that the developer might need to refer to when implementing the issu
 - [Similar implementation](https://see.com/-/merge_requests/<id>)
 -->
 
-## Non-functional requirements
-<!--
-Add details for required items and delete others.
--->
-
-- [ ] Documentation:
-- [ ] Performance:
-- [ ] Testing:
 
 ## Implementation plan
 <!--
