@@ -1,9 +1,7 @@
 <!--
-Implementation issues are used break-up a large piece of work into small, discrete
-tasks that can move independently through the build workflow steps.
+Implementation issues are used break-up a large piece of (new) software work into small, discrete tasks. For instance, when developing a new calibration routine, distinct tasks could be: (1) a QuantumExperiment that enables the measurement of the parameters of interest, (2) An analysis class extracting/fitting the relevant parameters, (3) The integration of (1) and (2) within an automated calibration routine.
 
-They're typically used to populate a feature. Once created, an implementation issue
-is usually refined in order to populate and review the implementation plan and weight.
+Implementation issues are usually refined and modified as the software project evolves.
 -->
 
 ## Why are we doing this work
