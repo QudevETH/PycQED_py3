@@ -1,5 +1,4 @@
 ## What does this MR do and why?
-
 <!--
 Describe in detail what your merge request does and why.
 
@@ -15,18 +14,6 @@ especially important if they didn't participate in the discussion.
 - [ ] Were alternative solutions considered?
 - [ ] Is the code documented?
 
-## Sketch, screenshots or screen recordings
-
-<!--
-Please include any relevant sketches, screenshots or screen recordings that
-will assist reviewers and future readers. If you need help visually verifying
-the change, please leave a comment and ping of the more senior engineers.
--->
-
-| Before | After  |
-| ------ | ------ |
-|        |        |
-
 ## How to set up and validate locally (Optional)
 
 _Numbered steps to set up and validate the change are strongly suggested._
@@ -34,19 +21,20 @@ _Numbered steps to set up and validate the change are strongly suggested._
 <!--
 Example below:
 
-1. Pull this branch into experiment ABC
-1. Run the demo notebook
+1. Pull this branch into experiment ABC or virtual setup
+1. Run the corresponding notebook
 1. Run cell X
 -->
 
 
 ## Related issues (Optional)
-
 <!--
 
-This MR solves Issue #X
+This MR contributes to solving the following issue(s):
+
+- #1 - That nasty bug there.
+- #2 - What made our HDAWG explode last year.
 
 -->
 
 /assign me
-
