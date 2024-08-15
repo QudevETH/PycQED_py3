@@ -10,7 +10,7 @@ A brief explanation of the why, not the what or how. Assume the reader doesn't k
 the background and won't have time to dig-up information from comment threads.
 -->
 
-## Relevant links
+## Relevant links (optional)
 <!--
 Information that the developer might need to refer to when implementing the issue.
 
