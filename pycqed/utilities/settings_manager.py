@@ -511,8 +511,8 @@ def convert_settings_to_hdf(timestamp: str):
     fn = a_tools.measurement_filename(a_tools.get_folder(timestamp))
     # if hdf-file does not exist, the filename of the settings file is copied
     if fn is None:
-        file_format = Loader.get_file_format(timestamp=timestamp)
-        ext = base_io.file_extensions[file_format]
+        ext = Loader.get_file_format(timestamp=timestamp,
+                                     return_extension=True)
         # a_tools expects extension without a dot (e.g. 'hdf'),
         # the extension dict in base_io stores it with a dot (e.g. '.hdf')
         fn = a_tools.measurement_filename(a_tools.get_folder(timestamp),

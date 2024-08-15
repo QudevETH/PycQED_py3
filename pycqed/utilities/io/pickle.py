@@ -39,10 +39,10 @@ class PickleDumper(Dumper):
                          timestamp=timestamp)
         if self.compression:
             self.filepath = self.filepath.replace(
-                ".hdf5", file_extensions['pickle_comp'])
+                ".hdf5", file_extensions['pickle_comp'][0])
         else:
-            self.filepath = self.filepath.replace(".hdf5",
-                                                  file_extensions['pickle'])
+            self.filepath = self.filepath.replace(
+                ".hdf5", file_extensions['pickle'][0])
 
     def dump(self, mode='xb'):
         """
