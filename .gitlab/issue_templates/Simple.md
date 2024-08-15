@@ -14,30 +14,35 @@ the background and won't have time to dig-up information from comment threads.
 <!--
 Information that the developer might need to refer to when implementing the issue.
 
-- [Design Issue](https://see.com/-/issues/<id>)
-  - [Design 1](https://see.com/-/issues/<id>/designs/<image>.png)
-  - [Design 2](https://see.com/-/issues/<id>/designs/<image>.png)
-- [Similar implementation](https://see.com/-/merge_requests/<id>)
+- This QuantumExperiment expands upon previous work / issues:
+  - #123 - solving problem A, which is a prerequisite for this QuantumExperiment.
+  - #456 - refactoring enabling the new QuantumExperiment to be used.
 -->
 
 
 ## Implementation plan
 <!--
-Steps and the parts of the code that will need to get updated.
+The implentation plan is where the break-up of a lrager piece of work happens.
+
+=> Try to keep the individual MRs as small as possible.
+
 The plan can also call-out responsibilities for other team members or teams and
 can be split into smaller MRs to simplify the code review process.
 
-e.g.:
+e.g. building on the example above :
 
-- MR 1: Part 1
-- [ ] ~frontend Step 1
-- [ ] ~frontend Step 2
-- MR 2: Part 2
-- [ ] ~backend Step 1
-- [ ] ~backend Step 2
-- MR 3: Part 3
-- [ ] ~frontend Step 1
-- [ ] ~frontend Step 2
+- MR 1: Integrate drivers for new QuantumExperiment
+- [ ] ~zurich-instruments ~hardware Step 1
+- [ ] ~qcodes Step 2
+- MR 2: Implement QuantumExperiment Measurement
+- [ ] ~pycqed-core Step 1
+- [ ] ~critical Step 2
+- [ ] ~enhancement Step 3
+- MR 3: Implement QuantumExperiment Analysis
+- [ ] ~big Step 1
+- [ ] ~gui Step 2
+- MR 4: Integrate the new QuantumExperiment in automated calibration routines
+- [ ] ~calibration ~usability Step 1
 
 -->
 
@@ -46,10 +51,15 @@ e.g.:
 Add verification steps to help team members test the implementation. This is
 particularly useful during the MR review.
 
-You may not know exactly what the verification steps should be during issue
-refinement, so you can always come back later to add them.
+It is possible to verify things using a 'virtual' and/or 'physical' setup.
 
-1. Check-out the corresponding branch
-1. ...
-1. Profit!
+
+1. Verification types necessary in this issue: (remove the ones that do not apply)
+  - [ ] Virtual Setup
+  - [ ] Physical Setup
+1. Check-out the corresponding branch in its respective environment
+1. Install its requirements
+1. Perform QuantumExperiment
+1. Add the notebook(s) you tested this with to this issue
+1. Enjoy your new QuantumExperiment! ^_^
 -->
