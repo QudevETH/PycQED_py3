@@ -40,7 +40,7 @@ Example below:
 -->
 
 
-## Related issues
+## Related issues (Optional)
 
 <!--
 
