@@ -12,10 +12,10 @@ class MsgDumper(Dumper):
                          timestamp=timestamp)
         if self.compression:
             self.filepath = self.filepath.replace(
-                ".hdf5", file_extensions['msgpack_comp'][0])
+                file_extensions['hdf5'][0], file_extensions['msgpack_comp'][0])
         else:
             self.filepath = self.filepath.replace(
-                ".hdf5", file_extensions['msgpack'][0])
+                file_extensions['hdf5'][0], file_extensions['msgpack'][0])
 
     def dump(self, mode='xb'):
         """
