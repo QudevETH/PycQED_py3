@@ -2442,6 +2442,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'title': fig_title}
             else:  # 1D along first sweep dimension
                 yvals = raw_data_dict[ro_channel]
+                plot_key = plot_name + '_' + ro_channel
                 if len(yvals.shape) > 1 and yvals.shape[1] == 1:
                     # only one soft sweep point: prepare 1D plot which is
                     # more meaningful
@@ -2459,8 +2460,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         yvals = np.take_along_axis(
                             yvals.T,
                             np.array([[twod_data_idx]]), twod_data_axis).flatten()
-                self.plot_dicts[plot_name + '_' + ro_channel + '_' + str(
-                    twod_data_idx)] = {
+                    plot_key += '_' + str(twod_data_idx)
+                self.plot_dicts[plot_key] = {
                     'fig_id': plot_name,
                     'ax_id': ax_id,
                     'plotfn': self.plot_line,
