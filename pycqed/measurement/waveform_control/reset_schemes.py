@@ -5,13 +5,6 @@ This module provides implementations of various reset schemes for quantum contro
 operations in the PycQED framework. It defines several classes that inherit from
 the base ResetScheme class, each implementing a specific reset strategy.
 
-Classes:
-    ResetScheme: Base class for reset schemes, providing common functionality.
-    Preselection: A preselection-based reset scheme with opt flux compensation.
-    FeedbackReset: A feedback-based active reset scheme.
-    ParametricFluxReset: A scheme using parametric flux modulation operations.
-    F0g1Reset: A scheme for resetting to the f0g1 state.
-
 Each reset scheme class provides methods for constructing reset blocks,
 handling operation dictionaries, and generating analysis instructions. These
 schemes can be used to initialize quantum systems to desired states before
@@ -29,13 +22,10 @@ By default the following reset schemes are added by add_reset_schemes():
 
 - preselection: A preselection-based reset scheme with opt. flux compensation.
 - feedback_reset: A feedback-based active reset scheme.
-
-After adding them, you can access them, and configure them like so:
-
-    qb.reset.preselection.enabled(False) # any scheme is enabled by default
 """
 
 import logging
+
 log = logging.getLogger(__name__)
 
 from copy import deepcopy
