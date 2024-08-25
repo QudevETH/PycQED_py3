@@ -1,4 +1,5 @@
 ## What does this MR do and why?
+
 <!--
 Describe in detail what your merge request does and why.
 
@@ -10,7 +11,7 @@ especially important if they didn't participate in the discussion.
 ## MR acceptance checklist
 
 - [ ] Code tested on a virtual setup?
-- [ ] Code tested on (a) physical setup(s)? 
+- [ ] Code tested on (a) physical setup(s)?
 - [ ] Were alternative solutions considered?
 - [ ] Is the code documented?
 
@@ -26,8 +27,8 @@ Example below:
 1. Run cell X
 -->
 
-
 ## Related issues (Optional)
+
 <!--
 
 This MR contributes to solving the following issue(s):
