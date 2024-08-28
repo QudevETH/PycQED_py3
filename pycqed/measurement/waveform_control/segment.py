@@ -1133,11 +1133,6 @@ class Segment:
 
         return pulses
 
-    def sort_elements_on_awg(self):
-        for group in self.elements_on_awg.keys():
-            self.elements_on_awg[group] = sorted(self.elements_on_awg[group],
-                    key=lambda element: self.get_element_start(element, group))
-
     def gen_elements_on_awg(self, return_sorted=True):
         """
         Updates the self.elements_on_AWG dictionary
@@ -1161,8 +1156,12 @@ class Segment:
                         self.elements_on_awg[group].append(element)
 
         # sort elements on awg according to start time
-        if return_sorted:
-            self.sort_elements_on_awg()
+        if not return_sorted:
+            return
+
+        for group in self.elements_on_awg.keys():
+            self.elements_on_awg[group] = sorted(self.elements_on_awg[group],
+                                                 key=lambda element: self.get_element_start(element, group))
 
     def find_trigger_group_hierarchy(self):
         masters = {group for group in self.pulsar.trigger_groups
