@@ -13296,6 +13296,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             # Fourier transform for all Delta. Smallest period corresponds to J (assuming actual Delta=0 in that case)
             # Adopted from https://docs.scipy.org/doc/scipy/tutorial/fft.html
             J_min = None
+            amp_max = None
             Delta_argmin = None
             for Delta_index in range(len(Delta)):
 
@@ -13310,15 +13311,23 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                                                data[Delta_index], t)[0],
                                            phase=fit_mods.fft_freq_phase_guess(
                                                data[Delta_index], t)[1],
-                                           offset=0.9)
-                params['frequency'].min = 0.0
+                                           offset=np.mean(data[Delta_index]))
+                params['frequency'].min = 0.5/(max(t)-min(t))  # constrain to twice the sweep length
+                params['frequency'].max = 1/np.min(np.diff(t)) # constrain to sampling freqeuncy
+                params['amplitude'].min = 0.0
+                params['amplitude'].max = 1.0
+                params['offset'].min = 0.0
+                params['offset'].max = 1.0
 
                 result = model.fit(data[Delta_index], params, x=t)
                 J = result.params['frequency'].value / 2
+                amp = result.params['amplitude'].value / 2
 
-                if J_min == None or J_min > J:
+                if amp_max == None or amp_max < amp:
                     J_min = J
+                    amp_max = amp
                     Delta_argmin = Delta_index
+
             return J_min, Delta_argmin
 
         def add_fit_dict(qbH_name, qbL_name, data, key):
