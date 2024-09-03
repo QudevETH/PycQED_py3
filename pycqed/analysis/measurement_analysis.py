@@ -4662,10 +4662,6 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
     """
 
     def __init__(self, label='Source', **kw):
-        kw['label'] = label
-        kw['h5mode'] = 'r+'  # Read write mode, file must exist
-        super(self.__class__, self).__init__(**kw)
-
         # TODO: Remove this class in the future as it's superceded by QE
         log.warning(
             "Deprecation warning: please use the QuantumExperiment "
@@ -4673,6 +4669,10 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
             "spectroscopy_analysis.py. I.e., "
             "QubitSpectroscopy1DAnalysis."
         )
+
+        kw['label'] = label
+        kw['h5mode'] = 'r+'  # Read write mode, file must exist
+        super(self.__class__, self).__init__(**kw)
 
     def fit_data(self, analyze_ef=False, **kw):
 
