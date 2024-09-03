@@ -4666,6 +4666,14 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
         kw['h5mode'] = 'r+'  # Read write mode, file must exist
         super(self.__class__, self).__init__(**kw)
 
+        # TODO: Remove this class in the future as it's superceded by QE
+        log.warning(
+            "Deprecation warning: please use the QuantumExperiment "
+            "Framework which you can find in analysis_v2/"
+            "spectroscopy_analysis.py. I.e., "
+            "QubitSpectroscopy1DAnalysis."
+        )
+
     def fit_data(self, analyze_ef=False, **kw):
 
         percentile = kw.get('percentile', 20)
