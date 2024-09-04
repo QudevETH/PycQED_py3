@@ -279,7 +279,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 data_type = "singleshot"
             else:
                 data_type = "averaged"
-            self.exp_metadata.update(kw)
             self.exp_metadata.update({'classified_ro': self.classified,
                                       'cz_pulse_name': self.cz_pulse_name,
                                       'data_type': data_type,
