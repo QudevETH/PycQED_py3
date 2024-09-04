@@ -802,6 +802,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         hard_sweep_params = self.get_param_value('hard_sweep_params')
         if self.sp is not None:
             self.mospm = self.get_param_value('meas_obj_sweep_points_map')
+            for k, v in self.sp.get_meas_obj_sweep_points_map(
+                    self.qb_names).items():
+                self.mospm.setdefault(k, v)
             main_sp = self.get_param_value('main_sp')
             if self.mospm is None:
                 raise ValueError('When providing "sweep_points", '
@@ -2444,6 +2447,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         'title': fig_title}
             else:  # 1D along first sweep dimension
                 yvals = raw_data_dict[ro_channel]
+                plot_key = plot_name + '_' + ro_channel
                 if len(yvals.shape) > 1 and yvals.shape[1] == 1:
                     # only one soft sweep point: prepare 1D plot which is
                     # more meaningful
@@ -2461,8 +2465,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         yvals = np.take_along_axis(
                             yvals.T,
                             np.array([[twod_data_idx]]), twod_data_axis).flatten()
-                self.plot_dicts[plot_name + '_' + ro_channel + '_' + str(
-                    twod_data_idx)] = {
+                    plot_key += '_' + str(twod_data_idx)
+                self.plot_dicts[plot_key] = {
                     'fig_id': plot_name,
                     'ax_id': ax_id,
                     'plotfn': self.plot_line,
@@ -6015,11 +6019,15 @@ class ReparkingRamseyAnalysis(RamseyAnalysis):
 
         apd = self.proc_data_dict['analysis_params_dict']
         for qbn in self.qb_names:
+            # Splitting to match the format "qbn_<x>" where <x> is an
+            # integer (sweep index)
             freqs[qbn] = \
                 {'val': np.array([d[self.fit_type]['new_qb_freq']
-                                     for k, d in apd.items() if qbn in k]),
+                                  for k, d in apd.items()
+                                  if qbn == k.split('_')[0]]),
                  'stderr': np.array([d[self.fit_type]['new_qb_freq_stderr']
-                                     for k, d in apd.items() if qbn in k])}
+                                     for k, d in apd.items()
+                                     if qbn == k.split('_')[0]])}
         self.proc_data_dict['analysis_params_dict']['qubit_frequencies'] = freqs
 
         fit_dict_keys = self.prepare_fitting_qubit_freqs()

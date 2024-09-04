@@ -231,7 +231,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.exp_metadata.update({'classified_ro': self.classified,
                                   'cz_pulse_name': self.cz_pulse_name,
                                   'data_type': data_type,
-                                  'right_handed_basis': True,
                                   })
         self.waveform_viewer = None
 
@@ -587,7 +586,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 parameter_name=sweep_param_name, unit=unit)
         elif isinstance(self.sweep_functions[0], swf.UploadingSweepFunction):
             sweep_func_1st_dim = self.sweep_functions[0]
-            sweep_func_1st_dim.sequence = self.sequences[0]
+            # sequences may not exist yet, e.g. when using a BlockSoftHardSweep
+            if self.sequences:
+                sweep_func_1st_dim.sequence = self.sequences[0]
         else:
             # Check whether it is a nested sweep function whose first
             # sweep function is a SegmentHardSweep class as placeholder.

@@ -3103,11 +3103,15 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
 
         for qb_name in self.qb_names:
 
-            # Copy the original plots in order to have both the analyzed and the
-            # non-analyzed plots
+            # Copy the original plots in order to have both the analyzed and
+            # the non-analyzed plots.
+            # Since deepcopy of the plot_dicts would lead to a deepcopy of
+            # the entire analysis object (because of plotfn-entry),
+            # we instead assign and modify the original dict and recreate the
+            # original projected plots below.
             fig_id_original = f"projected_plot_{qb_name}_Magnitude_{qb_name}_volt"
             fig_id_analyzed = f"ResonatorSpectroscopyFluxSweep_{fig_id_original}"
-            self.plot_dicts[fig_id_analyzed] = deepcopy(self.plot_dicts[
+            self.plot_dicts[fig_id_analyzed] = (self.plot_dicts[
                 f"projected_plot_{qb_name}_Magnitude_Magnitude_{qb_name}_volt"])
 
             # Change the fig_id of the copied plot in order to distinguish it
@@ -3267,6 +3271,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
                 'text_string': textstr
             }
 
+        # Recreate the original projected plots (without fitting results)
+        self.prepare_projected_data_plots()
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
     """Analysis to find the RO frequency that maximizes distance in IQ plane.
