@@ -219,19 +219,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             self.df_name = 'int_avg{}_det'.format('_classif' if self.classified else '')
         self.df = None
 
-        # determine data type
-        if "log" in self.df_name or not \
-                self.df_kwargs.get("det_get_values_kws",
-                                   {}).get('averaged', True):
-            data_type = "singleshot"
-        else:
-            data_type = "averaged"
-
         self.exp_metadata.update(kw)
-        self.exp_metadata.update({'classified_ro': self.classified,
-                                  'cz_pulse_name': self.cz_pulse_name,
-                                  'data_type': data_type,
-                                  })
         self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
@@ -284,6 +272,19 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
         exception = None
         with temporary_value(*self.temporary_values):
+            # determine data type
+            if "log" in self.df_name or not \
+                    self.df_kwargs.get("det_get_values_kws",
+                                       {}).get('averaged', True):
+                data_type = "singleshot"
+            else:
+                data_type = "averaged"
+            self.exp_metadata.update({'classified_ro': self.classified,
+                                      'cz_pulse_name': self.cz_pulse_name,
+                                      'data_type': data_type,
+                                      'reset_params': self.get_reset_params(),
+                                      })
+
             # Perpare all involved qubits. If not available, prepare
             # all measure objects.
             mos = self.qubits if self.qubits else self.meas_objs
