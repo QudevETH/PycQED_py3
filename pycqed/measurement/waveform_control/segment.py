@@ -2562,18 +2562,15 @@ class Segment:
         if transpiling_dict is None:
             transpiling_dict = default_pycqed_to_stim_transpiling_dict
         # sort pulses by start time
-        pulses = sorted(self.resolved_pulses, key=lambda p: p.pulse_obj._t0)
-        ops = [(p.op_code, p.pulse_obj._t0) for p in pulses if
-               hasattr(p, 'op_code') and p.op_code != '']
-
-        tprev = np.min([op[1] for op in ops]) # earliest time
+        ops = self.get_pulses_timing()
+        tprev = np.min([op[0] for op in ops]) # earliest time
         circuit_str = f"# {self.name}\n"
 
         if qubit_coords is not None:
             for key, coords in qubit_coords.items():
                 circuit_str += f"QUBIT_COORDS({', '.join(map(str, coords))}) {key[2:]}\n"
 
-        for op, t in ops:
+        for t, op, pulse_length in ops:
             if np.abs(t - tprev) > tol:
                 circuit_str += 'TICK\n'
                 tprev = t
@@ -2664,6 +2661,25 @@ class Segment:
                 setattr(new_seg, k, deepcopy(v, memo))
         return new_seg
 
+    def get_pulses_timing(self):
+        """
+        Retrieves and sorts the pulse timings using the list of resolved pulses.
+
+        This method ensures that the pulses are resolved if they are not already,
+        sorts them based on their start time (`_t0`), and then returns a list of
+        tuples containing the start time, operation code, and length of each pulse.
+
+        Returns:
+            List[Tuple[float, str, float]]: A list of tuples where each tuple contains:
+                - float: The start time (`_t0`) of the pulse.
+                - str: The operation code (`op_code`) of the pulse.
+                - float: The length of the pulse.
+        """
+        if not self.resolved_pulses:
+            self.resolve_segment()
+        pulses = sorted(self.resolved_pulses, key=lambda p: p.pulse_obj._t0)
+        return [(p.pulse_obj._t0, p.op_code, p.pulse_obj.length) for p in pulses if
+               hasattr(p, 'op_code') and p.op_code != '']
 
 class UnresolvedPulse:
     """
