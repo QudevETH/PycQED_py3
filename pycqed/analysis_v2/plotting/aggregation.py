@@ -9,8 +9,9 @@ import os
 import fnmatch
 from typing import Dict, Callable, Tuple, Any, Union, Optional, Sequence
 import numpy as np
-import pathlib
 import pycqed.measurement.quantum_experiment as qe_mod
+import pycqed.analysis_v2.plotting.aggregation_utils as aggr_u
+
 logger = logging.getLogger(__name__)
 
 # start with underscore to be 'first file shown in alphabetical order
@@ -57,7 +58,7 @@ def plot_on_grid(data_by_index: Dict[Tuple[int, int], Any], plot_func: Callable,
         Tuple[plt.Figure, np.ndarray]: The figure and axes.
     """
     grid_shape, row_offset, column_offset = (
-        _get_gridshape_and_offsets(list(data_by_index)))
+        aggr_u._get_gridshape_and_offsets(list(data_by_index)))
 
     if fig_axes:
         fig, axes = fig_axes
@@ -79,7 +80,7 @@ def plot_on_grid(data_by_index: Dict[Tuple[int, int], Any], plot_func: Callable,
             if label_as_title:
                 axes[r, c].set_title(labels.get((row, col)))
             else:
-                add_text(axes[r, c], labels.get((row, col)))
+                aggr_u.add_text(axes[r, c], labels.get((row, col)))
         axes[r, c].set(**ax_properties)
         visited_axes.add(axes[r, c])
 
@@ -95,13 +96,13 @@ def plot_on_grid(data_by_index: Dict[Tuple[int, int], Any], plot_func: Callable,
         sk.setdefault('path', '.')
         sk.setdefault('fig_name', COMBINED_PLOT_PREFIX)
         sk.setdefault('extension', 'png')
-        savefig(fig, **sk)
+        aggr_u.savefig(fig, **sk)
     return fig, axes
 
 
 def plot_on_qubit_grid(data_by_qubit: Dict[str, Any], plot_func: Callable,
                        plot_func_kwargs: Optional[Dict] = None,
-                       qubit_to_coord: Callable = lambda q: DEFAULT_GRID_COORDINATES[q],
+                       qubit_to_coord: Optional[Callable] = None,
                        fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
                        fig_kwargs: Optional[Dict] = None,
                        qubit_labels: bool = True,
@@ -127,6 +128,9 @@ def plot_on_qubit_grid(data_by_qubit: Dict[str, Any], plot_func: Callable,
         Tuple[plt.Figure, np.ndarray]: The figure and axes used for
         plotting.
     """
+    if qubit_to_coord is None:
+        qubit_coordinates = aggr_u.assign_coordinates(list(data_by_qubit))
+        qubit_to_coord = lambda q: qubit_coordinates[q]
     data_by_index_on_grid = {qubit_to_coord(q): d for q, d in data_by_qubit.items()}
     if qubit_labels:
         labels = {qubit_to_coord(q): q for q in data_by_qubit}
@@ -148,9 +152,7 @@ def plot_on_qubit_grid(data_by_qubit: Dict[str, Any], plot_func: Callable,
 
 def plot_on_pair_grid(data_by_pair: Dict[Tuple[str, str], Any], plot_func: Callable,
                       plot_func_kwargs: Optional[Dict] = None,
-                      pair_to_coord: Callable =
-                      lambda q1, q2: (DEFAULT_GRID_COORDINATES[q1][0] + DEFAULT_GRID_COORDINATES[q2][0],
-                                      DEFAULT_GRID_COORDINATES[q1][1] + DEFAULT_GRID_COORDINATES[q2][1]),
+                      pair_to_coord: Optional[Callable] = None,
                       fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
                       fig_kwargs: Optional[Dict] = None,
                       pair_labels: bool = True,
@@ -174,18 +176,24 @@ def plot_on_pair_grid(data_by_pair: Dict[Tuple[str, str], Any], plot_func: Calla
         Tuple[plt.Figure, np.ndarray]: The figure and axes used for
         plotting.
     """
+    if pair_to_coord is None:
+        pair_coordinates = aggr_u.assign_coordinates(list(data_by_pair))
+        pair_to_coord = lambda q1, q2: pair_coordinates[q1, q2]
+        # in this case we just have the minimal case of coordinates for pairs,
+        # not for qubits, so, deactivate qubit labels.
+        qubit_labels = False
     data_by_index_on_grid = {pair_to_coord(q1, q2): d for (q1, q2), d in
                              data_by_pair.items()}
     plot_func_kwargs = plot_func_kwargs or {}
     _, row_offset, col_offset = (
-        _get_gridshape_and_offsets(list(data_by_index_on_grid)))
+        aggr_u._get_gridshape_and_offsets(list(data_by_index_on_grid)))
     if qubit_labels:
         def plot_function_wrapper(ax, data, **kwargs):
             subplot_spec = ax.get_subplotspec()
             row, col = subplot_spec.rowspan.start, subplot_spec.colspan.start
             qubit_labels = kwargs.pop('qubit_labels', {})
             if (row - row_offset, col - col_offset) in qubit_labels:
-                add_text(ax, qubit_labels[(row - row_offset, col - col_offset)])
+                aggr_u.add_text(ax, qubit_labels[(row - row_offset, col - col_offset)])
                 ax.axis('off')
             else:
                 plot_func(ax, data, **kwargs)
@@ -220,7 +228,7 @@ def plot_on_pair_grid(data_by_pair: Dict[Tuple[str, str], Any], plot_func: Calla
 
 
 def get_qubit_grid(qubits: list,
-                   qubit_to_coord: Callable = lambda q: DEFAULT_GRID_COORDINATES[q],
+                   qubit_to_coord: Optional[Callable] = None,
                    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
                    fig_kwargs: Optional[Dict] = None,
                    qubit_labels: bool = True,
@@ -242,6 +250,9 @@ def get_qubit_grid(qubits: list,
         Tuple[plt.Figure, np.ndarray]: The figure and axes used for
         plotting.
     """
+    if qubit_to_coord is None:
+        qubit_coordinates = aggr_u.assign_coordinates(qubits)
+        qubit_to_coord = lambda q: qubit_coordinates[q]
     data_by_index_on_grid = {qubit_to_coord(q): None for q in qubits}
     if qubit_labels:
         labels = {qubit_to_coord(q): q for q in qubits}
@@ -256,52 +267,6 @@ def get_qubit_grid(qubits: list,
         ax_properties=ax_properties,
         remove_empty_axes=remove_empty_axes,
     )
-
-def _get_gridshape_and_offsets(indices: list[tuple[int, int]]):
-    """
-    Calculates the shape of a grid and the offsets required to adjust for
-    any negative indices in a list of 2D coordinates.
-
-    Given a list of (row, column) indices, this function determines the
-    overall grid shape necessary to encompass all provided indices, as well
-    as the offset values needed to translate any negative indices into a
-    positive-only grid system (e.g. for plotting on a figure).
-
-    Args:
-        indices (list[tuple[int, int]]): A list of tuples where each tuple
-            contains a pair of integers representing the (row, column)
-            indices in a 2D grid.
-
-    Returns:
-        tuple: A tuple containing:
-            - grid_shape (tuple[int, int]): The shape of the grid as
-              (number of rows, number of columns).
-            - row_offset (int): The amount to offset the row indices to
-              ensure all are non-negative.
-            - column_offset (int): The amount to offset the column indices
-              to ensure all are non-negative.
-
-    Example:
-        >>> indices = [(0, 0), (-1, 2), (2, -3)]
-        >>> _get_gridshape_and_offsets(indices)
-        ((4, 6), 1, 3)
-    """
-    row_indices = [i[0] for i in indices]
-    column_indices = [i[1] for i in indices]
-    grid_shape = (max(row_indices) - min(row_indices) + 1,
-                  max(column_indices) - min(column_indices) + 1)
-    # calculate offset in case there are negative indices,
-    # the index are padded by the offset
-    # such that because all indices in the grid are positive
-    row_offset = abs(np.minimum(0, min(row_indices)))
-    column_offset = abs(np.minimum(0, min(column_indices)))
-    return grid_shape, row_offset, column_offset
-
-
-def savefig(fig,  path, fig_name,bbox_inches='tight', extension='pdf', dpi=None):
-    figpath = (pathlib.Path(path) /
-               (fig_name + f'_{a_tools.current_timestamp()}.{extension}'))
-    fig.savefig(str(figpath), bbox_inches=bbox_inches, dpi=dpi)
 
 
 # plotting functions
@@ -372,31 +337,6 @@ def fig_from_measurement_plot_func(ax, fig_info: dict, fig_name='',
         img = mpimg.imread(img_data)
         ax.imshow(img)
         ax.axis('off')
-
-
-def add_text(ax, text, fontsize=35, alpha=0.2, **kwargs):
-    """
-    Adds a text label at the center of the given axis.
-
-    Args:
-        ax (matplotlib.axes.Axes): The axis on which to place the text.
-        text (str): The text to display.
-        fontsize (int, optional): Font size of the text.
-        alpha (float, optional): Opacity of the text.
-        **kwargs: Additional keyword arguments to pass to ax.text()
-
-    Example:
-        fig, ax = plt.subplots()
-        add_translucent_text(ax, "Sample Text")
-        plt.show()
-    """
-    # Get the center of the axis in data coordinates
-    x_center = (ax.get_xlim()[0] + ax.get_xlim()[1]) / 2
-    y_center = (ax.get_ylim()[0] + ax.get_ylim()[1]) / 2
-
-    # Add the text at the center
-    ax.text(x_center, y_center, text, fontsize=fontsize, alpha=alpha,
-            ha='center', va='center', **kwargs)
 
 
 class CalibrationPlotAggregator:
