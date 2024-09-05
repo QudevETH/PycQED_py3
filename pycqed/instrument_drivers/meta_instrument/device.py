@@ -37,15 +37,18 @@ from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis_v3 import plotting as plot_mod
 from collections import OrderedDict
 from collections.abc import Mapping
+from typing import Optional
+import pycqed.analysis_v2.plotting.aggregation as plta
 
 log = logging.getLogger(__name__)
 
 class Device(Instrument):
     # params that should not be loaded by pycqed.utilities.general.load_settings
-    _params_to_not_load = {'qubits'}
+    _params_to_not_load = {'qubits', 'qubit_coordinates'}
 
 
-    def __init__(self, name, qubits, connectivity_graph, **kw):
+    def __init__(self, name, qubits, connectivity_graph,
+                 qubit_coordinates: Optional[dict] = None, **kw):
         """
         Instantiates device instrument and adds its parameters.
 
@@ -54,10 +57,13 @@ class Device(Instrument):
             qubits (list of QudevTransmon or names of QudevTransmon objects): qubits of the device
             connectivity_graph: list of elements of the form [qb1, qb2] with qb1 and qb2 QudevTransmon objects or names
                          thereof. qb1 and qb2 should be physically connected on the device.
+            qubit_coordinates (dict): mapping from qubit names to integer coordinates
+                {'qb1': (x,y), ...}. Used for plotting purposes.
         """
         # initialize self.qubits before super call to prevent a potential
         # infinite recursion in __getattr__
         self.qubits = []
+        self.qubit_coordinates = qubit_coordinates or {}
         # FIXME: the following is needed for a workaround in __getattr__ and
         #  can be removed when this workaround is not needed anymore
         self._during_add_parameter = False
@@ -1059,6 +1065,26 @@ class Device(Instrument):
             return
         else:
             return fig
+
+    def plot_on_qubit_grid(self, aggregator: Optional = None, **kw):
+        if aggregator is None:
+            return plta.plot_on_qubit_grid(**kw)
+        else:
+            if self.qubit_coordinates:
+                kw.setdefault('qubit_to_coord',
+                              lambda qbn: self.qubit_coordinates[qbn])
+            return aggregator.plot_on_qubit_grid(**kw)
+
+    def plot_on_pair_grid(self, aggregator: Optional = None, **kw):
+        if aggregator is not None:
+            raise NotImplementedError('First implement Aggregator.plot_on_pair_grid')
+        else:
+            if self.qubit_coordinates:
+                pair_to_coord = lambda q1, q2: (
+                    self.qubit_coordinates[q1][0] + self.qubit_coordinates[q2][0],
+                    self.qubit_coordinates[q1][1] + self.qubit_coordinates[q2][1]),
+                kw.setdefault('pair_to_coord', pair_to_coord)
+            return plta.plot_on_pair_grid(**kw)
 
     def add_parameter(self, *args, **kwargs):
         # FIXME overriding the super method is only needed for a workaround
