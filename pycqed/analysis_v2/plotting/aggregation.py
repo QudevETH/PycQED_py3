@@ -17,14 +17,6 @@ logger = logging.getLogger(__name__)
 # start with underscore to be 'first file shown in alphabetical order
 COMBINED_PLOT_PREFIX = '_combined'
 
-S17_QUBIT_TO_COORD = {
-    'qb1': (0, 0), 'qb2': (0, 1), 'qb3': (1, 0), 'qb4': (1, 1),
-    'qb5': (1, 2), 'qb6': (1, 3), 'qb7': (2, -1), 'qb8': (2, 0),
-    'qb9': (2, 1), 'qb10': (2, 2), 'qb11': (2, 3), 'qb12': (3, -1),
-    'qb13': (3, 0), 'qb14': (3, 1), 'qb15': (3, 2), 'qb16': (4, 1),
-    'qb17': (4, 2),
-}
-DEFAULT_GRID_COORDINATES = S17_QUBIT_TO_COORD
 
 
 def plot_on_grid(data_by_index: Dict[Tuple[int, int], Any], plot_func: Callable,
