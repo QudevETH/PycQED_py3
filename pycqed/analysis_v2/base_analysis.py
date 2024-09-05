@@ -928,6 +928,7 @@ class BaseDataAnalysis(object):
                         prep_params = dict()
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
+                    reset_reps = 0
                     if 'active' in prep_params.get('preparation_type', 'wait'):
                         reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
@@ -953,7 +954,7 @@ class BaseDataAnalysis(object):
                         idx_dict_1 = next(iter(cal_points.get_indices(
                             cal_points.qb_names, prep_params).values()))
                         num_cal_segments = len([i for j in idx_dict_1.values()
-                                                for i in j])
+                                                for i in j]) * (reset_reps + 1)
                         # take out CalibrationPoints from the end of each
                         # segment, and reshape the remaining data based on the
                         # hard (1st dimension) and soft (1st dimension)
