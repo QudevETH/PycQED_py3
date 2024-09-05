@@ -5,12 +5,6 @@ import numpy as np
 
 import pycqed.analysis.analysis_toolbox as a_tools
 
-def savefig(fig,  path, fig_name,bbox_inches='tight', extension='pdf', dpi=None):
-    figpath = (pathlib.Path(path) /
-               (fig_name + f'_{a_tools.current_timestamp()}.{extension}'))
-    fig.savefig(str(figpath), bbox_inches=bbox_inches, dpi=dpi)
-
-
 def assign_coordinates(labels, shape=None, order='row_first'):
     """
     Assigns 2D coordinates (xi, yi) to labels in either row-first or column-first order.
@@ -125,3 +119,17 @@ def add_text(ax, text, fontsize=35, alpha=0.2, **kwargs):
     # Add the text at the center
     ax.text(x_center, y_center, text, fontsize=fontsize, alpha=alpha,
             ha='center', va='center', **kwargs)
+
+
+def savefig(fig, path, fig_name, bbox_inches='tight', extension='pdf', dpi=None):
+    figpath = (pathlib.Path(path) /
+               (fig_name + f'_{a_tools.current_timestamp()}.{extension}'))
+    fig.savefig(str(figpath), bbox_inches=bbox_inches, dpi=dpi)
+
+
+def safe_format_str_with_keys(mystr: str, **kwargs) -> str:
+    """Safely formats a string, ignores all keys if one key is missing."""
+    try:
+        return mystr.format(**kwargs)
+    except KeyError:
+        return mystr
