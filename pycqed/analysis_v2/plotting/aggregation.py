@@ -392,7 +392,7 @@ class CalibrationPlotAggregator:
                         # cal name into their name)
                         if cal_name in fn and not (COMBINED_PLOT_PREFIX in fn):
                             fig_dict[qbn].update(
-                                fig_name=_safe_format(
+                                fig_name=aggr_u.safe_format_str_with_keys(
                                     cls.DEFAULT_CALIBRATION_PLOT_NAMES[cal_name],
                                     qbn=qbn
                                 )
@@ -490,7 +490,8 @@ class CalibrationPlotAggregator:
             fig_info = dict(self.fig_info)
         if fig_name:
             for qbn in fig_info:
-                fig_info[qbn]['fig_name'] = _safe_format(fig_name, qbn=qbn)
+                fig_info[qbn]['fig_name'] = (
+                    aggr_u.safe_format_str_with_keys(fig_name, qbn=qbn))
         last_entry = list(fig_info.values())[-1]
         save_kwargs = save_kwargs or {}
         save_kwargs.setdefault('path',
@@ -504,10 +505,3 @@ class CalibrationPlotAggregator:
                                   save_kwargs=save_kwargs,
                                   **plot_kwargs)
 
-
-def _safe_format(mystr: str, **kwargs) -> str:
-    """Safely formats a string, ignoring missing keys."""
-    try:
-        return mystr.format(**kwargs)
-    except KeyError:
-        return mystr
