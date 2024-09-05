@@ -1,14 +1,20 @@
 import matplotlib.pyplot as plt
 from io import BytesIO
 import matplotlib.image as mpimg
-from typing import Dict, Callable, Any
+import re
+import logging
+
 import pycqed.analysis.analysis_toolbox as a_tools
 import os
 import fnmatch
-from typing import Dict, Callable, Tuple, Any, Union, Optional
+from typing import Dict, Callable, Tuple, Any, Union, Optional, Sequence
 import numpy as np
 import pathlib
 import pycqed.measurement.quantum_experiment as qe_mod
+logger = logging.getLogger(__name__)
+
+# start with underscore to be 'first file shown in alphabetical order
+COMBINED_PLOT_PREFIX = '_combined'
 
 S17_QUBIT_TO_COORD = {
     'qb1': (0, 0), 'qb2': (0, 1), 'qb3': (1, 0), 'qb4': (1, 1),
@@ -87,7 +93,8 @@ def plot_on_grid(data_by_index: Dict[Tuple[int, int], Any], plot_func: Callable,
     if save:
         sk = dict(save_kwargs) if save_kwargs else {}
         sk.setdefault('path', '.')
-        sk.setdefault('fig_name', 'combined_plot')
+        sk.setdefault('fig_name', COMBINED_PLOT_PREFIX)
+        sk.setdefault('extension', 'png')
         savefig(fig, **sk)
     return fig, axes
 
@@ -392,14 +399,6 @@ def add_text(ax, text, fontsize=35, alpha=0.2, **kwargs):
             ha='center', va='center', **kwargs)
 
 
-from typing import Literal, Optional, Sequence, Union
-import re
-import os
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 class CalibrationPlotAggregator:
     DEFAULT_CALIBRATION_PLOT_NAMES = {
         'Rabi': 'Rabi_{qbn}',
@@ -456,7 +455,10 @@ class CalibrationPlotAggregator:
                 # Infer the calibration type and corresponding figure name.
                 for fn in os.listdir(a_tools.get_folder(t)):
                     for cal_name in cls.DEFAULT_CALIBRATION_PLOT_NAMES:
-                        if cal_name in fn:
+                        # find a figure that matched the calibration name which
+                        # is not a combined plot (those might also have the
+                        # cal name into their name)
+                        if cal_name in fn and not (COMBINED_PLOT_PREFIX in fn):
                             fig_dict[qbn].update(
                                 fig_name=_safe_format(
                                     cls.DEFAULT_CALIBRATION_PLOT_NAMES[cal_name],
@@ -561,7 +563,11 @@ class CalibrationPlotAggregator:
         save_kwargs = save_kwargs or {}
         save_kwargs.setdefault('path',
                                a_tools.get_folder(last_entry['timestamp']))
-        save_kwargs.setdefault('fig_name', f'{last_entry["fig_name"]}_combined')
+        combined_fig_name = f'{COMBINED_PLOT_PREFIX}_{last_entry["fig_name"]}'
+        # remove qubit names (figure-specific) from combined plot name
+        for qbn in self.discover_qubit_names([combined_fig_name]):
+            combined_fig_name = combined_fig_name.replace(qbn, "")
+        save_kwargs.setdefault('fig_name', combined_fig_name)
         return plot_on_qubit_grid(fig_info, fig_from_measurement_plot_func, save=save,
                                   save_kwargs=save_kwargs,
                                   **plot_kwargs)
