@@ -1505,6 +1505,18 @@ class BaseDataAnalysis(object):
 
         return figure, self.axs[fig_id]
 
+    def _generate_fig_ids(self):
+        """Ensure that each dict in plot_dicts has a key fig_id"""
+        for key in self.plot_dicts:
+            pdict = self.plot_dicts[key]
+            # Use the key of the plot_dict if no ax_id is specified
+            pdict['fig_id'] = pdict.get('fig_id', key)
+            pdict['ax_id'] = pdict.get('ax_id', None)
+
+            if isinstance(pdict['ax_id'], str):
+                pdict['fig_id'] = pdict['ax_id']
+                pdict['ax_id'] = None
+
     def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
         """
         Goes over the entries in self.plot_dict specified by key_list, and
@@ -1527,18 +1539,12 @@ class BaseDataAnalysis(object):
             key_list = [key_list]
         self.key_list = key_list
 
+        self._generate_fig_ids()
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
             if 'no_label' not in pdict:
                 pdict['no_label'] = no_label
-            # Use the key of the plot_dict if no ax_id is specified
-            pdict['fig_id'] = pdict.get('fig_id', key)
-            pdict['ax_id'] = pdict.get('ax_id', None)
-
-            if isinstance(pdict['ax_id'], str):
-                pdict['fig_id'] = pdict['ax_id']
-                pdict['ax_id'] = None
 
             if pdict['fig_id'] not in self.axs:
                 # This fig variable should perhaps be a different
@@ -1673,11 +1679,9 @@ class BaseDataAnalysis(object):
         Returns:
             list: list of unique figure ids.
         """
-        fig_ids = []
-        for name, item in self.plot_dicts.items():
-            fig_ids.append(item['fig_id'])
-
-        return np.unique(fig_ids).tolist()
+        self._generate_fig_ids()
+        fig_ids = [v['fig_id'] for v in self.plot_dicts.values()]
+        return list(np.unique(fig_ids))
 
     def add_to_plots(self, key_list=None):
         pass
