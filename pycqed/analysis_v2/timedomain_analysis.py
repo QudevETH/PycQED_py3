@@ -13489,7 +13489,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'interaction_freq_' + self.measurement_strings[
                     qbH_name].partition('_')[0]] = actual_interaction_freq
             amplitude2 = qbL.calculate_flux_voltage(
-                frequency=actual_interaction_freq)
+                frequency=actual_interaction_freq, flux=qbL.flux_parking())
             self.proc_data_dict['analysis_params_dict'][k][
                 'amplitude2_'+self.measurement_strings[qbH_name].partition(
                     '_')[0]] = amplitude2
