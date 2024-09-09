@@ -5311,12 +5311,12 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
         """
 
         # Remove transition_name from kw to avoid passing it to the parent.
-        # transition_name is passed explicitly to the parent as '' to avoid
+        # transition_name='' is passed explicitly to the parent to avoid
         # creating addiitonal preparation pulses which are already covered
         # by init_state.
-        transition_name = kw.pop('transition_name')
-        prepend_blocks = super().sweep_block(qb, sweep_points, '',
-                                             **kw)
+        kw.pop('transition_name')
+        prepend_blocks = super().sweep_block(qb=qb, sweep_points=sweep_points,
+                                             transition_name='', **kw)
         if lru_opcodes == 'auto':
             lru_transition = 'fh' if init_state == 'h' else (
                 'ef' if init_state == 'f' else '')
