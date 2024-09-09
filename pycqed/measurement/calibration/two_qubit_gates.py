@@ -166,7 +166,6 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
-            'reset_params': self.get_reset_params(),
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
@@ -879,7 +878,7 @@ class CalibBuilder(MultiTaskingExperiment):
             pulse['pulse_length'] = given_pulse_length
             # generate a pulse object to extend the given length with buffer
             # times etc
-            p = UnresolvedPulse(pulse)
+            p = UnresolvedPulse(pulse, fast_mode=self.fast_mode)
             return p.pulse_obj.length
 
         # Even if we only need a single pulse, creating a block allows
@@ -908,7 +907,7 @@ class CalibBuilder(MultiTaskingExperiment):
                 # generate a pulse object to extend the pulse length with
                 # buffer times etc. The pulse with index 1 is needed because
                 # the virtual block start pulse has index 0.
-                p = UnresolvedPulse(pulses[1])
+                p = UnresolvedPulse(pulses[1], fast_mode=self.fast_mode)
                 max_length = max(p.pulse_obj.length, max_length)
         return max_length
 
