@@ -57,7 +57,7 @@ class CircuitBuilder:
         self.dev = dev
         self.qubits, self.qb_names = self.extract_qubits(
             dev, qubits, operation_dict, filter_qb_names)
-        self._prep_sweep_params = {qb: {} for qb in self.qb_names}
+        self._reset_sweep_params = {qb: {} for qb in self.qb_names}
         self.update_operation_dict(operation_dict)
         self.cz_pulse_name = kw.get('cz_pulse_name')
         if self.cz_pulse_name is None:
@@ -761,7 +761,7 @@ class CircuitBuilder:
                     simultaneous_blocks.append(
                         reset_scheme.reset_block(
                             f"step_{i}_{qb.name}",
-                            sweep_params=self._prep_sweep_params.get(qb.name, None),
+                            sweep_params=self._reset_sweep_params.get(qb.name, None),
                         )
                     )
 

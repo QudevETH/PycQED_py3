@@ -272,6 +272,11 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
         exception = None
         with temporary_value(*self.temporary_values):
+            # update the nr_averages based on the settings in the user measure
+            # objects
+            self.df_kwargs.update({'nr_averages': max(
+                qb.acq_averages() for qb in self.meas_objs)})
+            
             # determine data type
             if "log" in self.df_name or not \
                     self.df_kwargs.get("det_get_values_kws",
