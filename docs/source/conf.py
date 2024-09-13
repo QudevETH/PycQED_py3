@@ -19,6 +19,7 @@ sys.path.append(os.path.abspath("./ext"))
 # Custom variable __sphinx_build__ which can be used to check inside the code
 # if the documentation is being built.
 import builtins
+
 builtins.__sphinx_build__ = True
 
 
@@ -30,20 +31,26 @@ copyright = "2023, Quantum Device Laboratory"
 
 # -- General configuration ---------------------------------------------------
 
-import sphinx_rtd_theme
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "sphinx.ext.mathjax",  # Add LaTeX support to our docs
     "sphinx.ext.autodoc",
+# FIXME: This can't handle our __init__ arguments which are sometimes added
+# to the class docstrings.
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
     "sphinx_rtd_theme",
     "myst_parser",
-    "autodoc_instrument",
+# FIXME: This one is broken
+#    "autodoc_instrument",
 ]
+
+napoleon_use_mathjax = True
+mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 
 # Enable writing pages both in ReStructuredText and Markdown
 source_suffix = [".rst", ".md"]
@@ -70,14 +77,19 @@ exclude_patterns = []
 # -- Autodoc and autosummary -------------------------------------------------
 
 # Do not prepend module names to avoid long, overflowing titles
+# FIXME: This is actually a problem
 add_module_names = False
 
+# FIXME: Lots of bugs...
 autosummary_generate = True
 
+# FIXME: See above
 autodoc_default_options = {
     "undoc-members": True, # Include members with no docstrings
     # Include following dunder functions in docs
-    "special-members": "__init__, __iter__, __next__"
+    "special-members": "__init__, __iter__, __next__",
+    # FIXME: autodoc just goes nuts here when using more than one core via Makefile
+    #"exclude-members": "pycqed.instrument_drivers.physical_instruments.arduino_switch_control.SwitchError",
 }
 
 
@@ -110,4 +122,14 @@ html_show_sourcelink = False
 
 # -- autodoc_instrument extension --------------------------------------------
 
-autodoc_instrument_configs_file = os.path.abspath("./autodoc_instrument_configs.yaml")
+# FIXME: This one is broken
+# autodoc_instrument_configs_file = os.path.abspath("./autodoc_instrument_configs.yaml")
+
+# -- enable macOS doc building --------------------------------------------
+
+import multiprocessing
+
+try:
+    multiprocessing.set_start_method('forkserver')
+except RuntimeError:
+    pass  # Method already set

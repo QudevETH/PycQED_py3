@@ -532,9 +532,12 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
         None or the results as str or dict, see parameter of arg output
     """
     log.warning('This function is no longer maintained and works only for hdf'
-                'files. Please use the settings manager '
-                '(pycqed.utilitities.settings_manager.SettingsManager) and the'
-                'function compare_stations().')
+                'files. '
+                'Please instantiate a settings manager object '
+                '(pycqed.utilitities.settings_manager.SettingsManager) and '
+                'use the function '
+                'SettingsManager.compare_stations([%ts1%, %ts2%, %ts3%, ...]) '
+                'instead.')
     h5mode = 'r'
     files_to_close = []
     try:
@@ -1534,21 +1537,26 @@ def predict_gm_proba_from_clf(X, clf_params):
         in each level
 
     """
-    reqs_params = ['means_', 'covariances_', 'covariance_type',
-                   'weights_', 'precisions_cholesky_']
-    clf_params = deepcopy(clf_params)
-    for r in reqs_params:
-        assert r in clf_params, "Required Classifier parameter {} " \
-                                "not given.".format(r)
-    gm = GM(covariance_type=clf_params.pop('covariance_type'))
-    for param_name, param_value in clf_params.items():
-        setattr(gm, param_name, param_value)
+    gm = load_gm_from_clf_params(clf_params)
 
     X_to_use = deepcopy(X)
     if X.ndim == 1:
         X_to_use = X.reshape(1, -1) if len(X) == 1 else X.reshape(-1, 1)
     probas = gm.predict_proba(X_to_use)
     return probas
+
+
+def load_gm_from_clf_params(clf_params):
+    reqs_params = ['means_', 'covariances_', 'covariance_type',
+                   'weights_', 'precisions_cholesky_']
+    clf_params = deepcopy(clf_params)
+    for r in reqs_params:
+        assert r in clf_params, f"Required Classifier parameter {r} not given."
+    gm = GM(covariance_type=clf_params.pop('covariance_type'))
+    for param_name, param_value in clf_params.items():
+        setattr(gm, param_name, param_value)
+    setattr(gm, 'n_components', clf_params['means_'].shape[0])
+    return gm
 
 
 def threshold_shots(data):
