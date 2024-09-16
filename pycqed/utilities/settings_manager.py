@@ -517,6 +517,6 @@ def convert_settings_to_hdf(timestamp: str):
         # the extension dict in base_io stores it with a dot (e.g. '.hdf')
         fn = a_tools.measurement_filename(a_tools.get_folder(timestamp),
                                           ext=ext[1:])
-        fn = fn[:-len(ext)] + '.hdf5'
+        fn = fn[:-len(ext)] + base_io.file_extensions['hdf5']
     with h5py.File(fn, 'a') as hdf_file:
         MeasurementControl.save_station_in_hdf(hdf_file, station)
