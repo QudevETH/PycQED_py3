@@ -161,9 +161,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             with dict keys being indices of acquisition units and list entries
             corresponding to the integration channels of the acquisition unit.
         """
-        self._acq_poll_inds = {}
-        for i in self.qachannels:
-            if self.emulate_poll():
+        if self.emulate_poll():
+            self._acq_poll_inds = {}
+            for i in self.qachannels:
                 channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
                 length = len(channels)
                 self._acq_poll_inds[i] = [0] * length
