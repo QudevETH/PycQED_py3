@@ -1461,7 +1461,7 @@ class BaseDataAnalysis(object):
 
         key_list = self._get_key_list(key_list)
         self._generate_fig_ids()
-        # Plot entries corresponding to key_list, i.e., to be plotted
+        # Select entries corresponding to key_list, i.e., to be plotted
         plot_dicts = {k: p for k, p in self.plot_dicts.items()
                       if k in key_list}
 
@@ -1469,7 +1469,7 @@ class BaseDataAnalysis(object):
         unique_fig_names = set(p['fig_id'] for k, p in plot_dicts.items())
         for unique_fig_name in unique_fig_names:
             fig_key_list = [k for k, p in plot_dicts.items()
-                            if p.get('fig_id', k) == unique_fig_name]
+                            if p['fig_id'] == unique_fig_name]
             self._prepare_for_plot(fig_key_list, axs_dict, no_label,
                                    presentation_mode)
             self._plot(fig_key_list, transparent_background, fig_id=fig_id)
