@@ -153,7 +153,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
 
-        Only necessary if self.emulate_poll()==True
+        Only necessary if self.emulate_poll()==True. self._acq_poll_inds
+        will only be used in that case, which is why this variable in only
+        created here
 
         self._acq_poll_inds will be set to a dict of lists of zeros,
             with dict keys being indices of acquisition units and list entries
@@ -590,7 +592,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 )
             timetraces = np.array([])
             for _ in range(num_runs):
-                print("in runs for num_runs: ", num_runs)
                 self._arm_scope()
                 # FIXME this is blocking, to get enough data to average
                 #  in the driver (not the usual behaviour of poll)
@@ -599,7 +600,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 polled_data = self.get_cached_poll_data()
                 data = polled_data.get(node, {})
                 if data:
-                    timetraces = np.concatenate((timetraces, data[0]['vector']))
+                    timetraces = np.concatenate((timetraces, data[0][
+                        'vector']))
                 # This is a 1-D complex time trace
 
             timetraces = timetraces[
@@ -627,9 +629,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             if self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[channel[0]] == 'readout':
 
-                scaling_factor = 1 / (self.acq_sampling_rate * self._acq_length)
+                scaling_factor = 1 / (self.acq_sampling_rate *
+                                      self._acq_length)
                 # TODO: why do we only keep real part?
-                dataset[channel] = [np.real(data[0]['vector'])*scaling_factor]
+                dataset[channel] = [
+                    np.real(data[0]['vector']) * scaling_factor]
             elif self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[channel[0]] == 'spectroscopy':
                 raw_data = data[0]['vector']
@@ -637,8 +641,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 # complex number array raw_data is split up in real and
                 # imaginary part.
                 dataset.update(
-                    {(channel[0], channel[1]): [np.real(raw_data)*scaling_factor],
-                     (channel[2], channel[3]):  [np.imag(raw_data)*scaling_factor]})
+                    {(channel[0], channel[1]): [
+                        np.real(raw_data) * scaling_factor],
+                        (channel[2], channel[3]): [
+                            np.imag(raw_data) * scaling_factor]})
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
                 # TODO: Why do we only look at the first element in scopes?
@@ -648,7 +654,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 # to ensure compatibility with existing analysis classes
                 # use natural sign in averaged mode
                 sign = {'avg': -1, 'scope': 1}[self._acq_mode]
-                dataset[(channel[0], 1)] = [sign*np.imag(timetrace)]
+                dataset[(channel[0], 1)] = [sign * np.imag(timetrace)]
             else:
                 raise NotImplementedError("Mode not recognised!")
         return dataset
