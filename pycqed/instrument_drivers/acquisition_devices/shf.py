@@ -631,7 +631,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
 
                 scaling_factor = 1 / (self.acq_sampling_rate *
                                       self._acq_length)
-                # TODO: why do we only keep real part?
+                # The polled data-vector of the I and Q channels stores complex
+                # values of the form I = a + j*b and Q = b - j*a.
+                # Since we subscribe to both nodes, it is sufficient to
+                # process only the real part of the vector to access all the
+                # available data (i.e. a and b).
                 dataset[channel] = [
                     np.real(data[0]['vector']) * scaling_factor]
             elif self._acq_mode == 'int_avg' \
