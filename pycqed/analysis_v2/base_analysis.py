@@ -1543,6 +1543,7 @@ class BaseDataAnalysis(object):
             key_list (list): list of keys in self.plot_dicts
             axs_dict (dict): will be used to define self.axs
             no_label (bool): whether figure should have a label
+            presentation_mode (bool): whether to prepare for presentation
         """
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
@@ -1559,18 +1560,14 @@ class BaseDataAnalysis(object):
             if presentation_mode:
                 pdict['title'] = None
 
-
             if pdict['fig_id'] not in self.axs:
-                # This fig variable should perhaps be a different
-                # variable for each plot!!
-                # This might fix a bug.
                 self.figs[pdict['fig_id']], self.axs[pdict['fig_id']] = plt.subplots(
                     pdict.get('numplotsy', 1), pdict.get('numplotsx', 1),
                     sharex=pdict.get('sharex', False),
                     sharey=pdict.get('sharey', False),
                     figsize=pdict.get('plotsize', None),
-                    gridspec_kw=pdict.get('gridspec_kw', None),
                     # plotsize None uses .rc_default of matplotlib
+                    gridspec_kw=pdict.get('gridspec_kw', None),
                 )
                 if pdict.get('3d', False):
                     self.axs[pdict['fig_id']].remove()
