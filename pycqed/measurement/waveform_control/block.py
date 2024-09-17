@@ -420,6 +420,9 @@ class ParametricValue:
         pv.func = lambda x, f=pv.func: other / f(x)
         return pv
 
+    def __repr__(self):
+        return super().__repr__() + f"({self.param})"
+
 
 def parse_pulse_search_pattern(pattern):
     """Parse strings/ints that represent a pulse search pattern

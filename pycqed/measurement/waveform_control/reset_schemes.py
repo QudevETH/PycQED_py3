@@ -1,4 +1,31 @@
+"""
+Reset Schemes for Quantum Control
+
+This module provides implementations of various reset schemes for quantum control
+operations in the PycQED framework. It defines several classes that inherit from
+the base ResetScheme class, each implementing a specific reset strategy.
+
+Each reset scheme class provides methods for constructing reset blocks,
+handling operation dictionaries, and generating analysis instructions. These
+schemes can be used to initialize quantum systems to desired states before
+measurements or other quantum operations.
+
+The module is designed to be flexible and extensible, allowing for easy
+addition of new reset schemes as needed.
+
+Typical notebook usage example:
+
+    qb.add_reset_schemes()
+    qb.reset.steps(['preselection', 'feedback_reset', 'parametric_flux_reset'])
+
+By default the following reset schemes are added by add_reset_schemes():
+
+- preselection: A preselection-based reset scheme with opt. flux compensation.
+- feedback_reset: A feedback-based active reset scheme.
+"""
+
 import logging
+
 log = logging.getLogger(__name__)
 
 from copy import deepcopy
