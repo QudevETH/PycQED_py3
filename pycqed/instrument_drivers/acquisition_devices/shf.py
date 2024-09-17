@@ -647,7 +647,6 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                             np.imag(raw_data) * scaling_factor]})
             elif (self._acq_mode == 'scope' and self._acq_data_type ==
                   'timedomain') or self._acq_mode == 'avg':
-                # TODO: Why do we only look at the first element in scopes?
                 timetrace = data[0]['vector']
                 dataset[(channel[0], 0)] = [np.real(timetrace)]
                 # use sign convention as is used by UHFQA in avg mode
