@@ -1460,15 +1460,13 @@ class BaseDataAnalysis(object):
         """
 
         key_list = self._get_key_list(key_list)
+        self._generate_fig_ids()
+        # Plot entries corresponding to key_list, i.e., to be plotted
         plot_dicts = {k: p for k, p in self.plot_dicts.items()
                       if k in key_list}
-        # fig_id defaults to k to match the behaviour of _prepare_for_plot
-        # FIXME A slightly cleaner solution would be to call _prepare_for_plot
-        #  earlier so fig_id always exists. This would need refactoring
-        #  _prepare_for_plot so it only edits the pdicts, and move creating
-        #  figures to _plot.
-        unique_fig_names = set(p.get('fig_id', k)
-                               for k, p in plot_dicts.items())
+
+        # p['fig_id'] always exists after _generate_fig_ids
+        unique_fig_names = set(p['fig_id'] for k, p in plot_dicts.items())
         for unique_fig_name in unique_fig_names:
             fig_key_list = [k for k, p in plot_dicts.items()
                             if p.get('fig_id', k) == unique_fig_name]
@@ -1494,7 +1492,9 @@ class BaseDataAnalysis(object):
                 multiple `Axes`.
         """
         key_list = self._get_key_list()
-        # FIXME calling this for fig_id only might be faster, as in plot()
+        self._generate_fig_ids()
+        # FIXME calling this for fig_id only might be faster, as in plot().
+        #  Kept as it is for now as this is only relevant to the gui.
         self._prepare_for_plot(key_list=key_list)
         self._plot(key_list=key_list, fig_id=fig_id)
 
@@ -1548,24 +1548,17 @@ class BaseDataAnalysis(object):
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
 
-        self._generate_fig_ids()
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
             if 'no_label' not in pdict:
                 pdict['no_label'] = no_label
-            # Use the key of the plot_dict if no ax_id is specified
-            pdict['fig_id'] = pdict.get('fig_id', key)
-            pdict['ax_id'] = pdict.get('ax_id', None)
 
             if presentation_mode is None:
                 presentation_mode = self.presentation_mode
             if presentation_mode:
                 pdict['title'] = None
 
-            if isinstance(pdict['ax_id'], str):
-                pdict['fig_id'] = pdict['ax_id']
-                pdict['ax_id'] = None
 
             if pdict['fig_id'] not in self.axs:
                 # This fig variable should perhaps be a different
