@@ -1913,7 +1913,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             #  (n_soft_sp, n_shots * n_hard_sp, n_vn)
             #  to (n_shots * n_hard_sp * n_soft_sp, n_ro_ch)
             if np.ndim(shots_per_qb[qbn]) == 3:
-                assert self.get_param_value("TwoD", False) or soft_control, \
+                assert self.get_param_value("TwoD", False), \
                     "'TwoD' is False but single shot data seems to be 2D"
                 n_vn = shots_per_qb[qbn].shape[-1]
                 # put softsweep as inner most loop for easier processing
