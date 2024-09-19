@@ -4,7 +4,7 @@ log = logging.getLogger(__name__)
 import itertools
 import scipy as sp
 import numpy as np
-import qutip as qtp
+import pycqed.utilities.qutip_compat as qtp
 import matplotlib as mpl
 from collections import OrderedDict
 from pycqed.analysis_v2 import tomography_qudev as tomo

@@ -8,7 +8,7 @@ import lmfit
 import datetime
 import traceback
 import numpy as np
-import qutip as qtp
+import pycqed.utilities.qutip_compat as qtp
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from collections import OrderedDict

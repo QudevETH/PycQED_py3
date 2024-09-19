@@ -1,5 +1,5 @@
 import numpy as np
-import qutip as qtp
+import pycqed.utilities.qutip_compat as qtp
 from pycqed.analysis import analysis_toolbox as a_tools
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable

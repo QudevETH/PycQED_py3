@@ -4,10 +4,10 @@ import numpy as np
 from numpy.linalg import inv
 from typing import List, Optional, Tuple
 import scipy as sp
-try:
-    import qutip as qtp
-except ImportError as e:
-    logging.warning('Could not import qutip, tomo code will not work')
+import pycqed.utilities.qutip_compat as qtp
+if not qtp.is_imported:
+    log = logging.getLogger(__name__)
+    log.warning('Could not import qutip, tomo code will not work')
 
 DEFAULT_BASIS_ROTS = ('I', 'X180', 'Y90', 'mY90', 'X90', 'mX90')
 # General state tomography functions

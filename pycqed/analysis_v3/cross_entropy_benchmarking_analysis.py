@@ -6,8 +6,7 @@ import time
 import lmfit
 import datetime
 import traceback
-import qutip as qt
-import qutip_qip.operations as qip
+import pycqed.utilities.qutip_compat as qt
 import numpy as np
 import scipy as sp
 from copy import copy, deepcopy
@@ -90,9 +89,9 @@ def crossEntropyFidelity(pops_meas, pops_ideal, d):
 
 ### Single qubit XEB ###
 
-sqrtXqt = qip.gates.rx(np.pi/2, N=None, target=0)
-sqrtYqt = qip.gates.ry(np.pi/2, N=None, target=0)
-Tqt = qip.gates.rz(np.pi/4, N=None, target=0)
+sqrtXqt = qt.qip.operations.gates.rx(np.pi/2, N=None, target=0)
+sqrtYqt = qt.qip.operations.gates.ry(np.pi/2, N=None, target=0)
+Tqt = qt.qip.operations.gates.rz(np.pi/4, N=None, target=0)
 sqrtX = sqrtXqt.full()
 sqrtY = sqrtYqt.full()
 T = Tqt.full()
@@ -178,7 +177,7 @@ def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots,
     :param nr_cycles (int): number of XEB cycles in circuit
     :param nr_seq (int): number of random samplings of the circuit
     :param rots (list of lists): of the form
-        [[qip.rotation(qt.sigmaz(), z_angle).full()
+        [[qt.qip.operations.rotation(qt.sigmaz(), z_angle).full()
          for z_angle in z_angles[i]] for i in range(nr_seq)]
     :param init_state: length 2 numpy array for initial rotation
     :return: ideal populations
@@ -424,7 +423,7 @@ def calculate_fidelities_purities_1qb(data_dict, data_key='correct_readout',
 
     Uinterleaved = None
     if amp_sc_intlvd_gate is not None:
-        Uinterleaved = qip.gates.rx(amp_sc_intlvd_gate*np.pi,
+        Uinterleaved = qt.qip.operations.gates.rx(amp_sc_intlvd_gate*np.pi,
                                                   N=None, target=0).full()
     circuit_calc_func = hlp_mod.get_param('circuit_calc_func', data_dict,
                                           **params)
@@ -504,7 +503,7 @@ def get_z_rotations(nr_cycles, nr_seq, z_angles=None, seed=None,
         rots_cycle = [''] * nr_cycles
         rots_cycle_qt = [''] * nr_cycles
         for j, a in enumerate(z_angles[i]):
-            z_rot = qip.rotation(qt.sigmaz(), a)
+            z_rot = qt.qip.operations.rotation(qt.sigmaz(), a)
             rots_cycle[j] = z_rot.full()
             if qutip_type:
                 rots_cycle_qt[j] = z_rot
@@ -559,7 +558,7 @@ sqrtYqt_2qbs = qt.tensor(sqrtYqt, sqrtYqt)
 Tqt_2qbs = qt.tensor(Tqt, Tqt)
 sqrtX_2qbs, sqrtY_2qbs = sqrtXqt_2qbs.full(), sqrtYqt_2qbs.full()
 T_2qbs = Tqt_2qbs.full()
-czqt = qip.cphase(np.pi)
+czqt = qt.qip.operations.cphase(np.pi)
 cz = czqt.full()
 
 gg_qt, ge_qt, eg_qt, ee_qt = [qt.states.basis(4, i).full() for i in range(4)]
@@ -785,7 +784,7 @@ def manual_propagator(gate):
     else:
         raise ValueError(f"Gate {gate.name} not implemented!")
         # TODO if needed: fall back to the generic method
-        #  qip.gate_sequence_product(qc.propagators())
+        #  qt.qip.operations.gate_sequence_product(qc.propagators())
         #  where qc is a qutip quantum circuit containing the gates.
     return m
 
@@ -798,7 +797,7 @@ def proba(qc):
      faster if needed.
     """
     # Equivalent (only for basic gates) to
-    # U = qip.gate_sequence_product(qc.propagators())
+    # U = qt.qip.operations.gate_sequence_product(qc.propagators())
     M = np.eye(4)
     for g in qc.gates:
         M = np.matmul(manual_propagator(g), M)
@@ -1356,35 +1355,35 @@ def get_multi_xeb_results_from_dd(dd2, dd1=None, **kw):
 #     'I': qt.qeye(2),
 #     'X0': qt.qeye(2),
 #     'Z0': qt.qeye(2),
-#     'mX180': qip.gates.rx(np.pi),
-#     'X180': qip.gates.rx(-np.pi),
-#     'mY180': qip.gates.ry(np.pi),
-#     'Y180': qip.gates.ry(-np.pi),
-#     'mX90': qip.gates.rx(np.pi/2),
-#     'X90': qip.gates.rx(-np.pi/2),
-#     'mY90': qip.gates.ry(np.pi/2),
-#     'Y90': qip.gates.ry(-np.pi/2),
-#     'mZ90': qip.gates.rz(np.pi/2),
-#     'Z90': qip.gates.rz(-np.pi/2),
-#     'mZ180': qip.gates.rz(np.pi),
-#     'Z180': qip.gates.rz(-np.pi),
+#     'mX180': qt.qip.operations.gates.rx(np.pi),
+#     'X180': qt.qip.operations.gates.rx(-np.pi),
+#     'mY180': qt.qip.operations.gates.ry(np.pi),
+#     'Y180': qt.qip.operations.gates.ry(-np.pi),
+#     'mX90': qt.qip.operations.gates.rx(np.pi/2),
+#     'X90': qt.qip.operations.gates.rx(-np.pi/2),
+#     'mY90': qt.qip.operations.gates.ry(np.pi/2),
+#     'Y90': qt.qip.operations.gates.ry(-np.pi/2),
+#     'mZ90': qt.qip.operations.gates.rz(np.pi/2),
+#     'Z90': qt.qip.operations.gates.rz(-np.pi/2),
+#     'mZ180': qt.qip.operations.gates.rz(np.pi),
+#     'Z180': qt.qip.operations.gates.rz(-np.pi),
 # }
 standard_pulses_qt = {
     'I': qt.qeye(2),
     'X0': qt.qeye(2),
     'Z0': qt.qeye(2),
-    'mX180': qip.gates.rx(-np.pi, N=None, target=0),
-    'X180': qip.gates.rx(np.pi, N=None, target=0),
-    'mY180': qip.gates.ry(-np.pi, N=None, target=0),
-    'Y180': qip.gates.ry(np.pi, N=None, target=0),
-    'mX90': qip.gates.rx(-np.pi/2, N=None, target=0),
+    'mX180': qt.qip.operations.gates.rx(-np.pi, N=None, target=0),
+    'X180': qt.qip.operations.gates.rx(np.pi, N=None, target=0),
+    'mY180': qt.qip.operations.gates.ry(-np.pi, N=None, target=0),
+    'Y180': qt.qip.operations.gates.ry(np.pi, N=None, target=0),
+    'mX90': qt.qip.operations.gates.rx(-np.pi/2, N=None, target=0),
     'X90': sqrtXqt,
-    'mY90': qip.gates.ry(-np.pi/2, N=None, target=0),
+    'mY90': qt.qip.operations.gates.ry(-np.pi/2, N=None, target=0),
     'Y90': sqrtYqt,
-    'mZ90': qip.gates.rz(-np.pi/2, N=None, target=0),
-    'Z90': qip.gates.rz(np.pi/2, N=None, target=0),
-    'mZ180': qip.gates.rz(-np.pi, N=None, target=0),
-    'Z180': qip.gates.rz(np.pi, N=None, target=0),
+    'mZ90': qt.qip.operations.gates.rz(-np.pi/2, N=None, target=0),
+    'Z90': qt.qip.operations.gates.rz(np.pi/2, N=None, target=0),
+    'mZ180': qt.qip.operations.gates.rz(-np.pi, N=None, target=0),
+    'Z180': qt.qip.operations.gates.rz(np.pi, N=None, target=0),
     'Z45': Tqt,
 }
 
