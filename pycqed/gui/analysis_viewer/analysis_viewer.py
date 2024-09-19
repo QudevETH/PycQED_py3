@@ -248,13 +248,13 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
         Args:
             event: `QtGui.QKeyEvent` object to be processed.
         """
-        if event.key() == QtCore.Qt.Key_Left:
+        if event.key() == QtCore.Qt.Key.Key_Left:
             self._handle_key_left_event(event)
-        elif event.key() == QtCore.Qt.Key_Right:
+        elif event.key() == QtCore.Qt.Key.Key_Right:
             self._handle_key_right_event(event)
-        elif event.key() == QtCore.Qt.Key_Up:
+        elif event.key() == QtCore.Qt.Key.Key_Up:
             self._handle_key_up_event(event)
-        elif event.key() == QtCore.Qt.Key_Down:
+        elif event.key() == QtCore.Qt.Key.Key_Down:
             self._handle_key_down_event(event)
 
     def _handle_key_down_event(self, event: QtGui.QKeyEvent):
@@ -262,7 +262,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
 
         Args:
             event: key press event (assumed to be
-                `QtCore.Qt.Key_Down`).
+                `QtCore.Qt.Key.Key_Down`).
         """
         with gui_utilities.set_wait_cursor(self):
             try:
@@ -279,7 +279,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
 
         Args:
             event: key press event (assumed to be
-                `QtCore.Qt.Key_Up`).
+                `QtCore.Qt.Key.Key_Up`).
         """
         with gui_utilities.set_wait_cursor(self):
             try:
@@ -296,7 +296,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
 
         Args:
             event: key press event (assumed to be
-                `QtCore.Qt.Key_Right`).
+                `QtCore.Qt.Key.Key_Right`).
         """
         with gui_utilities.set_wait_cursor(self):
             try:
@@ -311,7 +311,7 @@ class MainWindow(TriggerResizeEventMixin, QtWidgets.QMainWindow):
 
         Args:
             event: key press event (assumed to be
-                `QtCore.Qt.Key_Left`).
+                `QtCore.Qt.Key.Key_Left`).
         """
         with gui_utilities.set_wait_cursor(self):
             try:

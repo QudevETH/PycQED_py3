@@ -1539,7 +1539,7 @@ class SquarePulse(pulse.Pulse):
         super().__init__(name, element_name, **kw)
         if channel is None and channels is None:
             raise ValueError('Must specify either channel or channels')
-        elif channels is None:
+        elif not channels:
             self.channel = channel  # this is just for convenience, internally
             # this is the part the sequencer element wants to communicate with
             self.channels.append(channel)
