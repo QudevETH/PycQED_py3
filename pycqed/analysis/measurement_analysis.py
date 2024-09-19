@@ -4662,6 +4662,14 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
     """
 
     def __init__(self, label='Source', **kw):
+        # TODO: Remove this class in the future as it's superceded by QE
+        log.warning(
+            "Deprecation warning: please use the QuantumExperiment "
+            "Framework which you can find in analysis_v2/"
+            "spectroscopy_analysis.py. I.e., "
+            "QubitSpectroscopy1DAnalysis."
+        )
+
         kw['label'] = label
         kw['h5mode'] = 'r+'  # Read write mode, file must exist
         super(self.__class__, self).__init__(**kw)
@@ -4931,13 +4939,16 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
 
         scale = SI_prefix_and_scale_factor(val=max(abs(ax_dist.get_xticks())),
                                            unit=self.sweep_unit[0])[0]
+
+        timestamp_underscore = list(a_tools.verify_timestamp(self.timestamp))
+        timestamp_underscore = '_'.join(timestamp_underscore)
         if analyze_ef:
             try:
                 sm = setman.SettingsManager()
                 old_freq = sm.get_parameter(self.qb_name + '.ge_freq',
-                                            self.timestamp)
+                                            timestamp_underscore)
                 old_freq_ef = sm.get_parameter(self.qb_name + '.ef_freq',
-                                               self.timestamp)
+                                               timestamp_underscore)
                 label = 'f0={:.5f} GHz ' \
                         '\nold f0={:.5f} GHz' \
                         '\nkappa0={:.4f} MHz' \
@@ -4967,7 +4978,9 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
             label = 'f0={:.5f} GHz '.format(
                 self.fit_res.params['f0'].value * scale)
             try:
-                old_freq = eval(instr_set[self.qb_name].attrs['f_qubit'])
+                sm = setman.SettingsManager()
+                old_freq = sm.get_parameter(self.qb_name + '.ge_freq',
+                                            timestamp_underscore)
                 label += '\nold f0={:.5f} GHz' .format(
                     old_freq * scale)
             except (TypeError, KeyError, ValueError):
@@ -5750,6 +5763,9 @@ class Fluxpulse_Ramsey_2D_Analysis(MeasurementAnalysis):
 
 
 class Fluxpulse_Ramsey_2D_Analysis_Predictive(MeasurementAnalysis):
+    """Measurement analysis class to analyse Ramsey type measurements
+    with an interleaved flux pulse.
+    """
 
     def __init__(self, X90_separation=None, flux_pulse_length=None,
                  drive_pulse_length=None,
@@ -5758,17 +5774,19 @@ class Fluxpulse_Ramsey_2D_Analysis_Predictive(MeasurementAnalysis):
                  reference_measurements=False,
                  plot=False,
                  **kw):
-        """
-        Measurement analysis class to analyse Ramsey type measrements
-        with an interleaved flux pulse
+        """Initializes the Fluxpulse_Ramsey_2D_Analysis_Predictive class.
 
         Args:
-            X90_separation (float): separation between the two X90 pulses
-            flux_pulse_length (float): length of the flux pulse in seconds
-                                        (used to calculate freq. shifts)
-            qb_name (str): qubit name
-            label (str): measurement label
-            **kw:
+            X90_separation (float): Separation between the two X90 pulses.
+            flux_pulse_length (float): Length of the flux pulse in seconds
+                                       (used to calculate freq. shifts).
+            drive_pulse_length (float): Length of the drive pulse.
+            qb_name (str): Qubit name.
+            label (str): Measurement label.
+            cal_points (bool): Whether to include calibration points.
+            reference_measurements (bool): Whether to include reference measurements.
+            plot (bool): Whether to plot the results.
+            **kw: Additional keyword arguments.
         """
 
         kw['label'] = label

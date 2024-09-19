@@ -2,7 +2,6 @@ from qcodes.instrument_drivers.tektronix import AWG70002A
 from qcodes.instrument.parameter import ManualParameter
 from qcodes import validators as vals
 from qcodes.instrument.base import Instrument
-from qcodes.tests.test_visa import MockVisaHandle
 from qcodes.instrument.channel import ChannelList, InstrumentChannel
 from qcodes.utils.validators import Validator
 
@@ -272,7 +271,7 @@ class VirtualAWG70002A(AWG70002A.AWG70002A):
                            initial_value="SYNC",
                            vals=vals.Strings())
 
-        self.visa_log = MockVisaHandle()
+        self.visa_log = None
         self.awg_files = {}
         self.file = None
 

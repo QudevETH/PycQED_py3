@@ -13,7 +13,7 @@ from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter, InstrumentRefParameter
 import qcodes.utils.validators as vals
 import pycqed.utilities.general as gen
-from pycqed.utilities.timer import WatchdogTimer, WatchdogException
+from pycqed.utilities.timer import WatchdogTimer, WatchdogException, Timer
 
 from .zi_pulsar_mixin import ZIPulsarMixin
 
@@ -570,6 +570,9 @@ class Pulsar(Instrument):
         awgs: Names of AWGs added to the pulsar.
     """
 
+    DEFAULT_TRG_GRP = _DEFAULT_TRG_GRP
+    """Default trigger group name"""
+
     def __init__(self, name:str='Pulsar', master_awg:str=None):
         """Pulsar constructor.
 
@@ -582,6 +585,7 @@ class Pulsar(Instrument):
 
         super().__init__(name)
 
+        self.timer = None
         self._sequence_cache = dict()
         self.reset_sequence_cache()
 
@@ -1018,6 +1022,14 @@ class Pulsar(Instrument):
             return enforce_single_element[group]
 
     def get_join_or_split_elements(self, ch:str) -> bool:
+        """
+        Wrapper function for {awg}_join_or_split_elements. Returns a str
+        with the setting for channel ch.
+        Args:
+            ch (str): name of channel
+        Returns:
+             str with _join_or_split_elements setting for the channel
+        """
         awg = self.get_channel_awg(ch).name
 
         join_or_split_elements = self.get(f"{awg}_join_or_split_elements")
@@ -1140,6 +1152,7 @@ class Pulsar(Instrument):
 
         for awg in used_awg_interfaces:
             awg.stop()
+        self.timer = None
 
     def sigout_on(self, ch, on:bool=True):
         """Turn channel outputs on or off."""
@@ -1156,6 +1169,15 @@ class Pulsar(Instrument):
             awgs: List of AWGs names, or ``"all"``
         """
 
+        # This and the line in self.stop ensure that a new timer is created
+        # when starting every new measurement. At the end of the measurement
+        # this timer will get stored as a child of the Sequence timer (current
+        # behaviour). Note: 2D sweeps with multiple uploads will create
+        # multiple timers, each new timer becoming a child of the
+        # corresponding Sequence.
+        if self.timer is None:
+            self.timer = Timer(self.name)
+            sequence.timer.children.update({self.name: self.timer})
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
@@ -1166,6 +1188,7 @@ class Pulsar(Instrument):
             self.reset_sequence_cache()
             self._program_awgs(sequence, awgs)
 
+    @Timer()
     def _program_awgs(self, sequence, awgs:Union[List[str], str]='all'):
 
         # Stores the last uploaded sequence for easy access and plotting
@@ -1216,6 +1239,7 @@ class Pulsar(Instrument):
                                  '{}_prepend_zeros',
                                  '{}_use_command_table',
                                  '{}_join_or_split_elements',
+                                 '{}_trigger_source',
                                  'prepend_zeros',
                                  'use_mcc']
             # Some of the settings are specified for each generator AWG module.

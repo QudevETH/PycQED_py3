@@ -653,7 +653,7 @@ def simulate_circuits_2qbs(nr_cycles, nr_seq, circuits_list, T1, T2, t_gate,
 
 
 ## Calculation ##
-def translate(info):
+def translate(info, dd):
     s_gates = ["RX", "RY", "RZ"]
     if info[0][0] == 'Y':
         gate_name = s_gates[1]
@@ -667,8 +667,9 @@ def translate(info):
     else:  # C-phase gate
         gate_name = 'CPHASE'
         angle = 180 if info[0][2:]=='' else float(info[0][2:])
-        # FIXME minus sign to match inconsistent pycqed sign conventions
-        angle = -angle*np.pi/180
+        # -1 for old measurements with left-handed basis
+        legacy_sign = 1 if dd['exp_metadata'].get('right_handed_basis') else -1
+        angle = legacy_sign*angle*np.pi/180
     if int(info[1][3]) == 1:
         qubit = 0
     else:
@@ -676,11 +677,11 @@ def translate(info):
     return gate_name, qubit, angle
 
 
-def construct_from_op(op_lis):
+def construct_from_op(op_lis, dd):
     q = qt.qip.circuit.QubitCircuit(2, reverse_states=False)
     for op in op_lis:
         op_info = op.split(" ")
-        info = translate(op_info)
+        info = translate(op_info, dd=dd)
         if len(op_info) == 2:
             q.add_gate(info[0], info[1], None, info[2], r"\pi/4")
         else:
@@ -704,7 +705,7 @@ def transfer(data_dict, **params):
     lis = []
     for circuit_lis in gates_list:
         for count, circuit in enumerate(circuit_lis):
-            q = construct_from_op(circuit)
+            q = construct_from_op(circuit, dd=data_dict)
             lis += [q]
     return lis
 
@@ -1202,8 +1203,7 @@ def get_1qb_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
 
 
 def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
-                         meas_data_dtype=None, meas_obj_names=None,
-                         idx0f=0, idx0p=0, idx_cp_break=None):
+                   meas_data_dtype=None, idx0f=0, idx0p=0, idx_cp_break=None):
     """
     Runs the two-qubit multi-cphase XEB analysis and plotting
 
@@ -1225,130 +1225,129 @@ def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         the returned value is a list of dict of length len(cphase).
     """
 
-    task_id = 0  # FIXME: currently only tested for a single task
+    dd2 = {}
+    for task in hlp_mod.get_param_from_metadata_group(timestamp, 'task_list'):
+        meas_obj_names = (task['qb_1'], task['qb_2'])
+        dd2[meas_obj_names] = []
 
-    dd2 = []
-    if timer:
-        timer.checkpoint('two_qubit_xeb_analysis.start')
-    pp_full, meas_obj_names2, cycles1, nr_seq1 = two_qubit_xeb_analysis(
-        timestamp,
-        meas_obj_names=meas_obj_names,
-        save=False,
-        meas_data_dtype=meas_data_dtype,
-        # timer=timer,
-    )
-    if timer:
-        timer.checkpoint('two_qubit_xeb_analysis.end')
-
-    cphases = hlp_mod.get_param_from_metadata_group(timestamp, 'task_list')[
-        task_id].get('cphases')
-
-    # Multi-phase XEB (TwoQubitXEBMultiCphase)
-    for idx_cp in range(len(cphases)):  # loop over cphases
-        pp = deepcopy(pp_full)
-        # Extract sp corresponding to a single cphase
-        sp = sp_mod.SweepPoints(pp_full.data_dict['exp_metadata'][
-            'task_list'][task_id]['full_sweep_points'][idx_cp])
-        pp.data_dict['exp_metadata']['sweep_points'] = sp
-        # Set cphase
-        pp.data_dict['exp_metadata']['cphase'] = cphases[idx_cp]
-
-        # Trim data and only keep what corresponds to one cphase
-        data = pp.data_dict[','.join(meas_obj_names)]['correct_readout']
-        data = data.reshape(
-            [sp.length(1), len(cphases), sp.length(0),
-             9])[:, idx_cp, :, :].reshape([-1, 9])
-        pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
-
-        # Set mospm
-        pp.data_dict['exp_metadata']['meas_obj_sweep_points_map'] = \
-            sp.get_meas_obj_sweep_points_map(meas_obj_names)
-
-        # Analysis
         if timer:
-            timer.checkpoint('plot_porter_thomas_dist.start')
-        plot_porter_thomas_dist(pp.data_dict, savefig=True)
-        if timer:
-            timer.checkpoint('plot_porter_thomas_dist.end')
-        if timer:
-            timer.checkpoint('calculate_fidelities_purities_2qb.start')
-        calculate_fidelities_purities_2qb(
-            pp.data_dict,
-            data_key='correct_readout',
-            timer=timer,
+            timer.checkpoint('two_qubit_xeb_analysis.start')
+        pp_full, meas_obj_names2, cycles1, nr_seq1 = two_qubit_xeb_analysis(
+            timestamp,
+            meas_obj_names=meas_obj_names,
+            save=False,
+            meas_data_dtype=meas_data_dtype,
+            # timer=timer,
         )
         if timer:
-            timer.checkpoint('calculate_fidelities_purities_2qb.end')
-        if timer:
-            timer.checkpoint('fit_plot_fidelity_purity.start')
-        _ = fit_plot_fidelity_purity(
-            pp.data_dict,
-            idx0f=idx0f, idx0p=idx0p,
-            joint_processing=True,
-            savefig=True,
-            log_scale=False
-        )
-        if timer:
-            timer.checkpoint('fit_plot_fidelity_purity.end')
-        if timer:
-            timer.checkpoint('fit_plot_leakage_2qb.start')
-        fit_plot_leakage_2qb(
-            pp.data_dict, meas_obj_names,
-            data_key='correct_readout',
-            savefig=True, show=False, timer=timer
-        )
-        if timer:
-            timer.checkpoint('fit_plot_leakage_2qb.end')
-        plt.close('all')
-        # Removed for speed reasons. Could be re-added once this works
-        # properly (faster, and not overriding the saved file at each call)
-        # if timer:
-        #     timer.checkpoint('pp.save.start')
-        # pp.save()
-        # if timer:
-        #     timer.checkpoint('pp.save.end')
-        dd = pp.data_dict  # Keeping only the data dict
-        del pp
-        if clear_some_memory:
-            for mobjn in meas_obj_names:
-                # Raw data seems to be the highest quantity of data
-                # (from task manager: 80%?)
-                del dd[mobjn]
-        dd2.append(dd)
+            timer.checkpoint('two_qubit_xeb_analysis.end')
 
-        if idx_cp_break:  # Stop at this index
-            if idx_cp >= idx_cp_break:
-                break
-    del pp_full
+        cphases = task.get('cphases')
+
+        # Multi-phase XEB (TwoQubitXEBMultiCphase)
+        for idx_cp in range(len(cphases)):  # loop over cphases
+            pp = deepcopy(pp_full)
+            # Extract sp corresponding to a single cphase
+            sp = sp_mod.SweepPoints(task['full_sweep_points'][idx_cp])
+            pp.data_dict['exp_metadata']['sweep_points'] = sp
+            # Set cphase
+            pp.data_dict['exp_metadata']['cphase'] = cphases[idx_cp]
+
+            # Trim data and only keep what corresponds to one cphase
+            data = pp.data_dict[','.join(meas_obj_names)]['correct_readout']
+            data = data.reshape(
+                [sp.length(1), len(cphases), sp.length(0),
+                 9])[:, idx_cp, :, :].reshape([-1, 9])
+            pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
+
+            # Set mospm
+            pp.data_dict['exp_metadata']['meas_obj_sweep_points_map'] = \
+                sp.get_meas_obj_sweep_points_map(meas_obj_names)
+
+            # Analysis
+            if timer:
+                timer.checkpoint('plot_porter_thomas_dist.start')
+            plot_porter_thomas_dist(pp.data_dict, savefig=True)
+            if timer:
+                timer.checkpoint('plot_porter_thomas_dist.end')
+            if timer:
+                timer.checkpoint('calculate_fidelities_purities_2qb.start')
+            calculate_fidelities_purities_2qb(
+                pp.data_dict,
+                data_key='correct_readout',
+                timer=timer,
+            )
+            if timer:
+                timer.checkpoint('calculate_fidelities_purities_2qb.end')
+            if timer:
+                timer.checkpoint('fit_plot_fidelity_purity.start')
+            _ = fit_plot_fidelity_purity(
+                pp.data_dict,
+                idx0f=idx0f, idx0p=idx0p,
+                joint_processing=True,
+                savefig=True,
+                log_scale=False
+            )
+            if timer:
+                timer.checkpoint('fit_plot_fidelity_purity.end')
+            if timer:
+                timer.checkpoint('fit_plot_leakage_2qb.start')
+            fit_plot_leakage_2qb(
+                pp.data_dict, meas_obj_names,
+                data_key='correct_readout',
+                savefig=True, show=False, timer=timer
+            )
+            if timer:
+                timer.checkpoint('fit_plot_leakage_2qb.end')
+            plt.close('all')
+            # Removed for speed reasons. Could be re-added once this works
+            # properly (faster, and not overriding the saved file at each call)
+            # if timer:
+            #     timer.checkpoint('pp.save.start')
+            # pp.save()
+            # if timer:
+            #     timer.checkpoint('pp.save.end')
+            dd = pp.data_dict  # Keeping only the data dict
+            del pp
+            if clear_some_memory:
+                for mobjn in meas_obj_names:
+                    # Raw data seems to be the highest quantity of data
+                    # (from task manager: 80%?)
+                    del dd[mobjn]
+            dd2[meas_obj_names].append(dd)
+
+            if idx_cp_break:  # Stop at this index
+                if idx_cp >= idx_cp_break:
+                    break
+        del pp_full
     return dd2
 
 
-def get_multi_xeb_results_from_dd(dd2, dd1=None, meas_obj_names=None, **kw):
+def get_multi_xeb_results_from_dd(dd2, dd1=None, **kw):
     """
     Helper method to extract various error rates from analysed XEB measurements
 
     Args:
         dd2 (dict): Previously analysed two-qubit multi-cphase XEB data dict
         dd1 (dict): Previously analysed single-qubit XEB data dict
-        meas_obj_names (list): mobj names, which may need to be passed e.g. in
-            case they aren't saved by the experiment in the correct order
-            (necessary to correctly simulate the quantum circuits here).
     """
     results = {}
-    for dd in dd2:
-        cphase = dd['exp_metadata']['cphase']
-        results[cphase] = res = {}
-        res['tot'] = calculate_cz_error(
-            dd, dd1, meas_obj_names=meas_obj_names,
-            metric='fidelity', error_type='average', **kw)
-        res['inc'] = calculate_cz_error(
-            dd, dd1, meas_obj_names=meas_obj_names,
-            metric='purity', error_type='average', **kw)
-        res['coh'] = {
-            'value': res['tot']['value'] - res['inc']['value'],
-            'stderr': np.linalg.norm(
-                [res['tot']['stderr'], res['inc']['stderr']], 2),
-        }
+    for meas_obj_names, dd2_task in dd2.items():
+        results[meas_obj_names] = {}
+        for dd in dd2_task:
+            cphase = dd['exp_metadata']['cphase']
+            results[meas_obj_names][cphase] = res = {}
+            res['tot'] = calculate_cz_error(
+                dd, dd1, meas_obj_names=meas_obj_names,
+                metric='fidelity', error_type='average', **kw)
+            res['inc'] = calculate_cz_error(
+                dd, dd1, meas_obj_names=meas_obj_names,
+                metric='purity', error_type='average', **kw)
+            res['coh'] = {
+                'value': res['tot']['value'] - res['inc']['value'],
+                'stderr': np.linalg.norm(
+                    [res['tot']['stderr'], res['inc']['stderr']], 2),
+            }
     return results
 
 

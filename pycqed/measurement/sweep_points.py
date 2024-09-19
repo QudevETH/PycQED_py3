@@ -297,8 +297,8 @@ class SweepPoints(list):
          {mobj_name: [sweep_param_name_0, ..., sweep_param_name_n]}
         """
 
-        # Ensure measurement_objects is a list
-        if isinstance(measurement_objects, list):
+        # Ensure measurement_objects is a list or tuple
+        if isinstance(measurement_objects, (list, tuple)):
             measurement_objects = copy(measurement_objects)
         else:
             measurement_objects = [measurement_objects]

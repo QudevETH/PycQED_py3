@@ -68,7 +68,8 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
     supports_batch_mode = True
 
     def __init__(self, circuit_builder, params, block=None,
-                 block_func=None, **kw):
+                 block_func=None, parameter_name='None',
+                 unit='', upload=True, **kw):
         """Sweep function used to efficiently iterate between different
         parameter sets of a parameterized quantum circuit (represented by a
         `Block`).
@@ -77,7 +78,9 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
             are not known in advance.
         Args:
             circuit_builder (CircuitBuilder): Instance of CircuitBuilder that
-                is used to compile the block into sequences.
+                is used to compile the block into sequences. If it has a
+                'sequences' attribute (e.g. if it is a QuantumExperiment),
+                sequences created here will be appended to it.
             params (list[str]): List of the ParametricValues names in `block`.
             block (Block, optional): Block that contains ParametricValues and
                 is compiled into sequences using circuit_builder. Either block
@@ -85,37 +88,55 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
             block_func (Callable, optional): Function that is passed to
                 sweep_n_dim. Either block or block_func need to be specified.
                 Defaults to None.
+            parameter_name (str): Sweep parameter name. Defaults to 'None'.
+            unit (str, optional): Unit of the sweep parameter. Defaults to ''.
+            upload (bool, optional): Whether to upload the sequences before
+                measurement. Defaults to True.
             kw (optional): Keyword arguments, e.g., `sweep_kwargs` which will
                 be passed to `sweep_n_dim` in `self.set_parameter`.
         """
-        super().__init__(sequence=None, upload_first=False, **kw)
+        super().__init__(sequence=None, upload=upload, upload_first=False,
+                         **kw)
         self.name = 'Block soft sweep'
+        self.parameter_name = parameter_name
+        self.unit = unit
         self.block = block
         self.block_func = block_func
         self.circuit_builder = circuit_builder
         self.params = params
         self.sweep_points = None
+        self.iteration = 0
 
     def set_parameter(self, vals, **kw):
         """Compiles the `Block` for the given values into a sequence and
         uploads it to hardware.
 
         Args:
-            vals (list[tuples]): List of tuples. Each tuple corresponds to one
-                complete set of ParametricValues, i.e,
-                `len(vals[i]) = len(self.params)`.
+            vals (array): Parameter values to be swept. Shape: [number of
+            different sets of parameters (= number of points to be
+            measured), number of parameters (= len(self.params))]
 
         `self.circuit_builder.sweep_n_dim` is used to convert vals into a hard
         sweep sequence which is subsequently uploaded to hardware.
         """
         self.sweep_points = sp_mod.SweepPoints([{
-            p: ([vs[i] for vs in vals], '', p)
+            p: (vals[:, i], '', p)
             for i, p in enumerate(self.params)}])
         seqs, _ = self.circuit_builder.sweep_n_dim(
             sweep_points=self.sweep_points, body_block=self.block,
             body_block_func=self.block_func,
             **(getattr(self, 'sweep_kwargs', {})))
         self.sequence = seqs[0]
+        self.sequence.rename('Sequence' + str(self.iteration))
+        self.iteration += 1
+
+        # A typical QuantumExperiment using a BlockSoftHardSweep will not have
+        # any sequences pre-defined, as these are created only here.
+        # If self.circuit_builder is a QuantumExperiment, storing sequences
+        # when creating them makes them available after running for inspection.
+        if hasattr(self.circuit_builder, 'sequences'):
+            self.circuit_builder.sequences.append(self.sequence)
+
         self.upload_sequence()
 
     def configure_upload(self, upload=True, upload_first=False,
