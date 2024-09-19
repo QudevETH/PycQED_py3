@@ -2272,17 +2272,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     #  but cleaning this up would likely mean a major
                     #  clean up/refactoring of extract_data
                     if self.get_param_value('data_type') == 'singleshot':
+                        # copy to avoid overriding proc_data_dict
+                        raw_data_dict = copy(raw_data_dict)
                         n_shots = self.get_param_value("nr_shots",
                             self._extract_param_from_det("nr_shots"))
                         sweep_points = np.average(
                             sweep_points.reshape(n_shots, -1), axis=0)
-                        for k, v in self.proc_data_dict[
-                            'meas_results_per_qb_raw'][qb_name].items():
+                        for k, v in raw_data_dict.items():
                             # Deals with both 1D and 2D sweep_points using [1:]
                             shape = [n_shots, len(sweep_points), *v.shape[1:]]
                             v = np.average(v.reshape(shape), axis=0)
-                            self.proc_data_dict['meas_results_per_qb_raw'][
-                                qb_name][k] = v
+                            raw_data_dict[k] = v
                 elif key == 'meas_results_per_qb':
                     sweep_points = self.proc_data_dict[
                         'sweep_points_dict'][qb_name]['sweep_points']
