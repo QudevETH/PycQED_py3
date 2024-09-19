@@ -123,7 +123,6 @@ def state_tomography_analysis(data_dict, keys_in,
     hlp_mod.pop_param('keys_out', data_dict, node_params=params)
     keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
                                            default_value='state_tomo', **params)
-
     cp = hlp_mod.get_measurement_properties(data_dict, props_to_extract=['cp'],
                                             raise_error=False, **params)
     basis_rots = hlp_mod.get_param('basis_rots', data_dict,
@@ -143,16 +142,22 @@ def state_tomography_analysis(data_dict, keys_in,
                           do_preselection, data_dict, **params)
 
     # get number of readouts
-    n_readouts = hlp_mod.get_param('n_readouts', data_dict, **params)
+    n_readouts = hlp_mod.get_param('n_readouts', data_dict, **params, find_all=True)
+
     if n_readouts is None:
         n_readouts = (do_preselection + 1) * (
                 len(basis_rots)**len(meas_obj_names) +
                 (len(cp.states) if cp is not None else 0))
         hlp_mod.add_param(f'{keys_out_container}.n_readouts',
                           n_readouts, data_dict, **params)
+    else:
+        n_readouts = n_readouts[list(n_readouts.keys())[0]]
 
     # get observables
     observables = hlp_mod.get_param('observables', data_dict, **params)
+
+
+
     if observables is None:
         hlp_mod.get_observables(data_dict,
                                 keys_out=[f'{keys_out_container}.observables'],
@@ -238,13 +243,21 @@ def state_tomography_analysis(data_dict, keys_in,
     if do_plotting:
         getattr(plot_mod, 'plot')(data_dict, keys_in=list(
             data_dict['plot_dicts']), **params)
-
+        
     # error estimation with boostrapping
     if hlp_mod.get_param('do_bootstrapping', data_dict, default_value=False,
                          **params):
         hlp_mod.pop_param('do_bootstrapping', data_dict, default_value=False,
                           node_params=params)
         bootstrapping_state_tomography(data_dict, keys_in, **params)
+
+    # error estimation with boostrapping (loopy version)
+    if hlp_mod.get_param('do_bootstrapping_loopy', data_dict, default_value=False,
+                            **params):
+            hlp_mod.pop_param('do_bootstrapping_loopy', data_dict, default_value=False,
+                            node_params=params)
+            bootstrapping_state_tomography_loopy(data_dict, keys_in, **params)
+
 
 
 def all_msmt_ops_results_omegas(data_dict, observables, probability_table=None,
@@ -424,6 +437,14 @@ def density_matrices(data_dict,
                 rho_guess=rho_guess)
             hlp_mod.add_param(f'{keys_out_container}.max_likelihood.rho',
                               rho_mle, data_dict, **params)
+        elif estimation_type == 'cvxpy':
+            rho_cvxpy = tomo.cvxpy_tomography(
+                all_measurement_results, all_measurement_operators,
+                all_cov_matrix_meas_obs if hlp_mod.get_param(
+                    'use_covariance_matrix', data_dict,
+                    default_value=False, **params) else None)
+            hlp_mod.add_param(f'{keys_out_container}.cvxpy.rho',
+                              rho_cvxpy, data_dict, **params)
         elif estimation_type == 'iterative_mle':
             rho_imle = tomo.imle_tomography(
                 all_measurement_results, all_measurement_operators,
@@ -1174,7 +1195,7 @@ def bootstrapping(data_dict=None, keys_in=None, measured_data=None, **params):
 
     if data_dict is None:
         data_dict = {}
-    n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True,
+    n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True, find_all=True,
                                    **params)
     n_shots = hlp_mod.get_param('n_shots', data_dict, raise_error=True,
                                 **params)
@@ -1195,6 +1216,64 @@ def bootstrapping(data_dict=None, keys_in=None, measured_data=None, **params):
             sample_i[seg-1::n_readouts, :] = sample[p]
     return sample_i
 
+def bootstrapping_loopy(data_dict=None, keys_in=None, measured_data=None, **params):
+    """
+    Does one round of resampling of measured_data using a uniform distribution.
+    :param data_dict: OrderedDict containing data to be processed
+    :param keys_in: list of channel names or dictionary paths leading to
+            data to be processed of the form (n_readouts*n_shots, n_qubits).
+    :param measured_data: array of shape (n_readouts*n_shots, n_qubits)
+        containing raw data shots
+    :param params: keyword arguments:
+        n_readouts (required): number of segments including preselection
+        n_shots (required): number of data shots per segment
+        preselection: whether preselection was used
+        n_samples
+        n_points_per_sample
+
+    :return: array of shape (n_readouts*n_shots, n_qubits) with resampled raw
+        data shots.
+    """
+    if measured_data is None:
+        if data_dict is None or keys_in is None:
+            raise ValueError('Make sure both data_dict and keys_in are '
+                             'specified. Or provide measured_data.')
+        data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
+        measured_data = np.concatenate([arr[:, np.newaxis] for arr in
+                                        list(data_to_proc_dict.values())],
+                                       axis=1)
+
+    if data_dict is None:
+        data_dict = {}
+    n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True, find_all=True,
+                                   **params)
+    n_shots = hlp_mod.get_param('n_shots', data_dict, raise_error=True,
+                                **params)
+    n_samples = hlp_mod.get_param('n_samples', data_dict, raise_error=True,
+                                **params)
+    n_points_per_sample = hlp_mod.get_param('n_points_per_sample', data_dict, raise_error=True,
+                                **params)
+    n_qubits = measured_data.shape[1]
+
+    measured_data_reshaped = measured_data.reshape(n_shots, n_readouts, n_qubits)
+    samples = []
+    
+    # Check if n_points_per_sample is a list of integers
+    if isinstance(n_points_per_sample, int):
+        n_points_per_sample = [n_points_per_sample]
+
+    for n_points in n_points_per_sample:
+        for sample_index in range(n_samples):
+            random_selection = np.random.choice(range(n_shots), n_points, replace = True)
+            sample_i = measured_data_reshaped[random_selection, :, :]
+            sample_i = sample_i.reshape(-1, n_qubits)
+            assert sample_i.shape[0] == n_points * n_readouts
+
+            samples.append(sample_i)
+            # Returns a list of samples, each of shape (n_points * n_readouts, n_qubits)
+
+    return samples
+
 
 def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
                                    verbose=False, **params):
@@ -1214,6 +1293,7 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
                 the raw data is resampled
             - timestamps: list of with the timestamps of the state tomo msmt
     :return: stores in data_dict:
+    
         - {estimation_type}.bootstrapping_fidelities
         - (optionally) {estimation_type}.bootstrapping_rhos
         for estimation_type in estimation_types
@@ -1230,8 +1310,9 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
     data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
     prep_params = hlp_mod.get_preparation_parameters(data_dict, **params)
     preselection = prep_params.get('preparation_type', 'wait') == 'preselection'
-    n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True,
-                                   **params)
+    n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True, find_all=True,**params)
+    n_readouts = n_readouts[list(n_readouts.keys())[0]]
+
     raw_data = np.concatenate([np.reshape(arr, (len(arr), 1))
                                for arr in data_to_proc_dict.values()],
                               axis=1)
@@ -1262,6 +1343,8 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
     data_dict_temp = dat_extr_mod.extract_data_hdf(timestamps=timestamp,
                                                    data_dict=data_dict_temp)
 
+    # FIXME: This is not saved.
+    # estimation_types = 'readout_corrected', 'readout_uncorrected'
     estimation_types = hlp_mod.get_param('estimation_types', data_dict,
                                          default_value=('least_squares',
                                                         'max_likelihood'),
@@ -1289,11 +1372,18 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
                                   replace_value=True, **params)
 
         for estimation_type in estimation_types:
-            fidelities[estimation_type][n] = hlp_mod.get_param(
-                f'{estimation_type}.fidelity', data_dict_temp, raise_error=True)
+            # FIXME: Can't find this in the data_dict_temp
+            # CHECK: Does this work for both ro corrected and uncorrected?
+            # print(estimation_type)
+            # print("HERE", hlp_mod.get_param(f'fidelity', data_dict_temp, raise_error=True, find_all=True))
+            fid_key = [key for key in hlp_mod.get_param(f'fidelity', data_dict_temp, raise_error=True, find_all=True).keys() if estimation_type in key][0]
+            fidelities[estimation_type][n] = hlp_mod.get_param(fid_key, data_dict_temp, raise_error=True)
+            print(estimation_type)
+            print(fidelities[estimation_type][n])
             if store_rhos:
+                rho_key = fid_key.replace('fidelity', 'rho')
                 rhos[estimation_type][n] = hlp_mod.get_param(
-                    f'{estimation_type}.rho', data_dict_temp, raise_error=True)
+                    rho_key, data_dict_temp, raise_error=True, find_all=True)
 
     params['replace_value'] = replace_value
     hlp_mod.add_param(f'{keys_out_container}.Nbstrp', Nbstrp, data_dict,
@@ -1306,6 +1396,127 @@ def bootstrapping_state_tomography(data_dict, keys_in, store_rhos=False,
             hlp_mod.add_param(
                 f'{keys_out_container}.{estimation_type}.bootstrapping_rhos',
                 rhos[estimation_type], data_dict, **params)
+
+def bootstrapping_state_tomography_loopy(data_dict, keys_in, store_rhos=False,
+                                   verbose=False, **params):
+    """
+    Computes bootstrapping statistics of the density matrix fidelity.
+    :param data_dict: OrderedDict containing thresholded shots specified by
+        keys_in, and where processed results will be stored
+    :param keys_in: list of key names or dictionary keys paths in
+        data_dict for the data to be analyzed (expects thresholded shots)
+    :param store_rhos: whether to store the density matrices in addition to
+        the bootstrapping fidelities.
+    :param verbose: whether to show progress print statements
+    :param params: keyword arguments
+        Expects to find either in data_dict or in params:
+            - Nbstrp: int specifying the number of bootstrapping cycles,
+                i.e. sample size for estimating errors, the number of times
+                the raw data is resampled
+            - timestamps: list of with the timestamps of the state tomo msmt
+    :return: stores in data_dict:
+    
+        - {estimation_type}.bootstrapping_fidelities
+        - (optionally) {estimation_type}.bootstrapping_rhos
+        for estimation_type in estimation_types
+    Assumptions:
+     - CURRENTLY ONLY SUPPORTS DATA FROM HDF FILES!
+     - !! This function calls state_tomography_analysis so all required input
+        params needed there must also be here
+
+    """
+    n_samples = hlp_mod.get_param('n_samples', data_dict, raise_error=True, **params)
+    n_points_per_sample = hlp_mod.get_param('n_points_per_sample', data_dict, raise_error=True, **params)
+    keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                           default_value='state_tomo', **params)
+
+    data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
+    prep_params = hlp_mod.get_preparation_parameters(data_dict, **params)
+    preselection = prep_params.get('preparation_type', 'wait') == 'preselection'
+    n_readouts = hlp_mod.get_param('n_readouts', data_dict, raise_error=True, find_all=True,**params)
+    n_readouts = n_readouts[list(n_readouts.keys())[0]]
+
+    raw_data = np.concatenate([np.reshape(arr, (len(arr), 1))
+                               for arr in data_to_proc_dict.values()],
+                              axis=1)
+    n_shots = len(raw_data[:, 0]) // n_readouts
+
+    timestamp = hlp_mod.get_param('timestamps', data_dict, raise_error=True,
+                                  **params)
+    if len(timestamp) > 1:
+        raise ValueError(f'Bootstrapping can only be done for one data file. '
+                         f'{len(timestamp)} timestamps were found.')
+    data_dict_temp = {}
+    hlp_mod.add_param('cal_points',
+                      hlp_mod.get_param('cal_points', data_dict, **params),
+                      data_dict_temp)
+    hlp_mod.add_param('meas_obj_value_names_map',
+                      hlp_mod.get_param('meas_obj_value_names_map',
+                                        data_dict, **params),
+                      data_dict_temp)
+    hlp_mod.add_param('preparation_params',
+                      hlp_mod.get_param('preparation_params', data_dict, **params),
+                      data_dict_temp)
+    hlp_mod.add_param('reset_params',
+                      hlp_mod.get_param('reset_params', data_dict, **params),
+                      data_dict_temp)
+    hlp_mod.add_param('rho_target',
+                      hlp_mod.get_param('rho_target', data_dict),
+                      data_dict_temp)
+    data_dict_temp = dat_extr_mod.extract_data_hdf(timestamps=timestamp,
+                                                   data_dict=data_dict_temp)
+
+    # FIXME: This is not saved.
+    # estimation_types = 'readout_corrected', 'readout_uncorrected'
+    estimation_types = hlp_mod.get_param('estimation_types', data_dict,
+                                         default_value=('least_squares',
+                                                        'max_likelihood'),
+                                         **params)
+    if isinstance(n_points_per_sample, int):
+        n_points_per_sample = [n_points_per_sample]
+    fidelities = {est_type: np.zeros(n_samples*len(n_points_per_sample)) for est_type in estimation_types}
+    rhos = {est_type: n_samples*len(n_points_per_sample)*[''] for est_type in estimation_types}
+
+    params.pop('do_plotting', False)
+    params.pop('prepare_plotting', False)
+    replace_value = params.pop('replace_value', False)
+    # do bootstrapping Nbstrp times
+    
+    if verbose:
+        print('Bootstrapping run state tomo: ', n)
+    samples = bootstrapping_loopy(measured_data=raw_data, n_readouts=n_readouts,
+                                n_shots=n_shots, n_samples = n_samples, 
+                                n_points_per_sample = n_points_per_sample,
+                                preselection=preselection)
+    for n, sample in enumerate(samples):
+        for i, keyi in enumerate(data_to_proc_dict):
+            hlp_mod.add_param(keyi, sample[:, i], data_dict_temp,
+                                add_param_method='replace')
+        state_tomography_analysis(data_dict_temp, keys_in=keys_in,
+                                  do_plotting=False, prepare_plotting=False,
+                                  replace_value=True, **params)
+
+        for estimation_type in estimation_types:
+            fid_key = [key for key in hlp_mod.get_param(f'fidelity', data_dict_temp, raise_error=True, find_all=True).keys() if estimation_type in key][0]
+            fidelities[estimation_type][n] = hlp_mod.get_param(fid_key, data_dict_temp, raise_error=True)
+            print(estimation_type)
+            print(fidelities[estimation_type][n])
+            rho_key = fid_key.replace('fidelity', 'rho')
+            rhos[estimation_type][n] = hlp_mod.get_param(
+                rho_key, data_dict_temp, raise_error=True, find_all=True)
+
+    params['replace_value'] = replace_value
+    hlp_mod.add_param(f'{keys_out_container}.n_samples', n_samples, data_dict,
+                      **params)
+    hlp_mod.add_param(f'{keys_out_container}.n_points_per_sample', n_samples, data_dict,
+                      **params)
+    for estimation_type in fidelities:
+        hlp_mod.add_param(
+            f'{keys_out_container}.{estimation_type}.bootstrapping_fidelities',
+            fidelities[estimation_type], data_dict, **params)
+        hlp_mod.add_param(
+            f'{keys_out_container}.{estimation_type}.bootstrapping_rhos',
+            rhos[estimation_type], data_dict, **params)
 
 
 def bootstrapping_process_tomography(

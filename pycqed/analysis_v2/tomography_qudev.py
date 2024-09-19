@@ -9,6 +9,11 @@ try:
 except ImportError as e:
     logging.warning('Could not import qutip, tomo code will not work')
 
+try:
+    import cvxpy as cp
+except ImportError as e:
+    logging.warning('Could not import cvxpy, tomo code will not work')
+
 DEFAULT_BASIS_ROTS = ('I', 'X180', 'Y90', 'mY90', 'X90', 'mX90')
 # General state tomography functions
 
@@ -159,6 +164,52 @@ def imle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
         print('Stopped with maximum iterations (' + str(iterations) + ')')
 
     return next_rho
+
+
+def cvxpy_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
+                   Omega: Optional[np.ndarray]=None,
+                   rho_guess: Optional[qtp.Qobj]=None) -> qtp.Qobj:
+    """
+    Executes a maximum likelihood fit to the measured observables, respecting
+    the physicality constraints of the density matrix.
+
+    Args:
+        mus: 1-dimensional numpy ndarray containing the measured expectation
+             values for the measurement operators Fs.
+        Fs: A list of the measurement operators (as qutip operators) that
+            correspond to the expectation values in mus.
+        Omega: The covariance matrix of the expectation values mu.
+               If a 1-dimensional array is passed, the values are interpreted
+               as the variations of the mus and the correlations are assumed to
+               be zero.
+               If `None` is passed, then all measurements are assumed to have
+               equal variances.
+        rho_guess: The initial value of the density matrix for the iterative
+                   optimization algorithm.
+    Returns: The found density matrix as a qutip operator.
+    """
+    # Initialize a matrix
+    amat = np.zeros((16, 16), dtype=complex)
+    b = np.zeros((16,))
+
+    # Populate this matrix with the operators
+    print(mus)
+    for i, F in enumerate(Fs):
+        b[i] = mus[i]
+        for j, G in enumerate(Fs):
+            amat[i, :] = F.full().ravel()
+    
+    x = cp.Variable((4, 4), complex=True)
+    objective = cp.Minimize(cp.sum_squares(amat @ x.reshape((16,)) - b))
+    constraints = [x >> 0]
+    # constraints = []
+    prob = cp.Problem(objective, constraints)
+    prob.solve()
+    dm_sdp = x.value.copy()
+    
+    
+    return qt.Qobj(dm_sdp)
+
 
 def mle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                    Omega: Optional[np.ndarray]=None,
@@ -313,8 +364,8 @@ def max_fidelity(rho1: qtp.Qobj, rho2: qtp.Qobj, thetas1, thetas2):
 
     for i, theta1 in enumerate(thetas1):
         for j, theta2 in enumerate(thetas2):
-            state_rotation = qtp.tensor(qtp.rotation(qtp.sigmaz(), theta1),
-                                        qtp.rotation(qtp.sigmaz(), theta2))
+            state_rotation = qtp.tensor(qtp.operations.rotation(qtp.sigmaz(), theta1),
+                                        qtp.operations.rotation(qtp.sigmaz(), theta2))
             target_state = state_rotation*target_bell
             fid_vec[i][j] = float(
                 np.real((target_state.dag()*rho1*target_state).data[0, 0]))
@@ -453,18 +504,18 @@ def standard_qubit_pulses_to_rotations(pulse_list: List[Tuple]) \
         'I': qtp.qeye(2),
         'X0': qtp.qeye(2),
         'Z0': qtp.qeye(2),
-        'X180': qtp.rotation(qtp.sigmax(), np.pi),
-        'mX180': qtp.rotation(qtp.sigmax(), -np.pi),
-        'Y180': qtp.rotation(qtp.sigmay(), np.pi),
-        'mY180': qtp.rotation(qtp.sigmay(), -np.pi),
-        'X90': qtp.rotation(qtp.sigmax(), np.pi/2),
-        'mX90': qtp.rotation(qtp.sigmax(), -np.pi/2),
-        'Y90': qtp.rotation(qtp.sigmay(), np.pi/2),
-        'mY90': qtp.rotation(qtp.sigmay(), -np.pi/2),
-        'Z90': qtp.rotation(qtp.sigmaz(), np.pi/2),
-        'mZ90': qtp.rotation(qtp.sigmaz(), -np.pi/2),
-        'Z180': qtp.rotation(qtp.sigmaz(), np.pi),
-        'mZ180': qtp.rotation(qtp.sigmaz(), -np.pi),
+        'X180': qtp.operations.rotation(qtp.sigmax(), np.pi),
+        'mX180': qtp.operations.rotation(qtp.sigmax(), -np.pi),
+        'Y180': qtp.operations.rotation(qtp.sigmay(), np.pi),
+        'mY180': qtp.operations.rotation(qtp.sigmay(), -np.pi),
+        'X90': qtp.operations.rotation(qtp.sigmax(), np.pi/2),
+        'mX90': qtp.operations.rotation(qtp.sigmax(), -np.pi/2),
+        'Y90': qtp.operations.rotation(qtp.sigmay(), np.pi/2),
+        'mY90': qtp.operations.rotation(qtp.sigmay(), -np.pi/2),
+        'Z90': qtp.operations.rotation(qtp.sigmaz(), np.pi/2),
+        'mZ90': qtp.operations.rotation(qtp.sigmaz(), -np.pi/2),
+        'Z180': qtp.operations.rotation(qtp.sigmaz(), np.pi),
+        'mZ180': qtp.operations.rotation(qtp.sigmaz(), -np.pi),
     }
     rotations = [qtp.tensor(*[standard_pulses[pulse] for pulse in qb_pulses])
                  for qb_pulses in pulse_list]

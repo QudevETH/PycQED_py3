@@ -1773,15 +1773,16 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     else:
         axs.set_ylim(ymin, ymax)
 
-    # FIXME Ignores thranspose option. Is it ok?
-    if plot_xtick_labels is not None:
-        axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
-    if plot_ytick_labels is not None:
-        axs.yaxis.set_ticklabels(plot_ytick_labels)
+    # FIXME Ignores transpose option. Is it ok?
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
         axs.yaxis.set_ticks(plot_ytick_loc)
+    if plot_xtick_labels is not None:
+        axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
+    if plot_ytick_labels is not None:
+        axs.yaxis.set_ticklabels(plot_ytick_labels)
+
     if plot_origin == 'upper':
         axs.invert_yaxis()
 
