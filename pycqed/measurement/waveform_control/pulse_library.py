@@ -1335,8 +1335,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
         else:
             fp_class = BufferedSquarePulse
             self.flux_pulse_length = self.pulse_length
-        self.flux_pulse_length = self.flux_pulse_length +\
-                                 self.flux_extend_start + self.flux_extend_end
+        self.flux_pulse_length += self.flux_extend_start + self.flux_extend_end
         self.flux_buffer_length_start = self.buffer_length_start - self.flux_extend_start
         self.flux_buffer_length_end = self.length - self.flux_buffer_length_start - self.flux_pulse_length
         self.fp = fp_class(element_name=self.element_name,
