@@ -386,7 +386,7 @@ class MixerCarrier(twoqbcal.CalibBuilder):
                          trigger_sep),
                         (qb_obj.instr_pulsar.get_instr().prepend_zeros,
                          kw.get('prepend_zeros', 0)),
-                        (qb_obj.ro_fixed_lo_freq(), None),
+                        (qb_obj.ro_fixed_lo_freq, None),
                         (qb_obj.acq_length, default_acq_length),
                         *qb_obj._drive_mixer_calibration_tmp_vals()
                     ]
