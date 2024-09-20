@@ -103,14 +103,14 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                     tmp_vals += [
                         # read out at the drive sideband frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() - 2 *
-                                 qb_obj.default_ro_mod_freq()),
+                         default_ro_mod_freq),
                         (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         (qb_obj.acq_weights_type, 'SSB'),
                         (qb_obj.instr_trigger.get_instr().pulse_period,
                          trigger_sep),
                         (qb_obj.instr_pulsar.get_instr().prepend_zeros,
                          kw.get('prepend_zeros', 0)),
-                        (qb_obj.ro_fixed_lo_freq(), None),
+                        (qb_obj.ro_fixed_lo_freq, None),
                         (qb_obj.acq_length, default_acq_length),
                         *qb_obj._drive_mixer_calibration_tmp_vals()
                     ]
