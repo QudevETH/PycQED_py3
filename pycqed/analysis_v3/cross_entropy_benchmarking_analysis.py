@@ -794,39 +794,23 @@ def manual_propagator(gate):
 def proba(qc):
     """
     Computes the output states probabilities for a qutip quantum circuit
-
-    TODO: one can finish removing calls to qutip and make this method even
-     faster if needed.
     """
     # Equivalent (only for basic gates) to
     # U = qt.qip.operations.gate_sequence_product(qc.propagators())
     M = np.eye(4)
     for g in qc.gates:
         M = np.matmul(manual_propagator(g), M)
-    U = qt.Qobj(M)
-    U.dims = [[2, 2], [2, 2]]
-
-    gg = qt.tensor(qt.basis(2, 0), qt.basis(2, 0))
-    ge = qt.tensor(qt.basis(2, 0), qt.basis(2, 1))
-    eg = qt.tensor(qt.basis(2, 1), qt.basis(2, 0))
-    ee = qt.tensor(qt.basis(2, 1), qt.basis(2, 1))
-    s = U * gg
-    b = gg.dag() * s.data
-    proba_gg = abs(b[0][0])**2
-    d = ee.dag() * s.data
-    proba_ee = abs(d[0][0])**2
-    c = ge.dag() * s.data
-    proba_ge = abs(c[0][0])**2
-    a = eg.dag() * s.data
-    proba_eg = abs(a[0][0])**2
-    return [proba_gg, proba_ge, proba_eg, proba_ee]
+    gg = np.array([1,0,0,0])
+    final_state = np.matmul(M, gg)
+    probs = abs(final_state) ** 2
+    return probs
 
 
 def proba_from_all_circuits(circuit_list):
     lis = []
     for circ in circuit_list:
         pros = proba(circ)
-        lis.append(np.array(pros))
+        lis.append(pros)
     return lis
 
 
