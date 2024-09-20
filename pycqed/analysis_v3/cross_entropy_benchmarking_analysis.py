@@ -317,8 +317,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                                                **params)
         n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
-        prep_params = hlp_mod.get_param_from_metadata_group(
-            timestamp, 'preparation_params')
+        prep_params = hlp_mod.get_preparation_parameters(data_dict, **params)
         reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
             'preparation_type'] else 0
 
@@ -924,8 +923,7 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         compression_factor = hlp_mod.get_param('compression_factor', data_dict)
         n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
-        prep_params = hlp_mod.get_param_from_metadata_group(
-            timestamp, 'preparation_params')
+        prep_params = hlp_mod.get_preparation_parameters(data_dict)
         reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
             'preparation_type'] else 0
 
