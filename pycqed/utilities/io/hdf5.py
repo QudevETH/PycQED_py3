@@ -28,7 +28,7 @@ from pycqed.instrument_drivers.mock_qcodes_interface import Parameter, \
 log = logging.getLogger(__name__)
 
 import pycqed.utilities.qutip_compat as qtp
-if not qtp._imported:
+if not qtp.is_imported:
     log.warning('qutip was not imported. qutip objects will be stored as '
                 'strings.')
 
@@ -110,8 +110,8 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                 log.error('Exception occurred while writing'
                       ' {}:{} of type {}'.format(key, item, type(item)))
         elif isinstance(item, np.ndarray) or (
-                qtp._imported and isinstance(item, qtp.qobj.Qobj)):
-            if qtp._imported and isinstance(item, qtp.qobj.Qobj):
+                qtp.is_imported and isinstance(item, qtp.qobj.Qobj)):
+            if qtp.is_imported and isinstance(item, qtp.qobj.Qobj):
                 item = item.full()
             try:
                 entry_point.create_dataset(key, data=item)
