@@ -6,6 +6,8 @@ import logging
 
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_HDAWG_core as zicore
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import ZI_base_qudev
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import \
+    snapshot_whitelist as snw
 
 log = logging.getLogger(__name__)
 
@@ -30,25 +32,7 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
         super().__init__(*args, interface=interface, server=server, **kwargs)
         self.interface = interface
         self.server = server
-        self._snapshot_whitelist = {
-            'IDN',
-            'clockbase',
-            'system_clocks_referenceclock_source',
-            'system_clocks_referenceclock_status',
-            'system_clocks_referenceclock_freq',
-            'system_clocks_sampleclock_freq'}
-        for i in range(4):
-            self._snapshot_whitelist.update({
-                'awgs_{}_enable'.format(i),
-                'awgs_{}_outputs_0_amplitude'.format(i),
-                'awgs_{}_outputs_1_amplitude'.format(i)})
-        for i in range(8):
-            self._snapshot_whitelist.update({
-                'sigouts_{}_direct'.format(i),
-                'sigouts_{}_offset'.format(i),
-                'sigouts_{}_on'.format(i) ,
-                'sigouts_{}_range'.format(i),
-                'sigouts_{}_delay'.format(i)})
+        self._snapshot_whitelist = snw.generate_snapshot_whitelist_hdawg()
 
     def _check_options(self):
         """
