@@ -5,6 +5,8 @@ def livepatch(obj, cls):
     """Overwrite methods of an object with a new version of its class.
 
     There might be edge cases in which this does not work properly.
+    In particular, due to the complex structure of pulsar and its AWG
+    submodules, livepatching pulsar will likely not work properly.
 
     FIXME: does it work for classmethods?
 
@@ -15,9 +17,9 @@ def livepatch(obj, cls):
     Examples:
         from importlib import reload
         from pycqed.utilities.debugging import livepatch
-        from pycqed.measurement.waveform_control import pulsar as pulsar_mod
-        reload(pulsar_mod)
-        livepatch(pulsar, pulsar_mod.Pulsar)
+        from pycqed.measurement import measurement_control as mc_mod
+        reload(mc_mod)
+        livepatch(MC, mc_mod.MeasurementControl)
     """
     # get all attrs (methods/properties) of new class
     new_dir = dir(cls)

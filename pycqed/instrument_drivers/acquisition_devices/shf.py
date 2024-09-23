@@ -22,8 +22,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     from by the actual instrument classes
 
     Attributes:
-        awg_active (list of bool): Whether the AWG of each acquisition unit has
-            been started by Pulsar.
+        awg_active (dict of bool): Whether the AWG of each acquisition unit has
+            been started by Pulsar (keys are indices of acquisition units).
         _acq_scope_memory (int): Number of points that the scope can acquire
             in one hardware run.
     """
@@ -59,9 +59,12 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        chs = kwargs.get('valid_qachs', range(len(self.qachannels)))
+        self._all_qachs = self.qachannels
+        self._valid_qachs = {i: self._all_qachs[i] for i in chs}
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
         self.n_acq_units = len(self.qachannels)
-        self.lo_freqs = [None] * self.n_acq_units  # re-create with correct length
+        self.lo_freqs = {i: None for i in self._valid_qachs}  # re-create
         self.n_acq_int_channels = self.max_qubits_per_channel
         self._reset_acq_poll_inds()
         # Mode of the acquisition units ('readout' or 'spectroscopy')
@@ -71,7 +74,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self._awg_source_strings = {}
         self.timer = None
 
-        self.awg_active = [False] * self.n_acq_units
+        self.awg_active = {i: False for i in self._valid_qachs}
 
         self.add_parameter(
             'allowed_lo_freqs',
@@ -109,18 +112,34 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
            docstring='Timeout when waiting for scope data.',
            vals=validators.Ints())
 
+        self.add_parameter(
+            'allow_scope',
+            initial_value=(
+                    len(self.qachannels) == len(self._all_qachs)),
+            parameter_class=ManualParameter,
+            docstring='Whether access to the scope module is allowed. When '
+                      'sharing an SHF device between two setup, this should '
+                      'only be set to True while the other setup is inactive.',
+            vals=validators.Bool())
+
+    def __getattribute__(self, item):
+        # returns only valid qa channels instead of all qa-channels
+        # if attribute valid_qachs is explicitly specified during the init.
+        if item == 'qachannels' and hasattr(self, '_valid_qachs'):
+            return self._valid_qachs
+        return super().__getattribute__(item)
+
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
 
-        self._acq_poll_inds will be set to a list of lists of zeros,
-            with first dimension the number of acquisition units
-            and second dimension the number of integration channels
-            used per acquisition unit.
+        self._acq_poll_inds will be set to a dict of lists of zeros,
+            with dict keys being indices of acquisition units and list entries
+            corresponding to the integration channels of the acquisition unit.
         """
-        self._acq_poll_inds = []
-        for i in range(self.n_acq_units):
+        self._acq_poll_inds = {}
+        for i in self.qachannels:
             channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
-            self._acq_poll_inds.append([0] * len(channels))
+            self._acq_poll_inds[i] = [0] * len(channels)
 
     def set_lo_freq(self, acq_unit, lo_freq):
         super().set_lo_freq(acq_unit, lo_freq)
@@ -137,6 +156,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     def prepare_poll_before_AWG_start(self):
         super().prepare_poll_before_AWG_start()
         for i in self._acq_units_used:
+            if not self.awg_active[i]:
+                log.warning(f'{self.name}: acquisition unit {i} is used '
+                            f'without an AWG program. This might result in '
+                            f'not triggering the acquisition unit.')
             if self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'readout':
                 self.qachannels[i].readout.run()
@@ -223,6 +246,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # acq_length by the software PSD using timetraces
         return center_freq, delta_f, acq_length
 
+    def _acq_unit_exists(self, acq_unit):
+        return acq_unit in self.qachannels
+
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
@@ -237,7 +263,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # Set the scope trigger delay with respect to pulse generation
         self.scopes[0].trigger.delay(self.acq_trigger_delay())
 
-        for i in range(self.n_acq_units):
+        for i in self.qachannels:
             # Set trigger delay to the same value for all modes. This is
             # necessary e.g. to get consistent acquisition weights.
             self.qachannels[i].readout.integration.delay(
@@ -281,7 +307,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 self.qachannels[i].oscs[0].gain(1.0)
                 self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
-                if self._awg_program[i]:
+                if self._awg_program[self._get_awg_program_index(i)]:
                     # assume that this sequencer program includes triggering
                     # for the spectroscopy
                     self.qachannels[i].spectroscopy.trigger.channel(
@@ -358,7 +384,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # Could use the ZI toolkit instead:
         # self._tk_object.qachannels["*"].oscs[0].gain(0)
         with self.set_transaction():
-            for ch in self.qachannels:
+            for ch in self.qachannels.values():
                 ch.oscs[0].gain(0)
 
     def acquisition_progress(self):
@@ -380,17 +406,29 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 raise NotImplementedError("Mode not recognised!")
         return np.mean(list(n_acq.values()))
 
+    def _get_awg_program_index(self, acq_unit):
+        """Return which index of _awg_program corresponds to an acq_unit"""
+        return list(self._valid_qachs.keys()).index(acq_unit)
+
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload=None):
         """
         Program the internal AWGs
         """
         qachannel = self.qachannels[acq_unit]
-        self._awg_program[acq_unit] = awg_program
+        self._awg_program[self._get_awg_program_index(acq_unit)] = awg_program
         self.store_awg_source_string(qachannel, awg_program)
         qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
+
+    def has_awg_program(self, acq_unit):
+        """Returns whether an acquisition unit has an AWG program
+
+        Args:
+            acq_unit (int): index of the acquisition unit
+        """
+        return bool(self._awg_program[self._get_awg_program_index(acq_unit)])
 
     def store_awg_source_string(self, channel, awg_str):
         """
@@ -560,13 +598,14 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # Use a transaction since qcodes does not support wildcards
         # Or in toolkit: self._tk_object.qachannels["*"].generator.enable(False)
         with self.set_transaction():
-            for ch in self.qachannels:
+            for ch in self.qachannels.values():
                 ch.generator.enable(False)
 
     def start(self, **kwargs):
-        for i, ch in enumerate(self.qachannels):
+        for i, ch in self.qachannels.items():
             if self.awg_active[i]:  # Outputs a waveform
-                if self._awg_program[i]:  # Using the sequencer
+                if self._awg_program[self._get_awg_program_index(i)]:
+                    # Using the sequencer
                     # These 2 lines replace ...enable_sequencer(single=True)
                     # which also checks that it started, but sometimes fails
                     # (for short sequences?)
@@ -575,10 +614,13 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 else:
                     # No AWG needs to be started if the acq unit has no program
                     pass
-            elif i in self._acq_units_used:
-                log.warning(f'{self.name}: acquisition unit {i} is used '
-                            f'without an AWG program. This might result in '
-                            f'not triggering the acquisition unit.')
+
+    def _check_allowed_acquisition(self):
+        super()._check_allowed_acquisition()
+        if self._acq_mode == 'scope' and not self.allow_scope():
+            raise ValueError(
+                'Trying to access scope module while forbidden by qcodes '
+                'parameter allow_scope.')
 
     def _check_hardware_limitations(self):
         super()._check_hardware_limitations()
@@ -618,8 +660,11 @@ class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """
 
     def __init__(self, *args, **kwargs):
+        valid_qachs = kwargs.pop('valid_qachs', None)
         self._check_server(kwargs)
         super().__init__(*args, **kwargs)
+        if valid_qachs is not None:
+            kwargs['valid_qachs'] = valid_qachs
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
 

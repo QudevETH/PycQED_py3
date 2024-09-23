@@ -413,7 +413,7 @@ class BaseDataAnalysis(object):
         if a_tools.ignore_delegate_plotting:
             return False
         if self.get_param_value("delegate_plotting", False):
-            if len(self.timestamps) == 1:
+            if isinstance(self.raw_data_dict, dict):
                 f = self.raw_data_dict['folder']
             else:
                 f = self.raw_data_dict[0]['folder']
@@ -656,7 +656,13 @@ class BaseDataAnalysis(object):
                 return dict(preparation_type="wait")
             else:
                 if qbn is None:
-                    qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    if reset_params['analysis_instructions']:
+                        qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    else:
+                        log.warning('reset_params[analysis_instructions] is empty.\n'
+                                    'Likely the reset used does not require any '
+                                    ' special instructions for data analysis.')
+                        return dict(preparation_type="wait")
                 if len(reset_params['analysis_instructions'][qbn]) == 0:
                     # empty list, i.e. no reset steps
                     return dict(preparation_type="wait")
@@ -922,6 +928,7 @@ class BaseDataAnalysis(object):
                         prep_params = dict()
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
+                    reset_reps = 0
                     if 'active' in prep_params.get('preparation_type', 'wait'):
                         reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
@@ -947,7 +954,7 @@ class BaseDataAnalysis(object):
                         idx_dict_1 = next(iter(cal_points.get_indices(
                             cal_points.qb_names, prep_params).values()))
                         num_cal_segments = len([i for j in idx_dict_1.values()
-                                                for i in j])
+                                                for i in j]) * (reset_reps + 1)
                         # take out CalibrationPoints from the end of each
                         # segment, and reshape the remaining data based on the
                         # hard (1st dimension) and soft (1st dimension)
@@ -1498,6 +1505,18 @@ class BaseDataAnalysis(object):
 
         return figure, self.axs[fig_id]
 
+    def _generate_fig_ids(self):
+        """Ensure that each dict in plot_dicts has a key fig_id"""
+        for key in self.plot_dicts:
+            pdict = self.plot_dicts[key]
+            # Use the key of the plot_dict if no ax_id is specified
+            pdict['fig_id'] = pdict.get('fig_id', key)
+            pdict['ax_id'] = pdict.get('ax_id', None)
+
+            if isinstance(pdict['ax_id'], str):
+                pdict['fig_id'] = pdict['ax_id']
+                pdict['ax_id'] = None
+
     def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
         """
         Goes over the entries in self.plot_dict specified by key_list, and
@@ -1520,18 +1539,12 @@ class BaseDataAnalysis(object):
             key_list = [key_list]
         self.key_list = key_list
 
+        self._generate_fig_ids()
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
             if 'no_label' not in pdict:
                 pdict['no_label'] = no_label
-            # Use the key of the plot_dict if no ax_id is specified
-            pdict['fig_id'] = pdict.get('fig_id', key)
-            pdict['ax_id'] = pdict.get('ax_id', None)
-
-            if isinstance(pdict['ax_id'], str):
-                pdict['fig_id'] = pdict['ax_id']
-                pdict['ax_id'] = None
 
             if pdict['fig_id'] not in self.axs:
                 # This fig variable should perhaps be a different
@@ -1666,11 +1679,9 @@ class BaseDataAnalysis(object):
         Returns:
             list: list of unique figure ids.
         """
-        fig_ids = []
-        for name, item in self.plot_dicts.items():
-            fig_ids.append(item['fig_id'])
-
-        return np.unique(fig_ids).tolist()
+        self._generate_fig_ids()
+        fig_ids = [v['fig_id'] for v in self.plot_dicts.values()]
+        return list(np.unique(fig_ids))
 
     def add_to_plots(self, key_list=None):
         pass
@@ -1720,6 +1731,8 @@ class BaseDataAnalysis(object):
         plot_xtick_labels = pdict.get('xtick_labels', None)
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_barkws = pdict.get('bar_kws', {})
@@ -1767,6 +1780,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -1929,6 +1945,7 @@ class BaseDataAnalysis(object):
         plot_xtick_rotation = pdict.get('xtick_rotation', 90)
         plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
@@ -1936,6 +1953,7 @@ class BaseDataAnalysis(object):
         plot_grid = pdict.get('grid', None)
         plot_opposite_axis = pdict.get('opposite_axis', False)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         # Ensures that 'color' can be passed both ways (and that it does not
         # collide with plot_linekws).
         plot_color = pdict.get('color', plot_linekws.pop('color') if
@@ -2014,6 +2032,9 @@ class BaseDataAnalysis(object):
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
 
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
+
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
             legend_title = pdict.get('legend_title', None)
@@ -2076,6 +2097,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_nolabel = pdict.get('no_label', False)
         plot_title = pdict['title']
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         slice_idxs = pdict['sliceidxs']
         slice_label = pdict.get('slicelabel', '')
         slice_units = pdict.get('sliceunits', '')
@@ -2116,6 +2139,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -2377,6 +2403,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_yunit = pdict['yunit']
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         if plot_transpose:
             # transpose switches X and Y
             set_axis_label('x', axs, plot_ylabel, plot_yunit)
@@ -2390,6 +2418,8 @@ class BaseDataAnalysis(object):
                             verticalalignment='bottom',
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
     def plot_colorbar(self, cax=None, key=None, pdict=None, axs=None,
                       orientation='vertical', no_label=None):
@@ -2430,7 +2460,10 @@ class BaseDataAnalysis(object):
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
-            axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
+            # Ensure the colorbar is added to the figure that the axis
+            # is a part of
+            fig = axs.get_figure()
+            axs.cbar = fig.colorbar(cmap, cax=axs.cax, orientation=orientation)
         else:
             norm = mpl.colors.Normalize(0, 1)
             axs.cbar = mpl.colorbar.ColorbarBase(axs.cax, cmap=cmap, norm=norm)

@@ -221,20 +221,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             self.df_name = 'int_avg{}_det'.format('_classif' if self.classified else '')
         self.df = None
 
-        # determine data type
-        if "log" in self.df_name or not \
-                self.df_kwargs.get("det_get_values_kws",
-                                   {}).get('averaged', True):
-            data_type = "singleshot"
-        else:
-            data_type = "averaged"
-
         self.exp_metadata.update(kw)
-        self.exp_metadata.update({'classified_ro': self.classified,
-                                  'cz_pulse_name': self.cz_pulse_name,
-                                  'data_type': data_type,
-                                  'right_handed_basis': True,
-                                  })
         self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
@@ -287,6 +274,24 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
         exception = None
         with temporary_value(*self.temporary_values):
+            # update the nr_averages based on the settings in the user measure
+            # objects
+            self.df_kwargs.update({'nr_averages': max(
+                qb.acq_averages() for qb in self.meas_objs)})
+            
+            # determine data type
+            if "log" in self.df_name or not \
+                    self.df_kwargs.get("det_get_values_kws",
+                                       {}).get('averaged', True):
+                data_type = "singleshot"
+            else:
+                data_type = "averaged"
+            self.exp_metadata.update({'classified_ro': self.classified,
+                                      'cz_pulse_name': self.cz_pulse_name,
+                                      'data_type': data_type,
+                                      'reset_params': self.get_reset_params(),
+                                      })
+
             # Perpare all involved qubits. If not available, prepare
             # all measure objects.
             mos = self.qubits if self.qubits else self.meas_objs
@@ -584,7 +589,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 parameter_name=sweep_param_name, unit=unit)
         elif isinstance(self.sweep_functions[0], swf.UploadingSweepFunction):
             sweep_func_1st_dim = self.sweep_functions[0]
-            sweep_func_1st_dim.sequence = self.sequences[0]
+            # sequences may not exist yet, e.g. when using a BlockSoftHardSweep
+            if self.sequences:
+                sweep_func_1st_dim.sequence = self.sequences[0]
         else:
             # Check whether it is a nested sweep function whose first
             # sweep function is a SegmentHardSweep class as placeholder.

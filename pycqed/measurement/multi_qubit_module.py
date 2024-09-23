@@ -521,7 +521,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
     operation_dict = dev.get_operation_dict(qubits=qubits)
 
     if preselection:
-        log.warning("Using `preselection` keyword agrument is deprecated and"
+        log.warning("Using `preselection` keyword argument is deprecated and"
                     " will be removed in a future MR. Please use `reset_params"
                     "='preselection'` instead.")
         reset_params = "preselection"
@@ -585,18 +585,18 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         a = tda.MultiQutrit_Singleshot_Readout_Analysis(**analysis_kwargs)
         for qb in qubits:
             classifier_params = a.proc_data_dict[
-                'analysis_params']['classifier_params'][qb.name]
+                'analysis_params']['classifier_params'][qb.name][0]
             if update:
                 qb.acq_classifier_params().update(classifier_params)
                 if 'state_prob_mtx_masked' in a.proc_data_dict[
                         'analysis_params']:
                     qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
-                        'state_prob_mtx_masked'][qb.name])
+                        'state_prob_mtx_masked'][qb.name][0])
                 else:
                     log.warning('Measurement was not run with preselection. '
                                 'state_prob_matx updated with non-masked one.')
                     qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
-                        'state_prob_mtx'][qb.name])
+                        'state_prob_mtx'][qb.name][0])
         return a
 
 
@@ -717,6 +717,20 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 seq = sequence.Sequence("timetrace",
                                         cp.create_segments(operation_dict,
                                                            reset_params=reset_params))
+                # FIXME: understand limitations of scope mode
+                #        (e.g. segmenting) more fully
+                # For the moment, warn users when they have multiple
+                # acquisitions configured (e.g. due to pre-selection)
+                # for this measurement since it relies on the ZI UHF/SHF
+                # scope mode where no state information is available.
+                if seq.n_acq_elements() > 1:
+                    raise ValueError(
+                        f"The sequence has {seq.n_acq_elements()} "
+                        "readouts but only one is supported by scope "
+                        "mode. Check whether you have disabled readout-"
+                        "based reset for this measurement (e.g. in a "
+                        "temporary value)."
+                    )
                 # set sweep function and run measurement
                 MC.set_sweep_function(awg_swf.SegmentHardSweep(
                     sequence=seq, upload=upload))
