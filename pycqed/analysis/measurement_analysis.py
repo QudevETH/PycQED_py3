@@ -4664,10 +4664,12 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
     def __init__(self, label='Source', **kw):
         # TODO: Remove this class in the future as it's superceded by QE
         log.warning(
-            "Deprecation warning: please use the QuantumExperiment "
-            "Framework which you can find in analysis_v2/"
-            "spectroscopy_analysis.py. I.e., "
-            "QubitSpectroscopy1DAnalysis."
+            "Deprecation warning: This analysis class is outdated. "
+            "Please use QubitSpectroscopy1DAnalysis in analysis_v2/"
+            "spectroscopy_analysis.py.\n"
+            "If you see this message but did not call Qubit_Spectroscopy_Analysis"
+            " explicitly, you are likely using deprecated measurement "
+            "functions/classes."
         )
 
         kw['label'] = label
