@@ -38,7 +38,7 @@ e.g. building on the example above :
 - MR 2: basic functionality
 - [ ] ~critical Step 1: Implement basic measurement class (child of QuantumExperiment)
 - [ ] ~big Step 2: write analysis class for the basic features
-- MR 3: Implement an additional features and improve user experience
+- MR 3: Implement additional features and improve user experience
 - [ ] ~enhancement Step 1: add the additional feature to measurement class
 - [ ] ~enhancement Step 2: extend analysis class for the additional feature
 - [ ] ~gui ~usability Step 3: integration into GUI
