@@ -103,7 +103,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                     tmp_vals += [
                         # read out at the drive sideband frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() - 2 *
-                         default_ro_mod_freq),
+                         qb_obj.ge_mod_freq()),
                         (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         (qb_obj.acq_weights_type, 'SSB'),
                         (qb_obj.instr_trigger.get_instr().pulse_period,
@@ -380,7 +380,7 @@ class MixerCarrier(twoqbcal.CalibBuilder):
                         (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         # read out at the drive leakage frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() -
-                         default_ro_mod_freq),
+                         qb_obj.ge_mod_freq()),
                         (qb_obj.acq_weights_type, 'SSB'),
                         (qb_obj.instr_trigger.get_instr().pulse_period,
                          trigger_sep),
