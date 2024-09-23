@@ -1,22 +1,18 @@
-import io
-import pytest
 import contextlib
-import numpy as np
+import io
 
+import numpy as np
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.UHFQA_core as UHF
+import pytest
+
 
 @pytest.mark.hardware
 class Test_UHFQA_core:
-
-
     # FIXME: Mocking fails right now, why?
     @classmethod
     def setup_class(cls):
         cls.uhf = UHF.UHFQA_core(
-            name="MOCK_UHF",
-            server="emulator",
-            device="dev2109",
-            interface="1GbE"
+            name="MOCK_UHF", server="emulator", device="dev2109", interface="1GbE"
         )
 
         cls.uhf.reset_waveforms_zeros()
@@ -37,9 +33,7 @@ class Test_UHFQA_core:
 
     def test_load_default_settings(self):
         self.uhf.load_default_settings()
-        assert (
-            self.uhf.download_crosstalk_matrix().tolist() == np.eye(10).tolist()
-        )
+        assert self.uhf.download_crosstalk_matrix().tolist() == np.eye(10).tolist()
 
     def test_print_overview(self, capsys):
         self.uhf.print_overview()
@@ -81,9 +75,9 @@ class Test_UHFQA_core:
         captured = capsys.readouterr()
         assert "User registers overview" in captured.out
 
+
 @pytest.mark.hardware
 class TestUHFQA:
-
     def test_minimum_holdoff(self, uhf):
         # Test without averaging
         uhf.qas_0_integration_length(128)

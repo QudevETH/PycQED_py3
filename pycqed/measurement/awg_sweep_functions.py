@@ -78,7 +78,9 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
             are not known in advance.
         Args:
             circuit_builder (CircuitBuilder): Instance of CircuitBuilder that
-                is used to compile the block into sequences.
+                is used to compile the block into sequences. If it has a
+                'sequences' attribute (e.g. if it is a QuantumExperiment),
+                sequences created here will be appended to it.
             params (list[str]): List of the ParametricValues names in `block`.
             block (Block, optional): Block that contains ParametricValues and
                 is compiled into sequences using circuit_builder. Either block
@@ -103,6 +105,7 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         self.circuit_builder = circuit_builder
         self.params = params
         self.sweep_points = None
+        self.iteration = 0
 
     def set_parameter(self, vals, **kw):
         """Compiles the `Block` for the given values into a sequence and
@@ -124,6 +127,16 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
             body_block_func=self.block_func,
             **(getattr(self, 'sweep_kwargs', {})))
         self.sequence = seqs[0]
+        self.sequence.rename('Sequence' + str(self.iteration))
+        self.iteration += 1
+
+        # A typical QuantumExperiment using a BlockSoftHardSweep will not have
+        # any sequences pre-defined, as these are created only here.
+        # If self.circuit_builder is a QuantumExperiment, storing sequences
+        # when creating them makes them available after running for inspection.
+        if hasattr(self.circuit_builder, 'sequences'):
+            self.circuit_builder.sequences.append(self.sequence)
+
         self.upload_sequence()
 
     def configure_upload(self, upload=True, upload_first=False,

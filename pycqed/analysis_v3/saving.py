@@ -60,11 +60,11 @@ class Save:
             if filename is not None:
                 filename = filename + f'.{extension}'
             else:
-                filename = self.savedir.split('\\')[-1] + f'_{file_suffix}.{extension}'
+                filename = os.path.split(self.savedir)[-1] + f'_{file_suffix}.{extension}'
             if add_timestamp:
                 filename = '{:%Y%m%d_%H%M%S}--{}'.format(
                     datetime.datetime.now(), filename)
-            self.filepath = self.savedir + '\\' + filename
+            self.filepath = os.path.join(self.savedir, filename)
             if save_processed_data:
                 self.save_data_dict()
             if save_figures and hlp_mod.get_param('figures', self.data_dict) \
