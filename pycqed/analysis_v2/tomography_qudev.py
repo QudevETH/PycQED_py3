@@ -194,7 +194,7 @@ def mle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
     else:
         rho_positive = rho_guess - min(rho_guess.eigenenergies().min(), 0)
         rho_positive += 1e-9
-        T = np.linalg.cholesky(rho_positive.data.toarray())
+        T = np.linalg.cholesky(rho_positive.full())
         params0 = np.real(np.concatenate((T[np.tril_indices(d)],
                                           -1j*T[np.tril_indices(d, -1)])))
 
