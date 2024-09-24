@@ -14,6 +14,4 @@ try:
         import qutip_qip.circuit
     is_imported = True
 except ImportError as e:
-    import logging
-    log = logging.getLogger(__name__)
     is_imported = False
