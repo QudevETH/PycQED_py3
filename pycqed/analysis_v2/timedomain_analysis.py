@@ -1916,28 +1916,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if qb_names is None:
             qb_names = self.qb_names
         for qbn in qb_names:
-            # if "1D measurement" , shape is (n_shots, n_vn) i.e. one
-            # column for each value_name (often equal to n_ro_ch)
             shots_per_qb[qbn] = \
                 np.asarray(list(
                     pdd[key][qbn].values())).T
-            n_vn = shots_per_qb[qbn].shape[-1]
-            if (sc := self.get_param_value('sweep_control'))\
-                    and sc[0] == 'soft':
-                # 1D soft sweep with single shots: turn into a 2D measurement
-                # with shape (n_soft_sp, n_shots, n_vn)
-                soft_control = True
-                nr_shots = self.get_param_value(
-                    "nr_shots", self._extract_param_from_det("nr_shots"))
-                shots_per_qb[qbn] = shots_per_qb[qbn].reshape((-1, nr_shots,
-                                                               n_vn))
-            else:
-                soft_control = False
-            # if "2D measurement" reshape from (n_soft_sp, n_shots, n_vn)
-            #  to ( n_shots * n_soft_sp, n_ro_ch)
+            # if 1D measurement, shape at this point is (n_shots*n_sp, n_vn)
+            # i.e. one column for each value_name (often equal to n_ro_ch)
+
+            # if "2D measurement" reshape from
+            #  (n_soft_sp, n_shots * n_hard_sp, n_vn)
+            #  to (n_shots * n_hard_sp * n_soft_sp, n_ro_ch)
             if np.ndim(shots_per_qb[qbn]) == 3:
-                assert self.get_param_value("TwoD", False) or soft_control, \
+                assert self.get_param_value("TwoD", False), \
                     "'TwoD' is False but single shot data seems to be 2D"
+                n_vn = shots_per_qb[qbn].shape[-1]
                 # put softsweep as inner most loop for easier processing
                 shots_per_qb[qbn] = np.swapaxes(shots_per_qb[qbn], 0, 1)
                 # reshape to 2D array
