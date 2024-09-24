@@ -654,6 +654,9 @@ def simulate_circuits_2qbs(nr_cycles, nr_seq, circuits_list, T1, T2, t_gate,
 ## Calculation ##
 def translate(info, dd):
     s_gates = ["RX", "RY", "RZ"]
+    # FIXME this parsing of 's' might not capture all possible formats
+    if info[0].startswith('s'):
+        info[0] = info[0][1:]
     if info[0][0] == 'Y':
         gate_name = s_gates[1]
         angle = np.pi / 2
