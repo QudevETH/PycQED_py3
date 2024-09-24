@@ -5,12 +5,14 @@ from numpy.linalg import inv
 from typing import List, Optional, Tuple
 import scipy as sp
 import pycqed.utilities.qutip_compat as qtp
+
+log = logging.getLogger(__name__)
 if not qtp.is_imported:
-    log = logging.getLogger(__name__)
     log.warning('Could not import qutip, tomo code will not work')
 
 DEFAULT_BASIS_ROTS = ('I', 'X180', 'Y90', 'mY90', 'X90', 'mX90')
 # General state tomography functions
+
 
 def least_squares_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                              Omega: Optional[np.ndarray]=None) -> qtp.Qobj:
