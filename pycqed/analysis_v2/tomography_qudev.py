@@ -313,8 +313,9 @@ def max_fidelity(rho1: qtp.Qobj, rho2: qtp.Qobj, thetas1, thetas2):
 
     for i, theta1 in enumerate(thetas1):
         for j, theta2 in enumerate(thetas2):
-            state_rotation = qtp.tensor(qtp.rotation(qtp.sigmaz(), theta1),
-                                        qtp.rotation(qtp.sigmaz(), theta2))
+            state_rotation = qtp.tensor(
+                qtp.qip.operations.rotation(qtp.sigmaz(), theta1),
+                qtp.qip.operations.rotation(qtp.sigmaz(), theta2))
             target_state = state_rotation*target_bell
             fid_vec[i][j] = float(
                 np.real((target_state.dag()*rho1*target_state).data[0, 0]))
@@ -453,18 +454,18 @@ def standard_qubit_pulses_to_rotations(pulse_list: List[Tuple]) \
         'I': qtp.qeye(2),
         'X0': qtp.qeye(2),
         'Z0': qtp.qeye(2),
-        'X180': qtp.rotation(qtp.sigmax(), np.pi),
-        'mX180': qtp.rotation(qtp.sigmax(), -np.pi),
-        'Y180': qtp.rotation(qtp.sigmay(), np.pi),
-        'mY180': qtp.rotation(qtp.sigmay(), -np.pi),
-        'X90': qtp.rotation(qtp.sigmax(), np.pi/2),
-        'mX90': qtp.rotation(qtp.sigmax(), -np.pi/2),
-        'Y90': qtp.rotation(qtp.sigmay(), np.pi/2),
-        'mY90': qtp.rotation(qtp.sigmay(), -np.pi/2),
-        'Z90': qtp.rotation(qtp.sigmaz(), np.pi/2),
-        'mZ90': qtp.rotation(qtp.sigmaz(), -np.pi/2),
-        'Z180': qtp.rotation(qtp.sigmaz(), np.pi),
-        'mZ180': qtp.rotation(qtp.sigmaz(), -np.pi),
+        'X180': qtp.qip.operations.rotation(qtp.sigmax(), np.pi),
+        'mX180': qtp.qip.operations.rotation(qtp.sigmax(), -np.pi),
+        'Y180': qtp.qip.operations.rotation(qtp.sigmay(), np.pi),
+        'mY180': qtp.qip.operations.rotation(qtp.sigmay(), -np.pi),
+        'X90': qtp.qip.operations.rotation(qtp.sigmax(), np.pi/2),
+        'mX90': qtp.qip.operations.rotation(qtp.sigmax(), -np.pi/2),
+        'Y90': qtp.qip.operations.rotation(qtp.sigmay(), np.pi/2),
+        'mY90': qtp.qip.operations.rotation(qtp.sigmay(), -np.pi/2),
+        'Z90': qtp.qip.operations.rotation(qtp.sigmaz(), np.pi/2),
+        'mZ90': qtp.qip.operations.rotation(qtp.sigmaz(), -np.pi/2),
+        'Z180': qtp.qip.operations.rotation(qtp.sigmaz(), np.pi),
+        'mZ180': qtp.qip.operations.rotation(qtp.sigmaz(), -np.pi),
     }
     rotations = [qtp.tensor(*[standard_pulses[pulse] for pulse in qb_pulses])
                  for qb_pulses in pulse_list]

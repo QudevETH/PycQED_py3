@@ -9,10 +9,10 @@ import os
 
 rotation_matrixes = [qtp.qeye(2).full(),
                      qtp.sigmax().full(),
-                     qtp.rotation(qtp.sigmay(), np.pi / 2).full(),
-                     qtp.rotation(qtp.sigmay(), -np.pi / 2).full(),
-                     qtp.rotation(qtp.sigmax(), np.pi / 2).full(),
-                     qtp.rotation(qtp.sigmax(), -np.pi / 2).full()]
+                     qtp.qip.operations.rotation(qtp.sigmay(), np.pi / 2).full(),
+                     qtp.qip.operations.rotation(qtp.sigmay(), -np.pi / 2).full(),
+                     qtp.qip.operations.rotation(qtp.sigmax(), np.pi / 2).full(),
+                     qtp.qip.operations.rotation(qtp.sigmax(), -np.pi / 2).full()]
 pauli_matrixes = [qtp.qeye(2).full(),
                   qtp.sigmax().full(),
                   qtp.sigmay().full(),
