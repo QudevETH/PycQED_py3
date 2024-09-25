@@ -17,7 +17,7 @@ cache:
 .base_setup:
   image: python:3.11-bookworm
   before_script:
-    - apt-get update && apt-get install -y libegl1 libgl1 openssh-client git python3-pyqt6 libxcb-cursor0 xvfb
+    - apt-get update && apt-get install -y libegl1 libgl1 openssh-client git python3-pyqt6 libxcb-cursor0 xvfb git-lfs
     - Xvfb :99 -ac &
     - export DISPLAY=:99
     - pip install '.[docs,linting,user,measurement_setup]'
@@ -39,6 +39,8 @@ pytest:
     # FIXME: We have so many problems that this crashes the GitLab CI pipeline
     #    - echo "🔍 Running flake8..."
     #    - flake8 pycqed
+    - git lfs install
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${PYCQED_TESTDATA_REPOSITORY} ../pycqed_testdata
     - pip install '.[test]'
     - echo "🧪 Running tests..."
     - echo "📊 Running coverage..."
@@ -60,7 +62,7 @@ codequality:
   script:
     - pip install mypy mypy-gitlab-code-quality
     - mypy pycqed --no-error-summary > pycqed-mypy.txt || true
-    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json 
+    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json
   artifacts:
     reports:
       codequality: pycqed-codequality.json
