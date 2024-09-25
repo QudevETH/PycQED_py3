@@ -80,6 +80,14 @@ class MixerSkewness(twoqbcal.CalibBuilder):
         try:
             # calibration points not needed for mixer calibration
             kw['cal_states'] = ''
+            # reset not needed since measurement does not include qubits
+            if 'reset_params' in kw:
+                log.warning('Mixer calibration measurement does not excite '
+                            'qubits and therefore a qubit reset is not '
+                            'needed. Qubit reset will be disabled during '
+                            'this measurement by settings '
+                            'reset_params=dict(steps=[]).')
+            kw['reset_params'] = dict(steps=[])
             if task_list is None:
                 qubit = kw.get("qubit", None)
                 assert qubit, "Provide a task list or a qubit"
@@ -360,6 +368,15 @@ class MixerCarrier(twoqbcal.CalibBuilder):
                 df_kwargs.get("live_plot_transform_type", 'mag_phase')
             # calibration points not needed for mixer calibration
             cal_states = kw.pop('cal_states', [])
+
+            # reset not needed since measurement does not include qubits
+            if 'reset_params' in kw:
+                log.warning('Mixer calibration measurement does not excite '
+                            'qubits and therefore a qubit reset is not '
+                            'needed. Qubit reset will be disabled during '
+                            'this measurement by settings '
+                            'reset_params=dict(steps=[]).')
+            kw['reset_params'] = dict(steps=[])
 
             self.segment_kwargs = kw.pop('segment_kwargs', dict())
             super().__init__(task_list, sweep_points=sweep_points,
