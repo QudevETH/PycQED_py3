@@ -153,20 +153,39 @@ class MultiTaskingExperiment(QuantumExperiment):
         """
         return self.find_qubits_in_tasks(self.qb_names, [task])
 
+    @staticmethod
+    def _parse_qubits_and_tasklist(qubits, task_list):
+        """Generates a task_list and qubits list from `qubits` argument.
+
+        Implements the shortcut where just specifying `qubits` will generate a
+        task_list and a list of the qubit names. Furthermore, if a task_list
+        was given that has a qubit object in a 'qb' entry, it will be replaced
+        with the qubit name (str).
+        """
+        if qubits is not None and not isinstance(qubits, list):
+            qubits = [qubits]
+
+        # generate task_list
+        if task_list is None:
+            if qubits is None:
+                raise ValueError('Please provide either '
+                                 '"qubits" or "task_list"')
+            # Create task_list from qubits
+            task_list = [{'qb': qb.name} for qb in qubits]
+        for task in task_list:
+            if 'qb' in task and not isinstance(task['qb'], str):
+                task['qb'] = task['qb'].name
+        return qubits, task_list
+
     def run_measurement(self, **kw):
         """
         Run the actual measurement. Stores some additional settings and
             then calls the respective method in QuantumExperiment.
         :param kw: keyword arguments
         """
-        # update the nr_averages based on the settings in the user measure
-        # objects
-        self.df_kwargs.update(
-            {'nr_averages': max(qb.acq_averages() for qb in self.meas_objs)})
 
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
-            'reset_params': self.get_reset_params(),
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
@@ -592,7 +611,7 @@ class MultiTaskingExperiment(QuantumExperiment):
                         prefix, [k for l in params_to_prefix for k in l])
                     qbs = self.find_qubits_in_tasks(self.qb_names, [task])
                     for qb in qbs:
-                        ppqb = self._prep_sweep_params[qb]
+                        ppqb = self._reset_sweep_params[qb]
                         for param in [k for l in params_to_prefix for k in l]:
                             if param in ppqb:
                                 ppqb[param] = prefix + ppqb[param]
@@ -879,7 +898,7 @@ class CalibBuilder(MultiTaskingExperiment):
             pulse['pulse_length'] = given_pulse_length
             # generate a pulse object to extend the given length with buffer
             # times etc
-            p = UnresolvedPulse(pulse)
+            p = UnresolvedPulse(pulse, fast_mode=self.fast_mode)
             return p.pulse_obj.length
 
         # Even if we only need a single pulse, creating a block allows
@@ -908,7 +927,7 @@ class CalibBuilder(MultiTaskingExperiment):
                 # generate a pulse object to extend the pulse length with
                 # buffer times etc. The pulse with index 1 is needed because
                 # the virtual block start pulse has index 0.
-                p = UnresolvedPulse(pulses[1])
+                p = UnresolvedPulse(pulses[1], fast_mode=self.fast_mode)
                 max_length = max(p.pulse_obj.length, max_length)
         return max_length
 
