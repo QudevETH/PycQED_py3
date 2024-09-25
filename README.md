@@ -61,11 +61,15 @@ Further, general documentation and how to get started in depth can be found on
 
 ## Testing
 
-For testing, make sure your correct environment is activated. See [Installation](#installation)
+For testing, make sure your correct environment is activated. See [Installation](#installation). Then, please make sure the testing data was cloned into your current environment into the appropriate location.
+
+We use our experimental data as testbed. If you you are outside of QuDev, you unfortunately have to generate some experimental data first.
 
 Then you can run the test suite in your _current_ environment via:
 
 ```
+# activate the correct environment where you did setup pycqed
+cd /path/to/pycqed_py3
 pip install '.[test]'
 pytest -v --cov=pycqed --cov-report term -m "not hardware" pycqed/tests
 ```
