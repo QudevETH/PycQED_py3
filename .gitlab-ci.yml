@@ -1,7 +1,6 @@
 stages:
   - test_and_quality
-  - build
-  - deploy
+  - build_and_deploy
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
@@ -35,6 +34,8 @@ cache:
 pytest:
   extends: .base_setup
   stage: test_and_quality
+  except:
+    - /^doc\/.*$/
   script:
     # FIXME: We have so many problems that this crashes the GitLab CI pipeline
     #    - echo "🔍 Running flake8..."
@@ -57,10 +58,12 @@ pytest:
 codequality:
   extends: .base_setup
   stage: test_and_quality
+  except:
+    - /^doc\/.*$/
   script:
     - pip install mypy mypy-gitlab-code-quality
     - mypy pycqed --no-error-summary > pycqed-mypy.txt || true
-    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json 
+    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json
   artifacts:
     reports:
       codequality: pycqed-codequality.json
@@ -69,12 +72,19 @@ codequality:
 
 pages:
   extends: .base_setup
-  stage: build
+  stage: build_and_deploy
   script:
+    # Build
     - cd docs
     - make html
     - cd ..
     - mv docs/build/html public
+    # Deploy
+    - DOC_UPLOAD_FOLDER=${CI_PROJECT_PATH:6}/$CI_COMMIT_BRANCH
+    - ssh ${DOC_USER}@${DOC_URL} "mkdir -p public/$DOC_UPLOAD_FOLDER"
+    - ssh ${DOC_USER}@${DOC_URL} "rm -rf public/$DOC_UPLOAD_FOLDER/*"
+    - scp -r public/* "${DOC_USER}@${DOC_URL}:public/$DOC_UPLOAD_FOLDER"
+    - echo "Documentation accessible at https://$DOC_URL/$DOC_UPLOAD_FOLDER/index.html"
   artifacts:
     paths:
       - public
@@ -83,18 +93,3 @@ pages:
     - /^Proj\/.*$/
     - /^doc\/.*$/
 
-deploy_docs:
-  extends: .base_setup
-  stage: deploy
-  script:
-    - DOC_UPLOAD_FOLDER=${CI_PROJECT_PATH:6}/$CI_COMMIT_BRANCH
-    - ssh ${DOC_USER}@${DOC_URL} "mkdir -p public/$DOC_UPLOAD_FOLDER"
-    - ssh ${DOC_USER}@${DOC_URL} "rm -rf public/$DOC_UPLOAD_FOLDER/*"
-    - scp -r public/* "${DOC_USER}@${DOC_URL}:public/$DOC_UPLOAD_FOLDER"
-    - echo "Documentation accessible at https://$DOC_URL/$DOC_UPLOAD_FOLDER/index.html"
-  only:
-    - qudev_master
-    - /^Proj\/.*$/
-    - /^doc\/.*$/
-  needs:
-    - pages
