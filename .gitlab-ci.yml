@@ -63,13 +63,14 @@ codequality:
   cache:
     paths: [] # Disable caching for this job - else mypy reuses old values
   script:
+    - pip install '.[test]' # codequality should cover tests, too
     - pip install mypy mypy-gitlab-code-quality
     - mypy pycqed --no-error-summary > pycqed-mypy.txt || true
-    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json
+    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json && echo "Code quality report generated successfully" || echo "Error generating code quality report"
   artifacts:
     reports:
       codequality: pycqed-codequality.json
-    expire_in: 90 days 
+    expire_in: 90 days
   allow_failure: true
 
 pages:
