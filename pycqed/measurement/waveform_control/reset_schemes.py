@@ -13,10 +13,11 @@ measurements or other quantum operations.
 The module is designed to be flexible and extensible, allowing for easy
 addition of new reset schemes as needed.
 
-Typical notebook usage example:
+Example:
+    Usage in your notebook::
 
-    qb.add_reset_schemes()
-    qb.reset.steps(['preselection', 'feedback_reset', 'parametric_flux_reset'])
+        qb.add_reset_schemes()
+        qb.reset.steps(['preselection', 'feedback_reset', 'parametric_flux_reset'])
 
 By default the following reset schemes are added by add_reset_schemes():
 
