@@ -60,6 +60,8 @@ codequality:
   stage: test_and_quality
   except:
     - /^doc\/.*$/
+  cache:
+    paths: [] # Disable caching for this job - else mypy reuses old values
   script:
     - pip install mypy mypy-gitlab-code-quality
     - mypy pycqed --no-error-summary > pycqed-mypy.txt || true
@@ -67,7 +69,7 @@ codequality:
   artifacts:
     reports:
       codequality: pycqed-codequality.json
-    expire_in: 90 days # because Merge Requests progress slowly @QuDev
+    expire_in: 90 days 
   allow_failure: true
 
 pages:
