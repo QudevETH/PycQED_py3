@@ -12,13 +12,6 @@ except ImportError as e:
 DEFAULT_BASIS_ROTS = ('I', 'X180', 'Y90', 'mY90', 'X90', 'mX90')
 # General state tomography functions
 
-
-# TODO: Deliberately add trash to trigger mypy-codecoverage
-def add_numbers(a: int, b: str) -> int: 
-    return a + int(b)
-result = add_numbers(5, "3")
-print(result)
-
 def least_squares_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                              Omega: Optional[np.ndarray]=None) -> qtp.Qobj:
     """
