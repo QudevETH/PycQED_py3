@@ -40,10 +40,11 @@ pytest:
     #    - echo "🔍 Running flake8..."
     #    - flake8 pycqed
     - git lfs install
-    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${PYCQED_TESTDATA_REPOSITORY} ../pycqed_testdata
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@${PYCQED_TESTDATA_REPOSITORY} pycqed_testdata
     - pip install '.[test]'
     - echo "🧪 Running tests..."
     - echo "📊 Running coverage..."
+    - export PYCQED_TESTDATA_DIR="$CI_PROJECT_DIR/pycqed_testdata"
     - pytest -v --cov=pycqed --cov-report xml:coverage.xml --cov-report term -m "not hardware" --junitxml=junit.xml pycqed/tests
   artifacts:
     reports:
