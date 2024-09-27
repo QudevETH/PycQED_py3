@@ -17,7 +17,6 @@ import pycqed.version
 from pycqed.utilities import general
 from pycqed.utilities.io import hdf5 as h5d
 from pycqed.utilities.general import dict_to_ordered_tuples
-from pycqed.utilities.get_default_datadir import get_default_datadir
 
 # used for saving instrument settings
 from pycqed.instrument_drivers import instrument as pycqedins
@@ -74,7 +73,7 @@ class MeasurementControl(Instrument):
 
     def __init__(self, name: str,
                  plotting_interval: float=3,
-                 datadir: str=get_default_datadir(),
+                 datadir: str='.', # defaults to the local directory
                  live_plot_enabled: bool=True, verbose: bool=True):
         super().__init__(name=name)
 
