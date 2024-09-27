@@ -13,7 +13,6 @@ from copy import deepcopy
 from matplotlib.colors import LogNorm
 from matplotlib.colors import LinearSegmentedColormap as lscmap
 from sklearn.mixture import GaussianMixture as GM
-from pycqed.utilities.get_default_datadir import get_default_datadir
 from scipy.interpolate import griddata
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import Bounds, LinearConstraint, minimize
@@ -22,7 +21,7 @@ from matplotlib import cm
 from typing import Union
 
 latest_data_match_whole_words = False
-datadir = get_default_datadir()
+datadir = '.' # Defaults to local directory
 fetch_data_dir = None
 ignore_delegate_plotting = False
 
