@@ -1015,7 +1015,8 @@ class AutomaticCalibrationRoutine(Step):
             step_class (Step): Class of the step
             step_label (str): Label of the step
             step_settings (dict, optional): Settings of the step. If any settings
-                are found in step_settings['settings'], they will have priority
+                are found in step_settings['settings'][StepName],
+                they will have priority
                 over those found in the configuration parameter dictionary.
             step_tmp_vals (list, optional): Temporary values for the step. Each
                 entry is a tuple made of a QCoDeS parameter and its

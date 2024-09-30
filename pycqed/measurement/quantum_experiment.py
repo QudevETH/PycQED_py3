@@ -48,6 +48,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                  meas_objs=None, classified=False, MC=None,
                  label=None, exp_metadata=None, upload=True, measure=True,
                  analyze=True, temporary_values=(), drive="timedomain",
+                 switch='default',
                  sequences=(), sequence_function=None, sequence_kwargs=None,
                  plot_sequence=False, filter_segments_mask=None, df_kwargs=None, df_name=None,
                  timer_kwargs=None, mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
@@ -179,6 +180,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.temporary_values = list(temporary_values)
         self.analyze = analyze
         self.drive = drive
+        self.switch = switch
         self.callback = callback
         self.callback_condition = callback_condition
         self.plot_sequence = plot_sequence
@@ -294,7 +296,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # all measure objects.
             mos = self.qubits if self.qubits else self.meas_objs
             for m in mos:
-                m.prepare(drive=self.drive)
+                m.prepare(drive=self.drive, switch=self.switch)
 
             # create/retrieve sequence to run
             self._prepare_sequences(self.sequences, self.sequence_function,

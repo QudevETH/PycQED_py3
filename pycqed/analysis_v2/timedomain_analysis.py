@@ -11131,12 +11131,21 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
     def process_data(self):
         super().process_data()
 
-        hsp = self.raw_data_dict['hard_sweep_points']
-        ssp = self.raw_data_dict['soft_sweep_points']
+        hsp = self.proc_data_dict['sweep_points_dict'][
+                self.qb_names[0]]['sweep_points']
+        ssp = list(OrderedDict(self.proc_data_dict['sweep_points_2D_dict'][
+                self.qb_names[0]]).values())[0]
         mdata = self.raw_data_dict['measured_data']
 
+        if not self._extract_param_from_det('polar'):
+            # conversion from V_I, V_Q -> Magn.
+            magnitude = np.sqrt(
+                list(mdata.values())[0]**2 + list(mdata.values())[1]**2)
+        else:
+            magnitude = list(mdata.values())[0]
+
         # Conversion from V_peak -> V_RMS
-        V_RMS = list(mdata.values())[0]/np.sqrt(2)
+        V_RMS = magnitude/np.sqrt(2)
         # Conversion to P (dBm):
         #   P = V_RMS^2 / 50 Ohms
         #   P (dBm) = 10 * log10(P / 1 mW)
@@ -11417,8 +11426,14 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
     def process_data(self):
         super().process_data()
 
-        hsp = self.raw_data_dict['hard_sweep_points']
-        ssp = self.raw_data_dict['soft_sweep_points']
+        assert len(self.qb_names) == 1, \
+            "Analysis only works for single qubit measurements."
+
+        hsp = self.proc_data_dict['sweep_points_dict'][self.qb_names[0]][
+                'sweep_points']
+        ssp = list(OrderedDict(self.proc_data_dict['sweep_points_2D_dict'][
+                self.qb_names[0]]).values())[0]
+        self.raw_sweep_points = (hsp, ssp)
         mdata = self.raw_data_dict['measured_data']
 
         sideband_I, sideband_Q = list(mdata.values())
@@ -11514,8 +11529,8 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
 
             # Here we use the raw sweep points as they have the correct format
             # for the plotting function plot_colorxy
-            alpha_raw = self.raw_data_dict['hard_sweep_points']
-            phi_raw = self.raw_data_dict['soft_sweep_points']
+            alpha_raw = self.raw_sweep_points[0]
+            phi_raw = self.raw_sweep_points[1]
             mdata = self.raw_data_dict['measured_data']
 
             sideband_I, sideband_Q = list(mdata.values())

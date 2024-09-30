@@ -1795,7 +1795,7 @@ def mixer_imbalance_sideband_guess(model, **kwargs):
     Returns:
         :py:class:'lmfit.parameters': Parameters
     """
-    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
+    model.set_param_hint('g', value=1.0, min=0.5, max=2)
     model.set_param_hint('phi', value=0, min=-180, max=180)
     model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
     return model.make_params(**kwargs)

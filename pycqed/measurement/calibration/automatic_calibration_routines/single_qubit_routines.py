@@ -18,6 +18,7 @@ if not _device_db_client_module_missing:
 from pycqed.measurement.sweep_points import SweepPoints
 
 from pycqed.measurement.calibration import single_qubit_gates as qbcal
+from pycqed.measurement.calibration import mixer
 from pycqed.utilities.general import (
     configure_qubit_mux_drive,
     configure_qubit_mux_readout
@@ -894,7 +895,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
         # Mixer calibration
         include_mixer_calib = self.get_param_value("include_mixer_calib")
         if include_mixer_calib:
-            self.add_mixer_calib_steps(**self.kw)
+            self.add_mixer_calib_steps()
 
     def add_next_pipulse_step(self):
         """Adds a next pipulse step"""
@@ -962,7 +963,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 }
         )
 
-    def add_mixer_calib_steps(self, **kw):
+    def add_mixer_calib_steps(self):
         """
         Add steps to calibrate the mixer after the rest of the routine is
         defined. Mixer calibrations are put after every AdaptiveQubitSpectroscopy step.
@@ -971,28 +972,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
         dictionary):
             include_mixer_calib (bool): If True, include mixer
                 calibration for the carrier and for the skewness.
-            mixer_calib_carrier_settings (dict): Settings for the mixer
-                calibration for the carrier.
-            mixer_calib_skewness_settings (dict): Settings for the mixer
-                calibration for the skewness.
         """
-
-        # Carrier settings
-        mixer_calib_carrier_settings = kw.get("mixer_calib_carrier_settings",
-                                              {})
-        mixer_calib_carrier_settings.update({
-            "qubit": self.qubit,
-            "update": True
-        })
-
-        # Skewness settings
-        mixer_calib_skewness_settings = kw.get("mixer_calib_skewness_settings",
-                                               {})
-        mixer_calib_skewness_settings.update({
-            "qubit": self.qubit,
-            "update": True
-        })
-
         i = 0
 
         while i < len(self.routine_template):
@@ -1002,18 +982,18 @@ class FindFrequency(AutomaticCalibrationRoutine):
                 # Include mixer calibration
                 # Skewness calibration
                 self.add_step(
-                    MixerCalibrationSkewness,
-                    'mixer_calibration_skewness',
-                    mixer_calib_skewness_settings,
+                    MixerSkewnessStep,
+                    'mixer_skewness',
+                    {},
                     index=i + 1,
                 )
                 i += 1
 
                 # Carrier calibration
                 self.add_step(
-                    MixerCalibrationCarrier,
-                    'mixer_calibration_carrier',
-                    mixer_calib_carrier_settings,
+                    MixerCarrierStep,
+                    'mixer_carrier',
+                    {},
                     index=i + 1,
                 )
                 i += 1
@@ -1241,61 +1221,185 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
     ])
 
 
-class MixerCalibrationSkewness(IntermediateStep):
-    """Mixer calibration step that calibrates the skewness of the mixer."""
-
-    def __init__(self, routine, **kw):
+class MixerSkewnessStep(mixer.MixerSkewness, Step):
+    """A wrapper class for the MixerSkewness experiment."""
+    def __init__(self, routine, **kwargs):
         """
-        Initialize the MixerCalibrationSkewness step.
+        Initializes the MixerSkewnessStep class, which also includes
+        initialization of the MixerSkewness experiment.
+
+        Arguments:
+            routine (Step): The parent routine
+
+        Configuration parameters (coming from the configuration parameter
+        dictionary):
+            alpha_min (float): minimum amplitude ratio.
+            alpha_max (float): maximum amplitude ratio.
+            alpha_pts (int): sweep points between minimum and maximum
+                amplitude ratio.
+            phi_skew_min (float): minimum phase offset in deg.
+            phi_skew_max (float): maximum phase offset in deg.
+            phi_skew_pts (int): sweep points between minimum and maximum
+                phase offset.
+        """
+        self.kw = kwargs
+        Step.__init__(self, routine=routine, **kwargs)
+        mixerskewness_settings = self.parse_settings(
+            self.get_requested_settings())
+        mixer.MixerSkewness.__init__(self, dev=self.dev,
+                                     **mixerskewness_settings)
+
+    def parse_settings(self, requested_kwargs):
+        """
+        Searches the keywords for the MixerSkewness experiment given in
+        requested_kwargs in the configuration parameter dictionary.
 
         Args:
-            routine (Step): Routine object.
+            requested_kwargs (dict): Dictionary containing the names of the
+            keywords needed for the MixerSkewness class.
 
-        Keyword args:
-            calibrate_drive_mixer_skewness_function: method for calibrating to
-                be used. Default is to use calibrate_drive_mixer_skewness_model.
+        Returns:
+            dict: Dictionary containing all keywords with values to be passed
+            to the MixerSkewness class.
         """
-        super().__init__(routine=routine, **kw)
+        kwargs = {}
+        task_list = []
+        for qb in self.qubits:
+            task = {}
+            task_list_fields = requested_kwargs['task_list_fields']
+
+            value_params = {'alpha_min': None,
+                            'alpha_max': None,
+                            'alpha_pts': None,
+                            'phi_skew_min': None,
+                            'phi_skew_max': None,
+                            'phi_skew_pts': None,
+                            'amplitude': None}
+
+            for name, value in value_params.items():
+                value = self.get_param_value(name)
+                value_params[name] = value
+
+            task['alpha'] = np.linspace(value_params['alpha_min'],
+                                        value_params['alpha_max'],
+                                        value_params['alpha_pts'])
+
+            task['phi_skew'] = np.linspace(value_params['phi_skew_min'],
+                                           value_params['phi_skew_max'],
+                                           value_params['phi_skew_pts'])
+
+            task['amplitude'] = value_params['amplitude']
+
+            task['qb'] = qb.name
+
+            for k, v in task_list_fields.items():
+                if k not in task:
+                    task[k] = self.get_param_value(k,
+                                                   qubit=qb.name,
+                                                   default=v[1])
+
+            task_list.append(task)
+
+        kwargs['task_list'] = task_list
+
+        kwargs_super = super().parse_settings(requested_kwargs)
+        kwargs_super.update(kwargs)
+
+        return kwargs_super
 
     def run(self):
-        kw = self.kw
-
-        # FIXME: used only default right now, kw is not passed
-        calibrate_drive_mixer_skewness_function = kw.get(
-            "calibrate_drive_mixer_skewness_function",
-            "calibrate_drive_mixer_skewness_model",
-        )
-
-        function = getattr(self.qubit, calibrate_drive_mixer_skewness_function)
-        new_kw = keyword_subset_for_function(kw, function)
-        function(**new_kw)
+        """Runs the MixerSkewness experiment and the analysis for it."""
+        self.run_measurement()
+        self.run_analysis()
+        if self.get_param_value('update'):
+            self.run_update()
 
 
-class MixerCalibrationCarrier(IntermediateStep):
-    """Mixer calibration step that calibrates the carrier of the mixer."""
+class MixerCarrierStep(mixer.MixerCarrier, Step):
+    """A wrapper class for the MixerCarrier experiment."""
 
-    def __init__(self, routine, **kw):
+    def __init__(self, routine, **kwargs):
         """
-        Initialize the MixerCalibrationCarrier step.
+        Initializes the MixerSkewnessStep class, which also includes
+        initialization of the MixerSkewness experiment.
+
+        Arguments:
+            routine (Step): The parent routine
+
+        Configuration parameters (coming from the configuration parameter
+        dictionary):
+            offset_i_min (float): minimum voltage offset in volts.
+            offset_i_max (float): maximum voltage offset in volts.
+            offset_i_pts (int): sweep points between minimum and maximum
+                voltage offsets.
+            offset_q_min (float): minimum voltage offset in volts.
+            offset_q_max (float): maximum voltage offset in volts.
+            offset_q_pts (int): sweep points between minimum and maximum
+                voltage offsets.
+        """
+        self.kw = kwargs
+        Step.__init__(self, routine=routine, **kwargs)
+        mixercarrier_settings = self.parse_settings(
+            self.get_requested_settings())
+        mixer.MixerCarrier.__init__(self, dev=self.dev,
+                                     **mixercarrier_settings)
+
+    def parse_settings(self, requested_kwargs):
+        """
+        Searches the keywords for the MixerCarrier experiment given in
+        requested_kwargs in the configuration parameter dictionary.
 
         Args:
-            routine (Step): Routine object.
+            requested_kwargs (dict): Dictionary containing the names of the
+            keywords needed for the MixerCarrier class.
 
-        Keyword args:
-            calibrate_drive_mixer_carrier_function: method for calibrating to
-                be used. Default is to use calibrate_drive_mixer_carrier_model.
+        Returns:
+            dict: Dictionary containing all keywords with values to be passed
+                to the MixerCarrier class.
         """
-        super().__init__(routine=routine, **kw)
+        kwargs = {}
+        task_list = []
+        for qb in self.qubits:
+            task = {}
+            task_list_fields = requested_kwargs['task_list_fields']
+
+            value_params = {'offset_i_min': None,
+                            'offset_i_max': None,
+                            'offset_i_pts': None,
+                            'offset_q_min': None,
+                            'offset_q_max': None,
+                            'offset_q_pts': None}
+
+            for name, value in value_params.items():
+                value = self.get_param_value(name)
+                value_params[name] = value
+
+            for ch in ['i', 'q']:
+                task[f'offset_{ch}'] = np.linspace(
+                    value_params[f'offset_{ch}_min'],
+                    value_params[f'offset_{ch}_max'],
+                    value_params[f'offset_{ch}_pts'])
+
+            task['qb'] = qb.name
+
+            for k, v in task_list_fields.items():
+                if k not in task:
+                    task[k] = self.get_param_value(k,
+                                                   qubit=qb.name,
+                                                   default=v[1])
+
+            task_list.append(task)
+
+        kwargs['task_list'] = task_list
+
+        kwargs_super = super().parse_settings(requested_kwargs)
+        kwargs_super.update(kwargs)
+
+        return kwargs_super
 
     def run(self):
-        kw = self.kw
-
-        # FIXME: Used only default right now, kw is not passed
-        calibrate_drive_mixer_carrier_function = kw.get(
-            "calibrate_drive_mixer_carrier_function",
-            "calibrate_drive_mixer_carrier_model",
-        )
-
-        function = getattr(self.qubit, calibrate_drive_mixer_carrier_function)
-        new_kw = keyword_subset_for_function(kw, function)
-        function(**new_kw)
+        """Runs the MixerCarrier experiment and the analysis for it."""
+        self.run_measurement()
+        self.run_analysis()
+        if self.get_param_value('update'):
+            self.run_update()
