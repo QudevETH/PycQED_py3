@@ -35,9 +35,8 @@ from pycqed.utilities.state_and_transition_translation import STATE_ORDER
 import pycqed.measurement.waveform_control.segment as seg_mod
 import datetime as dt
 log = logging.getLogger(__name__)
-try:
-    import qutip as qtp
-except ImportError as e:
+import pycqed.utilities.qutip_compat as qtp
+if not qtp.is_imported:
     log.warning('Could not import qutip, tomography code will not work')
 
 
