@@ -67,7 +67,11 @@ class AnalysisViewer(object):
         )
 
         # Get daystamps and setup iterator with them.
-        daystamps = analysis_toolbox.get_all_daystamps(analysis_toolbox.datadir)
+        if analysis_toolbox.datadir is None:
+            log.error('datadir is not set. Please set it.')
+            return None
+        else:
+            daystamps = analysis_toolbox.get_all_daystamps(analysis_toolbox.datadir)
         experiment_iterator = ExperimentIterator(daystamps)
 
         # Create MainWindow which is responsible for the whole functionality.
