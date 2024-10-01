@@ -1,3 +1,21 @@
+"""
+A tooblox for data analysis and processing in quantum experiments.
+
+This module provides various utility functions for data analysis, file handling,
+plotting, and data processing in the context of quantum experiments.
+
+The module includes functions for:
+- Data & file handling and data retrieval/storage
+- Peak and dip finding in datasets
+- Gaussian mixture probability prediction, normalization, and rotation
+- Datetime and timestamp conversions
+- Various plotting functions
+
+Many functions in this module are designed to work with PycQED's data structures
+and experiment workflows. We assume `datadir` will be set in a init script a
+jupyter notebook cell.
+"""
+
 import logging
 log = logging.getLogger(__name__)
 
