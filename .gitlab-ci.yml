@@ -55,21 +55,21 @@ pytest:
       - coverage.xml
   coverage: '/(?i)total.*? (100(?:\.0+)?|\d{1,2}(?:\.\d+)?)%/'
 
-codequality:
-  extends: .base_setup
+code_quality_slim:
   stage: test_and_quality
-  except:
-    - /^doc\/.*$/
-  cache:
-    paths: [] # Disable caching for this job - else mypy reuses old values
+  image: python:3.11-bookworm
   script:
-    - pip install '.[test]' # codequality should cover tests, too
-    - pip install mypy mypy-gitlab-code-quality
-    - mypy pycqed --no-error-summary > pycqed-mypy.txt || true
-    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json && echo "Code quality report generated successfully" || echo "Error generating code quality report"
+    - pip install pipx
+    - export PATH="$PATH:/root/.local/bin"
+# FIXME: mypy - see below
+    - pipx install gitlab-cq ruff pyright
+    - gitlab-cq --output gl-code-quality-report.json ruff check .
+    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
+# FIXME: mypy's report is too massive right now - enable later
+#    - gitlab-cq --output gl-code-quality-report.json --merge mypy .
   artifacts:
     reports:
-      codequality: pycqed-codequality.json
+      codequality: gl-code-quality-report.json
     expire_in: 90 days
   allow_failure: true
 
@@ -95,4 +95,3 @@ pages:
     - qudev_master
     - /^Proj\/.*$/
     - /^doc\/.*$/
-
