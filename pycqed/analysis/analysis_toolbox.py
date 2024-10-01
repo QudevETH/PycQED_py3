@@ -21,7 +21,7 @@ from matplotlib import cm
 from typing import Union
 
 latest_data_match_whole_words = False
-datadir = '.' # Defaults to local directory
+datadir = None
 fetch_data_dir = None
 ignore_delegate_plotting = False
 

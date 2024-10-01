@@ -73,7 +73,7 @@ class MeasurementControl(Instrument):
 
     def __init__(self, name: str,
                  plotting_interval: float=3,
-                 datadir: str='.', # defaults to the local directory
+                 datadir: str=None,
                  live_plot_enabled: bool=True, verbose: bool=True):
         super().__init__(name=name)
 
