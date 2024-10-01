@@ -55,19 +55,22 @@ pytest:
       - coverage.xml
   coverage: '/(?i)total.*? (100(?:\.0+)?|\d{1,2}(?:\.\d+)?)%/'
 
-codequality:
-  extends: .base_setup
+code_quality_slim:
   stage: test_and_quality
-  except:
-    - /^doc\/.*$/
+  image: python:3.11-bookworm
   script:
-    - pip install mypy mypy-gitlab-code-quality
-    - mypy pycqed --no-error-summary > pycqed-mypy.txt || true
-    - mypy-gitlab-code-quality < pycqed-mypy.txt > pycqed-codequality.json
+    - pip install pipx
+    - export PATH="$PATH:/root/.local/bin"
+# FIXME: mypy - see below
+    - pipx install gitlab-cq ruff pyright
+    - gitlab-cq --output gl-code-quality-report.json ruff check .
+    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
+# FIXME: mypy's report is too massive right now - enable later
+#    - gitlab-cq --output gl-code-quality-report.json --merge mypy .
   artifacts:
     reports:
-      codequality: pycqed-codequality.json
-    expire_in: 90 days # because Merge Requests progress slowly @QuDev
+      codequality: gl-code-quality-report.json
+    expire_in: 90 days
   allow_failure: true
 
 pages:
@@ -92,4 +95,3 @@ pages:
     - qudev_master
     - /^Proj\/.*$/
     - /^doc\/.*$/
-
