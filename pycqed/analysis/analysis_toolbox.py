@@ -12,7 +12,7 @@ The module includes functions for:
 - Various plotting functions
 
 Many functions in this module are designed to work with PycQED's data structures
-and experiment workflows. We assume `datadir` will be set in a init script a
+and experiment workflows. We assume `datadir` will be set in an init script or a
 jupyter notebook cell.
 """
 
