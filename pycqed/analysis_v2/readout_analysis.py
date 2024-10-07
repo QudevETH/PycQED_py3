@@ -9,6 +9,7 @@ Originally written by Adriaan, updated/rewritten by Rene May 2018
 """
 import itertools
 import logging
+from typing import Literal
 
 from scipy import stats
 
@@ -1180,6 +1181,9 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                                         {int(yval): int(yval)})[int(yval)])
         if kwargs.get("legend", False):
             ax.legend()
+        # ensure that 1 unit on x axis == 1 unit of y axis, ie that circles
+        # in the data are plotted as circles and not ellipses
+        ax.set_aspect('equal', adjustable='datalim')
 
         # Create Y-marginal (right)
         binr_range = (data[:, 1].min(), data[:, 1].max())
@@ -1226,6 +1230,10 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             x = np.linspace(xmin, xmax, 100)
             y = np.linspace(ymin, ymax, 100)
             raise NotImplementedError()
+
+        axr.set_ylim(ax.get_ylim())
+        axt.set_xlim(ax.get_xlim())
+
         return kwargs['fig'], [ax, axr, axt]
 
     @staticmethod
@@ -1237,31 +1245,78 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                                figure=fig)
         # scatter axis
         ax = plt.subplot(gs[1, 0])
+
         # right marginal histogram axis
-        axr = plt.subplot(gs[1, 1], sharey=ax,
-                          frameon=frameon)
+        # note: we do not use sharex/y anymore because this prevents the scaling
+        # of the aspect ratio of ax to ensure circles are also viewed as circles
+        # on the plot of ax, independently of the ax dimensions.
+        # to ensure the alignment, we adapt the x/ylims of axr and axt to match
+        # the ones of ax at plot time.
+        axr = plt.subplot(gs[1, 1], frameon=frameon)
         # top marginal histogram axis
-        axt = plt.subplot(gs[0, 0], sharex=ax,
-                          frameon=frameon)
+        axt = plt.subplot(gs[0, 0], frameon=frameon)
         return [ax, axr, axt]
 
     @staticmethod
-    def plot_clf_boundaries(X, clf, ax=None, cmap=None, spacing=None):
-        def make_meshgrid(x, y, h=None, margin=None):
-            if margin is None:
-                deltax = x.max() - x.min()
-                deltay = y.max() - y.min()
-                margin_x = deltax * 0.10
-                margin_y = deltay * 0.10
-            else:
-                margin_x, margin_y = margin, margin
-            x_min, x_max = x.min() - margin_x, x.max() + margin_x
-            y_min, y_max = y.min() - margin_y, y.max() + margin_y
+    def plot_clf_boundaries(X, clf,
+                            covered_area: Literal["from_ax_lim", "from_data"]
+                            = "from_ax_lim",
+                            ax=None, cmap=None, spacing: float = None):
+        """
+        plots the decision regions of a classifier `clf`
+        Args:
+            X: data
+            clf: classifier
+            covered_area:
+                'from_ax_lim': the area on which to show the decision regions
+                is taken from the limit of  the provided axis. This is the default.
+                'from_data': the area to plot is taken based on the
+                data provided + a 10% margin.
+            ax: ax on which to plot the decision regions
+            cmap: color map
+            spacing: spacing in normalized axes unit between points on the grid
+                for the decision regions.
+                note: high density takes (considerably) longer to plot.
+
+        Returns:
+
+        """
+        def get_min_max_from_data(x, y):
+            return add_margins(x.min(), x.max(), y.min(), y.max())
+
+        def get_min_max_from_axes(ax):
+            """Retrieve min and max values from axis limits of a given axis
+            object.
+            """
+            x_min, x_max = ax.get_xlim()
+            y_min, y_max = ax.get_ylim()
+            return add_margins(x_min, x_max, y_min, y_max)
+
+        def make_meshgrid(x_min, x_max, y_min, y_max, h=None):
+            """Create a meshgrid based on provided min and max values and step
+            size h.
+            """
             if h is None:
                 h = 0.01 * (x_max - x_min)
+
             xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
                                  np.arange(y_min, y_max, h))
             return xx, yy
+
+        def add_margins(xmin, xmax, ymin, ymax, margin=None):
+            """Adds margins to box."""
+            if margin is None:
+                deltax = xmax - xmin
+                deltay = ymax - ymin
+                margin_x = deltax * 0.10
+                margin_y = deltay * 0.10
+
+            else:
+                margin_x, margin_y = margin, margin
+
+            xmin, xmax = xmin - margin_x, xmax + margin_x
+            ymin, ymax = ymin - margin_y, ymax + margin_y
+            return xmin, xmax, ymin, ymax
 
         def plot_contours(ax, clf, xx, yy, **params):
             Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])
@@ -1272,8 +1327,18 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         if ax is None:
             fig, ax = plt.subplots(1, figsize=(10, 10))
 
-        X0, X1 = X[:, 0], X[:, 1]
-        xx, yy = make_meshgrid(X0, X1, h=spacing)
+        if covered_area == "from_ax_lim":
+            xmin, xmax, ymin, ymax = get_min_max_from_axes(ax)
+        elif covered_area == "from_data":
+            x, y = X[:, 0], X[:, 1]
+            xmin, xmax, ymin, ymax = get_min_max_from_data(x, y)
+        else:
+            raise ValueError(f"{covered_area=} not in "
+                             "'from_ax_lim', 'from_data'")
+        xx, yy = make_meshgrid(xmin, xmax, ymin, ymax, h=spacing)
+        # Disable auto-scaling before plotting boundaries
+        ax.set_autoscalex_on(False)
+        ax.set_autoscaley_on(False)
         plot_contours(ax, clf, xx, yy, cmap=cmap, alpha=0.3)
 
     @staticmethod
