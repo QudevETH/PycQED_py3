@@ -2120,11 +2120,12 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
             self.plot_dicts[fig_id_analyzed]['linestyle'] = 'solid'
 
+            lmfit_model = self.fit_res[qb_name]
             # Plot Lorentzian fit
             self.plot_dicts[f"{fig_id_analyzed}_lorentzian"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_fit,
-                'fit_res': self.fit_res[qb_name],
+                'fit_res': lmfit_model,
                 'setlabel': 'Fit',
                 'do_legend': True,
                 'color': 'C3',
@@ -2134,9 +2135,9 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             }
 
             # Plot peak
-            f0 = self.fit_res[qb_name].params['f0'].value
-            f0_idx = a_tools.nearest_idx(sweep_points, f0)
-            f0_dist = self.fit_res[qb_name].best_fit[f0_idx]
+            f0 = lmfit_model.params['f0'].value
+            f0_dist = lmfit_model.eval(lmfit_model.params, **{
+                lmfit_model.model.independent_vars[0]: [f0]})
             self.plot_dicts[f"{fig_id_analyzed}_lorentzian_peak"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
@@ -2153,12 +2154,10 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
 
             if self.analyze_ef:
                 # Plot the gf/2 point as well
-                f0_gf_over_2 = self.fit_res[qb_name].params[
+                f0_gf_over_2 = lmfit_model.params[
                     'f0_gf_over_2'].value
-                f0_gf_over_2_idx = a_tools.nearest_idx(sweep_points,
-                                                       f0_gf_over_2)
-                f0_gf_over_2_dist = self.fit_res[qb_name].best_fit[
-                    f0_gf_over_2_idx]
+                f0_gf_over_2_dist = lmfit_model.eval(lmfit_model.params, **{
+                    lmfit_model.model.independent_vars[0]: [f0_gf_over_2]})
 
                 self.plot_dicts[
                     f"{fig_id_analyzed}_lorentzian_peak_gf_over_2"] = {
