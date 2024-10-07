@@ -169,6 +169,11 @@ class T1FrequencySweep(CalibBuilder):
                                    'the corresponding amplitudes cannot be '
                                    'computed.')
                 qb = qubits[0]
+                LO_freq = qb.get_ge_lo_freq()
+                if LO_freq < np.max(qubit_freqs) and \
+                        LO_freq > np.min(qubit_freqs):
+                    log.warning(f"LO frequency {LO_freq} is within the range "
+                                f"of frequencies of {qb.name}.")
                 amplitudes = qb.calculate_flux_voltage(
                     frequency=qubit_freqs,
                     flux=qb.flux_parking(),
