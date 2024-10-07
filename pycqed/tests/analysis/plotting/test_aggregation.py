@@ -1,15 +1,16 @@
 import pytest
 import matplotlib.pyplot as plt
 import numpy as np
-from unittest.mock import MagicMock
 import pycqed.analysis_v2.plotting.aggregation as plta
 import pycqed.analysis.analysis_toolbox as a_tools
 import pycqed.measurement.quantum_experiment as qe_mod
-import os
 
-TEST_DATA_DIR = r'Q:\USERS\nathan\data\xld'
-a_tools.datadir = TEST_DATA_DIR
-
+# Navigate to the folder where the testdata of this test is contained
+@pytest.fixture(scope="module", autouse=True)
+def set_module_data_dir(test_data_base_dir):
+    sub_directory = test_data_base_dir / 'setups/xld'
+    a_tools.datadir = str(sub_directory)
+    return sub_directory
 
 @pytest.fixture
 def sample_data():
