@@ -61,7 +61,8 @@ Further, general documentation and how to get started in depth can be found on
 
 ## Testing
 
-For testing, make sure your correct environment is activated. See [Installation](#installation). Then, please make sure the testing data was cloned into your current environment into the appropriate location.
+For testing, make sure your pycqed environment is activated. See [Installation](#installation). Additionally,
+clone the test data repository to your local computer, see [here](https://gitlab.phys.ethz.ch/qudev/control_software/pycqed_testdata) for instructions (requires access to DPHYS gitlab).
 
 We use our experimental data as testbed. Internally it is the `pycqed_testdata` repo. If you you are outside of QuDev, you unfortunately have to generate some experimental data first.
 
