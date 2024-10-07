@@ -2123,15 +2123,14 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             # Plot Lorentzian fit
             self.plot_dicts[f"{fig_id_analyzed}_lorentzian"] = {
                 'fig_id': fig_id_analyzed,
-                'plotfn': self.plot_line,
-                'xvals': sweep_points,
-                'yvals': self.fit_res[qb_name].best_fit,
-                'ylabel': 'S21 distance (arb.units)',
-                'marker': None,
-                'linestyle': 'solid',
-                'color': 'C3',
+                'plotfn': self.plot_fit,
+                'fit_res': self.fit_res[qb_name],
                 'setlabel': 'Fit',
                 'do_legend': True,
+                'color': 'C3',
+                'ylabel': 'S21 distance (arb.units)',
+                'legend_bbox_to_anchor': (1, -0.15),
+                'legend_pos': 'upper right'
             }
 
             # Plot peak
