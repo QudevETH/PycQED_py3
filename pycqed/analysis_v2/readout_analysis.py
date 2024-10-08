@@ -1181,9 +1181,6 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                                         {int(yval): int(yval)})[int(yval)])
         if kwargs.get("legend", False):
             ax.legend()
-        # ensure that 1 unit on x axis == 1 unit of y axis, ie that circles
-        # in the data are plotted as circles and not ellipses
-        ax.set_aspect('equal', adjustable='datalim')
 
         # Create Y-marginal (right)
         binr_range = (data[:, 1].min(), data[:, 1].max())
@@ -1231,8 +1228,32 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             y = np.linspace(ymin, ymax, 100)
             raise NotImplementedError()
 
-        axr.set_ylim(ax.get_ylim())
-        axt.set_xlim(ax.get_xlim())
+        # if necessary, update limits, note that, if both are provided only the
+        # ylim will matter since the aspect ratio is fixed.
+        if kwargs.get('xlim'):
+            ax.set_xlim(kwargs.get('xlim'))
+        if kwargs.get('ylim'):
+            ax.set_ylim(kwargs.get('ylim'))
+        # required to assert axis will be at the same location roughly
+        # independently of the data, this is useful to ensure uniformity of
+        # plots (easier comparison of scatters during a sweep)
+        fig.tight_layout()
+
+        # ensure that 1 unit on x axis == 1 unit of y axis, ie that circles
+        # in the data are plotted as circles and not ellipses
+        # when setting the spect ratio, the axis position of `ax` will change,
+        # anchor it to north east such that space to axr and axt does not change
+        ax.set_aspect('equal', anchor='NE')
+        ax_position = ax.get_position()
+        # Adjust the bounds of the top and right axes to match the main plot
+        # Align the top axis (axt) width with ax and maintain height
+        axt.set_position([ax_position.x0, axt.get_position().y0,
+                          ax_position.width, axt.get_position().height])
+
+        # Align the right axis (axr) height with ax and maintain width
+        axr.set_position([axr.get_position().x0, ax_position.y0,
+                          axr.get_position().width, ax_position.height])
+
 
         return kwargs['fig'], [ax, axr, axt]
 
@@ -1247,14 +1268,9 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         ax = plt.subplot(gs[1, 0])
 
         # right marginal histogram axis
-        # note: we do not use sharex/y anymore because this prevents the scaling
-        # of the aspect ratio of ax to ensure circles are also viewed as circles
-        # on the plot of ax, independently of the ax dimensions.
-        # to ensure the alignment, we adapt the x/ylims of axr and axt to match
-        # the ones of ax at plot time.
-        axr = plt.subplot(gs[1, 1], frameon=frameon)
+        axr = plt.subplot(gs[1, 1], frameon=frameon, sharey=ax)
         # top marginal histogram axis
-        axt = plt.subplot(gs[0, 0], frameon=frameon)
+        axt = plt.subplot(gs[0, 0], frameon=frameon, sharex=ax)
         return [ax, axr, axt]
 
     @staticmethod
