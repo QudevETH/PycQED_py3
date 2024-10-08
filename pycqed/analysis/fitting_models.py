@@ -264,8 +264,8 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
         if "negative": returns voltages corresponding to the negative flux
             (left to the upper sweetspot).
         if "smallest": equivalent to branch = 0.
-        if volt_guess (integer):
-            returns voltages in the period closest to volt_guess
+        if volt_guess (integer/float):
+            returns voltages in the branch closest to volt_guess
     n_periods (int, int): range of periods in which to look for voltages
         close to volt_guess
     single_branch (bool): forces all voltages to lie in a single branch (e.g. to
