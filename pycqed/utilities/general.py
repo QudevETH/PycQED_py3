@@ -49,10 +49,7 @@ if sys.version_info < (3, 13):
         return decorator
 
 else:  # Python 3.13+, use a "pass-through" decorator and shout
-    log.error("Please remove the @deprecated implementation from general.py")
-    dead_code_warning = "We have dead code in the codebase."
-    log.warning(dead_code_warning)
-    print(dead_code_warning)
+    warnings.warn("Please remove the @deprecated implementation from general.py")
     def deprecated(func):
         return func
 
