@@ -15,10 +15,9 @@ from os.path import dirname, exists
 from os import makedirs
 import logging
 import subprocess
-from functools import reduce  # forward compatibility for Python 3
+from functools import reduce, wraps
 import operator
 import string
-import functools
 import warnings
 from zipfile import ZipFile
 
@@ -41,6 +40,7 @@ if sys.version_info < (3, 13):
     def deprecated(reason: str):
         """Marks a deprecated function."""
         def decorator(func):
+            @wraps(func)
             def wrapper(*args, **kwargs):
                 warnings.warn(f"Call to deprecated function '{func.__name__}': \
                               {reason}", DeprecationWarning, stacklevel=2)
@@ -88,7 +88,7 @@ def assert_not_none(*param_names):
     import inspect
 
     def check(f):
-        @functools.wraps(f)
+        @wraps(f)
         def wrapped_func(*args, **kwds):
             signature_args_and_kwargs = inspect.getfullargspec(f).args
             default_kwarg_values = inspect.getfullargspec(f).defaults
