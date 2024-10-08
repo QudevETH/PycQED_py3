@@ -30,8 +30,7 @@ try:
 except:
     pass
 
-## First all decorators
-
+# FIXME: Compoensate feature-lag due to older Python version usage
 # Only define some decorators while we are 
 # lagging behind the current Python stable.
 #
@@ -50,6 +49,7 @@ if sys.version_info < (3, 13):
         return decorator
 
 else:  # Python 3.13+, use a "pass-through" decorator and shout
+    log.error("Please remove the @deprecated implementation from general.py")
     dead_code_warning = "We have dead code in the codebase."
     log.warning(dead_code_warning)
     print(dead_code_warning)
@@ -119,8 +119,6 @@ def assert_not_none(*param_names):
         return wrapped_func
 
     return check
-
-# followed by utility functions
 
 # FIXME: This global is unnecessary. Search below for:
 #        This can be simplified and made more robust.
