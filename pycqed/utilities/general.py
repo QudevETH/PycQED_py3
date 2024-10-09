@@ -23,35 +23,44 @@ from zipfile import ZipFile
 
 
 from copy import deepcopy
+
 log = logging.getLogger(__name__)
 try:
     import msvcrt  # used on windows to catch keyboard input
 except:
     pass
 
-# FIXME: Compoensate feature-lag due to older Python version usage
-# Only define some decorators while we are 
+# FIXME: Compensate feature-lag due to older Python version usage
+# Only define some decorators while we are
 # lagging behind the current Python stable.
 #
 # See: https://peps.python.org/pep-0702/
 #
-if sys.version_info < (3, 13):  
+if sys.version_info < (3, 13):
 
     def deprecated(reason: str):
         """Marks a deprecated function."""
+
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                warnings.warn(f"Call to deprecated function '{func.__name__}': \
-                              {reason}", DeprecationWarning, stacklevel=2)
+                warnings.warn(
+                    f"Call to deprecated function '{func.__name__}': {reason}",
+                    category=DeprecationWarning,
+                    stacklevel=2,
+                )
                 return func(*args, **kwargs)
+
             return wrapper
+
         return decorator
 
 else:  # Python 3.13+, use a "pass-through" decorator and shout
     warnings.warn("Please remove the @deprecated implementation from general.py")
+
     def deprecated(func):
         return func
+
 
 def assert_not_none(*param_names):
     """
@@ -89,8 +98,10 @@ def assert_not_none(*param_names):
         def wrapped_func(*args, **kwds):
             signature_args_and_kwargs = inspect.getfullargspec(f).args
             default_kwarg_values = inspect.getfullargspec(f).defaults
-            error_msg = ' {name} is None, but {name} should not be None when ' \
-                        'passed to ' + f.__qualname__
+            error_msg = (
+                " {name} is None, but {name} should not be None when "
+                "passed to " + f.__qualname__
+            )
 
             # check if a positional argument is None or a signature keyword
             # argument is None:
@@ -98,15 +109,17 @@ def assert_not_none(*param_names):
             # which are not passed as positional arguments (since keyword
             # arguments can also be provided as positional arguments)
             x = len(signature_args_and_kwargs) - len(
-                args)  # index of first needed default keyword arg value
-            for (name, value) in zip(signature_args_and_kwargs,
-                                     args + default_kwarg_values[x:]):
+                args
+            )  # index of first needed default keyword arg value
+            for name, value in zip(
+                signature_args_and_kwargs, args + default_kwarg_values[x:]
+            ):
                 # print(name, value)
                 if name in param_names and value is None:
                     raise ValueError(error_msg.format(f=f, name=name))
 
             # check if a passed keyword argument is None
-            for (name, value) in kwds.items():
+            for name, value in kwds.items():
                 if name in param_names and value is None:
                     raise ValueError(error_msg.format(f=f, name=name))
 
@@ -117,10 +130,12 @@ def assert_not_none(*param_names):
 
     return check
 
+
 # FIXME: This global is unnecessary. Search below for:
 #        This can be simplified and made more robust.
 #        e.g., base >= 2, remove global (digs), zero handling, etc...
 digs = string.digits + string.ascii_letters
+
 
 def get_git_info():
     """
