@@ -152,9 +152,13 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                                                     "none",
                                                                     "all",
                                                                     "odd", "even"))
-        self.add_pulse_parameter('RO', 'ro_flux_net_zero_pulse',
-                                 'flux_net_zero_pulse', initial_value=False,
-                                 vals=vals.Bool())
+        self.add_pulse_parameter(
+            'RO', 'ro_flux_net_zero_pulse', 'flux_net_zero_pulse',
+            initial_value=False, vals=vals.Bool(),
+            docstring='If True, uses a net-zero pulse for '
+                      'flux-pulse-assisted readout (note that this doubles'
+                      'the  duration of the flux pulse, such that the '
+                      'readout pulse happens during the first half).')
 
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
