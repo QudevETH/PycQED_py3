@@ -1467,6 +1467,8 @@ class BaseDataAnalysis(object):
 
         # p['fig_id'] always exists after _generate_fig_ids
         unique_fig_names = set(p['fig_id'] for k, p in plot_dicts.items())
+        # Create and close each figure successively, such that only one figure
+        # is open in memory at a time
         for unique_fig_name in unique_fig_names:
             fig_key_list = [k for k, p in plot_dicts.items()
                             if p['fig_id'] == unique_fig_name]
