@@ -48,9 +48,7 @@ class HDAWG_TriggerDevice(Instrument):
             'pulse_length',
             label='Pulse length',
             get_cmd=(lambda self=self: self._pulse_length),
-            set_cmd=(lambda val, self=self:
-                     (setattr(self, '_pulse_length', val),
-                      self.program_awg())[0]),
+            set_cmd=self._update_pulse_length,
             unit='samples',
             set_parser=int,
             vals=vals.Multiples(self.GRANULARITY)
@@ -82,6 +80,14 @@ class HDAWG_TriggerDevice(Instrument):
             unit='',
             vals=vals.Ints(1, int(1e15)))
 
+    def _update_pulse_length(self, pulse_length):
+        pulse_period_in_samples = self.pulse_period() * self.awg.clock_freq()
+        new_pulse_distance = pulse_period_in_samples - pulse_length
+        self.awg.set(
+            f'awgs_{self.awg_nr}_userregs_{self.USER_REG_SEPARATION}',
+            int(new_pulse_distance))
+        setattr(self, '_pulse_length', pulse_length)
+        self.program_awg()
     @property
     def awg_nr(self):
         return self._awg_nr
