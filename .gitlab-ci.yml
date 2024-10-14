@@ -1,5 +1,6 @@
 stages:
-  - test_and_quality
+  - unittest_and_qualiy
+  - test_integration
   - build_and_deploy
 
 variables:
@@ -33,7 +34,7 @@ cache:
 
 pytest:
   extends: .base_setup
-  stage: test_and_quality
+  stage: unittest_and_qualiy
   except:
     - /^doc\/.*$/
   script:
@@ -56,7 +57,7 @@ pytest:
   coverage: '/(?i)total.*? (100(?:\.0+)?|\d{1,2}(?:\.\d+)?)%/'
 
 code_quality_slim:
-  stage: test_and_quality
+  stage: unittest_and_qualiy
   image: python:3.11-bookworm
   script:
     - pip install pipx
@@ -72,6 +73,30 @@ code_quality_slim:
       codequality: gl-code-quality-report.json
     expire_in: 90 days
   allow_failure: true
+
+integration_tests:
+  stage: test_integration
+  script:
+    # TODO:  - bash setup_via_ssh.sh
+    - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${PYCQED_SCRIPTS_REPOSITORY}
+    - pip install nbconvert
+    - echo "DEBUG: information"
+    - which python
+    - python --version
+    - pip list
+    - python tests/integration/run_notebooks.py
+  artifacts:
+    paths:
+      - tests/integration/notebooks/*.ipynb
+    when: on_failure
+  rules:
+    #- if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "qudev_master"
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: manual
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: manual
+      allow_failure: true
 
 pages:
   extends: .base_setup
