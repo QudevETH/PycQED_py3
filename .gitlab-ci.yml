@@ -75,12 +75,13 @@ code_quality_slim:
   allow_failure: true
 
 integration_tests:
+  extends: .base_setup
   stage: test_integration
   script:
     # TODO:  - bash setup_via_ssh.sh
     - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${PYCQED_SCRIPTS_REPOSITORY}
     - pip install nbconvert
-    - echo "DEBUG: information"
+    - echo "DEBUG INFORMATION"
     - which python
     - python --version
     - pip list
@@ -90,13 +91,13 @@ integration_tests:
       - tests/integration/notebooks/*.ipynb
     when: on_failure
   rules:
-    #- if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "qudev_master"
     - if: $CI_PIPELINE_SOURCE == "push"
       when: manual
       allow_failure: true
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: manual
       allow_failure: true
+    #- if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "qudev_master"
 
 pages:
   extends: .base_setup
