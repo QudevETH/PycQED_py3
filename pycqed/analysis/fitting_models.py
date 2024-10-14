@@ -258,7 +258,7 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
     coupling: coupling to resonator (Hz).
     fr (float): frequency of resonator (Hz)
     dac_sweet_spot: voltage at which the sweet-spot is found (V)
-    branch (enum: 'positive' 'negative' or "smallest" or int/float):
+    branch: 'positive', 'negative', 'smallest', or `int`/`float`(= "volt_guess"):
         if "positive": returns voltages corresponding to the positive flux
             branch (right to the upper sweetspot).
         if "negative": returns voltages corresponding to the negative flux
