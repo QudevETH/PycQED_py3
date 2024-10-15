@@ -816,10 +816,10 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                     if cphase == 'randomized' else np.repeat([cphase], length)
                 cphases = cphases_modifier(cphases)
                 gates = [
-                    s_gates[1] + " qb_1",
-                    s_gates[1] + "s qb_2",
-                    s_gates[2] + " qb_1",
-                    s_gates[2] + "s qb_2",
+                    f"{s_gates[1]} qb_1",
+                    f"s{s_gates[1]} qb_2",
+                    f"{s_gates[2]} qb_1",
+                    f"s{s_gates[2]} qb_2",
                 ]
                 last_1qb_gates = [s_gates[2], s_gates[2]]
                 if cphases[0] != 'nogate':
@@ -835,13 +835,13 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                             ng = random.choice(choices)
                             new_1qb_gates.append(ng)
 
-                        gates.append(new_1qb_gates[0] + " qb_1")
+                        gates.append(f"{new_1qb_gates[0]} qb_1")
                         # Virtual Z should not be flagged as simultaneous, such
                         # that e.g. for ['X90 qb_1', 'Z45 qb_1', 'CZ qb_1 qb_2']
                         # the CZ is correctly referenced to the end of the
                         # last gate, which is the longer X90
                         simultaneous = '' if 'Z' in new_1qb_gates[1] else 's'
-                        gates.append(new_1qb_gates[1] + simultaneous + " qb_2")
+                        gates.append(f"{simultaneous}{new_1qb_gates[1]} qb_2")
                         last_1qb_gates = new_1qb_gates
 
                         if cphases[i] != 'nogate':

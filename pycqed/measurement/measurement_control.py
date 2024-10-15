@@ -220,8 +220,9 @@ class MeasurementControl(Instrument):
             'settings_file_compression',
             vals=vals.Bool(),
             docstring='True if file should be compressed with blosc2. '
-                      'Does not support hdf5 files.',
-            initial_value=True,
+                      'Does not support hdf5 files. We do not recommend '
+                      'using compression.',
+            initial_value=False,
             parameter_class=ManualParameter
         )
 

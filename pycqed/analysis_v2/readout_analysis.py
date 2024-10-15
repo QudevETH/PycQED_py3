@@ -956,16 +956,54 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         return fm
 
     @staticmethod
-    def plot_fidelity_matrix(fm, target_names,
+    def plot_fidelity_matrix(fm, target_names, prep_names=None,
                              title="State Assignment Probability Matrix",
                              auto_shot_info=True, ax=None,
                              cmap=None, normalize=True, show=False,
-                             plot_cb=True):
+                             plot_cb=True,
+                             plot_compact=False, presel_column=None,
+                             plot_norm=None):
+        """
+        Plots fidelity matrix.
+
+        Plots fraction/number of shots as a grid where the row corresponds to
+        the state the qubits are prepared in and the column the state that was
+        assigned by the classifier(s)m, i.e. the target state. Calculates the
+        fidelity by averaging the trace sum.
+
+        Args:
+            fm (numpy.ndarray): 2D fidelity matrix to be plotted
+            target_names (list of str): assigned state names
+            prep_names (list of str): prepared state names, copies
+                ``target_names`` if ``None``
+            title (str): Title of the plot
+            auto_shot_info (bool): Whether to count and plot number of shots
+            ax (matplotlib.axis|optional): axis to plot on, creates new if
+                ``None``
+            cmap (matplotlib.cm|optional): colour map for the fidelity matrix
+                and colour bar, default: ``get.get_cmap('Reds')``
+            normalize (bool): whether to count and normalize ``fm`` row-wise.
+            show (bool): whether to show plot afterward
+            plot_cb (bool): whether to plot colour bar
+            plot_compact (bool): doesn't annotate all fidelity matrix values &
+                doesn't rotate target value tick marks if set to ``True``
+            presel_column (array): array of ``len(prep_names)`` with values in
+                [0, 1] indicating the fraction of shots for which the
+                preselection condition was fulfilled. Will be added to the plot
+                as a separate column.
+            plot_norm (matplotlib.colors.Normalize): set plotting norm, e.g.
+                ``mc.LogNorm()`` for logarithmic colouring (default)
+
+        Returns:
+            Plotted fidelity matrix as a figure.
+        """
         fidelity_avg = np.trace(fm) / float(np.sum(fm))
         if auto_shot_info:
             title += '\nTotal # shots:{}'.format(np.sum(fm))
         if cmap is None:
             cmap = plt.get_cmap('Reds')
+        if plot_norm is None:
+            plot_norm = mc.LogNorm(vmin=5e-3, vmax=1.)
 
         if ax is None:
             fig, ax = plt.subplots()
@@ -975,30 +1013,41 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         if normalize:
             fm = fm.astype('float') / fm.sum(axis=1)[:, np.newaxis]
 
+        if presel_column is not None:
+            fm = np.c_[presel_column, fm]
+
         im = ax.imshow(fm, interpolation='nearest', cmap=cmap,
-                       norm=mc.LogNorm(vmin=5e-3, vmax=1.))
+                       norm=plot_norm)
         ax.set_title(title)
         if plot_cb:
             cb = fig.colorbar(im)
             cb.set_label('Assignment Probability, $P_{ij}$')
 
         if target_names is not None:
-            tick_marks = np.arange(len(target_names))
-            ax.set_xticks(tick_marks)
-            ax.set_xticklabels( target_names, rotation=45)
-            ax.set_yticks(tick_marks)
-            ax.set_yticklabels(target_names)
+            # annotate y axis
+            if prep_names is None:
+                prep_names = target_names
+            ax.set_yticks(np.arange(len(prep_names)))
+            ax.set_yticklabels(prep_names)
+            # annotate x axis
+            if presel_column is not None:
+                target_names = ['pre', *target_names]
+            ax.set_xticks(np.arange(len(target_names)))
+            ax.set_xticklabels(target_names,
+                               rotation=90 if plot_compact else 45)
 
+        # annotate matrix elements with values in readable colour
         thresh = fm.max() / 1.5 if normalize else fm.max() / 2
-        for i, j in itertools.product(range(fm.shape[0]), range(fm.shape[1])):
-            if normalize:
-                ax.text(j, i, "{:0.4f}".format(fm[i, j]),
-                         horizontalalignment="center",
-                         color="white" if fm[i, j] > thresh else "black")
-            else:
-                ax.text(j, i, "{:,}".format(fm[i, j]),
-                         horizontalalignment="center",
-                         color="white" if fm[i, j] > thresh else "black")
+        if not plot_compact:
+            for i, j in itertools.product(range(fm.shape[0]), range(fm.shape[1])):
+                if normalize:
+                    ax.text(j, i, "{:0.4f}".format(fm[i, j]),
+                             horizontalalignment="center",
+                             color="white" if fm[i, j] > thresh else "black")
+                else:
+                    ax.text(j, i, "{:,}".format(fm[i, j]),
+                             horizontalalignment="center",
+                             color="white" if fm[i, j] > thresh else "black")
         plt.tight_layout()
         ax.set_ylabel('Prepared State')
         ax.set_xlabel('Assigned State\n$\mathcal{{F}}_{{avg}}$={:0.2f} %'
@@ -1725,18 +1774,23 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
     def prepare_plots(self):
         self.prepare_plot_prob_table(self.use_preselection)
 
-    def prepare_plot_prob_table(self, only_odd=False):
+    @staticmethod
+    def get_highcontrast_colormap():
         # colormap which has a lot of contrast for small and large values
         v = [0, 0.1, 0.2, 0.8, 1]
         c = [(1, 1, 1),
-             (191/255, 38/255, 11/255),
-             (155/255, 10/255, 106/255),
-             (55/255, 129/255, 214/255),
+             (191 / 255, 38 / 255, 11 / 255),
+             (155 / 255, 10 / 255, 106 / 255),
+             (55 / 255, 129 / 255, 214 / 255),
              (0, 0, 0)]
-        cdict = {'red':   [(v[i], c[i][0], c[i][0]) for i in range(len(v))],
+        cdict = {'red': [(v[i], c[i][0], c[i][0]) for i in range(len(v))],
                  'green': [(v[i], c[i][1], c[i][1]) for i in range(len(v))],
-                 'blue':  [(v[i], c[i][2], c[i][2]) for i in range(len(v))]}
-        cm = mc.LinearSegmentedColormap('customcmap', cdict)
+                 'blue': [(v[i], c[i][2], c[i][2]) for i in range(len(v))]}
+        return mc.LinearSegmentedColormap('customcmap', cdict)
+
+
+    def prepare_plot_prob_table(self, only_odd=False):
+        cm = self.get_highcontrast_colormap()
 
         plot_filter = self.options_dict.get('plot_filter', None)
         if plot_filter is not None:
@@ -1762,7 +1816,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
             'zlabel': "Counts",
             'zrange': [0,1],
             'title': (self.timestamps[0] + ' \n' +
-                      self.raw_data_dict['measurementstring'][0]),
+                      self.raw_data_dict['measurementstring']),
             'xunit': None,
             'yunit': None,
             'xtick_loc': np.arange(len(self.observables))[obs_filter],

@@ -413,7 +413,7 @@ class BaseDataAnalysis(object):
         if a_tools.ignore_delegate_plotting:
             return False
         if self.get_param_value("delegate_plotting", False):
-            if len(self.timestamps) == 1:
+            if isinstance(self.raw_data_dict, dict):
                 f = self.raw_data_dict['folder']
             else:
                 f = self.raw_data_dict[0]['folder']
@@ -928,6 +928,7 @@ class BaseDataAnalysis(object):
                         prep_params = dict()
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
+                    reset_reps = 0
                     if 'active' in prep_params.get('preparation_type', 'wait'):
                         reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
@@ -953,7 +954,7 @@ class BaseDataAnalysis(object):
                         idx_dict_1 = next(iter(cal_points.get_indices(
                             cal_points.qb_names, prep_params).values()))
                         num_cal_segments = len([i for j in idx_dict_1.values()
-                                                for i in j])
+                                                for i in j]) * (reset_reps + 1)
                         # take out CalibrationPoints from the end of each
                         # segment, and reshape the remaining data based on the
                         # hard (1st dimension) and soft (1st dimension)
@@ -1504,6 +1505,18 @@ class BaseDataAnalysis(object):
 
         return figure, self.axs[fig_id]
 
+    def _generate_fig_ids(self):
+        """Ensure that each dict in plot_dicts has a key fig_id"""
+        for key in self.plot_dicts:
+            pdict = self.plot_dicts[key]
+            # Use the key of the plot_dict if no ax_id is specified
+            pdict['fig_id'] = pdict.get('fig_id', key)
+            pdict['ax_id'] = pdict.get('ax_id', None)
+
+            if isinstance(pdict['ax_id'], str):
+                pdict['fig_id'] = pdict['ax_id']
+                pdict['ax_id'] = None
+
     def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
         """
         Goes over the entries in self.plot_dict specified by key_list, and
@@ -1526,18 +1539,12 @@ class BaseDataAnalysis(object):
             key_list = [key_list]
         self.key_list = key_list
 
+        self._generate_fig_ids()
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
             if 'no_label' not in pdict:
                 pdict['no_label'] = no_label
-            # Use the key of the plot_dict if no ax_id is specified
-            pdict['fig_id'] = pdict.get('fig_id', key)
-            pdict['ax_id'] = pdict.get('ax_id', None)
-
-            if isinstance(pdict['ax_id'], str):
-                pdict['fig_id'] = pdict['ax_id']
-                pdict['ax_id'] = None
 
             if pdict['fig_id'] not in self.axs:
                 # This fig variable should perhaps be a different
@@ -1672,11 +1679,9 @@ class BaseDataAnalysis(object):
         Returns:
             list: list of unique figure ids.
         """
-        fig_ids = []
-        for name, item in self.plot_dicts.items():
-            fig_ids.append(item['fig_id'])
-
-        return np.unique(fig_ids).tolist()
+        self._generate_fig_ids()
+        fig_ids = [v['fig_id'] for v in self.plot_dicts.values()]
+        return list(np.unique(fig_ids))
 
     def add_to_plots(self, key_list=None):
         pass
