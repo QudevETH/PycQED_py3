@@ -10,7 +10,7 @@ import fnmatch
 from typing import Dict, Callable, Tuple, Any, Union, Optional, Sequence
 import numpy as np
 import pycqed.measurement.quantum_experiment as qe_mod
-import pycqed.analysis_v2.plotting.aggregation_utils as aggr_u
+import pycqed.utilities.aggregation_plots_utils as aggr_u
 
 logger = logging.getLogger(__name__)
 

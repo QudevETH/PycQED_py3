@@ -38,7 +38,7 @@ from pycqed.analysis_v3 import plotting as plot_mod
 from collections import OrderedDict
 from collections.abc import Mapping
 from typing import Optional
-import pycqed.analysis_v2.plotting.aggregation as plta
+import pycqed.utilities.aggregation_plots as ap
 
 log = logging.getLogger(__name__)
 
@@ -1068,7 +1068,7 @@ class Device(Instrument):
 
     def plot_on_qubit_grid(self, aggregator: Optional = None, **kw):
         if aggregator is None:
-            return plta.plot_on_qubit_grid(**kw)
+            return ap.plot_on_qubit_grid(**kw)
         else:
             if self.qubit_coordinates:
                 kw.setdefault('qubit_to_coord',
@@ -1084,7 +1084,7 @@ class Device(Instrument):
                     self.qubit_coordinates[q1][0] + self.qubit_coordinates[q2][0],
                     self.qubit_coordinates[q1][1] + self.qubit_coordinates[q2][1]),
                 kw.setdefault('pair_to_coord', pair_to_coord)
-            return plta.plot_on_pair_grid(**kw)
+            return ap.plot_on_pair_grid(**kw)
 
     def add_parameter(self, *args, **kwargs):
         # FIXME overriding the super method is only needed for a workaround

@@ -1,7 +1,7 @@
 import pytest
 import matplotlib.pyplot as plt
 import numpy as np
-import pycqed.analysis_v2.plotting.aggregation as plta
+import pycqed.utilities.aggregation_plots as ap
 import pycqed.analysis.analysis_toolbox as a_tools
 import pycqed.measurement.quantum_experiment as qe_mod
 
@@ -65,7 +65,7 @@ def sample_pair_data():
 def test_plot_on_grid(sample_data):
     def plot_func(ax, data):
         ax.plot(data)
-    fig, axes = plta.plot_on_grid(sample_data, plot_func)
+    fig, axes = ap.plot_on_grid(sample_data, plot_func)
     assert isinstance(fig, plt.Figure)
     assert isinstance(axes, np.ndarray)
     assert axes.shape == (2, 2)
@@ -92,19 +92,19 @@ def test_plot_on_grid(sample_data):
                                      'qb16': {'timestamp': '20240813_020301'},
                                      'qb17': {'timestamp': '20240813_020742'}}])
 def test_plot_on_qubit_grid(fig_info):
-    plta.plot_on_qubit_grid(fig_info, plta.fig_from_measurement_plot_func)
+    ap.plot_on_qubit_grid(fig_info, ap.fig_from_measurement_plot_func)
 
 
 def test_plot_on_pair_grid(sample_pair_data):
     def plot_func(ax, data):
         ax.plot(data)
 
-    fig, axes = plta.plot_on_pair_grid(sample_pair_data, plot_func)
+    fig, axes = ap.plot_on_pair_grid(sample_pair_data, plot_func)
 
 
 def test_get_qubit_grid():
     qubits = ['qb1', 'qb2', 'qb3', 'qb4']
-    fig, axes = plta.get_qubit_grid(qubits)
+    fig, axes = ap.get_qubit_grid(qubits)
     assert isinstance(fig, plt.Figure)
     assert isinstance(axes, np.ndarray)
     assert axes.shape == (2, 2)
@@ -112,7 +112,7 @@ def test_get_qubit_grid():
 @pytest.mark.parametrize('timestamps', (['20240606_000101'], # rabi 9 qubits single file
                                         ))
 def test_calibration_plot_aggregator_from_timestamps(timestamps):
-    aggregator = plta.CalibrationPlotAggregator.from_timestamps(timestamps)
+    aggregator = ap.CalibrationPlotAggregator.from_timestamps(timestamps)
     fig, axes = aggregator.plot_on_qubit_grid()
 
 @pytest.mark.parametrize('timestamps', (['20240606_000101'], # rabi 9 qubits single file
@@ -121,7 +121,7 @@ def test_calibration_plot_aggregator_from_quantum_experiments(timestamps):
     qes = [qe_mod.QuantumExperiment() for _ in range(len(timestamps))]
     for qe, t in zip(qes, timestamps):
         qe.timestamp = t
-    aggregator = plta.CalibrationPlotAggregator.from_quantum_experiments(qes)
+    aggregator = ap.CalibrationPlotAggregator.from_quantum_experiments(qes)
     fig, axes = aggregator.plot_on_qubit_grid()
 
     assert len(aggregator.fig_info) > 0
