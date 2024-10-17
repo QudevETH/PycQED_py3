@@ -258,14 +258,14 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
     coupling: coupling to resonator (Hz).
     fr (float): frequency of resonator (Hz)
     dac_sweet_spot: voltage at which the sweet-spot is found (V)
-    branch (enum: 'positive' 'negative' or "smallest" or int/float):
+    branch: 'positive', 'negative', 'smallest', or `int`/`float`(= "volt_guess"):
         if "positive": returns voltages corresponding to the positive flux
             branch (right to the upper sweetspot).
         if "negative": returns voltages corresponding to the negative flux
             (left to the upper sweetspot).
         if "smallest": equivalent to branch = 0.
-        if volt_guess (integer):
-            returns voltages in the period closest to volt_guess
+        if volt_guess (integer/float):
+            returns voltages in the branch closest to volt_guess
     n_periods (int, int): range of periods in which to look for voltages
         close to volt_guess
     single_branch (bool): forces all voltages to lie in a single branch (e.g. to
@@ -1795,7 +1795,7 @@ def mixer_imbalance_sideband_guess(model, **kwargs):
     Returns:
         :py:class:'lmfit.parameters': Parameters
     """
-    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
+    model.set_param_hint('g', value=1.0, min=0.5, max=2)
     model.set_param_hint('phi', value=0, min=-180, max=180)
     model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
     return model.make_params(**kwargs)

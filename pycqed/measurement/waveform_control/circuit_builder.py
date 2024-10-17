@@ -58,7 +58,7 @@ class CircuitBuilder:
         self.dev = dev
         self.qubits, self.qb_names = self.extract_qubits(
             dev, qubits, operation_dict, filter_qb_names)
-        self._prep_sweep_params = {qb: {} for qb in self.qb_names}
+        self._reset_sweep_params = {qb: {} for qb in self.qb_names}
         self.update_operation_dict(operation_dict)
         self.cz_pulse_name = kw.get('cz_pulse_name')
         if self.cz_pulse_name is None:
@@ -377,9 +377,6 @@ class CircuitBuilder:
         if op_name[0] == 's':
             simultaneous = True
             op_name = op_name[1:]
-        if op_name[-1] == 's':
-            simultaneous = True
-            op_name = op_name[:-1]
 
         if op in self.operation_dict:
             p = [self.copy_op(self.operation_dict[op])]
@@ -404,16 +401,7 @@ class CircuitBuilder:
             if angle:
                 if angle[0] == ':':  # angle depends on a parameter
                     angle = angle[1:]
-                    param_start = angle.find('[') + 1
-                    # If '[' is contained, this indicates that the parameter
-                    # is part of a mathematical expression. Otherwise, the angle
-                    # is equal to the parameter.
-                    if param_start > 0:
-                        param_end = angle.find(']', param_start)
-                        param = angle[param_start:param_end]
-                        angle = angle.replace('[' + param + ']', 'x')
-                    else:
-                        param = angle
+                    param, angle, param_start = self._parse_param(angle)
 
             if op_type.startswith('CZ'):  # Two-qubit gate
                 if param is not None:
@@ -422,12 +410,12 @@ class CircuitBuilder:
                     #  we improve or generalise further what op codes can be
                     #  parsed by this method.
                     if param_start > 0:
-                        func = (lambda x, sign=sign, fnc=
-                        eval('lambda x : ' + angle): sign * fnc(x))
+                        func_op_code = eval('lambda x, cb=self : ' + angle)
                     else:
-                        func = (lambda x, sign=sign: sign * x)
-                    cphase = ParametricValue(
-                        param, func=func,
+                        func_op_code = None
+                    # sign * means that func will be -func_op_code
+                    cphase = sign * ParametricValue(
+                        param, func=func_op_code, func_op_code=func_op_code,
                         op_split=[op_name, *qbn])
                 # op_name = "NameVal" (e.g. "Z100", see docstring)
                 elif angle:
@@ -521,14 +509,15 @@ class CircuitBuilder:
                 if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func = (lambda x, qb=qbn[0], sign=sign,
-                                          fnc=eval('lambda x : ' + angle):
-                                    {qb: sign * fnc(x)})
+                            func_op_code = eval('lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
-                            func = (lambda x, qbn=qbn[0], sign=sign:
-                                    {qbn: sign * x})
+                            func_op_code = lambda x: x
+                        # parameter func
+                        func = (lambda x, qb=qbn[0], sign=sign, f=func_op_code:
+                                {qb: sign * f(x)})
                         p[0]['basis_rotation'] = ParametricValue(
-                            param, func=func, op_split=(op_name, qbn[0]))
+                            param, func=func, func_op_code=func_op_code,
+                            op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
                         p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
@@ -539,18 +528,15 @@ class CircuitBuilder:
                         if param_start > 0:  # via a mathematical expression
                             # combine the mathematical expression with a
                             # function that calculates the amplitude
-                            func = (
-                                lambda x, a=p[0]['amplitude'], sign=sign,
-                                       fnc=eval('lambda x : ' + angle):
-                                a * corr_func(
-                                    ((sign * fnc(x) + 180) %
-                                     (-360) + 180) / 180))
+                            func_op_code = eval('lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
-                            func = lambda x, a=p[0]['amplitude'], sign=sign: \
-                                a * corr_func(
-                                    ((sign * x + 180) % (-360) + 180) / 180)
+                            func_op_code = lambda x: x
+                        func = lambda x, a=p[0]['amplitude'], sign=sign,\
+                                      f=func_op_code: a * corr_func(
+                                ((sign * f(x) + 180) % (-360) + 180) / 180)
                         p[0]['amplitude'] = ParametricValue(
-                            param, func=func, op_split=(op_name, qbn[0]))
+                            param, func=func, func_op_code=func_op_code,
+                            op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
                         angle = sign * float(angle)
                         # configure drive pulse amplitude for this angle
@@ -567,6 +553,19 @@ class CircuitBuilder:
             p[0]['ref_point'] = 'start'
 
         return p
+
+    def _parse_param(self, angle):
+        param_start = angle.find('[') + 1
+        # If '[' is contained, this indicates that the parameter
+        # is part of a mathematical expression. Otherwise, the angle
+        # is equal to the parameter.
+        if param_start > 0:
+            param_end = angle.find(']', param_start)
+            param = angle[param_start:param_end]
+            angle = angle.replace('[' + param + ']', 'x')
+        else:
+            param = angle
+        return param, angle, param_start
 
     def swap_qubit_indices(self, i, j=None):
         """Swaps logical qubit indices by swapping the entries in self.qb_names.
@@ -762,7 +761,7 @@ class CircuitBuilder:
                     simultaneous_blocks.append(
                         reset_scheme.reset_block(
                             f"step_{i}_{qb.name}",
-                            sweep_params=self._prep_sweep_params.get(qb.name, None),
+                            sweep_params=self._reset_sweep_params.get(qb.name, None),
                         )
                     )
 

@@ -150,6 +150,9 @@ class T1FrequencySweep(CalibBuilder):
             qubits, _ = self.get_qubits(task['qb'])
             # Computing either qubit_freqs or amplitudes, if not passed.
             # Both can also be passed, e.g. to cache or use a different model.
+            if qubit_freqs is None and amplitudes is None:
+                raise ValueError("Please specify either qubit_freqs or "
+                                 "amplitudes!")
             if qubit_freqs is None and qubits is not None:
                 qb = qubits[0]
                 qubit_freqs = qb.calculate_frequency(
@@ -166,6 +169,11 @@ class T1FrequencySweep(CalibBuilder):
                                    'the corresponding amplitudes cannot be '
                                    'computed.')
                 qb = qubits[0]
+                LO_freq = qb.get_ge_lo_freq()
+                if LO_freq < np.max(qubit_freqs) and \
+                        LO_freq > np.min(qubit_freqs):
+                    log.warning(f"LO frequency {LO_freq} is within the range "
+                                f"of frequencies of {qb.name}.")
                 amplitudes = qb.calculate_flux_voltage(
                     frequency=qubit_freqs,
                     flux=qb.flux_parking(),
@@ -177,9 +185,6 @@ class T1FrequencySweep(CalibBuilder):
                 amp_sweep_points = SweepPoints('amplitude', amplitudes,
                                                'V', 'Flux pulse amplitude')
                 sweep_points.update([{}] + amp_sweep_points)
-            else:
-                raise ValueError("Please specify either qubit_freqs or "
-                                 "amplitudes!")
             task['sweep_points'] = sweep_points
         return task_list
 
@@ -3375,6 +3380,13 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
         Moreover, the following keyword arguments are understood:
             for_leakage (bool, default: False): if True, runs the experiment
                 without the first X90 pulse and sets cal_states to 'gef'
+            update_pi_half_track_pi (bool, default: True): If updating the pi
+                pulse amplitude should also update the pi/2 amplitude by
+                the same factor. True is useful, e.g., when finetuning the
+                pi amplitude while keeping a fixed 1/2 scaling for the pi/2.
+                False can be useful when there are significant drive
+                nonlinearities, in order to calibrate pi and pi/2 independently
+                (and considering that a good pi/2 is necessary to calibrate pi)
     """
 
     default_experiment_name = 'NPulseAmplitudeCalib'
@@ -3385,8 +3397,10 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
     kw_for_task_keys = ['n_pulses_pi', 'fixed_scaling']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 amp_scalings=None, n_pulses_pi=1, fixed_scaling=None, **kw):
+                 amp_scalings=None, n_pulses_pi=1, fixed_scaling=None,
+                 update_pi_half_track_pi=True, **kw):
         try:
+            self.update_pi_half_track_pi = update_pi_half_track_pi
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              amp_scalings=amp_scalings,
@@ -3599,6 +3613,16 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
                 amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
                     qubit.name]['correct_amplitude']
                 qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+                if not self.update_pi_half_track_pi:
+                    # Correct the relative scaling of the pi/2 pulse to keep
+                    # its amplitude constant even though the pi amp changed
+                    amp180_sc = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name][
+                        'correct_scalings_mean']
+                    curr_90_sc = qubit.get(
+                        f'{task["transition_name_input"]}_amp90_scale')
+                    qubit.set(f'{task["transition_name_input"]}_amp90_scale',
+                              curr_90_sc / amp180_sc)
             elif ideal_sc == 0.5:
                 # pi/2 pulse amp calibration
                 amp90_sc = self.analysis.proc_data_dict['analysis_params_dict'][

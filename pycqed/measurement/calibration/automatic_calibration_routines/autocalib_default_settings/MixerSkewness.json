@@ -1,0 +1,9 @@
+{
+    "alpha_min": 0.9,
+    "alpha_max": 1.1,
+    "alpha_pts": 10,
+    "phi_skew_min": -20,
+    "phi_skew_max": 20,
+    "phi_skew_pts": 20,
+    "amplitude": 0.1
+}

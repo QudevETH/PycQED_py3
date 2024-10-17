@@ -490,7 +490,7 @@ def get_station_from_file(timestamp=None, folder=None, filepath=None,
         .get_station(param_path=param_path)
 
 
-def convert_settings_to_hdf(timestamp: str):
+def convert_settings_to_hdf(timestamp: str, skip_if_exists=False):
     """
     Creates/writes settings to a hdf5-file specified by a timestamp.
     Write the instrument settings into the preexisting hdf-file with the
@@ -502,6 +502,13 @@ def convert_settings_to_hdf(timestamp: str):
 
     Args:
         timestamp(str): Timestamp of the settings file.
+        skip_if_exists (bool): Whether to silently skip writing to the HDF
+            file if a group with the name Instrument settings already exists
+            in the HDF file. By default, a KeyError is raised in such a case.
+
+    Raises:
+        KeyError: If a group Instrument settings already exists in the HDF
+            file and skip_if_exists is False.
     """
     from pycqed.analysis import analysis_toolbox as a_tools
     from pycqed.measurement.measurement_control import MeasurementControl
@@ -511,12 +518,17 @@ def convert_settings_to_hdf(timestamp: str):
     fn = a_tools.measurement_filename(a_tools.get_folder(timestamp))
     # if hdf-file does not exist, the filename of the settings file is copied
     if fn is None:
-        file_format = Loader.get_file_format(timestamp=timestamp)
-        ext = base_io.file_extensions[file_format]
+        ext = Loader.get_file_format(timestamp=timestamp,
+                                     return_extension=True)
         # a_tools expects extension without a dot (e.g. 'hdf'),
         # the extension dict in base_io stores it with a dot (e.g. '.hdf')
         fn = a_tools.measurement_filename(a_tools.get_folder(timestamp),
                                           ext=ext[1:])
-        fn = fn[:-len(ext)] + '.hdf'
+        fn = fn[:-len(ext)] + base_io.file_extensions['hdf5'][0]
     with h5py.File(fn, 'a') as hdf_file:
-        MeasurementControl.save_station_in_hdf(hdf_file, station)
+        if 'Instrument settings' not in hdf_file:
+            MeasurementControl.save_station_in_hdf(hdf_file, station)
+        elif not skip_if_exists:
+            raise KeyError(
+                'HDF file with group Instrument settings already exists for '
+                'timestamp {timestamp}.')

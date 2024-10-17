@@ -220,8 +220,9 @@ class MeasurementControl(Instrument):
             'settings_file_compression',
             vals=vals.Bool(),
             docstring='True if file should be compressed with blosc2. '
-                      'Does not support hdf5 files.',
-            initial_value=True,
+                      'Does not support hdf5 files. We do not recommend '
+                      'using compression.',
+            initial_value=False,
             parameter_class=ManualParameter
         )
 
@@ -2107,6 +2108,9 @@ class MeasurementControl(Instrument):
                         'fopt':  result[1]}
         else:
             res_dict = {'opt':  result}
+        if isinstance(result, dict) and 'sweep_points' in result:
+            self.save_exp_metadata({
+                'sweep_points': result['sweep_points']})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
     def save_instrument_settings(self, data_object=None, mode='xb', *args):

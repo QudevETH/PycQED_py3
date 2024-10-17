@@ -4,6 +4,8 @@ from pycqed.instrument_drivers.acquisition_devices.base import \
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
     .UHFQA_core import UHFQA_core
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import ZI_base_qudev
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import \
+    snapshot_whitelist as snw
 import logging
 log = logging.getLogger(__name__)
 
@@ -57,19 +59,7 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
         super().__init__(*args, interface=interface, server=server, **kwargs)
         self.interface = interface
         self.server = server
-        self._snapshot_whitelist = {
-            'IDN',
-            'clockbase',}
-        for i in range(1):
-            self._snapshot_whitelist.update({
-                'awgs_{}_enable'.format(i),
-                'awgs_{}_outputs_0_amplitude'.format(i),
-                'awgs_{}_outputs_1_amplitude'.format(i)})
-        for i in range(2):
-            self._snapshot_whitelist.update({
-                'sigouts_{}_offset'.format(i),
-                'sigouts_{}_on'.format(i) ,
-                'sigouts_{}_range'.format(i),})
+        self._snapshot_whitelist = snw.generate_snapshot_whitelist_uhfqa()
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
 
     def prepare_poll_before_AWG_start(self):
