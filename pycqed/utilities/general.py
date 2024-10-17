@@ -1092,6 +1092,8 @@ def save_zibugreport(
         os.mkdir(os.path.join(shf_data_dir, 'sg'))
         os.mkdir(os.path.join(shf_data_dir, 'qa'))
 
+        n_sg_channels = len(SHF.sgchannels)
+
         # use zhinst toolkit to connect to the device to pull the waveforms
         shf_tk = session.connect_device(SHF.serial)
 
@@ -1103,10 +1105,16 @@ def save_zibugreport(
         if involved_channels and SHF.name not in involved_channels.keys():
             continue
 
-        # save sg channel waveforms
         wfm_dir = os.path.join(shf_data_dir, "sg\sg_waveforms")
         os.mkdir(wfm_dir)
-        for sg_channel in range(6):
+        cmt_dir = os.path.join(shf_data_dir, "sg\sg_commandtables")
+        os.mkdir(cmt_dir)
+        seq_dir = os.path.join(shf_data_dir, "sg\sg_sequencer")
+        os.mkdir(seq_dir)
+
+        for sg_channel in range(n_sg_channels):
+
+            # save sg channel waveforms
             if involved_channels and f"sg{sg_channel + 1}" not in \
                     involved_channels[SHF.name]:
                 continue
@@ -1119,26 +1127,14 @@ def save_zibugreport(
                 np.save(os.path.join(channel_dir, f'wave_{wave_idx}'), w)
                 wave_idx += 1
 
-        # save sg channel commandtable
-        wfm_dir = os.path.join(shf_data_dir, "sg\sg_commandtables")
-        os.mkdir(wfm_dir)
-        for sg_channel in range(6):
-            if involved_channels and f"sg{sg_channel + 1}" not in \
-                    involved_channels[SHF.name]:
-                continue
+            # save sg channel commandtable
             w = eval(SHF.sgchannels[sg_channel].awg.commandtable.data().replace(
                 "false", "False"))
-            np.save(os.path.join(wfm_dir, f'commandtable_sg{sg_channel}'), w)
+            np.save(os.path.join(cmt_dir, f'commandtable_sg{sg_channel}'), w)
 
-        # save sg sequencer code
-        wfm_dir = os.path.join(shf_data_dir, "sg\sg_sequencer")
-        os.mkdir(wfm_dir)
-        for sg_channel in range(6):
-            if involved_channels and f"sg{sg_channel + 1}" not in \
-                    involved_channels[SHF.name]:
-                continue
+            # save sg sequence code
             w = SHF.sgchannels[sg_channel].awg.sequencer.program()
-            np.save(os.path.join(wfm_dir, f'sequencer_sg{sg_channel}'), w)
+            np.save(os.path.join(seq_dir, f'sequencer_sg{sg_channel}'), w)
 
         if involved_channels and f"qa1" not in involved_channels[SHF.name]:
             continue
@@ -1179,7 +1175,9 @@ def save_zibugreport(
         if involved_channels and SHF.name not in involved_channels.keys():
             continue
 
-        for qa_channel in range(4):
+        n_qa_channels = len(SHF.qachannels)
+
+        for qa_channel in range(n_qa_channels):
 
             if involved_channels and f"qa{qa_channel + 1}" not in \
                     involved_channels[SHF.name]:
