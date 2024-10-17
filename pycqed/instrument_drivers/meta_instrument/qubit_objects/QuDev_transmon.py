@@ -424,11 +424,13 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                            parameter_class=ManualParameter)
         self.add_parameter('instr_flux_dc', initial_value=None,
                            parameter_class=InstrumentRefParameter,
-                           vals=vals.Strings(),
+                           vals=vals.MultiType(
+                                    vals.Enum(None), vals.Strings()),
                            docstring="Instrument name of the dc flux source")
         self.add_parameter('flux_dc_channel', initial_value=None,
                            parameter_class=ManualParameter,
-                           vals=vals.Strings(),
+                           vals=vals.MultiType(
+                                    vals.Enum(None), vals.Strings()),
                            docstring="Name of the flux dc channel "
                                      "of instr_flux_dc, naming convention "
                                      "e.g.: volt_fluxline1")
