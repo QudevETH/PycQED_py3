@@ -7813,18 +7813,9 @@ class DynamicPhaseAnalysis(MultiCZgate_Calib_Analysis):
 
 class CryoscopeAnalysis(DynamicPhaseAnalysis):
 
-    def __init__(self, qb_names, *args, **kwargs):
-        options_dict = kwargs.get('options_dict', {})
-        unwrap_phases = options_dict.pop('unwrap_phases', True)
-        options_dict['unwrap_phases'] = unwrap_phases
-        kwargs['options_dict'] = options_dict
-        params_dict = {}
-        for qbn in qb_names:
-            s = f'Instrument settings.{qbn}'
-            params_dict[f'ge_freq_{qbn}'] = s+f'.ge_freq'
-        kwargs['params_dict'] = params_dict
-        kwargs['numeric_params'] = list(params_dict)
-        super().__init__(qb_names, *args, **kwargs)
+    def extract_data(self):
+        self.default_options['unwrap_phases'] = True
+        super().extract_data()
 
     def process_data(self):
         super().process_data()
@@ -7908,7 +7899,8 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
             self.proc_data_dict['analysis_params_dict'][f'delta_freq_{qbn}'] = \
                 {'val': delta_freqs, 'stderr': delta_freqs_errs}
 
-            qb_freqs = self.raw_data_dict[f'ge_freq_{qbn}'] + delta_freqs
+            qb_freqs = self.get_instrument_setting(
+                f'{qbn}.ge_freq') + delta_freqs
             self.proc_data_dict['analysis_params_dict'][f'freq_{qbn}'] = \
                 {'val':  qb_freqs, 'stderr': delta_freqs_errs}
 
