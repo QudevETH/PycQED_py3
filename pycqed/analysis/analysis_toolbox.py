@@ -726,6 +726,7 @@ def get_timestamps_in_range(timestamp_start, timestamp_end=None,
 #    Analysis tools
 ######################################################################
 
+# FIXME: **kw is not accessed
 def get_folder(timestamp=None, older_than=None, label='',
                suppress_printing=True, folder=None, **kw):
     if timestamp is not None:
@@ -743,12 +744,7 @@ def get_folder(timestamp=None, older_than=None, label='',
         if not suppress_printing:
             print('loaded file from folder "%s" using label "%s"' % (
                 folder_ts, label))
-    
-    if folder_ts is None:
-        raise ValueError(
-            f'No data found for label "{label}" and older_than "{older_than}".'
-            ' Did you set your datadir correctly?'
-        )
+
     return folder_ts
 
 
