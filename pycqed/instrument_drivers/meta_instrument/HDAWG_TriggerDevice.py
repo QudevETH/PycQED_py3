@@ -88,6 +88,7 @@ class HDAWG_TriggerDevice(Instrument):
             int(new_pulse_distance))
         setattr(self, '_pulse_length', pulse_length)
         self.program_awg()
+
     @property
     def awg_nr(self):
         return self._awg_nr
