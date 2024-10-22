@@ -76,7 +76,9 @@ class ColdSwitchController(Instrument):
                 supplies the power for switching the cold switches
         """
         super().__init__(name)
-        self.port = serial.Serial(port, 115200, timeout=5, writeTimeout=0)
+        self._timeout = 5
+        self.port = serial.Serial(port, 115200, timeout=self._timeout,
+                                  writeTimeout=0)
         self.debug = False
         self.power_supply_channel = self.find_instrument(
             power_supply).submodules[power_supply_channel]
@@ -256,6 +258,10 @@ class ColdSwitchController(Instrument):
             time.sleep(0.001)
             while self._read_current_ind():
                 time.sleep(0.01)
+                if time.time() - t0 > self._timeout:
+                    raise TimeoutError(f"Calibration of the cold switch "
+                                       f"controller timed out after "
+                                       f"{self._timeout} seconds")
             t1 = time.time()
             durations.append(t1 - t0)
             time.sleep(0.05)
