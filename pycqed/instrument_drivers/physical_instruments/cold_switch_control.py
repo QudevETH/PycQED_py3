@@ -16,6 +16,12 @@ def bits_to_byte(bits):
     return res
 
 
+# Address (hex) of the registers of the input-output expander (MCP23017)
+# IODIRA/B (I/O Direction Register): configures if pin is an input or an output
+# OLATA/B (Output Latch Registers): stores data (HIGH/LOW) which is written to
+#   the output pins
+# see manual of the IO-expander:
+# https://ww1.microchip.com/downloads/en/DeviceDoc/20001952C.pdf
 IODIRA = 0x00
 IODIRB = 0x01
 OLATA = 0x14
@@ -24,6 +30,9 @@ OLATB = 0x15
 
 class ColdSwitchController(Instrument):
     """Driver for QuDev cold switch controller.
+    The cold switch controller is run by an Adruino which is connected to
+    input-output expanders (MCP23017) in order to expand the limited amount
+    of I/O pins of the arduino.
 
     Attributes:
         SOURCE_SINK_TABLE (dict): mapping of the output channels of the
@@ -94,6 +103,8 @@ class ColdSwitchController(Instrument):
 
         # all i/o expander pins set as outputs & low; this initialization
         # should be done in firmware later
+
+        # setting all IO-expander to output
         self._write_to_ioexp(0x00, IODIRA, 0x00)
         self._write_to_ioexp(0x00, IODIRB, 0x00)
         self._write_to_ioexp(0x01, IODIRA, 0x00)
@@ -101,6 +112,7 @@ class ColdSwitchController(Instrument):
         self._write_to_ioexp(0x02, IODIRA, 0x00)
         self._write_to_ioexp(0x02, IODIRB, 0x00)
 
+        # setting output to low
         self._write_to_ioexp(0x00, OLATA, 0x00)
         self._write_to_ioexp(0x00, OLATB, 0x00)
         self._write_to_ioexp(0x01, OLATA, 0x00)
@@ -427,5 +439,3 @@ class ColdSwitchController(Instrument):
                     f'Cold switches can only be operated when the base '
                     f'temperature is below {max_temp/1e-3}mK, but it is '
                     f'currently at {temp/1e-3}mK.')
-
-
