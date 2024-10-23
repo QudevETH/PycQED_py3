@@ -735,7 +735,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     ):
         awg_nr = self._awg_nr
 
-        if not mod_config:
+        if not mod_config or not mod_config.get('internal_mod', True):
             # Modulation configuration is empty
             self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 0)
             self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 0)
