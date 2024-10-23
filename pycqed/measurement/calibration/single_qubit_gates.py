@@ -178,10 +178,9 @@ class T1FrequencySweep(CalibBuilder):
             if amplitudes is None:
                 if qb is None:
                    raise KeyError(
-                       f"qubit_freqs specified in sweep_points for task {task}, "
-                       "but no qubit objects available. "
-                       "The corresponding amplitudes cannot be "
-                       "computed."
+                       f"qubit_freqs specified in sweep_points for task"
+                       f" {task}, but no qubit objects available. The "
+                       f"corresponding amplitudes cannot be computed."
                    )
 
                 amplitudes = qb.calculate_flux_voltage(
