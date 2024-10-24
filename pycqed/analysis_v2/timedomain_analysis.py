@@ -1,3 +1,5 @@
+from functools import wraps
+
 import lmfit
 import numpy as np
 from numpy.linalg import inv
@@ -9095,10 +9097,9 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
         return SSROQutrit._to_codeword_idx(tuple)
 
     @staticmethod
-    def plot_scatter_and_marginal_hist(data, y_true=None, plot_fitting=False,
-                                       **kwargs):
-        return SSROQutrit.plot_scatter_and_marginal_hist(
-            data, y_true=y_true, plot_fitting=plot_fitting, **kwargs)
+    @wraps(SSROQutrit.plot_scatter_and_marginal_hist)
+    def plot_scatter_and_marginal_hist(*args, **kwargs):
+        return SSROQutrit.plot_scatter_and_marginal_hist(*args, **kwargs)
 
     @staticmethod
     def plot_clf_boundaries(X, clf, ax=None, cmap=None, spacing=None):
@@ -9287,7 +9288,15 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             "xlabel": "Integration Unit 1, $u_1$",
             "ylabel": "Integration Unit 2, $u_2$",
             "scale": self.options_dict.get("hist_scale", "log"),
-            "cmap":tab_x}
+            "cmap": tab_x}
+
+        # this is a way to allow the user to ensure that
+        #  all plots in the complex plane have the same limits,
+        #  to compare them more easily, in case this method gets called
+        #  several times, e.g. when sweeping a readout parameter.
+        if (lims := self.get_param_value('iq_lims')) is not None:
+            kwargs.update({'xlim': lims.get(qbn, {}).get('xlim', None),
+                           'ylim': lims.get(qbn, {}).get('ylim', None)})
 
         for dk, data in data_dict.items():
             if qbn not in data['X']: continue
