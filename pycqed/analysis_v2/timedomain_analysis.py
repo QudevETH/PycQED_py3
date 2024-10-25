@@ -13363,7 +13363,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     def get_qubit_objects_from_names(self, qb_names):
         # as soon as any instrument setting of a qubit is accessed,
         # the qubit object gets created
-        [self.get_instrument_setting(f'{qb}.ge_freq') for qb in qb_names]
+        [self.get_instrument_setting(f'{qb}') for qb in qb_names]
         qb_objs = [getattr(self.config_files.stations[0], qb) for qb in
                   qb_names]
         return qb_objs
