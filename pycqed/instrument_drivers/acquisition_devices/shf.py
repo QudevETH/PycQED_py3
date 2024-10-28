@@ -26,7 +26,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             been started by Pulsar.
         _acq_scope_memory (int): Number of points that the scope can acquire
             in one hardware run.
-        _acq_n_results_max (int): Maximum number of acquisition results
+        ACQ_N_RESULTS_MAX (int): Maximum number of acquisition results
           per hardware run.
     """
     acq_length_granularity = 16
@@ -45,7 +45,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     _acq_scope_memory = 2 ** 18
     # Maximum acquisition shots according to YS
     # (Can check in the LabOne GUI by typing larger numbers in)
-    _acq_n_results_max = 2 ** 19  # FIXME revisit once polling is updated
+    ACQ_N_RESULTS_MAX = 2 ** 17  # 131072
     acq_weights_n_samples = 4096
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
@@ -600,12 +600,12 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 f'Acquisition length {self._acq_length} corresponds to '
                 f'{n_samples} samples, which is not a multiple of the '
                 f'granularity {self.acq_length_granularity}.')
-        if self._acq_n_results > self._acq_n_results_max:
+        if self._acq_mode == 'int_avg' and self._acq_n_results > self.ACQ_N_RESULTS_MAX:
             raise ValueError(
                 f'Acquisition device {self.name} ({self.devname}): '
                 f'The number of acquisition results, {self._acq_n_results},'
                 f' is too large for the SHF (which supports a max of '
-                f'{self._acq_n_results_max}). '
+                f'{self.ACQ_N_RESULTS_MAX}). '
                 f'Please reduce the compression_seg_lim, the number of 1D '
                 f'sweep points, or the nr_shots.')
 
