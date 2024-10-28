@@ -118,19 +118,26 @@ class T1FrequencySweep(CalibBuilder):
             traceback.print_exc()
 
     def add_amplitude_sweep_points(self, task_list=None, **kw):
-        """
+        """Guarantees that pulse amplitudes are in sweep_points in each task.
+
         If flux pulse amplitudes are not in the sweep_points in each task, but
         qubit frequencies are, then amplitudes will be calculated based on
         the frequencies and the fit_ge_freq_from_flux_pulse_amp qubit parameter.
-        sweep_points entry in each task_list will be updated.
-        :param task_list: list of dictionaries describing the the measurement
-            for each qubit.
-        :return: updated task list
+        The sweep_points entry in each task_list will be updated.
+
+        Args:
+            task_list (list): A list of dictionaries describing the measurement
+                for each qubit.
+
+        Returns:
+            list: Updated task list with amplitude sweep points added.
         """
         if task_list is None:
             task_list = self.task_list
+
         for task in task_list:
-            # Combines sweep points in task and in sweep_points
+
+            # Combine sweep points in task and in sweep_points
             sweep_points = task.get('sweep_points', [{}, {}])
             sweep_points = SweepPoints(sweep_points)
             if len(sweep_points) == 1:
@@ -143,18 +150,23 @@ class T1FrequencySweep(CalibBuilder):
                 qubit_freqs = sweep_points['qubit_freqs']
             else:
                 qubit_freqs = None
+
+            # Fetch amplitudes from sweep_points
             amplitudes = None
             for key in sweep_points[1]:
                 if 'amplitude' in key:  # Detect e.g. amplitude2 from 2qb gates
                     amplitudes = sweep_points[key]
-            qubits, _ = self.get_qubits(task['qb'])
+
             # Computing either qubit_freqs or amplitudes, if not passed.
             # Both can also be passed, e.g. to cache or use a different model.
+            qubits, _ = self.get_qubits(task['qb'])
+            qb = qubits[0] if qubits else None
+
             if qubit_freqs is None and amplitudes is None:
                 raise ValueError("Please specify either qubit_freqs or "
                                  "amplitudes!")
-            if qubit_freqs is None and qubits is not None:
-                qb = qubits[0]
+
+            if qubit_freqs is None and qb is not None:
                 qubit_freqs = qb.calculate_frequency(
                     amplitude=amplitudes,
                     **kw.get('vfc_kwargs', {})
@@ -162,18 +174,15 @@ class T1FrequencySweep(CalibBuilder):
                 freq_sweep_points = SweepPoints('qubit_freqs', qubit_freqs,
                                                 'Hz', 'Qubit frequency')
                 sweep_points.update([{}] + freq_sweep_points)
+
             if amplitudes is None:
-                if qubits is None:
-                    raise KeyError('qubit_freqs specified in sweep_points, '
-                                   'but no qubit objects available, so that '
-                                   'the corresponding amplitudes cannot be '
-                                   'computed.')
-                qb = qubits[0]
-                LO_freq = qb.get_ge_lo_freq()
-                if LO_freq < np.max(qubit_freqs) and \
-                        LO_freq > np.min(qubit_freqs):
-                    log.warning(f"LO frequency {LO_freq} is within the range "
-                                f"of frequencies of {qb.name}.")
+                if qb is None:
+                    raise KeyError(
+                        f"qubit_freqs specified in sweep_points for task"
+                        f" {task}, but no qubit objects available. The "
+                        f"corresponding amplitudes cannot be computed."
+                    )
+
                 amplitudes = qb.calculate_flux_voltage(
                     frequency=qubit_freqs,
                     flux=qb.flux_parking(),
@@ -185,7 +194,18 @@ class T1FrequencySweep(CalibBuilder):
                 amp_sweep_points = SweepPoints('amplitude', amplitudes,
                                                'V', 'Flux pulse amplitude')
                 sweep_points.update([{}] + amp_sweep_points)
+
+            # Check if LO_freq is in range of the qubit of interest
+            if qb is not None:
+                LO_freq = qb.get_ge_lo_freq()
+                if np.min(qubit_freqs) <= LO_freq <= np.max(qubit_freqs):
+                    log.warning(
+                        f"LO frequency {LO_freq} is within the range of"
+                        f" frequencies of {qb.name}."
+                    )
+
             task['sweep_points'] = sweep_points
+
         return task_list
 
     def t1_flux_pulse_block(self, qb, sweep_points, prepend_pulse_dicts=None,
