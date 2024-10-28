@@ -1324,20 +1324,7 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             _to_list(self.phi_skew),
             _to_list(self.alpha),
         ):
-            if self.gaussian_filter_sigma == 0:
-                wave = np.ones_like(tvals) * amp * np.logical_and(
-                    (tvals >= tstart), (tvals < tend))
-            else:
-                scaling = 1 / np.sqrt(2) / self.gaussian_filter_sigma
-                wave = amp * self._apply_gaussian_sigma(
-                    tvals,
-                    scaling,
-                    tstart,
-                    tend,
-                )
-            # Apply the multistep amplitude scaling
-            # Each step is applied for its given duration starting from
-            # the beginning of the pulse
+            # Verify and precompute info for multistep segments if present
             if multistep_amp_factor_duration_tuples:
                 # Check that the length of the multistep readout
                 # components is less than the total pulse length
@@ -1345,32 +1332,40 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
                     multistep_amp_factor_duration_tuples,
                     self.pulse_length,
                 )
-                # Compute starting times for each segment
+                # Compute the amplitude multiplier and starting time for
+                # each step in the pulse
                 amps, tstarts = self._compute_piecewise_amplitude_times(
                     multistep_amp_factor_duration_tuples,
                     tstart,
                 )
-                # Compute the extra portion of the wave and add it to the
-                # waveform after correctly scaling
+                # Group into start and end times for each step in the pulse
                 if sys.version_info < (3, 10):
                     # FIXME: Should be deleted once python >= 3.10 is standard
                     pairwise_tstarts = pairwise(tstarts)
                 else:
                     pairwise_tstarts = itertools.pairwise(tstarts)
-                for amp_factor, (ts, te) in zip(
-                        amps, pairwise_tstarts
-                ):
-                    prefactor = amp * (amp_factor - 1.0)
-                    if self.gaussian_filter_sigma == 0:
-                        wave += prefactor * np.logical_and(
-                            (tvals >= ts), (tvals < te))
-                    else:
-                        wave += prefactor * self._apply_gaussian_sigma(
-                            tvals,
-                            scaling,
-                            ts,
-                            te,
-                        )
+            else:
+                # Single step pulse; generate default values to allow for
+                # unified waveform envelope generation logic
+                amps = [1.0]
+                pairwise_tstarts = [(tstart, tend)]
+            # Combine the amplitude factors with the gaussian waves
+            wave = amp * np.sum(
+                [
+                    amp_factor * self._apply_gaussian_sigma(
+                        tvals,
+                        self.gaussian_filter_sigma,
+                        ts,
+                        te,
+                    )
+                    for amp_factor, (ts, te) in zip(amps, pairwise_tstarts)
+                ],
+                axis=0,
+            )
+            # Note that we only pay a performance penalty above if multistep
+            # readout segments are used or if gaussian filtering is used
+            # TODO possible performance optimization: consider appending
+            #      separate segments for each amplitude rather than summing
             I_mod, Q_mod = apply_modulation(
                 wave,
                 np.zeros_like(wave),
@@ -1460,13 +1455,22 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         return list(amps), start_times
 
     @staticmethod
-    def _apply_gaussian_sigma(tvals, scaling, tstart, tend):
+    def _apply_gaussian_sigma(tvals, sigma, tstart, tend):
         """Apply the Gaussian sigma to the wavefunction.
+
+        No cost operation (no-op) if the sigma is zero
         """
-        return 0.5 * (
-                sp.special.erf((tvals - tstart) * scaling)
-                - sp.special.erf((tvals - tend) * scaling)
-        )
+        if sigma == 0:
+            return np.logical_and(
+                (tvals >= tstart), (tvals < tend)
+            )
+        else:
+            scaling = 1 / np.sqrt(2) / sigma
+            return 0.5 * (
+                    sp.special.erf((tvals - tstart) * scaling)
+                    - sp.special.erf((tvals - tend) * scaling)
+            )
+
 
 class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
     def __init__(self,
