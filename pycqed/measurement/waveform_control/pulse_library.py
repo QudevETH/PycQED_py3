@@ -1556,21 +1556,15 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
 
 class GaussFilteredCosIQPulseMultiChromatic(GaussFilteredCosIQPulse):
     def __init__(self,
-                 I_channel,
-                 Q_channel,
-                 element_name,
+                 *args,
                  name=None,
                  **kw):
-
         if name is not None:
             kw.update({"name": name})
         super().__init__(
-            I_channel,
-            Q_channel,
-            element_name,
+            *args,
             **kw
         )
-
         raise FutureWarning(
             "The GaussFilteredCosIQPulseMultiChromatic pulse is "
             "deprecated; use GaussFilteredCosIQPulse instead (which "
