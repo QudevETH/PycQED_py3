@@ -6,7 +6,7 @@ import time
 import lmfit
 import datetime
 import traceback
-import qutip as qt
+import pycqed.utilities.qutip_compat as qt
 import numpy as np
 import scipy as sp
 from copy import copy, deepcopy
@@ -177,7 +177,7 @@ def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots,
     :param nr_cycles (int): number of XEB cycles in circuit
     :param nr_seq (int): number of random samplings of the circuit
     :param rots (list of lists): of the form
-        [[qt.operations.rotation(qt.sigmaz(), z_angle).full()
+        [[qt.qip.operations.rotation(qt.sigmaz(), z_angle).full()
          for z_angle in z_angles[i]] for i in range(nr_seq)]
     :param init_state: length 2 numpy array for initial rotation
     :return: ideal populations
@@ -317,8 +317,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                                                **params)
         n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
-        prep_params = hlp_mod.get_param_from_metadata_group(
-            timestamp, 'preparation_params')
+        prep_params = hlp_mod.get_preparation_parameters(data_dict, **params)
         reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
             'preparation_type'] else 0
 
@@ -503,7 +502,7 @@ def get_z_rotations(nr_cycles, nr_seq, z_angles=None, seed=None,
         rots_cycle = [''] * nr_cycles
         rots_cycle_qt = [''] * nr_cycles
         for j, a in enumerate(z_angles[i]):
-            z_rot = qt.operations.rotation(qt.sigmaz(), a)
+            z_rot = qt.qip.operations.rotation(qt.sigmaz(), a)
             rots_cycle[j] = z_rot.full()
             if qutip_type:
                 rots_cycle_qt[j] = z_rot
@@ -558,7 +557,7 @@ sqrtYqt_2qbs = qt.tensor(sqrtYqt, sqrtYqt)
 Tqt_2qbs = qt.tensor(Tqt, Tqt)
 sqrtX_2qbs, sqrtY_2qbs = sqrtXqt_2qbs.full(), sqrtYqt_2qbs.full()
 T_2qbs = Tqt_2qbs.full()
-czqt = qt.operations.cphase(np.pi)
+czqt = qt.qip.operations.cphase(np.pi)
 cz = czqt.full()
 
 gg_qt, ge_qt, eg_qt, ee_qt = [qt.states.basis(4, i).full() for i in range(4)]
@@ -652,8 +651,11 @@ def simulate_circuits_2qbs(nr_cycles, nr_seq, circuits_list, T1, T2, t_gate,
 
 
 ## Calculation ##
-def translate(info):
+def translate(info, dd):
     s_gates = ["RX", "RY", "RZ"]
+    # FIXME this parsing of 's' might not capture all possible formats
+    if info[0].startswith('s'):
+        info[0] = info[0][1:]
     if info[0][0] == 'Y':
         gate_name = s_gates[1]
         angle = np.pi / 2
@@ -666,8 +668,9 @@ def translate(info):
     else:  # C-phase gate
         gate_name = 'CPHASE'
         angle = 180 if info[0][2:]=='' else float(info[0][2:])
-        # FIXME minus sign to match inconsistent pycqed sign conventions
-        angle = -angle*np.pi/180
+        # -1 for old measurements with left-handed basis
+        legacy_sign = 1 if dd['exp_metadata'].get('right_handed_basis') else -1
+        angle = legacy_sign*angle*np.pi/180
     if int(info[1][3]) == 1:
         qubit = 0
     else:
@@ -675,11 +678,11 @@ def translate(info):
     return gate_name, qubit, angle
 
 
-def construct_from_op(op_lis):
+def construct_from_op(op_lis, dd):
     q = qt.qip.circuit.QubitCircuit(2, reverse_states=False)
     for op in op_lis:
         op_info = op.split(" ")
-        info = translate(op_info)
+        info = translate(op_info, dd=dd)
         if len(op_info) == 2:
             q.add_gate(info[0], info[1], None, info[2], r"\pi/4")
         else:
@@ -703,7 +706,7 @@ def transfer(data_dict, **params):
     lis = []
     for circuit_lis in gates_list:
         for count, circuit in enumerate(circuit_lis):
-            q = construct_from_op(circuit)
+            q = construct_from_op(circuit, dd=data_dict)
             lis += [q]
     return lis
 
@@ -791,39 +794,23 @@ def manual_propagator(gate):
 def proba(qc):
     """
     Computes the output states probabilities for a qutip quantum circuit
-
-    TODO: one can finish removing calls to qutip and make this method even
-     faster if needed.
     """
     # Equivalent (only for basic gates) to
     # U = qt.qip.operations.gate_sequence_product(qc.propagators())
     M = np.eye(4)
     for g in qc.gates:
         M = np.matmul(manual_propagator(g), M)
-    U = qt.Qobj(M)
-    U.dims = [[2, 2], [2, 2]]
-
-    gg = qt.tensor(qt.basis(2, 0), qt.basis(2, 0))
-    ge = qt.tensor(qt.basis(2, 0), qt.basis(2, 1))
-    eg = qt.tensor(qt.basis(2, 1), qt.basis(2, 0))
-    ee = qt.tensor(qt.basis(2, 1), qt.basis(2, 1))
-    s = U * gg
-    b = gg.dag() * s.data
-    proba_gg = abs(b[0][0])**2
-    d = ee.dag() * s.data
-    proba_ee = abs(d[0][0])**2
-    c = ge.dag() * s.data
-    proba_ge = abs(c[0][0])**2
-    a = eg.dag() * s.data
-    proba_eg = abs(a[0][0])**2
-    return [proba_gg, proba_ge, proba_eg, proba_ee]
+    gg = np.array([1,0,0,0])
+    final_state = np.matmul(M, gg)
+    probs = abs(final_state) ** 2
+    return probs
 
 
 def proba_from_all_circuits(circuit_list):
     lis = []
     for circ in circuit_list:
         pros = proba(circ)
-        lis.append(np.array(pros))
+        lis.append(pros)
     return lis
 
 
@@ -920,8 +907,7 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         compression_factor = hlp_mod.get_param('compression_factor', data_dict)
         n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
-        prep_params = hlp_mod.get_param_from_metadata_group(
-            timestamp, 'preparation_params')
+        prep_params = hlp_mod.get_preparation_parameters(data_dict)
         reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
             'preparation_type'] else 0
 
@@ -1201,8 +1187,7 @@ def get_1qb_xeb_dd(timestamp, meas_data_dtype=None, meas_obj_names=None,
 
 
 def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
-                         meas_data_dtype=None, meas_obj_names=None,
-                         idx0f=0, idx0p=0, idx_cp_break=None):
+                   meas_data_dtype=None, idx0f=0, idx0p=0, idx_cp_break=None):
     """
     Runs the two-qubit multi-cphase XEB analysis and plotting
 
@@ -1224,130 +1209,129 @@ def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
         the returned value is a list of dict of length len(cphase).
     """
 
-    task_id = 0  # FIXME: currently only tested for a single task
+    dd2 = {}
+    for task in hlp_mod.get_param_from_metadata_group(timestamp, 'task_list'):
+        meas_obj_names = (task['qb_1'], task['qb_2'])
+        dd2[meas_obj_names] = []
 
-    dd2 = []
-    if timer:
-        timer.checkpoint('two_qubit_xeb_analysis.start')
-    pp_full, meas_obj_names2, cycles1, nr_seq1 = two_qubit_xeb_analysis(
-        timestamp,
-        meas_obj_names=meas_obj_names,
-        save=False,
-        meas_data_dtype=meas_data_dtype,
-        # timer=timer,
-    )
-    if timer:
-        timer.checkpoint('two_qubit_xeb_analysis.end')
-
-    cphases = hlp_mod.get_param_from_metadata_group(timestamp, 'task_list')[
-        task_id].get('cphases')
-
-    # Multi-phase XEB (TwoQubitXEBMultiCphase)
-    for idx_cp in range(len(cphases)):  # loop over cphases
-        pp = deepcopy(pp_full)
-        # Extract sp corresponding to a single cphase
-        sp = sp_mod.SweepPoints(pp_full.data_dict['exp_metadata'][
-            'task_list'][task_id]['full_sweep_points'][idx_cp])
-        pp.data_dict['exp_metadata']['sweep_points'] = sp
-        # Set cphase
-        pp.data_dict['exp_metadata']['cphase'] = cphases[idx_cp]
-
-        # Trim data and only keep what corresponds to one cphase
-        data = pp.data_dict[','.join(meas_obj_names)]['correct_readout']
-        data = data.reshape(
-            [sp.length(1), len(cphases), sp.length(0),
-             9])[:, idx_cp, :, :].reshape([-1, 9])
-        pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
-
-        # Set mospm
-        pp.data_dict['exp_metadata']['meas_obj_sweep_points_map'] = \
-            sp.get_meas_obj_sweep_points_map(meas_obj_names)
-
-        # Analysis
         if timer:
-            timer.checkpoint('plot_porter_thomas_dist.start')
-        plot_porter_thomas_dist(pp.data_dict, savefig=True)
-        if timer:
-            timer.checkpoint('plot_porter_thomas_dist.end')
-        if timer:
-            timer.checkpoint('calculate_fidelities_purities_2qb.start')
-        calculate_fidelities_purities_2qb(
-            pp.data_dict,
-            data_key='correct_readout',
-            timer=timer,
+            timer.checkpoint('two_qubit_xeb_analysis.start')
+        pp_full, meas_obj_names2, cycles1, nr_seq1 = two_qubit_xeb_analysis(
+            timestamp,
+            meas_obj_names=meas_obj_names,
+            save=False,
+            meas_data_dtype=meas_data_dtype,
+            # timer=timer,
         )
         if timer:
-            timer.checkpoint('calculate_fidelities_purities_2qb.end')
-        if timer:
-            timer.checkpoint('fit_plot_fidelity_purity.start')
-        _ = fit_plot_fidelity_purity(
-            pp.data_dict,
-            idx0f=idx0f, idx0p=idx0p,
-            joint_processing=True,
-            savefig=True,
-            log_scale=False
-        )
-        if timer:
-            timer.checkpoint('fit_plot_fidelity_purity.end')
-        if timer:
-            timer.checkpoint('fit_plot_leakage_2qb.start')
-        fit_plot_leakage_2qb(
-            pp.data_dict, meas_obj_names,
-            data_key='correct_readout',
-            savefig=True, show=False, timer=timer
-        )
-        if timer:
-            timer.checkpoint('fit_plot_leakage_2qb.end')
-        plt.close('all')
-        # Removed for speed reasons. Could be re-added once this works
-        # properly (faster, and not overriding the saved file at each call)
-        # if timer:
-        #     timer.checkpoint('pp.save.start')
-        # pp.save()
-        # if timer:
-        #     timer.checkpoint('pp.save.end')
-        dd = pp.data_dict  # Keeping only the data dict
-        del pp
-        if clear_some_memory:
-            for mobjn in meas_obj_names:
-                # Raw data seems to be the highest quantity of data
-                # (from task manager: 80%?)
-                del dd[mobjn]
-        dd2.append(dd)
+            timer.checkpoint('two_qubit_xeb_analysis.end')
 
-        if idx_cp_break:  # Stop at this index
-            if idx_cp >= idx_cp_break:
-                break
-    del pp_full
+        cphases = task.get('cphases')
+
+        # Multi-phase XEB (TwoQubitXEBMultiCphase)
+        for idx_cp in range(len(cphases)):  # loop over cphases
+            pp = deepcopy(pp_full)
+            # Extract sp corresponding to a single cphase
+            sp = sp_mod.SweepPoints(task['full_sweep_points'][idx_cp])
+            pp.data_dict['exp_metadata']['sweep_points'] = sp
+            # Set cphase
+            pp.data_dict['exp_metadata']['cphase'] = cphases[idx_cp]
+
+            # Trim data and only keep what corresponds to one cphase
+            data = pp.data_dict[','.join(meas_obj_names)]['correct_readout']
+            data = data.reshape(
+                [sp.length(1), len(cphases), sp.length(0),
+                 9])[:, idx_cp, :, :].reshape([-1, 9])
+            pp.data_dict[','.join(meas_obj_names)]['correct_readout'] = data
+
+            # Set mospm
+            pp.data_dict['exp_metadata']['meas_obj_sweep_points_map'] = \
+                sp.get_meas_obj_sweep_points_map(meas_obj_names)
+
+            # Analysis
+            if timer:
+                timer.checkpoint('plot_porter_thomas_dist.start')
+            plot_porter_thomas_dist(pp.data_dict, savefig=True)
+            if timer:
+                timer.checkpoint('plot_porter_thomas_dist.end')
+            if timer:
+                timer.checkpoint('calculate_fidelities_purities_2qb.start')
+            calculate_fidelities_purities_2qb(
+                pp.data_dict,
+                data_key='correct_readout',
+                timer=timer,
+            )
+            if timer:
+                timer.checkpoint('calculate_fidelities_purities_2qb.end')
+            if timer:
+                timer.checkpoint('fit_plot_fidelity_purity.start')
+            _ = fit_plot_fidelity_purity(
+                pp.data_dict,
+                idx0f=idx0f, idx0p=idx0p,
+                joint_processing=True,
+                savefig=True,
+                log_scale=False
+            )
+            if timer:
+                timer.checkpoint('fit_plot_fidelity_purity.end')
+            if timer:
+                timer.checkpoint('fit_plot_leakage_2qb.start')
+            fit_plot_leakage_2qb(
+                pp.data_dict, meas_obj_names,
+                data_key='correct_readout',
+                savefig=True, show=False, timer=timer
+            )
+            if timer:
+                timer.checkpoint('fit_plot_leakage_2qb.end')
+            plt.close('all')
+            # Removed for speed reasons. Could be re-added once this works
+            # properly (faster, and not overriding the saved file at each call)
+            # if timer:
+            #     timer.checkpoint('pp.save.start')
+            # pp.save()
+            # if timer:
+            #     timer.checkpoint('pp.save.end')
+            dd = pp.data_dict  # Keeping only the data dict
+            del pp
+            if clear_some_memory:
+                for mobjn in meas_obj_names:
+                    # Raw data seems to be the highest quantity of data
+                    # (from task manager: 80%?)
+                    del dd[mobjn]
+            dd2[meas_obj_names].append(dd)
+
+            if idx_cp_break:  # Stop at this index
+                if idx_cp >= idx_cp_break:
+                    break
+        del pp_full
     return dd2
 
 
-def get_multi_xeb_results_from_dd(dd2, dd1=None, meas_obj_names=None, **kw):
+def get_multi_xeb_results_from_dd(dd2, dd1=None, **kw):
     """
     Helper method to extract various error rates from analysed XEB measurements
 
     Args:
         dd2 (dict): Previously analysed two-qubit multi-cphase XEB data dict
         dd1 (dict): Previously analysed single-qubit XEB data dict
-        meas_obj_names (list): mobj names, which may need to be passed e.g. in
-            case they aren't saved by the experiment in the correct order
-            (necessary to correctly simulate the quantum circuits here).
     """
     results = {}
-    for dd in dd2:
-        cphase = dd['exp_metadata']['cphase']
-        results[cphase] = res = {}
-        res['tot'] = calculate_cz_error(
-            dd, dd1, meas_obj_names=meas_obj_names,
-            metric='fidelity', error_type='average', **kw)
-        res['inc'] = calculate_cz_error(
-            dd, dd1, meas_obj_names=meas_obj_names,
-            metric='purity', error_type='average', **kw)
-        res['coh'] = {
-            'value': res['tot']['value'] - res['inc']['value'],
-            'stderr': np.linalg.norm(
-                [res['tot']['stderr'], res['inc']['stderr']], 2),
-        }
+    for meas_obj_names, dd2_task in dd2.items():
+        results[meas_obj_names] = {}
+        for dd in dd2_task:
+            cphase = dd['exp_metadata']['cphase']
+            results[meas_obj_names][cphase] = res = {}
+            res['tot'] = calculate_cz_error(
+                dd, dd1, meas_obj_names=meas_obj_names,
+                metric='fidelity', error_type='average', **kw)
+            res['inc'] = calculate_cz_error(
+                dd, dd1, meas_obj_names=meas_obj_names,
+                metric='purity', error_type='average', **kw)
+            res['coh'] = {
+                'value': res['tot']['value'] - res['inc']['value'],
+                'stderr': np.linalg.norm(
+                    [res['tot']['stderr'], res['inc']['stderr']], 2),
+            }
     return results
 
 

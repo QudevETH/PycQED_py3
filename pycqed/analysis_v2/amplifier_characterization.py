@@ -24,7 +24,6 @@ class Amplifier_Characterization_Analysis(ba.BaseDataAnalysis):
             'sweep_parameter_names': 'Experimental Data.sweep_parameter_names',
             'sweep_parameter_units': 'Experimental Data.sweep_parameter_units',
             'measurementstring': 'measurementstring',
-            'measured_values': 'measured_values',
             'value_names': 'value_names',
             'value_units': 'value_units',
         }

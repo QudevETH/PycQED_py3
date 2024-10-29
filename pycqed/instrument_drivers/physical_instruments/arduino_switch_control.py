@@ -7,162 +7,161 @@ from collections import OrderedDict
 import qcodes as qc
 from pycqed.instrument_drivers.instrument import Instrument
 
+import logging
+log = logging.getLogger(__name__)
 
 class ArduinoSwitchControl(Instrument):
-    """Class for the RT switch box that uses an Arduino
+    """Class for the RT switch box that uses an Arduino.
 
     This class represents the room-temperature switch box as a Qcodes
     instrument. The representation of the box is constructed from the inputs
     and outputs of the box, the switches, and the connections between the
     switches and to the inputs and outputs. The possible routes between
-    the inputs and outputs are automatically generated. Upon initialization,
-    the configuration must be given as a dictionary to the 'config' argument
-    of the init function. For specifying the switches and connections,
-    see Args.
+    the inputs and outputs are automatically generated.
 
+    Parameters
+    ----------
+    name : str
+        Name (for the initialization as a Qcodes Instrument)
+    port : str
+        Name of the serial port (on Windows usually starts with 'COM')
+    config : dict
+        Dictionary for the configuration of the switch box. Must include:
+
+        - 'switches': Specify the switches. The PCB in the switch box
+          allows up to cls.MAX_SWITCHES = 20 switches. Can be:
+
+          - int <= MAX_SWITCHES: Specify the number of switches.
+            The switches are then labeled with integers 1,...,num_switches
+          - list(like): Specify labels for the switches in a list
+            with length <= MAX_SWITCHES
+
+        - 'inputs': Specify the input connectors. For format of specifying
+          connectors, see above.
+        - 'outputs': Specify the output connectors. For format of specifying
+          connectors, see above.
+        - 'connections': A list with the connections between the switches and
+          to the inputs and outputs of the box. The elements of the list are
+          tuples (start,end), where 'start' and 'end' must be one of the
+          following:
+
+          - For an input or output of the switch box, use the label of the
+            input or output. e.g. use 'I1' for input I1
+          - For the input of a switch, use the label of the switch.
+            e.g. use 1 for switch 1
+          - For the output of a switch, use a tuple (switch-label, state),
+            where 'switch-label' is the label of the switch, and 'state' is
+            the state of the switch, that corresponds to the output.
+            e.g. for the output of switch 2, that is active, when the switch
+            is in state 0, use the tuple (2,0)
+
+    start_serial : bool, optional
+        Whether to start the serial communication with the Arduino upon
+        initialization. Default is True.
+
+    Attributes
+    ----------
+    port : str
+        Name of the serial port
+    switches : OrderedDict
+        Dictionary {'switch label':switch} of the switch labels as keys
+        and instances of ArduinoSwitchControlSwitch as values,
+        representing the switches.
+    inputs : OrderedDict
+        Dictionary {'input label':input} of the input labels as keys
+        and instances of ArduinoSwitchControlConnectors as values,
+        representing the inputs.
+    input_groups : list
+        List of the labels for the input groups
+    outputs : OrderedDict
+        Dictionary {'output label':output} of the output labels as keys
+        and instances of ArduinoSwitchControlConnectors as values,
+        representing the outputs.
+    output_groups : list
+        List of the labels for the output groups
+    connections : list
+        List of the connections, represented as instances of
+        ArduinoSwitchControlConnection.
+    routes : OrderedDict
+        Dictionary of dictionaries {'input label': {'output label':routes}}
+        where 'routes' is a list of possible routes between the input
+        and the output, represented as instances of ArduinoSwitchControlRoute.
+    serial : serial.Serial
+        Serial port to connect to the Arduino
+
+    Notes
+    -----
     Within the configuration dictionary, the input and output connectors can
     be initialized in the following ways:
-        - As an integer for the number of connectors.
-          The inputs are labeled with 'I1', 'I2',..., the outputs are
-          with 'O1', 'O2',....
-        - A tuple ('X',N), where 'X' is the label and N the number of
-          connectors. The connectors are labeled with X1, X2,....
-        - As a list to group the connectors. The labeling format
-          is 'X.n', where X is the group label and n the connector
-          number in the group. The entries of the list can be:
-            - A tuple ('X',N) where 'X' is the label of the group and
-              N is the number of connectors in the group.
-            - An integer N. Groups without a given label will be
-              labelled with 'I1', 'I2',... for input groups and
-              'O1','O2',... for output groups
-        - As a list of strings where the strings are the labels of the
-          connectors, e.g. ['I1', 'I7']
+
+    - As an integer for the number of connectors. The inputs are labeled with
+      'I1', 'I2',..., the outputs are with 'O1', 'O2',....
+    - A tuple ('X',N), where 'X' is the label and N the number of connectors.
+      The connectors are labeled with X1, X2,....
+    - As a list to group the connectors. The labeling format is 'X.n', where X
+      is the group label and n the connector number in the group. The entries
+      of the list can be:
+
+      - A tuple ('X',N) where 'X' is the label of the group and N is the
+        number of connectors in the group.
+      - An integer N. Groups without a given label will be labelled with 'I1',
+        'I2',... for input groups and 'O1','O2',... for output groups
+
+    - As a list of strings where the strings are the labels of the connectors,
+      e.g. ['I1', 'I7']
 
     The Qcodes parameters representing switching individual switches follow
     the naming convention 'switch_X_mode' where 'X' is the label of the
     switch (int are converted to str). One can set the switch X with
-        self.switch_X_mode(state)
-    and read the state with
-        self.switch_X_mode()
+    ``self.switch_X_mode(state)`` and read the state with
+    ``self.switch_X_mode()``.
+
     Additionally, there exist Qcodes parameters representing the routes from
     the inputs, following the naming convention 'route_I_mode', where 'I'
     is the label of the input. One can set the route from input I to
-    output O with
-        self.route_I_mode(O)
-    and check to which output the input I is connected with
-        self.route_I_mode()
-    If the input is not connected to any output, None is returned.
+    output O with ``self.route_I_mode(O)`` and check to which output the input
+    I is connected with ``self.route_I_mode()``. If the input is not connected
+    to any output, None is returned.
+
     Note: Setting and getting the routes accesses multiple switches and
     therefore takes up to a few seconds.
+
     For the protocol that is used to communicate with the Arduino to set and
-    read the switches, check the documentation of the self._set_switch and
-    self._read_switch methods.
+    read the switches, check the documentation of the ``self._set_switch`` and
+    ``self._read_switch`` methods.
 
     As required for switches in PycQED, there exists a method
-        self.set_switch(values)
-    where 'values' is a dictionary {switch : state} and switch can be
-        - the label of a switch
-        - equivalently a string 'switch_X' where X is the label of the switch
-        - the label of an input. 'state' is then the label of the output
-          to connect to
-        - equivalently a string 'route_I' where I is the label of an input.
-    Additionally, there exists a method
-        self.get_switch(*args)
+    ``self.set_switch(values)`` where 'values' is a dictionary
+    {switch : state} and switch can be:
+
+    - the label of a switch
+    - equivalently a string 'switch_X' where X is the label of the switch
+    - the label of an input. 'state' is then the label of the output
+      to connect to
+    - equivalently a string 'route_I' where I is the label of an input.
+
+    Additionally, there exists a method ``self.get_switch(*args)``
     where *args contains the labels of switches or inputs (or strings
     'switch_X' and 'route_I' as above) and it returns a dictionary compatible
-    with the argument 'values' of the self.set_switch method. This method is
-    not standard in PycQED.
+    with the argument 'values' of the ``self.set_switch`` method. This method
+    is not standard in PycQED.
 
     The serial communication is handled globally with class methods (see
     below at the class methods.) For the serial communication of a certain
-    instance, the methods self.start_serial, self.end_serial and
-    self.assure_serial are used.
+    instance, the methods ``self.start_serial``, ``self.end_serial`` and
+    ``self.assure_serial`` are used.
 
     The switches in the switch box are controlled by an Arduino and a printed
     circuit board (PCB). The Arduino is connected to the PC via USB and to the
     PCB via two signal wires for I2C-communication and a ground wire. On the
-    PCB, cls.NUM_IO = 5 input/output-expanders, which can be addressed with I2C, can
-    control cls.NUM_IO_SWITCHES = 4 switches each, giving a maximum amount of
-    cls.MAX_SWITCHES = 20 switches. The Arduino selects the switches by the number
-    of the I/O-expander (0,1,2,3,4) (here, usually referred to as group_id) and the
-    number of the switch for this I/O-expander (0,1,2,3) (here usually switch_id).
-    Using self.switch_ids[(group_id,switch_id)] returns the instance of
-    ArduinoSwitchControlSwitch that represents the switch with this id.
-
-    Args:
-        name (str): Name (for the initialization as a Qcodes Instrument
-        port (str):
-            Name of the serial port
-            (on Windows usually starts with 'COM')
-        config (dict):
-            Dictionary for the configuration of the switch box.
-            Must include:
-                'switches': Specify the switches. The PCB in the switch box
-                    allows up to cls.MAX_SWITCHES = 20 switches. Can be:
-                    - int <= MAX_SWITCHES: Specify the number of switches.
-                                  The switches are then labeled with integers
-                                  1,...,num_switches
-                    - list(like): Specify labels for the switches in a list
-                                  with length <= MAX_SWITCHES
-                'inputs': Specify the input connectors.
-                          For format of specifying connectors, see above
-                'outputs': Specify the output connectors.
-                           For format of specifying connectors, see above
-                'connections': A list with the connections between the
-                               switches and to the inputs and outputs of
-                               the box. The elements of the list are tuples
-                               (start,end), where 'start' and 'end' must be
-                               one of the following:
-                               - For an input or output of the switch box,
-                                 use the label of the input or output.
-                                 e. g. use 'I1' for input I1
-                               - For the input of a switch, use the label of
-                                 the switch.
-                                 e. g. use 1 for switch 1
-                               - For the output of a switch, use a tuple
-                                 (switch-label, state), where 'switch-label'
-                                 is the label of the switch, and 'state' is the
-                                 state of the switch, that corresponds to the
-                                 output.
-                                 e. g. for the output of switch 2, that is
-                                 active, when the switch is in state 0, use
-                                 the tuple (2,0)
-        start_serial (bool):
-            Whether to start the serial communication with the Arduino
-            upon initialization.
-
-    Attributes:
-        port (str): Name of the serial port
-        switches (OrderedDict):
-            Dictionary {'switch label':switch} of the switch labels as keys
-            and instances of ArduinoSwitchControlSwitch as values,
-            representing the switches.
-        inputs (OrderedDict):
-            Dictionary {'input label':input} of the input labels as keys
-            and instances of ArduinoSwitchControlConnectors as values,
-            representing the inputs.
-        input_groups (list): List of the labels for the input groups
-        outputs (OrderedDict):
-            Dictionary {'output label':output} of the output labels as keys
-            and instances of ArduinoSwitchControlConnectors as values,
-            representing the outputs.
-        output_groups (list): List of the labels for the output groups
-        connections (list):
-            List of the connections, represented as instances of
-            ArduinoSwitchControlConnection.
-        routes (OrderedDict):
-            Dictionary of dictionaries
-            {'input label': {'output label':routes}}
-            where 'routes' is a list of possible routes between the input
-            and the output, represented as instances of
-            ArduinoSwitchControlRoute.
-        serial (serial.Serial): serial port to connect to the Arduino
-
-    Class Attributes:
-        WRITE_DELAY (float): Waiting period after setting a switch.
-                       Default: 0.15 s
-        READ_DELAY (float): Waiting period after reading the switch.
-                             Default: 0.05 s
+    PCB, cls.NUM_IO = 5 input/output-expanders, which can be addressed with
+    I2C, can control cls.NUM_IO_SWITCHES = 4 switches each, giving a maximum
+    amount of cls.MAX_SWITCHES = 20 switches. The Arduino selects the switches
+    by the number of the I/O-expander (0,1,2,3,4) (here, usually referred to
+    as group_id) and the number of the switch for this I/O-expander (0,1,2,3)
+    (here usually switch_id). Using ``self.switch_ids[(group_id,switch_id)]``
+    returns the instance of ArduinoSwitchControlSwitch that represents the
+    switch with this id.
 
     """
 
@@ -283,8 +282,9 @@ class ArduinoSwitchControl(Instrument):
     NUM_IO = 5
     NUM_IO_SWITCHES = 4
     MAX_SWITCHES = NUM_IO*NUM_IO_SWITCHES
-    READ_DELAY = 0.05  # after reading a switch
-    WRITE_DELAY = 0.15  # after setting a switch
+    READ_DELAY = 0.01  # after reading a switch
+    WRITE_DELAY = 0.01  # after setting a switch
+    BAUD_RATE = 57600
 
     # Properties
     # ----------
@@ -418,22 +418,24 @@ class ArduinoSwitchControl(Instrument):
         if ser is None or override:
             if ser is not None and ser.is_open:
                 ser.close()  # close open serial
-            ser = serial.Serial(self.port, timeout=1)  # reate new serial
+            ser = serial.Serial(self.port, baudrate=self.BAUD_RATE, timeout=1)  # create new serial
             self.add_port(self.port, ser)  # add serial to _open_ports
             self.serial = ser  # save serial
 
             # handle output during setup
-            setup_string = self.serial.readline()
-            setup_string = setup_string.decode().rstrip()
-            if setup_string != 's':  # setup started returns 's'
-                print("Setup did not start.")
+            setup_string = self.serial.readline().decode()
+            if not setup_string.startswith('RT switch box'):  # setup
+                # invalid init string
+                log.warning(f'Invalid init string: {setup_string}.')
             else:
-                # end of setup returns l
-                # failed communication with IO-expander returns group id
-                error_string = ser.readline()
-                error_string = error_string.decode().rstrip()
-                if error_string != 'l':
-                    print(f'\nSetup failed for IO-Expander {error_string}')
+                self.setup_dict = dict(
+                    [[s2.strip() for s2 in s1.split(':')] for s1 in
+                     setup_string.split(';')])
+                if not ('IO expander status' in self.setup_dict and
+                        self.setup_dict['IO expander status'] ==
+                        '1'*self.NUM_IO):
+                    log.warning(f'\nSetup failed for IO-Expander '
+                                f'{self.setup_dict["IO expander status"]}.')
 
         # save found serial. Serial might be closed, might have to be opened
         # manually.
@@ -865,7 +867,7 @@ class ArduinoSwitchControl(Instrument):
         # make sure that the serial port is open
         self.assure_serial()
         # create command for the arduino and send it
-        input_string = 'r' + str(id[0]) + str(id[1])
+        input_string = f'GET {id[0]} {id[1]}\n'
         self.serial.write(input_string.encode('ascii'))
         time.sleep(self.READ_DELAY)
         # retrieve result
@@ -909,7 +911,7 @@ class ArduinoSwitchControl(Instrument):
         # make sure that the serial port is open
         self.assure_serial()
         # create command for the arduino and send it
-        input_string = str(id[0]) + str(id[1]) + str(state)
+        input_string = f'SET {id[0]} {id[1]} {state}\n'
         self.serial.write(input_string.encode('ascii'))
         time.sleep(self.WRITE_DELAY)
         # read switch after setting it, to confirm switching
@@ -1556,17 +1558,26 @@ class ArduinoSwitchControlRoute:
 # Exceptions:
 # -----------
 
+
 class SwitchControlError(Exception):
+    """Exception raised for errors in the switch control."""
+
     pass
 
 
 class ConnectorError(Exception):
+    """Exception raised for errors related to connectors."""
+
     pass
 
 
 class SwitchError(Exception):
+    """Exception raised for errors related to switches."""
+
     pass
 
 
 class RouteError(Exception):
+    """Exception raised for errors related to routes."""
+
     pass
