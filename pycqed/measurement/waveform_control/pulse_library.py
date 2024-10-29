@@ -1439,10 +1439,18 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
 
         self.flux_channel = flux_channel
         self.channels.append(flux_channel)
-        self.flux_pulse_length = self.pulse_length + self.flux_extend_start + self.flux_extend_end
+        if self.flux_net_zero_pulse:
+            fp_class = NZTransitionControlledPulse
+            self.flux_pulse_length = 2*self.pulse_length
+            # TODO maybe improvable
+            self.length = self.length + self.flux_pulse_length/2
+        else:
+            fp_class = BufferedSquarePulse
+            self.flux_pulse_length = self.pulse_length
+        self.flux_pulse_length += self.flux_extend_start + self.flux_extend_end
         self.flux_buffer_length_start = self.buffer_length_start - self.flux_extend_start
         self.flux_buffer_length_end = self.length - self.flux_buffer_length_start - self.flux_pulse_length
-        self.fp = BufferedSquarePulse(element_name=self.element_name,
+        self.fp = fp_class(element_name=self.element_name,
                                       channel=self.flux_channel,
                                       amplitude=self.flux_amplitude,
                                       pulse_length=self.flux_pulse_length,
@@ -1473,6 +1481,7 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
             # self.flux_mirror_pattern unless someone messes with it)
             # is the one used by the code to retrieve the pattern to apply.
             'flux_mirror_pattern': None,
+            'flux_net_zero_pulse': False,
         }
         return params
 
@@ -1641,7 +1650,7 @@ class SquarePulse(pulse.Pulse):
         super().__init__(name, element_name, **kw)
         if channel is None and channels is None:
             raise ValueError('Must specify either channel or channels')
-        elif channels is None:
+        elif not channels:
             self.channel = channel  # this is just for convenience, internally
             # this is the part the sequencer element wants to communicate with
             self.channels.append(channel)
