@@ -6,9 +6,9 @@ from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 try:
     from qcodes_contrib_drivers.drivers.QDevil import QDAC1 as qdac_mod
-    from qcodes_contrib_drivers.drivers.QDevil import QDAC2 as qdac2_mod
 except ImportError:
     from qcodes.instrument_drivers.QDevil import QDevil_QDAC as qdac_mod
+from qcodes_contrib_drivers.drivers.QDevil import QDAC2 as qdac2_mod
 import logging
 log = logging.getLogger(__name__)
 

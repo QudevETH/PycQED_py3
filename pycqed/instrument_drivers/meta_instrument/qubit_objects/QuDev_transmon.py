@@ -152,6 +152,13 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                                                     "none",
                                                                     "all",
                                                                     "odd", "even"))
+        self.add_pulse_parameter(
+            'RO', 'ro_flux_net_zero_pulse', 'flux_net_zero_pulse',
+            initial_value=False, vals=vals.Bool(),
+            docstring='If True, uses a net-zero pulse for '
+                      'flux-pulse-assisted readout (note that this doubles'
+                      'the  duration of the flux pulse, such that the '
+                      'readout pulse happens during the first half).')
 
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
@@ -1130,7 +1137,11 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
     def get_operation_dict(self, operation_dict=None):
         operation_dict = super().get_operation_dict(operation_dict)
         operation_dict['Spec ' + self.name]['operation_type'] = 'Other'
-        operation_dict['Acq ' + self.name]['flux_amplitude'] = 0
+        if operation_dict['Acq ' + self.name]['pulse_type'].endswith(
+                'WithFlux'):
+            # removes flux pulse for acquisition operation
+            operation_dict['Acq ' + self.name]['pulse_type'] = (
+                operation_dict)['Acq ' + self.name]['pulse_type'][:-8]
 
         if "f0g1" in self.transition_names:
             self._add_f0g1_to_operation_dict(operation_dict)
@@ -1791,6 +1802,12 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             ma (:py:class:~'pycqed.timedomain_analysis.MixerCarrierAnalysis'): 
                 The MixerCarrierAnalysis object.
         """
+        log.warning("This function (calibrate_drive_mixer_carrier_model) is "
+                    "deprecated and will be removed in a future MR. Use the "
+                    "quantum experiment "
+                    "pycqed.measurement.calibration.mixer.MixerCarrier "
+                    "instead. See docstring of the quantum experiment for "
+                    "further information.")
         MC = self.instr_mc.get_instr()
         if meas_grid is None:
             if len(limits) != 4:
@@ -2016,6 +2033,8 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             kwargs:
                 prepend_zeros: temporary value for pulsar.prepend_zeros.
                     Defaults to 0.
+                raise_errors (bool): If True, raises an exception if the fit
+                    fails to converge within the measurement range
 
         Returns:
             alpha (float): The amplitude ratio that maximizes the suppression of 
@@ -2025,6 +2044,12 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             ma (:py:class:~'pycqed.timedomain_analysis.MixerSkewnessAnalysis'): 
                 The MixerSkewnessAnalysis object.
         """
+        log.warning("This function (calibrate_drive_mixer_skewness_model) is "
+                    "deprecated and will be removed in a future MR. Use the "
+                    "quantum experiment "
+                    "pycqed.measurement.calibration.mixer.MixerSkewness "
+                    "instead. See docstring of the quantum experiment for "
+                    "further information.")
         if meas_grid is None:
             if len(limits) != 4:
                 log.error('Input variable `limits` in function call '
@@ -2130,14 +2155,22 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         _phi = analysis_params_dict['phase']
 
         if(_alpha < limits[0] or _alpha > limits[1]):
-            log.warning('Optimum for amplitude ratio is outside '
-                        'the measured range and no settings will be updated. '
-                        'Best alpha according to fitting: {:.2f}'.format(_alpha))
+            warning = ('Optimum for amplitude ratio is outside '\
+                       'the measured range and no settings will be updated. '
+                       'Best alpha according to fitting: {:.2f}'.format(_alpha))
+            if kwargs.get('raise_errors', False):
+                raise RuntimeError(warning)
+            else:
+                log.warning(warning)
             update = False
         if(_phi < limits[2] or _phi > limits[3]):
-            log.warning('Optimum for phase correction is outside '
-                        'the measured range and no settings will be updated. '
-                        'Best phi according to fitting: {:.2f} deg'.format(_phi))
+            warning = ('Optimum for phase correction is outside '
+                       'the measured range and no settings will be updated. '
+                       'Best phi according to fitting: {:.2f} deg'.format(_phi))
+            if kwargs.get('raise_errors', False):
+                raise RuntimeError(warning)
+            else:
+                log.warning(warning)
             update = False
 
         if update:
@@ -2799,14 +2832,14 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                 op_name, parameter_prefix + '_basis_rotation',
                 'basis_rotation', initial_value={}, vals=None)
 
-        for transition_name in ['', '_ef']:
-            self.add_pulse_parameter(f'PFM{transition_name}',
-                                 f'parametric_flux_modulation'
-                                 f'{transition_name}_filter_bypass',
-                                 'filter_bypass', initial_value=None,
-                                 vals=vals.Enum(None, 'FIR', 'IIR', 'all'),
-                                 docstring=
-            "Allows to (partially) bypass filters for the FP operation. "
-            " 'FIR': bypasses FIR filters only. 'IIR': bypasses IIR filters only. "
-            "FIR is done individually on each pulse waveform with that "
-            "bypass in that case. 'all': bypasses both FIR and IIR filters.")
+        param = 'filter_bypass'
+        if param not in params.keys():
+            self.add_pulse_parameter(
+                op_name, f'{parameter_prefix}_{param}', param,
+                initial_value=None, vals=vals.Enum(None, 'FIR', 'IIR', 'all'),
+                docstring= "Allows to (partially) bypass filters for the FP "
+                           "operation. "
+                           "'FIR': bypasses FIR filters only.  "
+                           "'IIR': bypasses IIR filters only. FIR filtering"
+                           "is done on the level of individual pulse waveforms"
+                           "'all': bypasses both FIR and IIR filters.")

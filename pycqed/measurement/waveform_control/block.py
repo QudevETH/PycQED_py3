@@ -307,7 +307,10 @@ class ParametricValue:
     by Block.pulses_sweepcopy).
 
     :param param: a string specifying the name of the parameter.
-    :param func: (optional) a function applied to the value of the parameter.
+    :param func: (optional) a function applied to the value of the sweep
+        parameter to yield the value of the physical parameter, e.g. amplitude
+    :param func_op_code: (optional) a function applied to the value of the
+        sweep parameter to yield the value to store in the op_code (gate angle)
     :param op_split: (optional) cache a splitted version of the op_code of
         the pulse to allow for correct op_code resolution in cases of spaces
         in a mathematical expression in an op_code.
@@ -315,10 +318,11 @@ class ParametricValue:
     """
     _is_parametric_value = True
 
-    def __init__(self, param, func=None, op_split=None):
+    def __init__(self, param, func=None, func_op_code=None, op_split=None):
         self.param = param
         self.func = func
         self.op_split = op_split
+        self.func_op_code = func_op_code
 
     def resolve(self, sweep_dict, ind=None, op_code=None):
         """
@@ -349,17 +353,19 @@ class ParametricValue:
         v_processed = v if self.func is None else self.func(v)
         if op_code is not None:
             if f'[{self.param}]' in op_code:
-                # if the is a cached splitted version, use that one instead
+                # if there is a cached splitted version, use that one instead
                 # in order to allow for correct op_code resolution in cases
                 # of in a mathematical expression in an op_code.
+                # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
+                # TODO op_split might not be needed anymore after introducing
+                #  func_op_code
                 # FIXME: remove op_code caching as soon as a new op_code
                 #  concept (e.g. tuples instead of space-separated strings)
                 #  makes it obsolete
                 op_split = [s for s in self.op_split] if self.op_split is not \
                             None else op_code.split(' ')
                 param_start = op_split[0].find(':')
-                v_code = eval(op_split[0][(param_start + 1):].replace(
-                    f'[{self.param}]', f"{v}"))
+                v_code = v if not self.func_op_code else self.func_op_code(v)
                 op_split[0] = f"{op_split[0][:param_start]}{v_code}"
                 op_code = ' '.join(op_split)
             else:
@@ -419,6 +425,9 @@ class ParametricValue:
         pv = self._copy_self()
         pv.func = lambda x, f=pv.func: other / f(x)
         return pv
+
+    def __repr__(self):
+        return super().__repr__() + f"({self.param})"
 
 
 def parse_pulse_search_pattern(pattern):
