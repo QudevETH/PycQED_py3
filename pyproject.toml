@@ -29,7 +29,7 @@ dependencies = [
     "msgpack",
     "msgpack_numpy",
     "nlopt",
-    "numpy",
+    "numpy < 2.0.0",               # until compatibility issues are resolved
     "pandas",
     "pyqtgraph",
     "pyside6",
@@ -98,3 +98,29 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "hardware",
 ]
+
+[tool.ruff]
+ignore = [
+    "D203",  # 1 blank line required before class docstring (Google style)
+    "D212",  # Multi-line docstring summary should start at the first line (Google style)
+    "D213",  # Multi-line docstring summary should start at the second line (Google style)
+    "D400",  # First line should end with a period (Google style)
+    "D415",  # First line should end with a period, question mark, or exclamation point (Google style)
+]
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    "__pypackages__",
+    "build",
+    "dist",
+    ".venv",
+]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

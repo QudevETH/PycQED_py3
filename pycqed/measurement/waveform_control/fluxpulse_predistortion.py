@@ -54,6 +54,32 @@ def filter_fir(kernel,x):
     y = np.convolve(x,kernel,mode='full')[iMax:(len(x)+iMax)]
     return y
 
+def multiple_fir_filter(wf, distortion_dict):
+    """
+    Apply Finite Impulse Response (FIR) filtering to a waveform.
+
+    Args:
+        wf (numpy.ndarray): The input waveform to be filtered.
+        distortion_dict (dict): A dictionary containing distortion parameters,
+            including FIR filter kernels. FIR filters are under the key
+            'FIR'.
+
+    Returns:
+        numpy.ndarray: The filtered waveform after applying the FIR filtering.
+
+    This function filters a waveform using FIR filter kernels specified in the
+    distortion_dict.  The filtering can be a single FIR kernel or a list
+    of kernels, allowing for multiple filtering operations.
+    """
+    fir_kernels = distortion_dict.get('FIR', None)
+    if fir_kernels is not None:
+        if hasattr(fir_kernels, '__iter__') and not \
+                hasattr(fir_kernels[0], '__iter__'):  # 1 kernel
+            wf = filter_fir(fir_kernels, wf)
+        else:
+            for kernel in fir_kernels:
+                wf = filter_fir(kernel, wf)
+    return wf
 
 def filter_iir(aIIRfilterList, bIIRfilterList, x):
     """

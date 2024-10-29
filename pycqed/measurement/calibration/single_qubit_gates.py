@@ -150,6 +150,9 @@ class T1FrequencySweep(CalibBuilder):
             qubits, _ = self.get_qubits(task['qb'])
             # Computing either qubit_freqs or amplitudes, if not passed.
             # Both can also be passed, e.g. to cache or use a different model.
+            if qubit_freqs is None and amplitudes is None:
+                raise ValueError("Please specify either qubit_freqs or "
+                                 "amplitudes!")
             if qubit_freqs is None and qubits is not None:
                 qb = qubits[0]
                 qubit_freqs = qb.calculate_frequency(
@@ -166,6 +169,11 @@ class T1FrequencySweep(CalibBuilder):
                                    'the corresponding amplitudes cannot be '
                                    'computed.')
                 qb = qubits[0]
+                LO_freq = qb.get_ge_lo_freq()
+                if LO_freq < np.max(qubit_freqs) and \
+                        LO_freq > np.min(qubit_freqs):
+                    log.warning(f"LO frequency {LO_freq} is within the range "
+                                f"of frequencies of {qb.name}.")
                 amplitudes = qb.calculate_flux_voltage(
                     frequency=qubit_freqs,
                     flux=qb.flux_parking(),
@@ -177,9 +185,6 @@ class T1FrequencySweep(CalibBuilder):
                 amp_sweep_points = SweepPoints('amplitude', amplitudes,
                                                'V', 'Flux pulse amplitude')
                 sweep_points.update([{}] + amp_sweep_points)
-            else:
-                raise ValueError("Please specify either qubit_freqs or "
-                                 "amplitudes!")
             task['sweep_points'] = sweep_points
         return task_list
 
@@ -1802,7 +1807,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
     def define_cal_states_rotations(self):
         """
         Creates cal_states_rotations for each qubit based on the information
-        in the preprocessed_task_list and self.meas_obj_names, 
+        in the preprocessed_task_list and self.meas_obj_names,
         and adds it to exp_metadata.
         This is of the form {qb_name: {cal_state: cal_state_order_index}}
         and will be used by the analyses.
@@ -3375,6 +3380,13 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
         Moreover, the following keyword arguments are understood:
             for_leakage (bool, default: False): if True, runs the experiment
                 without the first X90 pulse and sets cal_states to 'gef'
+            update_pi_half_track_pi (bool, default: True): If updating the pi
+                pulse amplitude should also update the pi/2 amplitude by
+                the same factor. True is useful, e.g., when finetuning the
+                pi amplitude while keeping a fixed 1/2 scaling for the pi/2.
+                False can be useful when there are significant drive
+                nonlinearities, in order to calibrate pi and pi/2 independently
+                (and considering that a good pi/2 is necessary to calibrate pi)
     """
 
     default_experiment_name = 'NPulseAmplitudeCalib'
@@ -3385,8 +3397,10 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
     kw_for_task_keys = ['n_pulses_pi', 'fixed_scaling']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 amp_scalings=None, n_pulses_pi=1, fixed_scaling=None, **kw):
+                 amp_scalings=None, n_pulses_pi=1, fixed_scaling=None,
+                 update_pi_half_track_pi=True, **kw):
         try:
+            self.update_pi_half_track_pi = update_pi_half_track_pi
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              amp_scalings=amp_scalings,
@@ -3599,6 +3613,16 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
                 amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
                     qubit.name]['correct_amplitude']
                 qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+                if not self.update_pi_half_track_pi:
+                    # Correct the relative scaling of the pi/2 pulse to keep
+                    # its amplitude constant even though the pi amp changed
+                    amp180_sc = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name][
+                        'correct_scalings_mean']
+                    curr_90_sc = qubit.get(
+                        f'{task["transition_name_input"]}_amp90_scale')
+                    qubit.set(f'{task["transition_name_input"]}_amp90_scale',
+                              curr_90_sc / amp180_sc)
             elif ideal_sc == 0.5:
                 # pi/2 pulse amp calibration
                 amp90_sc = self.analysis.proc_data_dict['analysis_params_dict'][
@@ -5237,6 +5261,130 @@ class f0g1Pitch(SingleQubitGateCalibExperiment):
         )
         return d
 
+class LeakageReductionUnit(SingleQubitGateCalibExperiment):
+    """LRU calibration experiment.
+
+    LRU measurement for finding the amplitude, frequency and pulse length of
+    the LRU. This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
+
+    The following keys in a task are interpreted by this class in
+    addition to the ones recognized by the parent classes:
+        - amps (float): Amplitude of the pulse.
+        - freqs (float): Frequency of the pulse.
+
+    The following keyword arguments will be copied as a key to tasks
+    that do not have their own value specified:
+        - num_LRUs (int; default: 1): the number of LRUs
+    """
+
+    kw_for_sweep_points = {
+        'freqs': dict(param_name='frequency', unit='Hz',
+                      label=r'modulation frequency',
+                      dimension=1),
+        'amps': dict(param_name='amplitude', unit='V',
+                       label=r'modulation amplitude',
+                       dimension=0),
+    }
+    kw_for_task_keys = ['num_LRUs', 'init_state', 'lru_opcodes']
+    default_experiment_name = 'Leakage_reduction_unit'
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 amps=None, length= None, **kw):
+        init_state = kw.get('init_state')
+        # Need to set transition_name here since it is used to determine the
+        # calibration points
+        kw['transition_name'] = '' if init_state == 'g' else (
+            'ge' if init_state == 'e' else (
+                'ef' if init_state == 'f' else 'fh'))
+        try:
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             amps=amps, length=length, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qb, sweep_points, init_state,
+                    lru_opcodes='auto', num_LRUs=1, **kw):
+        """
+        This function creates the blocks for the leakage-reduction task. If
+        there are several PFM ppulses (lru_opcodes is a list), the parameters
+        of the last pulse in the list are swept. Parameters of the other pulses
+        can be swept by adding a suffix to the parameter name. The suffix
+        should be the last part of the parameter name, e.g. 'frequency_ge'.
+        Note that to modify explicitly the PFM between g and e, the suffix
+        should be 'ge' even though the opcode is 'PFM' without suffix. This
+        is in order to distinguish between no suffix and 'ge' suffix.
+        :param qb: qubit name
+        :param sweep_points: SweepPoints instance
+        :param init_state: 'g', 'e', 'f', or  'h'. Initial state
+                            of all segments except the calibration points.
+        :param lru_opcodes: list of PFM opcodes for the LRU pulses e.g.
+                            ['PFM_fh', 'PFM_ef'] (the order is taken as in the
+                            list) or 'auto', in which case a single PFM
+                            pulse is used to move to the next lower state
+                            e.g. PFM_fh for init_state 'h'. If
+                            'auto' is used and init_state is
+                            'g', 'PFM' is used.
+        :param num_LRUs: number of LRUs, default is 1. In case lru_opcodes is
+                            a list larger than 1, all opcodes will be repeated
+                            num_LRUs times.
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        # Remove transition_name from kw to avoid passing it to the parent.
+        # transition_name='' is passed explicitly to the parent to avoid
+        # creating addiitonal preparation pulses which are already covered
+        # by init_state.
+        kw.pop('transition_name')
+        prepend_blocks = super().sweep_block(qb=qb, sweep_points=sweep_points,
+                                             transition_name='', **kw)
+        if lru_opcodes == 'auto':
+            lru_transition = 'fh' if init_state == 'h' else (
+                'ef' if init_state == 'f' else '')
+            lru_opcodes = [f'PFM_{lru_transition} {qb}']
+        else:
+            lru_opcodes = [f'{opcode} {qb}' for opcode in lru_opcodes]
+        # add modulation pulse
+        modulation_block = self.block_from_ops(f'modulation_pulses_{qb}',
+                                                lru_opcodes)
+        # create ParametricValues from param_name in sweep_points
+        for sweep_dict in sweep_points:
+            for param_name in sweep_dict:
+                # get the suffix of the param_name if is exists, otherwise use
+                # the last suffix in lru_opcodes. the suffix is used to
+                # determine which pulse should be swept
+                suffix = param_name.split('_')[-1] if '_' in param_name else ''
+                pulse_param = '_'.join(
+                    param_name.split('_')[:-1]) if suffix in [
+                    'ge', 'ef', 'fh'] else param_name
+                suffix = suffix if suffix in ['ge', 'ef', 'fh'] else \
+                    lru_opcodes[-1].split('_')[-1].split(' ')[0]
+                for pulse_dict in modulation_block.pulses:
+                    if (pulse_param in pulse_dict) and \
+                            (suffix in pulse_dict['op_code']):
+                        pulse_dict[pulse_param] = ParametricValue(
+                            param_name)
+        modulation_block = [modulation_block] * num_LRUs
+        return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
+                                      prepend_blocks + modulation_block)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis class
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.LeakageReductionUnitAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
 
 class DriveAmplitudeNonlinearityCurve(CalibBuilder):
     """

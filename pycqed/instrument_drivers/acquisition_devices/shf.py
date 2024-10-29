@@ -22,8 +22,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     from by the actual instrument classes
 
     Attributes:
-        awg_active (list of bool): Whether the AWG of each acquisition unit has
-            been started by Pulsar.
+        awg_active (dict of bool): Whether the AWG of each acquisition unit has
+            been started by Pulsar (keys are indices of acquisition units).
         _acq_scope_memory (int): Number of points that the scope can acquire
             in one hardware run.
     """
@@ -57,12 +57,36 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     USER_REG_LOOP_COUNT = 0
     USER_REG_ACQ_LEN = 1
 
+    # First-in-first-out list with cached data from self.session.poll().
+    # This mutable list is accessed by all instances of this class where
+    # each instance extracts the data of its own nodes and populates it
+    # with data from self.session.poll().
+    # This list should only be accessed with self.get_cached_poll_data
+    # and self.cache_poll_data.
+    # Structure: [(node_object, dictionary of data), ...]
+    _cached_poll_data = []
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        chs = kwargs.get('valid_qachs', range(len(self.qachannels)))
+        self._all_qachs = self.qachannels
+        self._valid_qachs = {i: self._all_qachs[i] for i in chs}
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
         self.n_acq_units = len(self.qachannels)
-        self.lo_freqs = [None] * self.n_acq_units  # re-create with correct length
+        self.lo_freqs = {i: None for i in self._valid_qachs}  # re-create
         self.n_acq_int_channels = self.max_qubits_per_channel
+        self._nodes_channel_mapping = {}
+
+        # needs to be set before self._reset_acq_poll_inds
+        self.add_parameter(
+            'emulate_poll',
+            initial_value=False,
+            parameter_class=ManualParameter,
+            docstring='Bool to activate workaround for polling data from '
+                      'SHFQAs for LabOne versions < 24.01 where'
+                      'poll method was not working reliably.',
+            vals=validators.Bool())
+
         self._reset_acq_poll_inds()
         # Mode of the acquisition units ('readout' or 'spectroscopy')
         # This is different from self._acq_mode (allowed_modes)
@@ -70,8 +94,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self._awg_program = [None]*self.n_acq_units
         self._awg_source_strings = {}
         self.timer = None
+        self._subscribed_nodes = []
 
-        self.awg_active = [False] * self.n_acq_units
+        self.awg_active = {i: False for i in self._valid_qachs}
 
         self.add_parameter(
             'allowed_lo_freqs',
@@ -109,18 +134,40 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
            docstring='Timeout when waiting for scope data.',
            vals=validators.Ints())
 
+        self.add_parameter(
+            'allow_scope',
+            initial_value=(
+                    len(self.qachannels) == len(self._all_qachs)),
+            parameter_class=ManualParameter,
+            docstring='Whether access to the scope module is allowed. When '
+                      'sharing an SHF device between two setup, this should '
+                      'only be set to True while the other setup is inactive.',
+            vals=validators.Bool())
+
+    def __getattribute__(self, item):
+        # returns only valid qa channels instead of all qa-channels
+        # if attribute valid_qachs is explicitly specified during the init.
+        if item == 'qachannels' and hasattr(self, '_valid_qachs'):
+            return self._valid_qachs
+        return super().__getattribute__(item)
+
     def _reset_acq_poll_inds(self):
         """Resets the data indices that have been acquired until now.
 
-        self._acq_poll_inds will be set to a list of lists of zeros,
-            with first dimension the number of acquisition units
-            and second dimension the number of integration channels
-            used per acquisition unit.
+        Only necessary if self.emulate_poll()==True. self._acq_poll_inds
+        will only be used in that case, which is why this variable in only
+        created here
+
+        self._acq_poll_inds will be set to a dict of lists of zeros,
+            with dict keys being indices of acquisition units and list entries
+            corresponding to the integration channels of the acquisition unit.
         """
-        self._acq_poll_inds = []
-        for i in range(self.n_acq_units):
-            channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
-            self._acq_poll_inds.append([0] * len(channels))
+        if self.emulate_poll():
+            self._acq_poll_inds = {}
+            for i in self.qachannels:
+                channels = [ch[1] for ch in self._acquisition_nodes if ch[0] == i]
+                length = len(channels)
+                self._acq_poll_inds[i] = [0] * length
 
     def set_lo_freq(self, acq_unit, lo_freq):
         super().set_lo_freq(acq_unit, lo_freq)
@@ -137,6 +184,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     def prepare_poll_before_AWG_start(self):
         super().prepare_poll_before_AWG_start()
         for i in self._acq_units_used:
+            if not self.awg_active[i]:
+                log.warning(f'{self.name}: acquisition unit {i} is used '
+                            f'without an AWG program. This might result in '
+                            f'not triggering the acquisition unit.')
             if self._acq_mode == 'int_avg' \
                     and self._acq_units_modes[i] == 'readout':
                 self.qachannels[i].readout.run()
@@ -223,6 +274,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # acq_length by the software PSD using timetraces
         return center_freq, delta_f, acq_length
 
+    def _acq_unit_exists(self, acq_unit):
+        return acq_unit in self.qachannels
+
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
                                **kwargs):
@@ -233,11 +287,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self._acq_units_used = list(np.unique([ch[0] for ch in channels]))
         self._acq_units_modes = {i: self.qachannels[i].mode().name  # Caching
                                  for i in self._acq_units_used}
-
         # Set the scope trigger delay with respect to pulse generation
         self.scopes[0].trigger.delay(self.acq_trigger_delay())
 
-        for i in range(self.n_acq_units):
+        for i in self.qachannels:
             # Set trigger delay to the same value for all modes. This is
             # necessary e.g. to get consistent acquisition weights.
             self.qachannels[i].readout.integration.delay(
@@ -267,6 +320,15 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 if self._acq_length is not None:
                     self.qachannels[i].readout.integration.length(
                         self.convert_time_to_n_samples(self._acq_length))
+
+                if not self.emulate_poll():
+                    for ch in channels:
+                        if ch[0] == i:
+                            node = self.qachannels[i].readout.result.data[
+                                ch[1]].wave
+                            self._subscribed_nodes.append(node)
+                            self._nodes_channel_mapping[node] = ch
+
                 # Readout mode outputs programmed waveforms, and integrates the
                 # input with different custom weights for each integration
                 # channel
@@ -281,7 +343,7 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 self.qachannels[i].oscs[0].gain(1.0)
                 self.qachannels[i].spectroscopy.length(
                     self.convert_time_to_n_samples(self._acq_length))
-                if self._awg_program[i]:
+                if self._awg_program[self._get_awg_program_index(i)]:
                     # assume that this sequencer program includes triggering
                     # for the spectroscopy
                     self.qachannels[i].spectroscopy.trigger.channel(
@@ -306,6 +368,20 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                     # Used in seqc code
                     self.convert_time_to_n_samples(self._acq_length)
                 )
+
+                if not self.emulate_poll():
+                    node = self.qachannels[i].spectroscopy.result.data.wave
+                    self._subscribed_nodes.append(node)
+                    # adds the channels for storing real and imaginary values
+                    # of node to _nodes_channel_mapping. Channels are
+                    # added as a flatted dicitonary such that channel[0]
+                    # refers to the acquisition channel as for the other
+                    # acquisition modes
+                    channel = []
+                    for ch in channels:
+                        if ch[0] == i:
+                            channel += ch
+                    self._nodes_channel_mapping[node] = tuple(channel)
             elif self._acq_mode == 'scope'\
                     and self._acq_data_type == 'fft_power':
                 # Fit as many traces as possible in a single SHF call
@@ -319,6 +395,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 # should avg in software, (hard avg not implemented)
                 self._initialize_scope(acq_unit=i, num_hard_avg=1,
                                        num_points_per_run=num_points_per_run)
+
+                node = self.scopes[0].channels[i].wave
+                self._subscribed_nodes.append(node)
+                self._nodes_channel_mapping[node] = tuple([i])
             elif (self._acq_mode == 'scope'
                   and self._acq_data_type == 'timedomain')\
                     or self._acq_mode == 'avg':
@@ -329,8 +409,17 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 self._initialize_scope(acq_unit=i,
                                        num_hard_avg=self._acq_averages,
                                        num_points_per_run=num_points_per_run)
+                node = self.scopes[0].channels[i].wave
+                self._subscribed_nodes.append(node)
+                self._nodes_channel_mapping[node] = tuple([i])
             else:
                 raise NotImplementedError("Mode not recognised!")
+        if not self.emulate_poll():
+            for node in self._subscribed_nodes:
+                # unsubscribe from node to clear buffer, i.e. to not poll
+                # ancient data
+                node.unsubscribe()
+                node.subscribe()
 
     def _initialize_scope(self, acq_unit, num_hard_avg, num_points_per_run):
         num_segments = 1  # for segmented averaging (several triggers per time
@@ -358,8 +447,12 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # Could use the ZI toolkit instead:
         # self._tk_object.qachannels["*"].oscs[0].gain(0)
         with self.set_transaction():
-            for ch in self.qachannels:
+            for ch in self.qachannels.values():
                 ch.oscs[0].gain(0)
+            for node in self._subscribed_nodes:
+                node.unsubscribe()
+            self._subscribed_nodes = []
+            self._nodes_channel_mapping = {}
 
     def acquisition_progress(self):
         n_acq = {}
@@ -380,17 +473,29 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 raise NotImplementedError("Mode not recognised!")
         return np.mean(list(n_acq.values()))
 
+    def _get_awg_program_index(self, acq_unit):
+        """Return which index of _awg_program corresponds to an acq_unit"""
+        return list(self._valid_qachs.keys()).index(acq_unit)
+
     def set_awg_program(self, acq_unit, awg_program, waves_to_upload=None):
         """
         Program the internal AWGs
         """
         qachannel = self.qachannels[acq_unit]
-        self._awg_program[acq_unit] = awg_program
+        self._awg_program[self._get_awg_program_index(acq_unit)] = awg_program
         self.store_awg_source_string(qachannel, awg_program)
         qachannel.generator.load_sequencer_program(awg_program)
         if waves_to_upload is not None:
             # upload waveforms
             qachannel.generator.write_to_waveform_memory(waves_to_upload)
+
+    def has_awg_program(self, acq_unit):
+        """Returns whether an acquisition unit has an AWG program
+
+        Args:
+            acq_unit (int): index of the acquisition unit
+        """
+        return bool(self._awg_program[self._get_awg_program_index(acq_unit)])
 
     def store_awg_source_string(self, channel, awg_str):
         """
@@ -413,8 +518,152 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         self.scopes[0].stop()
         self.scopes[0].run(single=1)
 
+    def get_cached_poll_data(self):
+        """
+        Returns data from self._cached_poll_data for all nodes in
+        self._nodes_channel_mapping. Only the first matching entry
+        for a given node in the list is returned.
+        Returns (dict): dict with node objects as keys and tha data
+        inside a dictionary as the values.
+
+        """
+        data = {}
+        pop_index = []
+        for i, (k, v) in enumerate(self._cached_poll_data):
+            if k in self._nodes_channel_mapping and k not in data:
+                data[k] = v
+                pop_index.append(i)
+        for index in sorted(pop_index, reverse=True):
+            del self._cached_poll_data[index]
+        return data
+
+    def cache_poll_data(self):
+        """
+        Caches the polled data from self.session.poll() in the class
+        variable self._cached_poll_data.
+        This is done because polling the data from the dataserver
+        retunrs updated data from all subscribed nodes, not only the
+        ones from the specific SHF. To distribute the data to the
+        according SHF, the data is cached in an attribute accessible
+        by all SHF instances and then popped by self.get_cached_poll_data.
+        The cache list _cached_poll_data must not be overwritten.
+        """
+        data = self.session.poll()
+        for k in list(data):
+            self._cached_poll_data.append((k, data[k]))
+
     @Timer()
     def poll(self, *args, **kwargs):
+        if self.emulate_poll():
+            return self._emulate_poll(*args, **kwargs)
+
+        if self._acq_mode == 'scope' \
+                and self._acq_data_type == 'fft_power':
+            # FIXME: currently copied from self._emulate_poll(). Refactor
+            #  to use in-build psd-feature of SHF and add to if..elif block
+            #  below.
+            dataset = {}
+            assert len(self._nodes_channel_mapping) == 1, \
+                "Only one channel pair for acquiring PSDs allowed."
+            node = list(self._nodes_channel_mapping.keys())[0]
+            channel = list(self._nodes_channel_mapping.values())[0]
+            channels = [ch[1] for ch in self._acquisition_nodes if
+                        ch[0] == channel[0]]
+            if not channels == [0, 1]:  # TODO: one channel in TWPA object
+                raise ValueError(
+                    "Currently the scope only works with two data "
+                    "channels. This will be cleaned up after integrating "
+                    "measurements on TWPA objects.")
+            # The SHF acquires at full memory, then we get as many traces
+            # as possible from that (this could be avoided e.g. if a few
+            # points only are needed, in case this slows down measuring)
+            num_points_per_trace = self.convert_time_to_n_samples(
+                self._acq_length)
+            num_traces_per_run = int(np.floor(self._acq_scope_memory /
+                                              num_points_per_trace))
+            num_runs = int(np.ceil(self._acq_averages / num_traces_per_run))
+            if self._acq_n_results != num_points_per_trace:
+                raise ValueError(
+                    "This driver for now makes the simplest assumption "
+                    "that the number of sweep points (number of points "
+                    "in the spectrum) is the same as the length of the "
+                    "timetraces (to simply do FFT time->freq). To measure "
+                    "a different spectrum e.g. if you need LO sweeping or "
+                    "downsampling, please extend this."
+                )
+            timetraces = np.array([])
+            for _ in range(num_runs):
+                self._arm_scope()
+                # FIXME this is blocking, to get enough data to average
+                #  in the driver (not the usual behaviour of poll)
+                self.scopes[0].wait_done(timeout=self.timeout())
+                self.cache_poll_data()
+                polled_data = self.get_cached_poll_data()
+                data = polled_data.get(node, {})
+                if data:
+                    timetraces = np.concatenate((timetraces, data[0][
+                        'vector']))
+                # This is a 1-D complex time trace
+
+            timetraces = timetraces[
+                         :self._acq_averages * num_points_per_trace]
+            timetraces = np.reshape(timetraces, (self._acq_averages,
+                                                 num_points_per_trace))
+            # 'norm' by 1/num_samples_per_trace to get the amplitude
+            v_peak = np.fft.fft(timetraces,
+                                norm="forward")
+            v_peak_rolled = np.roll(v_peak, int(num_points_per_trace / 2))
+            v_peak_squared = np.mean(np.abs(v_peak_rolled) ** 2, axis=0)
+            power_spectrum = 10 * np.log10(v_peak_squared / (2 * 50) / 1e-3)
+            dataset.update({(channel[0], 0): [power_spectrum]})
+            dataset.update({(channel[0], 1): [0 * power_spectrum]})  # I
+            # don't care
+            return dataset
+
+        # polls and caches the data from the dataserver
+        self.cache_poll_data()
+        # extracts only the nodes from the respective SHF from the polled data
+        polled_data = self.get_cached_poll_data()
+        dataset = {}
+        for node, data in polled_data.items():
+            channel = self._nodes_channel_mapping[node]
+            if self._acq_mode == 'int_avg' \
+                    and self._acq_units_modes[channel[0]] == 'readout':
+
+                scaling_factor = 1 / (self.acq_sampling_rate *
+                                      self._acq_length)
+                # The polled data-vector of the I and Q channels stores complex
+                # values of the form I = a + j*b and Q = b - j*a.
+                # Since we subscribe to both nodes, it is sufficient to
+                # process only the real part of the vector to access all the
+                # available data (i.e. a and b).
+                dataset[channel] = [
+                    np.real(data[0]['vector']) * scaling_factor]
+            elif self._acq_mode == 'int_avg' \
+                    and self._acq_units_modes[channel[0]] == 'spectroscopy':
+                raw_data = data[0]['vector']
+                scaling_factor = 1
+                # complex number array raw_data is split up in real and
+                # imaginary part.
+                dataset.update(
+                    {(channel[0], channel[1]): [
+                        np.real(raw_data) * scaling_factor],
+                        (channel[2], channel[3]): [
+                            np.imag(raw_data) * scaling_factor]})
+            elif (self._acq_mode == 'scope' and self._acq_data_type ==
+                  'timedomain') or self._acq_mode == 'avg':
+                timetrace = data[0]['vector']
+                dataset[(channel[0], 0)] = [np.real(timetrace)]
+                # use sign convention as is used by UHFQA in avg mode
+                # to ensure compatibility with existing analysis classes
+                # use natural sign in averaged mode
+                sign = {'avg': -1, 'scope': 1}[self._acq_mode]
+                dataset[(channel[0], 1)] = [sign * np.imag(timetrace)]
+            else:
+                raise NotImplementedError("Mode not recognised!")
+        return dataset
+
+    def _emulate_poll(self, *args, **kwargs):
         # 220118 For now, poll reads all data available from the data server
         # at each run, and then returns only the newer data to match the
         # normal behaviour of poll. One could implement an actual poll after
@@ -560,13 +809,14 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         # Use a transaction since qcodes does not support wildcards
         # Or in toolkit: self._tk_object.qachannels["*"].generator.enable(False)
         with self.set_transaction():
-            for ch in self.qachannels:
+            for ch in self.qachannels.values():
                 ch.generator.enable(False)
 
     def start(self, **kwargs):
-        for i, ch in enumerate(self.qachannels):
+        for i, ch in self.qachannels.items():
             if self.awg_active[i]:  # Outputs a waveform
-                if self._awg_program[i]:  # Using the sequencer
+                if self._awg_program[self._get_awg_program_index(i)]:
+                    # Using the sequencer
                     # These 2 lines replace ...enable_sequencer(single=True)
                     # which also checks that it started, but sometimes fails
                     # (for short sequences?)
@@ -575,10 +825,13 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 else:
                     # No AWG needs to be started if the acq unit has no program
                     pass
-            elif i in self._acq_units_used:
-                log.warning(f'{self.name}: acquisition unit {i} is used '
-                            f'without an AWG program. This might result in '
-                            f'not triggering the acquisition unit.')
+
+    def _check_allowed_acquisition(self):
+        super()._check_allowed_acquisition()
+        if self._acq_mode == 'scope' and not self.allow_scope():
+            raise ValueError(
+                'Trying to access scope module while forbidden by qcodes '
+                'parameter allow_scope.')
 
     def _check_hardware_limitations(self):
         super()._check_hardware_limitations()
@@ -618,8 +871,11 @@ class SHFQA(SHFQA_core, SHF_AcquisitionDevice):
     """
 
     def __init__(self, *args, **kwargs):
+        valid_qachs = kwargs.pop('valid_qachs', None)
         self._check_server(kwargs)
         super().__init__(*args, **kwargs)
+        if valid_qachs is not None:
+            kwargs['valid_qachs'] = valid_qachs
         SHF_AcquisitionDevice.__init__(self, *args, **kwargs)
 
 
