@@ -853,7 +853,13 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 f'Acquisition length {self._acq_length} corresponds to '
                 f'{n_samples} samples, which is not a multiple of the '
                 f'granularity {self.acq_length_granularity}.')
-        if self._acq_mode == 'int_avg' and self._acq_n_results > self.ACQ_N_RESULTS_MAX:
+        if (
+                self._acq_n_results > self.ACQ_N_RESULTS_MAX
+                # Only for readout, not spectroscopy
+                and self._acq_mode == 'int_avg'
+                and any([self._acq_units_modes[i] == "readout"
+                         for i in self._acq_units_used])
+        ):
             raise ValueError(
                 f'Acquisition device {self.name} ({self.devname}): '
                 f'The number of acquisition results, {self._acq_n_results},'
