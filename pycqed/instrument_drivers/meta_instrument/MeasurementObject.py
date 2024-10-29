@@ -217,8 +217,8 @@ class MeasurementObject(Instrument):
             parameter_name='ro_multistep_amp_factor_duration_tuples',
             argument_name='multistep_amp_factor_duration_tuples',
             initial_value=None,
-            # TODO should really be vals.Lists(vals.Tuples(vals.Numbers))
-            #      but a Tuple validator does not exist
+            # FIXME should really be vals.Lists(vals.Tuples(vals.Numbers))
+            #       but a Tuple validator does not exist
             vals=vals.MultiType(vals.Enum(None), vals.Lists()),
             docstring="List of tuples containing an amplitude scaling "
                       "factor (unitless) and a duration (in s) for this"
