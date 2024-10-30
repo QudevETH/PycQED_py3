@@ -1180,6 +1180,15 @@ def export_IIR_coeffs(IIR_filter_coeffs_dict, fluxline='FL_XY',
     return file_name
 
 def fd_extract_expmod_filter(data_dict, keys_out, **params):
+    '''
+    Pipeline function for extraction of current exponential 
+    model filter representation from qubit object. 
+
+    Args:
+        data_dict (dict): data_dict to add parameters to
+        keys_out: key under which the exponential model is to
+        be added to the data_dict 
+    '''
     mobjn = hlp_mod.get_measurement_properties(data_dict, 
                                                props_to_extract=['mobjn'])
     expmods = [e['expmod'] for e in hlp_mod.get_param(
