@@ -453,12 +453,12 @@ class MultiCoreCompilerZhinstToolkit:
         self.sequencer_code_mcc.clear()
         self.post_sequencer_code_upload.clear()
 
-    def execute_mcc(self, **kw):
+    def execute_mcc(self):
         """Get the active session. Compile and upload the sequencer code.
         Fish post-sequencer-code programming (upload waveforms, command
         tables, enable outputs, etc.)."""
         self._update_session()
-        self._compile_and_upload_seqc(**kw)
+        self._compile_and_upload_seqc()
         self._finalize_upload_after_mcc()
 
     def _update_session(self):
@@ -467,7 +467,7 @@ class MultiCoreCompilerZhinstToolkit:
             self.session = list(self.sequencer_code_mcc.values())[0][
                 0].parent._tk_object._session
 
-    def _compile_and_upload_seqc(self, **kw):
+    def _compile_and_upload_seqc(self):
         """Compile the sequencer code and generate bitstreams to program the
         devices. Once this is done, upload the bitstreams to the devices."""
         futures = []
