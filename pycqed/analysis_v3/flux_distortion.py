@@ -1180,6 +1180,8 @@ def export_IIR_coeffs(IIR_filter_coeffs_dict, fluxline='FL_XY',
     return file_name
 
 def fd_extract_expmod_filter(data_dict, keys_out, **params):
-    mobjn = hlp_mod.get_measurement_properties(data_dict, props_to_extract=['mobjn'])
-    expmods = [e['expmod'] for e in hlp_mod.get_param(mobjn, data_dict)['IIR_filter_list']]
+    mobjn = hlp_mod.get_measurement_properties(data_dict, 
+                                               props_to_extract=['mobjn'])
+    expmods = [e['expmod'] for e in hlp_mod.get_param(
+        mobjn, data_dict)['IIR_filter_list']]
     hlp_mod.add_param(keys_out[0], expmods, data_dict)
