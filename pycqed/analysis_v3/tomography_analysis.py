@@ -440,6 +440,23 @@ def density_matrices(data_dict,
                 hlp_mod.get_param('basis_rots', data_dict))
             hlp_mod.add_param(f'{keys_out_container}.pauli_values.rho',
                               rho_pauli, data_dict, **params)
+        elif estimation_type == 'convex_mle':
+            rho_guess = hlp_mod.get_param('rho_guess', data_dict, **params)
+            if rho_guess is None:
+                rho_guess = hlp_mod.get_param(
+                    f'{keys_out_container}.least_squares.rho',
+                    data_dict, raise_error=True,
+                    error_message='Maximum likelihood estimation needs a guess '
+                                  'rho but neither a rho_guess nor a '
+                                  'least_squares.rho was found.', **params)
+            rho_cvx = tomo.cvx_mle_tomography(
+                all_measurement_results, all_measurement_operators,
+                all_cov_matrix_meas_obs if hlp_mod.get_param(
+                    'use_covariance_matrix', data_dict,
+                    default_value=False, **params) else None,
+                rho_guess=rho_guess)
+            hlp_mod.add_param(f'{keys_out_container}.convex_mle.rho',
+                              rho_cvx, data_dict, **params)
         else:
             raise ValueError(f'Unknown estimation_type "{estimation_type}."')
 
