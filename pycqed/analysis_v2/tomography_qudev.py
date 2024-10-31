@@ -283,6 +283,7 @@ def fit_rho_cvx(rho_exp, cov = None, guess = False,
     # between experiment and model
     
     # Diagonalization of covariance matrix
+    if cov is None: cov = np.identity(d**2)
     eigvals, eigvects = np.linalg.eigh(cov)
     
     # Removal of covariances below a certain threshold value
@@ -431,13 +432,28 @@ def cvx_mle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                        debug: Optional[bool] = False) -> qtp.Qobj:
     d = Fs[0].shape[0]
     nr_qubits = int(np.log2(d))
-    pauli_exp, pauli_cov = povm_to_pauli(nr_qubits, mus, Omega)
-    rho_exp, rho_cov = pauli_to_dm(pauli_exp, pauli_cov)
-    rho_cvx = fit_rho_cvx(rho_exp, rho_cov, rho_guess,
-                          solver = solver,
-                          solveropt = solveropt,
-                          cov_threshold = cov_threshold,
-                          debug = debug)
+    # print(Omega)
+    # print(Fs)
+    if Omega is None:
+        pauli_exp = povm_to_pauli(nr_qubits, mus)
+        print(pauli_exp)
+        rho_exp = pauli_to_dm(pauli_exp)
+        print(np.trace(rho_exp))
+        rho_cvx = fit_rho_cvx(rho_exp = rho_exp,
+                              guess = rho_guess.full() if not rho_guess is
+                                                              None else True,
+                              solver = solver,
+                              solveropt = solveropt,
+                              cov_threshold = cov_threshold,
+                              debug = debug)
+    else:
+        pauli_exp, pauli_cov = povm_to_pauli(nr_qubits, mus, Omega)
+        rho_exp, rho_cov = pauli_to_dm(pauli_exp, pauli_cov)
+        rho_cvx = fit_rho_cvx(rho_exp, rho_cov, rho_guess,
+                              solver = solver,
+                              solveropt = solveropt,
+                              cov_threshold = cov_threshold,
+                              debug = debug)
     rho_qobj = convert_to_density_matrix(rho_cvx)
     return rho_qobj
     
