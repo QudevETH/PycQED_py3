@@ -1278,6 +1278,8 @@ class BaseDataAnalysis(object):
                 # because we have observed recent lmfit versions showing a
                 # warning when passing this parameter.
                 fit_kwargs['steps'] = fit_dict['steps']
+            if 'max_nfev' in fit_dict:
+                fit_kwargs['max_nfev'] = fit_dict['max_nfev']
 
             model = fit_dict.get('model', None)
             if model is None:
