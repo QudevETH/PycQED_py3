@@ -1786,7 +1786,8 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
                 'wRg': np.mean(freq),
                 'wP': np.mean(freq) + 40,
             }
-            def_guessvals.update(guess_vals)
+            if guess_vals is not None:
+                def_guessvals.update(guess_vals)
             if len(s21s) != 3:
                 def_guessvals.pop('chigf')
                 if len(s21s) != 2:
