@@ -14712,13 +14712,13 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
         def pe_function(t, Delta, J=10e6, offset_freq=0, t_offset=0):
             # From Nathan's master's thesis Eq. 2.6 - fitting function
-            t = t*1e9
+            # t_offset accounts for the effective sigma
+            t = (t-t_offset)*1e9
             J = 2*np.pi*J/1e9
             offset_freq = offset_freq/1e9
             Delta = Delta/1e9
             Delta_off = 2 * np.pi * (
                     Delta + offset_freq)  # multiplied with 2pi because needs to be in angular frequency,
-            t += t_offset # to account for the effective sigma
             return (Delta_off ** 2 + 2 * J ** 2 * (np.cos(t * np.sqrt(4 * J ** 2 + Delta_off ** 2)) + 1)) / (
                     4 * J ** 2 + Delta_off ** 2) # J is already in angular frequency (see J_fft)
         def cosine_model(x, amplitude, frequency, phase, offset):
@@ -14875,7 +14875,6 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_fn': pe_model.func,
                 'fit_xvals': {'t': t_mod_flat, 'Delta': Delta_mod_flat},
                 'fit_yvals': {'data': pe_flat},
-                'method': 'dual_annealing',
                 'guess_pars': guess_pars,
                 'max_nfev': self.get_param_value('max_nfev',
                                                  1e8*len(guess_pars)),
@@ -14950,6 +14949,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                             'msmt_sweep_points']
                         Delta = self.proc_data_dict['Delta'][qbH]
                         offset_freq = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['offset_freq']
+                        t_offset = self.fit_dicts[(f'chevron_fit_{qbH}_{qbL}')]['fit_res'].best_values['t_offset']
                         Delta_fine = np.linspace(-10*abs(min(Delta)-abs(
                             offset_freq)), 10*(max(Delta)+offset_freq),
                                                  steps) # for fit plotting
@@ -14980,9 +14980,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                         for n in range(num_curves+1):
                             fit_plot_name = f'fit_Chevron_{qbH}_{qbL}_pe_{n}_actual' if actual_detuning else \
                                 f'fit_Chevron_{qbH}_{qbL}_pe_{n}_expected'
-                            J = self.fit_dicts[f'chevron_fit_{qbH}_{qbL}']['fit_res'].best_values['J']
                             xvals_fit = self.t_CARB(J, Delta_fine, n) if actual_detuning else \
                                 self.t_CARB(J, Delta_fine + offset_freq, n)
+                            xvals_fit += t_offset
                             self.plot_dicts[f'{fit_plot_name}_main'] = {
                                 'plotfn': self.plot_line,
                                 'fig_id': base_plot_name,
