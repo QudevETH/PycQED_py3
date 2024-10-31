@@ -772,21 +772,21 @@ def meas_to_pauli(nr_qubits, mus, Omega = None):
     povm set to pauli expectation values
     """
     proj_to_pauli = np.array([
-        [1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6],
-        [3 / 6, -3 / 6, 0, 0, 0, 0],
-        [0, 0, 3 / 6, -3 / 6, 0, 0],
-        [0, 0, 0, 0, 3 / 6, -3 / 6]
+        [1 / 3, 1 / 3, 1 / 3, 1 / 3, 1 / 3, 1 / 3],
+        [1,        -1,     0,     0,     0,     0],
+        [0,         0,     1,    -1,     0,     0],
+        [0,         0,     0,     0,     1,    -1]
     ])
     meas_to_proj = np.zeros((6, 12))
     for i in range(3):
         if i == 0:
             meas_to_proj[2 * i:2 * i + 2, 4 * i:4 * i + 4] = np.array(
-                [[1, 0, 0, 1],
-                [0, 1, 1, 0]])  # / 2
+                [[1, 0, 0, 1, ],
+                 [0, 1, 1, 0, ]]) / 2
         else:
             meas_to_proj[2 * i:2 * i + 2, 4 * i:4 * i + 4] = np.array(
                 [[0, 1, 1, 0, ],
-                 [1, 0, 0, 1, ]])  # / 2
+                 [1, 0, 0, 1, ]]) / 2
     base_conv_1 = proj_to_pauli @ meas_to_proj
     base_conv_n_tuple = tuple([base_conv_1, ] * nr_qubits)
     base_conv_n = kron(*base_conv_n_tuple)
