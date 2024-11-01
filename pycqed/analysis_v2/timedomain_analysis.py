@@ -2437,6 +2437,23 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                      plotsize[1]*numplotsy),
                         'title': fig_title,
                         'clabel': f'{ro_channel} ({ro_unit})'}
+            elif len(xvals) == 1 and not TwoD:  # 0D (single point)
+                yvals = raw_data_dict[ro_channel]
+                self.plot_dicts[plot_name + '_' + ro_channel] = {
+                    'fig_id': plot_name,
+                    'ax_id': ax_id,
+                    'plotfn': self.plot_line,
+                    'xvals': xvals,
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': yvals,
+                    'ylabel': f'{ro_channel} ({ro_unit})',
+                    'yunit': '',
+                    'numplotsx': numplotsx,
+                    'numplotsy': numplotsy,
+                    'plotsize': (plotsize[0]*numplotsx,
+                                 plotsize[1]*numplotsy),
+                    'title': fig_title}
             elif len(xvals) == 1:  # 1D along 2nd sweep dimension (rare)
                 # FIXME this logic probably does not work yet when using
                 #  slice_idxs_1d_raw_plot (which would mean creating a 0D
