@@ -3051,15 +3051,21 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freqs, bitstrings_labels = self.cpp_histogram(shots)
         # shape: (bitstring, hard sweep, soft sweep)
         weights = self.get_param_value('weights')
+        # targets_axis_sp is the dimension of targets in self.sp,
+        # targets_axis is that in freqs and the extended targets
         targets = None
         targets_axis_sp = None
+        targets_axis = None
+        virtual_sp = self.sp
         if self.get_param_value('optimize'):
             # training mode
             targets = self.get_param_value(
                 'targets', self.raw_data_dict['optimizer']['targets'])
             # line below based on the assumption that param batch has a
             # shape of (n_batch_size, n_targets)
-            targets_axis_sp = 1
+            # this targets_axis_sp does not represent the targets axis in sp
+            targets_axis_sp = 0
+            targets_axis = 2
             # shape: (bitstring, n_sets_trainable_pars * n_targets, n_iter)
             freqs = freqs.reshape(
                 [freqs.shape[0]] +
@@ -3081,40 +3087,78 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         elif self.sp.find_parameter('targets') is not None:
             # sweep mode with targets
             targets_axis_sp = self.sp.find_parameter('targets')
+            targets_axis = targets_axis_sp + 1
             targets = self.get_param_value('targets', self.sp['targets'])
             # slice-plot output along the hard sweep axis
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                 'output', [(':', 'srow')]
             )
 
+        # freqs.shape = (n_states, ..., n_targets, ...)
+        # n_states corresponds to dimension state_axis
+        # n_targets corresponds to dimension targets_axis_sp among the other
+        # dims (meaning targets_axis_sp + 1 if state_axis < targets_axis_sp)
+        shape = freqs.shape
+        state_axis = 0  # Else the next line should be generalised
+        if targets is not None:
+            targets = np.array(targets)
+            if len(targets.shape) == 1:
+                # Ensures that targets has the same shape as freqs, if they were
+                # currently 1D
+                # This expansion makes reading a bit harder but makes coding easier
+                targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
+                    targets, shape, current_axes=[targets_axis])
+            else:
+                # In this case one should ensure that targets only vary along
+                # targets_axis, else the logic of this method won't make sense
+                raise NotImplementedError("Targets must be 1D!")
+        if np.all(targets == 1):
+            # There is no target 0: add a fully mixed state as target 0
+            shape_fms = list(shape)
+            shape_fms[targets_axis] = 1  # Add one target, along targets_axis
+            freqs = np.concatenate(
+                (freqs, np.ones(shape_fms) / shape[state_axis]),
+                axis=targets_axis)
+            # Amounts to np.concatenate((targets, [0])) for 1D targets
+            targets = np.concatenate(
+                (targets, np.zeros(shape_fms)),
+                axis=targets_axis)
+            virtual_sp = self._adjust_sp_length(self.sp, axis=targets_axis_sp)
+        elif self.get_param_value('fms', False):
+            # Replace all states (soft dim) with target==0 by a mixed state
+            # Using the fact that targets has the same shape as freqs
+            freqs[targets == 0] = 1 / shape[state_axis]  # Uniform probs
+
         # main data processing
         if weights is None:
             assert targets is not None, 'Pass at least weights or targets'
             weights = self.cpp_opt_bxe_weights(
-                freqs, targets,
-                targets_axis_sp=targets_axis_sp,
-                fms=self.get_param_value('fms', False))
+                freqs, targets, targets_axis=targets_axis)
         output, cost, training_set_cost = self.cpp_bxe_output(
             freqs, weights,
-            targets=targets, targets_axis_sp=targets_axis_sp,
+            targets=targets, targets_axis=targets_axis,
             keepdims=(not self.get_param_value('optimize')),
         )
         # FIXME this atleast_2d is mostly because of _adjust_sp_length
         #  solved?
         # training_set_cost = np.atleast_2d(training_set_cost)
-        training_set_cost_sp = self._adjust_sp_length(
-            self.sp, training_set_cost)
-        # FIXME only has an effect in the training mode
-        output = output.reshape(self.sp.length())
+        # training_set_cost_sp = self._adjust_sp_length(
+        #     self.sp, training_set_cost)
+        output = output.reshape(virtual_sp.length())
         if cost is not None:
-            cost = cost.reshape(self.sp.length())
+            cost = cost.reshape(virtual_sp.length())
+
+        # only has an effect in the training mode?
+        if cost is not None:
+
         self.cpp_results.update({
-            'output': (output, self.sp),
-            'cost': (cost, self.sp),
+            # FIXME: output dimension
+            'output': (output, virtual_sp),
+            'cost': (cost, virtual_sp),
             'real_time_cost': (
                 self.raw_data_dict.get('optimizer', {}).get(
-                    'cost_function_values'), training_set_cost_sp),
-            'training_set_cost': (training_set_cost, training_set_cost_sp),
+                    'cost_function_values'), self.sp),
+            'training_set_cost': (training_set_cost, self.sp),
             'weights': (weights, 'noplot'),  # plotting won't work
         })
 
@@ -3123,14 +3167,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             optim_param_values = self.raw_data_dict['optimizer'][
                 'optim_param_values']
             p_names = self.get_param_value('optim_param_names')
-            # n_non_trainable = len(p_names) - self.raw_data_dict['optimizer'][
-            #     'training_settings']['trainable_params']
             n_non_trainable = 1
             for id_param in range(optim_param_values.shape[0]):
                 p_name = p_names[n_non_trainable + id_param]
                 self.cpp_results.update({
                     p_name: (
-                    optim_param_values[id_param], training_set_cost_sp)
+                    optim_param_values[id_param], self.sp)
                 })
                 self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                     p_name, [(':', 'smcol')]
@@ -3139,18 +3181,17 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         for key, (values, sp) in self.cpp_results.items():
             self.add_dummy_qb_data(key, values, sp)
 
-    def _adjust_sp_length(self, sp, data=None):
-        if data is None:
+    def _adjust_sp_length(self, sp, axis=None):
+        if axis is None:
             return sp
+        old_shape = sp.length()
         sp = copy(sp)
-        shape = data.shape
         # This could be generalised to e.g. create 1D sp if data is 1D
-        assert len(sp.length()) == len(shape)
-        for i, new_length in enumerate(shape):
-            if new_length != sp.length()[i]:
+        for i, item in enumerate(sp):
+            if i == axis:
                 # if: to keep the x axis value unchanged in sweep mode
                 sp[i] = {
-                    k: (np.array(range(new_length)), v[1], v[2])
+                    k: (np.arange(old_shape[i]*2), v[1], v[2])
                     for k, v in sp[i].items()
                 }
         return sp
@@ -3212,7 +3253,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['projected_data_dict'][key] = values
 
     @staticmethod
-    def cpp_stabilizers(shots, **kw):
+    def cpp_stabilizers_4(shots, **kw):
         # Should return {'dummy_qbn': values}
         shape = shots.shape
         assert shape[0] == 4, "Only implemented for 4 qubits!"
@@ -3244,6 +3285,61 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
         return {
             'stabz': stabz(shots),
+            'stabx0': stabx(shots)[0],
+            'stabx1': stabx(shots)[1],
+            'stabx2': stabx(shots)[2],
+            'stabx3': stabx(shots)[3]
+        }
+
+    @staticmethod
+    def cpp_stabilizers_9(shots, **kw):
+        # Should return {'dummy_qbn': values}
+        shape = shots.shape
+        assert shape[0] == 9, "Only implemented for 4 qubits!"
+
+        # Z stabilizer
+        def stabz(shots):
+            shape = shots.shape
+            shots_flat = shots.reshape([shape[0], shape[1], -1])
+            parity = np.zeros([4] + list(shots_flat.shape[1:]))
+            # compute 4 Z stabilizers
+            parity[0] = (shots_flat[2] + shots_flat[3]) % 2
+            parity[1] = (shots_flat[0] + shots_flat[1] + shots_flat[4] +
+                         shots_flat[5]) % 2
+            parity[2] = (shots_flat[3] + shots_flat[4] + shots_flat[7] +
+                         shots_flat[8]) % 2
+            parity[3] = (shots_flat[5] + shots_flat[6]) % 2
+
+            parity = np.mean(parity, axis=1)
+
+            stab = 1 - 2 * parity
+
+            return stab.reshape(-1, *shape[2:])
+
+        # x stabilizer
+        def stabx(shots):
+            shape = shots.shape
+            shots_flat = shots.reshape([shape[0], shape[1], -1])
+            parity = np.zeros([4] + list(shots_flat.shape[1:]))
+            # compute 4 X stabilizers
+            parity[0] = (shots_flat[0] + shots_flat[1]) % 2
+            parity[1] = (shots_flat[1] + shots_flat[2] + shots_flat[3] +
+                         shots_flat[4]) % 2
+            parity[2] = (shots_flat[4] + shots_flat[5] + shots_flat[6] +
+                         shots_flat[7]) % 2
+            parity[3] = (shots_flat[7] + shots_flat[8]) % 2
+
+            parity = np.mean(parity, axis=1)
+
+            stab = 1 - 2 * parity
+
+            return stab.reshape(-1, *shape[2:])
+
+        return {
+            'stabz0': stabz(shots)[0],
+            'stabz1': stabz(shots)[1],
+            'stabz2': stabz(shots)[2],
+            'stabz3': stabz(shots)[3],
             'stabx0': stabx(shots)[0],
             'stabx1': stabx(shots)[1],
             'stabx2': stabx(shots)[2],
@@ -3282,45 +3378,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return freqs, bitstrings_labels
 
     @staticmethod
-    def cpp_opt_bxe_weights(freqs, targets, state_axis=0, targets_axis_sp=1,
-                            fms=False):
-        # Assumptions:
-        # freqs.shape = (n_states, ..., n_targets, ...)
-        # n_states corresponds to dimension state_axis
-        # n_targets corresponds to dimension targets_axis_sp among the other
-        # dims (meaning targets_axis_sp + 1 if state_axis < targets_axis_sp)
-        shape = freqs.shape
-        assert state_axis == 0, "Else the next line should be generalised"
-        targets_axis = targets_axis_sp + 1
-        # if fms == True, we take the fully mixed state as the training data
-        # labelled by 0
-        targets = np.array(targets)
-        if len(targets.shape) == 1:
-            # Ensures that targets has the same shape as freqs, if they were
-            # currently 1D
-            # This expansion makes reading a bit harder but makes coding easier
-            targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
-                targets, shape, current_axes=[targets_axis])
-        else:
-            # In this case one should ensure that targets only vary along
-            # targets_axis, else the logic of this method won't make sense
-            raise NotImplementedError("Targets must be 1D!")
-        if np.all(targets == 1):
-            # There is no target 0: add a fully mixed state as target 0
-            shape_fms = list(shape)
-            shape_fms[targets_axis] = 1  # Add one target, along targets_axis
-            freqs = np.concatenate(
-                (freqs, np.ones(shape_fms)/shape[state_axis]),
-                axis=targets_axis)
-            # Amounts to np.concatenate((targets, [0])) for 1D targets
-            targets = np.concatenate(
-                (targets, np.zeros(shape_fms)),
-                axis=targets_axis)
-        elif fms:
-            # Replace all states (soft dim) with target==0 by a mixed state
-            # Using the fact that targets has the same shape as freqs
-            freqs[targets == 0] = 1/shape[state_axis]  # Uniform probs
-
+    def cpp_opt_bxe_weights(freqs, targets, targets_axis):
         epsilon_stable = 1e-10  # small parameter to avoid division by zero
         freq1 = np.sum(freqs * targets, axis=targets_axis) /\
                 np.sum(targets, axis=targets_axis)
@@ -3331,46 +3389,18 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # Ensure that weights have the same shape as the measured data,
         # including the targets axis
         weights_opt = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
-            weights_opt, shape, new_axes=[targets_axis])
+            weights_opt, freqs.shape, new_axes=[targets_axis])
         return weights_opt
 
     @staticmethod
     def cpp_bxe_output(freqs, weights, state_axis=0,
-                       targets=None, targets_axis_sp=None,  # optional
+                       targets=None, targets_axis=None,  # optional
                        keepdims=False):
+
         # Basic idea: 1D weights dot ND freqs -> ND output
         # This method additionally allows ND weights (swept over all dims>0)
         assert isinstance(state_axis, int)
-        if isinstance(weights, str):
-            a_weights = VariationalAlgorithmAnalysis(
-                t_start=weights,
-                extract_only=True,
-                options_dict={
-                    'delegate_plotting': False,
-                    'plot_raw_data': False,
-                    'plot_proj_data': False,
-                },
-                raise_exceptions=True,
-            )
-            min_cost_index = np.unravel_index(
-                np.argmin(a_weights.cpp_results['training_set_cost'][0],
-                          axis=None),
-                a_weights.cpp_results['training_set_cost'][0].shape
-            )
-            # weights has an extra dimension of targets in training mode. To
-            # extract the 1D weights this dimension must be added to
-            # min_cost_index. In sweep mode, when calculating training_set_cost,
-            # the dimension of targets is kept as a dummy dimension for
-            # self._adjust_sp_length().
-            if a_weights.get_param_value('optimize'):
-                min_cost_index = list(min_cost_index)
-                min_cost_index.insert(1, 0)  # (index, value)
-                min_cost_index.insert(0, Ellipsis)
-                min_cost_index = tuple(min_cost_index)
-            # extract the 1D optimal weights
-            # weights = a_weights.cpp_results['weights'][0][:, *min_cost_index]
-            weights = a_weights.cpp_results['weights'][0][min_cost_index]
-            # weights shape: (n_states,)
+        # use weights extraction function in jupyter notebook
         assert isinstance(weights, np.ndarray)
         if len(weights.shape) == 1:
             weights = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
@@ -3383,12 +3413,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # JS_divergence[i] += 0.5 * np.log(
         #     1 - weights_opt[i] + epsilon_stable) @ freq0
         if targets is not None:
-            targets = np.array(targets)
-            assert state_axis == 0, "Else the next line should be generalised"
-            targets_axis = targets_axis_sp + 1
-            if len(targets.shape) == 1:
-                targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
-                    targets, freqs.shape, current_axes=[targets_axis])
             epsilon_stable = 1e-10  # small parameter to avoid division by zero
             freq1 = freqs * targets  # Don't sum over targets here
             freq0 = freqs * (1 - targets)
@@ -3398,7 +3422,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             )
             cost = np.sum(cost, axis=state_axis)
             # Average over targets
-            training_set_cost = np.mean(cost, axis=targets_axis_sp,
+            training_set_cost = np.mean(cost, axis=targets_axis-1,
                                         keepdims=keepdims)
         else:
             cost = None
