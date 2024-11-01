@@ -1909,12 +1909,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             shots_per_qb[qbn] = \
                 np.asarray(list(
                     pdd[key][qbn].values())).T
-            # if 1D measurement, shape at this point is (n_shots*n_sp, n_vn)
-            # i.e. one column for each value_name (often equal to n_ro_ch)
-
-            # if "2D measurement" reshape from
+            # If 1D measurement, shape at this point is (n_shots*n_sp, n_vn)
+            #  i.e. one column for each value_name (often equal to n_ro_ch).
+            # If 2D measurement, the following reshapes from
             #  (n_soft_sp, n_shots * n_hard_sp, n_vn)
-            #  to (n_shots * n_hard_sp * n_soft_sp, n_ro_ch)
+            #  to a 1D-like format (n_shots * n_hard_sp * n_soft_sp, n_ro_ch).
             if np.ndim(shots_per_qb[qbn]) == 3:
                 assert self.get_param_value("TwoD", False), \
                     "'TwoD' is False but single shot data seems to be 2D"
@@ -1923,10 +1922,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 shots_per_qb[qbn] = np.swapaxes(shots_per_qb[qbn], 0, 1)
                 # reshape to 2D array
                 shots_per_qb[qbn] = shots_per_qb[qbn].reshape((-1, n_vn))
-            # make 2D array in case only one channel (1D array)
-            elif np.ndim(shots_per_qb[qbn]) == 1:
-                shots_per_qb[qbn] = np.expand_dims(shots_per_qb[qbn],
-                                                   axis=-1)
 
         return shots_per_qb
 
