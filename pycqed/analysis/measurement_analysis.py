@@ -34,14 +34,9 @@ import pycqed.analysis.tools.plotting as pl_tools
 from pycqed.analysis.tools.plotting import (set_xlabel, set_ylabel,
                                             SI_prefix_and_scale_factor)
 
-
-try:
-    import qutip as qtp
-except ImportError as e:
-    if str(e).find('qutip') >= 0:
-        log.warning('Could not import qutip')
-    else:
-        raise
+import pycqed.utilities.qutip_compat as qtp
+if not qtp.is_imported:
+    log.warning('Could not import qutip')
 importlib.reload(dm_tools)
 
 
