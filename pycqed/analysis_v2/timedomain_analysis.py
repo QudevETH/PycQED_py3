@@ -934,8 +934,13 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             meas_results_per_qb_raw[qb_name] = {}
             meas_results_per_qb[qb_name] = {}
             if isinstance(RO_channels, str):
+                RO_channels = [RO_channels]
+            if not isinstance(RO_channels, list):
+                raise TypeError('The RO channels for {} must either be a list '
+                                'or a string.'.format(qb_name))
+            for qb_RO_ch in RO_channels:
                 meas_ROs_per_qb = [RO_ch for RO_ch in measured_RO_channels
-                                   if RO_channels in RO_ch]
+                                   if qb_RO_ch in RO_ch]
                 for meas_RO in meas_ROs_per_qb:
                     meas_results_per_qb_raw[qb_name][meas_RO] = \
                         self.raw_data_dict[
@@ -944,21 +949,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.data_filter(
                             meas_results_per_qb_raw[qb_name][meas_RO])
 
-            elif isinstance(RO_channels, list):
-                for qb_RO_ch in RO_channels:
-                    meas_ROs_per_qb = [RO_ch for RO_ch in measured_RO_channels
-                                       if qb_RO_ch in RO_ch]
-
-                    for meas_RO in meas_ROs_per_qb:
-                        meas_results_per_qb_raw[qb_name][meas_RO] = \
-                            self.raw_data_dict[
-                                'measured_data'][meas_RO]
-                        meas_results_per_qb[qb_name][meas_RO] = \
-                            self.data_filter(
-                                meas_results_per_qb_raw[qb_name][meas_RO])
-            else:
-                raise TypeError('The RO channels for {} must either be a list '
-                                'or a string.'.format(qb_name))
         self.proc_data_dict['meas_results_per_qb_raw'] = \
             meas_results_per_qb_raw
         self.proc_data_dict['meas_results_per_qb'] = \
