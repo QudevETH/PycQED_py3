@@ -410,12 +410,12 @@ class CircuitBuilder:
                     #  we improve or generalise further what op codes can be
                     #  parsed by this method.
                     if param_start > 0:
-                        func_op_code = eval('lambda x, cb=self : ' + angle)
+                        func_angle = eval('lambda x, cb=self : ' + angle)
                     else:
-                        func_op_code = None
-                    # sign * means that func will be -func_op_code
+                        func_angle = None
+                    # sign * means that func will be -func_angle
                     cphase = sign * ParametricValue(
-                        param, func=func_op_code, func_op_code=func_op_code,
+                        param, func=func_angle, func_angle=func_angle,
                         op_split=[op_name, *qbn])
                 # op_name = "NameVal" (e.g. "Z100", see docstring)
                 elif angle:
@@ -509,14 +509,14 @@ class CircuitBuilder:
                 if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func_op_code = eval('lambda x, cb=self : ' + angle)
+                            func_angle = eval('lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
-                            func_op_code = lambda x: x
+                            func_angle = lambda x: x
                         # parameter func
-                        func = (lambda x, qb=qbn[0], sign=sign, f=func_op_code:
+                        func = (lambda x, qb=qbn[0], sign=sign, f=func_angle:
                                 {qb: sign * f(x)})
                         p[0]['basis_rotation'] = ParametricValue(
-                            param, func=func, func_op_code=func_op_code,
+                            param, func=func, func_angle=func_angle,
                             op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
@@ -528,14 +528,14 @@ class CircuitBuilder:
                         if param_start > 0:  # via a mathematical expression
                             # combine the mathematical expression with a
                             # function that calculates the amplitude
-                            func_op_code = eval('lambda x, cb=self : ' + angle)
+                            func_angle = eval('lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
-                            func_op_code = lambda x: x
+                            func_angle = lambda x: x
                         func = lambda x, a=p[0]['amplitude'], sign=sign,\
-                                      f=func_op_code: a * corr_func(
+                                      f=func_angle: a * corr_func(
                                 ((sign * f(x) + 180) % (-360) + 180) / 180)
                         p[0]['amplitude'] = ParametricValue(
-                            param, func=func, func_op_code=func_op_code,
+                            param, func=func, func_angle=func_angle,
                             op_split=(op_name, qbn[0]))
                     else:  # angle is a given value
                         angle = sign * float(angle)

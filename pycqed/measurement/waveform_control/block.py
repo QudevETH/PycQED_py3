@@ -309,8 +309,9 @@ class ParametricValue:
     :param param: a string specifying the name of the parameter.
     :param func: (optional) a function applied to the value of the sweep
         parameter to yield the value of the physical parameter, e.g. amplitude
-    :param func_op_code: (optional) a function applied to the value of the
-        sweep parameter to yield the value to store in the op_code (gate angle)
+    :param func_angle: (optional) a function which, when applied to the value
+        of the sweep parameter, yields the gate angle to write in the resolved
+        op_code
     :param op_split: (optional) cache a splitted version of the op_code of
         the pulse to allow for correct op_code resolution in cases of spaces
         in a mathematical expression in an op_code.
@@ -318,11 +319,11 @@ class ParametricValue:
     """
     _is_parametric_value = True
 
-    def __init__(self, param, func=None, func_op_code=None, op_split=None):
+    def __init__(self, param, func=None, func_angle=None, op_split=None):
         self.param = param
         self.func = func
         self.op_split = op_split
-        self.func_op_code = func_op_code
+        self.func_angle = func_angle
 
     def resolve(self, sweep_dict, ind=None, op_code=None):
         """
@@ -358,14 +359,14 @@ class ParametricValue:
                 # of in a mathematical expression in an op_code.
                 # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
                 # TODO op_split might not be needed anymore after introducing
-                #  func_op_code
+                #  func_angle
                 # FIXME: remove op_code caching as soon as a new op_code
                 #  concept (e.g. tuples instead of space-separated strings)
                 #  makes it obsolete
                 op_split = [s for s in self.op_split] if self.op_split is not \
                             None else op_code.split(' ')
                 param_start = op_split[0].find(':')
-                v_code = v if not self.func_op_code else self.func_op_code(v)
+                v_code = v if not self.func_angle else self.func_angle(v)
                 op_split[0] = f"{op_split[0][:param_start]}{v_code}"
                 op_code = ' '.join(op_split)
             else:
