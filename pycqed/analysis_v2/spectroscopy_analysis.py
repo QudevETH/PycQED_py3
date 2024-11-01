@@ -195,17 +195,6 @@ class SpectroscopyOld(ba.BaseDataAnalysis):
                                       'zvals': proc_data_dict['plot_amp'],
                                       }
 
-    def plot_for_presentation(self, key_list=None, no_label=False):
-        super().plot_for_presentation(
-            key_list=key_list, no_label=no_label)
-        for key in key_list:
-            pdict = self.plot_dicts[key]
-            if key == 'amp':
-                if pdict['plotfn'] == self.plot_line:
-                    ymin, ymax = 0, 1.2 * np.max(np.ravel(pdict['yvals']))
-                    self.axs[key].set_ylim(ymin, ymax)
-                    self.axs[key].set_ylabel('Transmission amplitude (V rms)')
-
 
 class ResonatorSpectroscopy(SpectroscopyOld):
     def __init__(self, t_start,
@@ -1681,6 +1670,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
     phase and overwrites specific methods of tda.MultiQubit_TimeDomain_Analysis.
     """
     def process_data(self):
+        self.options_dict.setdefault('linestyle', '-')
         super().process_data()
 
         mdata_per_qb = self.proc_data_dict['meas_results_per_qb_raw']
@@ -2107,7 +2097,13 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             fig_id_original = f"projected_plot_{qb_name}_PCA_"
             fig_id_analyzed = f"QubitSpectroscopy1D_{fig_id_original}"
 
-            self.plot_dicts[fig_id_analyzed] = deepcopy(
+            # Copy the original plots in order to have both the analyzed and the
+            # non-analyzed plots
+            # Since deepcopy of the plot_dicts would lead to a deepcopy of
+            # the entire analysis object (because of plotfn-entry),
+            # we instead assign and modify the original dict and recreate the
+            # original projected plots below.
+            self.plot_dicts[fig_id_analyzed] = (
                 self.plot_dicts[fig_id_original])
 
             self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
@@ -2258,7 +2254,8 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                           'f_ge Stderr = {:.5} (MHz)'.format(
                               self.fit_res[qb_name].params['f0'].value * scale,
                               self.fit_res[qb_name].params['f0'].stderr * 1e-6))
-
+        # Recreate the original projected plots (without fitting results)
+        self.prepare_projected_data_plots()
 
 class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
     """
@@ -2502,9 +2499,13 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
         for qb_name in self.qb_names:
             # Copy the original plots in order to have both the analyzed and the
             # non-analyzed plots
+            # Since deepcopy of the plot_dicts would lead to a deepcopy of
+            # the entire analysis object (because of plotfn-entry),
+            # we instead assign and modify the original dict and recreate the
+            # original projected plots below.
             fig_id_original = f"projected_plot_{qb_name}_Magnitude"
             fig_id_analyzed = f"ResonatorSpectroscopy_{fig_id_original}"
-            self.plot_dicts[fig_id_analyzed] = deepcopy(
+            self.plot_dicts[fig_id_analyzed] = (
                 self.plot_dicts[f"projected_plot_{qb_name}_Magnitude_Magnitude"]
             )
 
@@ -2547,7 +2548,8 @@ class ResonatorSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
                 'plotfn': self.plot_text,
                 'text_string': textstr
             }
-
+        # Recreate the original projected plots (without fitting results)
+        self.prepare_projected_data_plots()
 
 class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
     """
@@ -2712,7 +2714,11 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
             sorted_feedlines = self.sorted_feedlines
             self.feedlines = []
             self.sorted_feedlines = []
-            self.plot_dicts[fig_id_analyzed] = deepcopy(
+            # Since deepcopy of the plot_dicts would lead to a deepcopy of
+            # the entire analysis object (because of plotfn-entry),
+            # we instead assign and modify the original dict and recreate the
+            # original projected plots below.
+            self.plot_dicts[fig_id_analyzed] = (
                 self.plot_dicts[f"projected_plot_{qb_name}_Magnitude_Magnitude"]
             )
             self.feedlines = feedlines
@@ -2800,6 +2806,8 @@ class FeedlineSpectroscopyAnalysis(ResonatorSpectroscopy1DAnalysis):
                 'plotfn': self.plot_text,
                 'text_string': textstr
             }
+        # Recreate the original projected plots (without fitting results)
+        self.prepare_projected_data_plots()
 
 
 class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
@@ -3102,11 +3110,15 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
 
         for qb_name in self.qb_names:
 
-            # Copy the original plots in order to have both the analyzed and the
-            # non-analyzed plots
+            # Copy the original plots in order to have both the analyzed and
+            # the non-analyzed plots.
+            # Since deepcopy of the plot_dicts would lead to a deepcopy of
+            # the entire analysis object (because of plotfn-entry),
+            # we instead assign and modify the original dict and recreate the
+            # original projected plots below.
             fig_id_original = f"projected_plot_{qb_name}_Magnitude_{qb_name}_volt"
             fig_id_analyzed = f"ResonatorSpectroscopyFluxSweep_{fig_id_original}"
-            self.plot_dicts[fig_id_analyzed] = deepcopy(self.plot_dicts[
+            self.plot_dicts[fig_id_analyzed] = (self.plot_dicts[
                 f"projected_plot_{qb_name}_Magnitude_Magnitude_{qb_name}_volt"])
 
             # Change the fig_id of the copied plot in order to distinguish it
@@ -3266,6 +3278,8 @@ class ResonatorSpectroscopyFluxSweepAnalysis(ResonatorSpectroscopy1DAnalysis):
                 'text_string': textstr
             }
 
+        # Recreate the original projected plots (without fitting results)
+        self.prepare_projected_data_plots()
 
 class MultiQubit_AvgRoCalib_Analysis(MultiQubit_Spectroscopy_Analysis):
     """Analysis to find the RO frequency that maximizes distance in IQ plane.

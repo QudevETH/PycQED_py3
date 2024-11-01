@@ -295,9 +295,6 @@ class BaseDataAnalysis(object):
                         # make the plots
                         self.plot(key_list='auto')
 
-                if self.options_dict.get('save_figs', False):
-                    self.save_figures(close_figs=self.options_dict.get(
-                        'close_figs', False))
             self._raise_warning()
         except Exception as e:
             if self.raise_exceptions:
@@ -413,7 +410,7 @@ class BaseDataAnalysis(object):
         if a_tools.ignore_delegate_plotting:
             return False
         if self.get_param_value("delegate_plotting", False):
-            if len(self.timestamps) == 1:
+            if isinstance(self.raw_data_dict, dict):
                 f = self.raw_data_dict['folder']
             else:
                 f = self.raw_data_dict[0]['folder']
@@ -928,6 +925,7 @@ class BaseDataAnalysis(object):
                         prep_params = dict()
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
+                    reset_reps = 0
                     if 'active' in prep_params.get('preparation_type', 'wait'):
                         reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
@@ -953,7 +951,7 @@ class BaseDataAnalysis(object):
                         idx_dict_1 = next(iter(cal_points.get_indices(
                             cal_points.qb_names, prep_params).values()))
                         num_cal_segments = len([i for j in idx_dict_1.values()
-                                                for i in j])
+                                                for i in j]) * (reset_reps + 1)
                         # take out CalibrationPoints from the end of each
                         # segment, and reshape the remaining data based on the
                         # hard (1st dimension) and soft (1st dimension)
@@ -1099,8 +1097,7 @@ class BaseDataAnalysis(object):
 
     def save_figures(self, savedir: str = None, savebase: str = None,
                      tag_tstamp: bool = True, dpi: int = 300,
-                     fmt: str = 'png', key_list: list = 'auto',
-                     close_figs: bool = True):
+                     fmt: str = 'png', key_list: list = 'auto'):
 
         if savedir is None:
             if isinstance(self.raw_data_dict, tuple):
@@ -1124,6 +1121,7 @@ class BaseDataAnalysis(object):
 
         if key_list == 'auto' or key_list is None:
             key_list = self.figs.keys()
+        key_list = [k for k in key_list if k in self.figs]
 
         try:
             os.mkdir(savedir)
@@ -1134,18 +1132,12 @@ class BaseDataAnalysis(object):
             print('Saving figures to %s' % savedir)
 
         for key in key_list:
+            savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
+            self.figs[key].savefig(savename, bbox_inches='tight',
+                                   format=fmt, dpi=dpi)
             if self.presentation_mode:
-                savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.' + fmt)
-                self.figs[key].savefig(savename, bbox_inches='tight',
-                                       format=fmt, dpi=dpi)
                 savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.svg')
                 self.figs[key].savefig(savename, bbox_inches='tight', format='svg')
-            else:
-                savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
-                self.figs[key].savefig(savename, bbox_inches='tight',
-                                       format=fmt, dpi=dpi)
-        if close_figs:
-            self.close_figs(key_list)
 
     def close_figs(self, key_list='auto'):
         """Closes specified figures.
@@ -1159,6 +1151,7 @@ class BaseDataAnalysis(object):
         """
         if key_list == 'auto' or key_list is None:
             key_list = self.figs.keys()
+        key_list = [k for k in key_list if k in self.figs]
         axes_to_pop = []
         for key in list(key_list):
             axes_to_pop.extend(self.figs[key].axes)
@@ -1277,6 +1270,8 @@ class BaseDataAnalysis(object):
                 # because we have observed recent lmfit versions showing a
                 # warning when passing this parameter.
                 fit_kwargs['steps'] = fit_dict['steps']
+            if 'max_nfev' in fit_dict:
+                fit_kwargs['max_nfev'] = fit_dict['max_nfev']
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -1465,15 +1460,27 @@ class BaseDataAnalysis(object):
             fig_id (str): figure id from `self.plot_dicts`. If passed only
                 specified figure will be plotted.
         """
-        self._prepare_for_plot(key_list, axs_dict, no_label)
-        if presentation_mode is None:
-            presentation_mode = self.presentation_mode
-        if transparent_background is None:
-            transparent_background = self.transparent_background
-        if presentation_mode:
-            self.plot_for_presentation(self.key_list, transparent_background)
-        else:
-            self._plot(self.key_list, transparent_background, fig_id=fig_id)
+
+        key_list = self._get_key_list(key_list)
+        self._generate_fig_ids()
+        # Select entries corresponding to key_list, i.e., to be plotted
+        plot_dicts = {k: p for k, p in self.plot_dicts.items()
+                      if k in key_list}
+
+        # p['fig_id'] always exists after _generate_fig_ids
+        unique_fig_names = set(p['fig_id'] for k, p in plot_dicts.items())
+        # Create and close each figure successively, such that only one figure
+        # is open in memory at a time
+        for unique_fig_name in unique_fig_names:
+            fig_key_list = [k for k, p in plot_dicts.items()
+                            if p['fig_id'] == unique_fig_name]
+            self._prepare_for_plot(fig_key_list, axs_dict, no_label,
+                                   presentation_mode)
+            self._plot(fig_key_list, transparent_background, fig_id=fig_id)
+            if self.options_dict['save_figs']:
+                self.save_figures(key_list=[unique_fig_name])
+            if self.options_dict['close_figs']:
+                self.close_figs(key_list=[unique_fig_name])
 
     def plot_for_gui(self, fig_id: str) -> Tuple[Figure, Union[Axes, np.array]]:
         """Prepares and creates a plot for GUI and returns one figure and axes.
@@ -1488,8 +1495,12 @@ class BaseDataAnalysis(object):
             tuple: with `Figure` and either `Axes` or `np.array` with
                 multiple `Axes`.
         """
-        self._prepare_for_plot(key_list='auto')
-        self._plot(key_list=self.key_list, fig_id=fig_id)
+        key_list = self._get_key_list()
+        self._generate_fig_ids()
+        # FIXME calling this for fig_id only might be faster, as in plot().
+        #  Kept as it is for now as this is only relevant to the gui.
+        self._prepare_for_plot(key_list=key_list)
+        self._plot(key_list=key_list, fig_id=fig_id)
 
         figure = None
         if isinstance(self.axs[fig_id], Axes):
@@ -1504,7 +1515,29 @@ class BaseDataAnalysis(object):
 
         return figure, self.axs[fig_id]
 
-    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
+    def _get_key_list(self, key_list='auto'):
+        if key_list == 'auto':
+            key_list = self.auto_keys
+        if key_list is None:
+            key_list = self.plot_dicts.keys()
+        if type(key_list) is str:
+            key_list = [key_list]
+        return key_list
+
+    def _generate_fig_ids(self):
+        """Ensure that each dict in plot_dicts has a key fig_id"""
+        for key in self.plot_dicts:
+            pdict = self.plot_dicts[key]
+            # Use the key of the plot_dict if no ax_id is specified
+            pdict['fig_id'] = pdict.get('fig_id', key)
+            pdict['ax_id'] = pdict.get('ax_id', None)
+
+            if isinstance(pdict['ax_id'], str):
+                pdict['fig_id'] = pdict['ax_id']
+                pdict['ax_id'] = None
+
+    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False,
+                          presentation_mode=None):
         """
         Goes over the entries in self.plot_dict specified by key_list, and
         prepares them for plotting. If key_list is None, the keys of
@@ -1514,42 +1547,31 @@ class BaseDataAnalysis(object):
             key_list (list): list of keys in self.plot_dicts
             axs_dict (dict): will be used to define self.axs
             no_label (bool): whether figure should have a label
+            presentation_mode (bool): whether to prepare for presentation
         """
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
-        if key_list == 'auto':
-            key_list = self.auto_keys
-        if key_list is None:
-            key_list = self.plot_dicts.keys()
-        if type(key_list) is str:
-            key_list = [key_list]
-        self.key_list = key_list
 
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
             if 'no_label' not in pdict:
                 pdict['no_label'] = no_label
-            # Use the key of the plot_dict if no ax_id is specified
-            pdict['fig_id'] = pdict.get('fig_id', key)
-            pdict['ax_id'] = pdict.get('ax_id', None)
 
-            if isinstance(pdict['ax_id'], str):
-                pdict['fig_id'] = pdict['ax_id']
-                pdict['ax_id'] = None
+            if presentation_mode is None:
+                presentation_mode = self.presentation_mode
+            if presentation_mode:
+                pdict['title'] = None
 
             if pdict['fig_id'] not in self.axs:
-                # This fig variable should perhaps be a different
-                # variable for each plot!!
-                # This might fix a bug.
                 self.figs[pdict['fig_id']], self.axs[pdict['fig_id']] = plt.subplots(
                     pdict.get('numplotsy', 1), pdict.get('numplotsx', 1),
                     sharex=pdict.get('sharex', False),
                     sharey=pdict.get('sharey', False),
                     figsize=pdict.get('plotsize', None),
-                    gridspec_kw=pdict.get('gridspec_kw', None),
                     # plotsize None uses .rc_default of matplotlib
+                    gridspec_kw=pdict.get('gridspec_kw', None),
                 )
                 if pdict.get('3d', False):
                     self.axs[pdict['fig_id']].remove()
@@ -1586,7 +1608,7 @@ class BaseDataAnalysis(object):
                 for ax_name, formatter in fmt.items():
                     getattr(ax, ax_name).set_major_formatter(formatter)
 
-    def _plot(self, key_list, transparent_background=False, fig_id=None):
+    def _plot(self, key_list, transparent_background=None, fig_id=None):
         """Creates the figures specified by key_list.
 
         Args:
@@ -1659,6 +1681,8 @@ class BaseDataAnalysis(object):
                 raise ValueError(
                     '"{}" is not a valid plot function'.format(plotfn))
 
+            if transparent_background is None:
+                transparent_background = self.transparent_background
             if transparent_background and 'fig_id' in pdict:
                 # transparent background around axes for presenting data
                 self.figs[pdict['fig_id']].patch.set_alpha(0)
@@ -1672,11 +1696,9 @@ class BaseDataAnalysis(object):
         Returns:
             list: list of unique figure ids.
         """
-        fig_ids = []
-        for name, item in self.plot_dicts.items():
-            fig_ids.append(item['fig_id'])
-
-        return np.unique(fig_ids).tolist()
+        self._generate_fig_ids()
+        fig_ids = [v['fig_id'] for v in self.plot_dicts.values()]
+        return list(np.unique(fig_ids))
 
     def add_to_plots(self, key_list=None):
         pass
@@ -1689,19 +1711,6 @@ class BaseDataAnalysis(object):
                 if (type(pdict['xvals'][0]) is datetime.datetime and
                         key in self.axs.keys()):
                     self.axs[key].figure.autofmt_xdate()
-
-    def plot_for_presentation(self, key_list=None, transparent_background=True):
-        """
-        Prepares and produces plots for presentation.
-        Args.
-            key_list (list): list of keys in self.plot_dicts
-        """
-        if key_list is None:
-            key_list = list(self.plot_dicts.keys())
-        for key in key_list:
-            self.plot_dicts[key]['title'] = None
-
-        self._plot(key_list, transparent_background)
 
     def plot_bar(self, pdict, axs):
         pfunc = getattr(axs, pdict.get('func', 'bar'))
@@ -1726,6 +1735,8 @@ class BaseDataAnalysis(object):
         plot_xtick_labels = pdict.get('xtick_labels', None)
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_barkws = pdict.get('bar_kws', {})
@@ -1773,6 +1784,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -1935,6 +1949,7 @@ class BaseDataAnalysis(object):
         plot_xtick_rotation = pdict.get('xtick_rotation', 90)
         plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
@@ -1942,6 +1957,7 @@ class BaseDataAnalysis(object):
         plot_grid = pdict.get('grid', None)
         plot_opposite_axis = pdict.get('opposite_axis', False)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         # Ensures that 'color' can be passed both ways (and that it does not
         # collide with plot_linekws).
         plot_color = pdict.get('color', plot_linekws.pop('color') if
@@ -2020,6 +2036,9 @@ class BaseDataAnalysis(object):
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
 
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
+
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
             legend_title = pdict.get('legend_title', None)
@@ -2082,6 +2101,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_nolabel = pdict.get('no_label', False)
         plot_title = pdict['title']
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         slice_idxs = pdict['sliceidxs']
         slice_label = pdict.get('slicelabel', '')
         slice_units = pdict.get('sliceunits', '')
@@ -2122,6 +2143,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -2383,6 +2407,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_yunit = pdict['yunit']
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         if plot_transpose:
             # transpose switches X and Y
             set_axis_label('x', axs, plot_ylabel, plot_yunit)
@@ -2396,6 +2422,8 @@ class BaseDataAnalysis(object):
                             verticalalignment='bottom',
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
     def plot_colorbar(self, cax=None, key=None, pdict=None, axs=None,
                       orientation='vertical', no_label=None):

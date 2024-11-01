@@ -220,8 +220,9 @@ class MeasurementControl(Instrument):
             'settings_file_compression',
             vals=vals.Bool(),
             docstring='True if file should be compressed with blosc2. '
-                      'Does not support hdf5 files.',
-            initial_value=True,
+                      'Does not support hdf5 files. We do not recommend '
+                      'using compression.',
+            initial_value=False,
             parameter_class=ManualParameter
         )
 
@@ -382,8 +383,13 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
-            self.exp_metadata['sweep_control'] = [
-                s.sweep_control for s in getattr(self, 'sweep_functions', [])]
+            self.exp_metadata.update({
+                'sweep_control': [s.sweep_control for s in getattr(
+                    self, 'sweep_functions', [])],
+                # Indicates to the analysis a measurement performed after
+                # changes ensuring a right-handed single-qubit gate basis
+                'right_handed_basis': True,
+            })
             self.save_exp_metadata(self.exp_metadata)
             exception = None
             try:
@@ -628,10 +634,11 @@ class MeasurementControl(Instrument):
                     self.adaptive_function(self.optimization_function,
                                            **self.af_pars)
             except StopIteration:
-                print('Reached f_termination: %s' % (self.f_termination))
+                print('\nReached f_termination: %s' % (self.f_termination))
         else:
             raise Exception('optimization function: "%s" not recognized'
                             % self.adaptive_function)
+        print()  # New line after self.print_progress_adaptive
         self.timer.checkpoint(
             "MeasurementControl.measure_soft_adaptive.adaptive_function.end")
         self.save_optimization_results(self.adaptive_function,
@@ -892,7 +899,9 @@ class MeasurementControl(Instrument):
         elif self.mode == 'adaptive':
             self.update_plotmon_adaptive()
         self.iteration += 1
-        if self.mode != 'adaptive':
+        if self.mode == 'adaptive':
+            self.print_progress_adaptive()
+        else:
             self.print_progress()
         return vals
 
@@ -2099,6 +2108,9 @@ class MeasurementControl(Instrument):
                         'fopt':  result[1]}
         else:
             res_dict = {'opt':  result}
+        if isinstance(result, dict) and 'sweep_points' in result:
+            self.save_exp_metadata({
+                'sweep_points': result['sweep_points']})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
     def save_instrument_settings(self, data_object=None, mode='xb', *args):
@@ -2420,26 +2432,31 @@ class MeasurementControl(Instrument):
                            elapsed_time, 1) if percdone != 0 else '??'
             t_end = time.strftime('%H:%M:%S', time.localtime(time.time() +
                                   + t_left)) if percdone != 0 else '??'
-            # The trailing spaces are to overwrite some characters in case the
-            # previous progress message was longer. (Due to \r, the string
-            # output will start at the beginning of the current line and
-            # each character of the new string will overwrite a character
-            # of the previous output in the current line.)
             progress_message = (
-                "\r{timestamp}\t{percdone}% completed \telapsed time: "
-                "{t_elapsed}s \ttime left: {t_left}s\t(until {t_end})     "
-                "").format(
-                    timestamp=time.strftime('%H:%M:%S', time.localtime()),
-                    percdone=int(percdone),
-                    t_elapsed=round(elapsed_time, 1),
-                    t_left=t_left,
-                    t_end=t_end,)
+                f"\r{time.strftime('%H:%M:%S', time.localtime())}\t"
+                f"{int(percdone)}% completed\t"
+                f"elapsed time: {elapsed_time:.1f}s\t"
+                f"time left: {t_left}s\t(until {t_end})     "
+            ).ljust(80)  # Pad to fixed width to overwrite previous line
 
             if percdone != 100 or current_acq:
                 end_char = ''
             else:
                 end_char = '\n'
-            print('\r', progress_message, end=end_char)
+            print(progress_message, end=end_char)
+
+    def print_progress_adaptive(self):
+        """
+        Prints the progress of the current measurement, in adaptive mode.
+        """
+        if self.verbose():
+            elapsed_time = time.time() - self.begintime
+            progress_message = (
+                f"\r{time.strftime('%H:%M:%S', time.localtime())}\t"
+                f"{self.iteration} iterations completed\t"
+                f"elapsed time: {elapsed_time:.1f}s"
+            ).ljust(80)  # Pad to fixed width to overwrite previous line
+            print(progress_message, end='')
 
     def is_complete(self):
         """
