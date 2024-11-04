@@ -418,7 +418,7 @@ def pauli_to_dm(pauli, cov = None):
     dm_flat = mat @ pauli
     dm = np.reshape(dm_flat, (d, d))
     if not cov is None:
-        dm_cov = mat @ cov @ mat.H
+        dm_cov = np.array(mat @ cov @ np.matrix(mat).H)
         return dm, dm_cov
     else:
         return dm
