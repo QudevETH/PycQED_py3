@@ -120,6 +120,7 @@ class QDacSmooth(qdac_mod.QDac):
                 print('\r', progress_message, end=end_char)
 
         if not voltagedict:
+            log.warning('QDAC.set_smooth called without any values! Skipping.')
             return
         v_sweep = {}
         self._update_cache()
@@ -364,6 +365,7 @@ class QDac2Smooth(qdac2_mod.QDac2):
                 print('\r', progress_message, end=end_char)
 
         if not voltagedict:
+            log.warning('QDAC.set_smooth called without any values! Skipping.')
             return
         v_sweep = {}
         initial_voltages = self.get_channel_voltages()
