@@ -390,31 +390,75 @@ class BaseDataAnalysis(object):
 
     def save_job_string_in_result_file(self):
         """Saves `self.job` in analysis result file under "Analysis" group.
-
-        Raises:
-            RuntimeError: in case `write_dict_to_hdf5` fails.
         """
         file_path = self._get_analysis_result_file_path()
+        analysis_group = hdf5_io.get_hdf_group_by_name(
+            h5py.File(file_path, 'a'), "Analysis")
+
+        if isinstance(analysis_group, h5py.Group):
+            self.write_to_file(file_path, analysis_group)
+
+    def write_to_file(self, file_path: str, analysis_group: h5py.Group):
+        """Writes data to a hdf5 file using write_dict_to_hdf5.
+
+        FIXME: Merge this function or some of it functionality to our hdf5_io
+               or any upcoming i/o module.
+        FIXME: File permissions and existence covered in hdf5_io?
+
+        Args:
+            file_path: The path to the file to write to.
+            analysis_group: The data group to write.
+        """
+        MAX_WRITE_ATTEMPTS = 12 # corresponds to one minute
+        cur_write_attempt = 0
         file_written = False
-        while not file_written:
+
+        while not file_written and cur_write_attempt <= MAX_WRITE_ATTEMPTS:
             try:
+                cur_write_attempt += 1
                 with h5py.File(file_path, 'a') as data_file:
-                    analysis_group = hdf5_io.get_hdf_group_by_name(
-                        data_file, "Analysis")
-                    if isinstance(analysis_group, h5py.Group):
-                        hdf5_io.write_dict_to_hdf5(
-                            {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
-                            entry_point=analysis_group
-                        )
-                file_written = True
-            except (IOError, PermissionError):
-                sleep_duration = 5
+                    hdf5_io.write_dict_to_hdf5(
+                        {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
+                        entry_point=analysis_group
+                    )
+            except IOError as e:
                 log.warning(
-                    f"Unable to open the HDF5 file {file_path} for writing. "
-                    "Make sure to close the HDF Viewer if it is open. "
-                    f"Trying again in {sleep_duration} s."
+                    f"IO error occurred. Unable to write the file {file_path}. Error: {e}"
                 )
-                time.sleep(sleep_duration)
+            except PermissionError as e:
+                log.warning(
+                    "Permission error occurred. You may not have the necessary "
+                    f"permissions to write the file {file_path}. Error: {e}"
+                )
+            except FileNotFoundError as e:
+                log.warning(
+                    f"The file {file_path} was not found. Error: {e}"
+                )
+            except Exception as e:
+                log.warning(f"Unexpected error occurred. Error: {e}")
+            else:
+                file_written = True
+                log.info(f"Data successfully written to the file {file_path}.")
+            finally:
+                if not file_written:
+                    sleep_duration = 5  # in seconds
+                    log.warning(
+                        f"Unable to open the HDF5 file {file_path} for writing.\n"
+                        "Make sure to close the HDF Viewer if it is open.\n"
+                        f"Trying again in {sleep_duration} sec. \n"
+                        f"Attempt: {cur_write_attempt} / {MAX_WRITE_ATTEMPTS}"
+                    )
+                    # Break sleep into smaller chunks to better respond
+                    # to user keyboard interrupts
+                    for _ in range(10*sleep_duration):
+                        time.sleep(0.1)
+
+                    if cur_write_attempt == MAX_WRITE_ATTEMPTS:
+                        log.warning(
+                            "Reached the maximum number of write attempts."
+                        )
+
+        return file_written
 
     def check_plotting_delegation(self):
         """
