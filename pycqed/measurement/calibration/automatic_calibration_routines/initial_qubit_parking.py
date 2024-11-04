@@ -526,6 +526,12 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
         # when new steps are added
         for i, step in reversed(list(enumerate(self.routine_template))):
             self.split_step_for_parallel_groups(index=i)
+        if len(self.routine_steps) == 0:
+            log.warning(
+                "All routine steps have been removed by "
+                "split_step_for_parallel_groups(). Please check that these "
+                "qubits exist in one of the groups in Groups.json"
+            )
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [FeedlineSpectroscopyStep, 'feedline_spectroscopy', {}],
