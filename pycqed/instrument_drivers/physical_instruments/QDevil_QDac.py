@@ -119,7 +119,8 @@ class QDacSmooth(qdac_mod.QDac):
                     end_char = '\n'
                 print('\r', progress_message, end=end_char)
 
-
+        if not voltagedict:
+            return
         v_sweep = {}
         self._update_cache()
         # generate lists of V to apply over time
@@ -362,6 +363,8 @@ class QDac2Smooth(qdac2_mod.QDac2):
                     end_char = '\n'
                 print('\r', progress_message, end=end_char)
 
+        if not voltagedict:
+            return
         v_sweep = {}
         initial_voltages = self.get_channel_voltages()
 
