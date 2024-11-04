@@ -507,3 +507,56 @@ def get_hdf_group_by_name(parent_group: h5py.Group, group_name: str) -> \
         # If the group already exists.
         group = parent_group[group_name]
     return group
+
+
+def safe_file_open(
+        file_path: str,
+        mode: str = 'a',
+        max_open_attempts: int = 12,
+        sleep_duration: int = 10,
+):
+    """Open an HDF5 file safely.
+
+    Arguments:
+        file_path (str): path to file to open
+        mode (str): mode to open the file in. See the options for
+            `h5py.File()`.
+        max_open_attempts (int): maximum number of times to try opening
+            the file. Defaults to 12.
+        sleep_duration (int): duration to wait in between each
+            attempt at opening the file. Defaults to 10 seconds.
+
+    Returns:
+        file_object: Python file object of the opened HDF5 file (if
+            opening succeeds). Use like normal in context managers.
+    """
+    cur_open_attempt = 0
+    file_opened = False
+    while not file_opened and cur_open_attempt <= max_open_attempts:
+        try:
+            cur_open_attempt += 1
+            file_object = h5py.File(file_path, mode=mode)
+        except (BlockingIOError, OSError) as e:
+            log.warning(
+                f"Unable to open the file {file_path} due to an I/O error {e}."
+            )
+        else:
+            file_opened = True
+            log.info(f"File {file_path} opened successfully.")
+            return file_object
+        finally:
+            if not file_opened:
+                log.warning(
+                    f"Unable to open the HDF5 file {file_path}.\n"
+                    "Make sure to close the HDF Viewer if it is open.\n"
+                    f"Trying again in {sleep_duration} seconds. \n"
+                    f"Attempt: {cur_open_attempt} / {max_open_attempts}"
+                )
+                # Break sleep into smaller chunks to better respond
+                # to user keyboard interrupts
+                for _ in range(10 * sleep_duration):
+                    time.sleep(0.1)
+                if cur_open_attempt == max_open_attempts:
+                    log.warning(
+                        "Reached the maximum number of opening attempts."
+                    )
