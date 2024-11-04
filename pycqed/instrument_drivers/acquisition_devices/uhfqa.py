@@ -22,6 +22,8 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             index, see parameter filter_segments in Pulsar
         USER_REG_LAST_SEGMENT (int): index of user register for last segment
             index, see parameter filter_segments in Pulsar
+        ACQ_N_RESULTS_MAX (int): Maximum number of acquisition results
+          per hardware run.
     """
 
     USER_REG_FIRST_SEGMENT = 5
@@ -40,6 +42,9 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                      'index': [],
                      'none': [],
                      }
+    # Maximum acquisition shots according to YS
+    # (Can check in the LabOne GUI by typing larger numbers in)
+    ACQ_N_RESULTS_MAX = 2 ** 20
     # private lookup dict to translate a data_type to an index understood by
     # the UHF
     _res_logging_indices = {
@@ -178,10 +183,12 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
         # samples is supported by the UHF (2**20 is hardcoded). This limit
         # is usually not reached for averaged readout measurement, but could
         # be exceeded in case of single-shot readout.
-        if self._acq_n_results > 2 ** 20:
+        if self._acq_n_results > self.ACQ_N_RESULTS_MAX:
             raise ValueError(
-                f'Acquisition device {self.name} ({self.devname}):'
-                f'{self._acq_n_results} > 1048576 not supported by the UHF.'
+                f'Acquisition device {self.name} ({self.devname}): '
+                f'The number of acquisition results, {self._acq_n_results},'
+                f' is too large for the UHF (which supports a max of '
+                f'{self.ACQ_N_RESULTS_MAX}). '
                 f'Please reduce the compression_seg_lim, the number of 1D '
                 f'sweep points, or the nr_shots.')
 
