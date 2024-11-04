@@ -1,7 +1,6 @@
 # from pycqed.analysis_v3 import helper_functions as hlp_mod
 import logging
 import numpy as np
-import h5py
 
 from pycqed.instrument_drivers.mock_qcodes_interface import Station, \
     ParameterNotFoundError
@@ -9,7 +8,7 @@ from pycqed.utilities.io.base_io import Loader
 import pycqed.gui.dict_viewer as dict_viewer
 from collections import OrderedDict
 
-from pycqed.utilities.io.hdf5 import HDF5Loader
+from pycqed.utilities.io.hdf5 import HDF5Loader, safe_file_open
 from pycqed.utilities.io.msgpack import MsgLoader
 from pycqed.utilities.io.pickle import PickleLoader
 
@@ -525,7 +524,7 @@ def convert_settings_to_hdf(timestamp: str, skip_if_exists=False):
         fn = a_tools.measurement_filename(a_tools.get_folder(timestamp),
                                           ext=ext[1:])
         fn = fn[:-len(ext)] + base_io.file_extensions['hdf5'][0]
-    with h5py.File(fn, 'a') as hdf_file:
+    with safe_file_open(fn, mode='a') as hdf_file:
         if 'Instrument settings' not in hdf_file:
             MeasurementControl.save_station_in_hdf(hdf_file, station)
         elif not skip_if_exists:

@@ -33,7 +33,7 @@ except: #ModuleNotFoundError:
 import pycqed.analysis.tools.plotting as pl_tools
 from pycqed.analysis.tools.plotting import (set_xlabel, set_ylabel,
                                             SI_prefix_and_scale_factor)
-
+from pycqed.utilities.io import hdf5 as hdf5_io
 import pycqed.utilities.qutip_compat as qtp
 if not qtp.is_imported:
     log.warning('Could not import qutip')
@@ -99,7 +99,10 @@ class MeasurementAnalysis(object):
             folder = self.folder
         self.h5filepath = a_tools.measurement_filename(folder)
         h5mode = kw.pop('h5mode', 'r+')
-        self.data_file = h5py.File(self.h5filepath, h5mode)
+        self.data_file = hdf5_io.safe_file_open(
+            self.h5filepath,
+            mode=h5mode,
+        )
         if not file_only:
             for k in list(self.data_file.keys()):
                 if type(self.data_file[k]) == h5py.Group:
@@ -123,7 +126,10 @@ class MeasurementAnalysis(object):
             mode = 'w'
         else:
             mode = 'r+'
-        return h5py.File(os.path.join(self.folder, name + '.hdf5'), mode)
+        return hdf5_io.safe_file_open(
+            os.path.join(self.folder, name + '.hdf5'),
+            mode=mode,
+        )
 
     def default_fig(self, **kw):
         figsize = kw.pop('figsize', None)

@@ -2,7 +2,6 @@ import traceback
 
 import time
 
-import h5py
 import numpy as np
 from pycqed.analysis import analysis_toolbox as a_tools
 
@@ -18,6 +17,7 @@ import pycqed.utilities.general as general
 from copy import copy, deepcopy
 from collections import OrderedDict as odict
 from pycqed.measurement.sweep_points import SweepPoints
+from pycqed.utilities.io import hdf5 as hdf5_io
 import itertools
 import logging
 from pycqed.gui.waveform_viewer import WaveformViewer
@@ -830,7 +830,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             folder = a_tools.get_folder(self.timestamp,
                                         folder=self.MC.datadir())
             filepath = a_tools.measurement_filename(folder)
-        with h5py.File(filepath, mode="r+") as data_file:
+        with hdf5_io.safe_file_open(filepath, mode='r+') as data_file:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
                 timer_group = data_file.create_group(Timer.HDF_GRP_NAME)

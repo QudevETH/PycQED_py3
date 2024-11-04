@@ -83,7 +83,7 @@ class Save:
         except values corresponding to the keys "plot_dicts", "axes",
         "figures", "data_files"
         """
-        with h5py.File(self.filepath, 'a') as analysis_file:
+        with h5d.safe_file_open(self.filepath, mode='a') as analysis_file:
             self.dump_to_file(self.data_dict, analysis_file)
 
     def dump_to_file(self, data_dict, entry_point):

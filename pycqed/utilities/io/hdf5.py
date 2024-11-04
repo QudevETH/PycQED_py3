@@ -415,7 +415,7 @@ class HDF5Loader(Loader):
             Parameters must be of the form %inst_name%.%param_name%.
 
         """
-        with h5py.File(self.filepath, 'r') as file:
+        with safe_file_open(self.filepath, mode='r') as file:
             config_file = file['Instrument settings']
             station = Station(timestamp=self.timestamp)
             if param_path is None:
