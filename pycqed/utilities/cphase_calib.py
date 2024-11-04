@@ -141,16 +141,25 @@ unit_dict = dict(amplitude='V', amplitude2='V', pulse_length='s',
                  gaussian_filter_sigma='s', trans_length='s')
 
 
-# FIXME Copied from a calibration script, not tested
-def get_spectators(dev, anc_data_qb_map, gate_list):
+def get_spectators(dev, anc_data_qb_map, gate_list, include_spec_of_data_qubits=False):
+    if isinstance(anc_data_qb_map, list):
+        return dev.get_qubits(anc_data_qb_map, 'obj')
     gate_list_ancqb = [qb[0].name for qb in gate_list]
     gate_list_dataqb = [qb[1].name for qb in gate_list]
-    dd_qubit_list = list(np.unique([d for qb in gate_list_ancqb for d in anc_data_qb_map[qb] if
-                       d not in gate_list_dataqb]))
-    return dev.get_qubits(dd_qubit_list,'obj')
+    dd_qubit_list = list(
+        np.unique([d for qb in gate_list_ancqb for d in anc_data_qb_map[qb] if
+                   d not in gate_list_dataqb]))
+    anc_qubit_list = []
+    for data_qb in gate_list_dataqb:
+        anc_qubit_list += [qb for qb, data_qb_list in anc_data_qb_map.items()
+                           if data_qb in data_qb_list]
+    anc_qubit_list = list(set([qb for qb in anc_qubit_list if qb not in
+                               gate_list_ancqb]))
+    qubit_list = dd_qubit_list + anc_qubit_list if include_spec_of_data_qubits\
+        else dd_qubit_list
+    return dev.get_qubits(qubit_list,'obj')
 
 
-# FIXME Copied from a calibration script, not tested
 def get_spectator_pulses(dev, spectators, opcode='X90'):
     return [dev.get_operation_dict()[f'{opcode}{"s" if i != 0 else ""} {qb.name}'] for
             i, qb in enumerate(spectators)]
@@ -228,14 +237,14 @@ def cal_two_qubit_gates(
                         pp = dev.get_pulse_par(
                         cz_pulse_name, qbh, qbl, 'amp_ctrl_param')()
                     pulse_params.append(pp)
-                # num_soft_swpts = (7 if param == 'amplitude2' else 11)
                 task_list = []
 
                 if np.ndim(sweep_range_dict[param]) != 0:
                     sweep_range_dict[param], num_soft_swpts = sweep_range_dict[
                         param]
                 else:
-                    num_soft_swpts = (7 if param == 'amplitude2' else 11)
+                    num_soft_swpts = (7 if param in ['amplitude2', 'amplitude']
+                                      else 11)
                 if param in chevron_mnt_params or param.endswith('-chevron'):
                     experiment_name = f'Chevron_{param}_sweep'
 
@@ -265,8 +274,12 @@ def cal_two_qubit_gates(
                                     get_spectators(
                                         dev,
                                         kw.get('spectator_map'),
-                                        gate_list),
-                                opcode=kw.get('spectator_pulse_opcode', "X90"))
+                                        gate_list,
+                                        include_spec_of_data_qubits=kw.get(
+                                            'include_spec_of_data_qubits',
+                                            False)),
+                                    opcode=kw.get(
+                                        'spectator_pulse_opcode', "X90"))
 
                         extra_prepend_pulses = kw.get('extra_prepend_pulses', [])
                         if i == 0 and extra_prepend_pulses:
@@ -316,7 +329,10 @@ def cal_two_qubit_gates(
                                     get_spectators(
                                         dev,
                                         kw.get('spectator_map'),
-                                        gate_list),
+                                        gate_list,
+                                        include_spec_of_data_qubits=kw.get(
+                                            'include_spec_of_data_qubits',
+                                            False)),
                                     opcode=kw.get('spectator_pulse_opcode', "X90"))
                         extra_prepend_pulses = kw.get('extra_prepend_pulses', [])
                         if i == 0 and extra_prepend_pulses:
@@ -395,7 +411,9 @@ def cal_two_qubit_gates(
                             get_spectators(
                                 dev,
                                 kw.get('spectator_map'),
-                                gate_list),
+                                gate_list,
+                                include_spec_of_data_qubits=kw.get(
+                                    'include_spec_of_data_qubits', False)),
                             opcode=kw.get('spectator_pulse_opcode', "X90"))
                 extra_prepend_pulses = kw.get('extra_prepend_pulses', [])
                 if i == 0 and extra_prepend_pulses:
@@ -451,7 +469,9 @@ def cal_dyn_phase(
                     get_spectators(
                         dev,
                         kw.get('spectator_map'),
-                        gate_list),
+                        gate_list,
+                        include_spec_of_data_qubits=kw.get(
+                            'include_spec_of_data_qubits', False)),
                     opcode=kw.get('spectator_pulse_opcode', "X90"))
         extra_prepend_pulses = kw.get('extra_prepend_pulses', [])
         if i == 0 and extra_prepend_pulses:
