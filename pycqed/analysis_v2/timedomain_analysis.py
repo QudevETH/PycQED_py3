@@ -6689,6 +6689,7 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         # extract_only=True to avoid doing any plots for now.
         # self.echo_analysis.plot will be called below in self.plot
         # after self.prepare_plots has updated self.echo_analysis.plot_dicts.
+        kwargs.pop('extract_only')
         if self.run_ramsey:
             # artificial detuning was used and it is not 0
             self.echo_analysis = RamseyAnalysis(*args, auto=auto,
