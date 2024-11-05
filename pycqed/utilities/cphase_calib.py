@@ -302,8 +302,7 @@ def cal_two_qubit_gates(
                                                 delegate_plotting=True,  # does not work yet
                                                 measure=measure, analyze=False
                                                 )
-                    mmnt.analysis = tda.SingleRowChevronAnalysis(
-                        do_fitting=False)
+                    mmnt.analysis = tda.SingleRowChevronAnalysis()
                 else:
                     experiment_name = f'CPhase_measurement_{param}_sweep'
                     for i, (qbh, qbl) in enumerate(gate_list):
