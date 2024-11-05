@@ -6677,7 +6677,7 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
 
 class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
-    def __init__(self, *args, extract_only=False, **kwargs):
+    def __init__(self, *args, **kwargs):
         """
         This class is different to the other single qubit calib analysis classes
         (Rabi, Ramsey, QScale, T1).
@@ -6688,7 +6688,8 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         analysis.
         """
         auto = kwargs.pop('auto', True)
-        super().__init__(*args, auto=False, extract_only=extract_only, **kwargs)
+        # auto=False, echo_analysis.run_analysis will be called below instead
+        super().__init__(*args, auto=False, **kwargs)
 
         # get experimental metadata from file
         self.metadata = self.get_data_from_timestamp_list(
@@ -6702,21 +6703,19 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         self.run_ramsey = self.artificial_detuning_dict is not None and \
                 any(list(self.artificial_detuning_dict.values()))
 
-        # Define options_dict for call to RamseyAnalysis or T1Analysis
-        options_dict = deepcopy(kwargs.pop('options_dict', dict()))
-        options_dict['save_figs'] = False  # plots will be made by EchoAnalysis
-
+        # extract_only=True to avoid doing any plots for now.
+        # self.echo_analysis.plot will be called below in self.plot
+        # after self.prepare_plots has updated self.echo_analysis.plot_dicts.
+        kwargs.pop('extract_only', None)
         if self.run_ramsey:
             # artificial detuning was used and it is not 0
             self.echo_analysis = RamseyAnalysis(*args, auto=auto,
                                                 extract_only=True,
-                                                options_dict=options_dict,
                                                 **kwargs)
         else:
             options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
             self.echo_analysis = T1Analysis(*args, auto=auto,
                                             extract_only=True,
-                                            options_dict=options_dict,
                                             **kwargs)
 
         if auto:
@@ -6834,11 +6833,6 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
         self.echo_analysis.plot(key_list='auto')
-
-    def save_figures(self, **kw):
-        # Overload base method to run the method in echo_analysis
-        self.echo_analysis.save_figures(
-            close_figs=self.get_param_value('close_figs', True))
 
 
 class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
