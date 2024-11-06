@@ -6713,7 +6713,6 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                                                 extract_only=True,
                                                 **kwargs)
         else:
-            options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
             self.echo_analysis = T1Analysis(*args, auto=auto,
                                             extract_only=True,
                                             **kwargs)
