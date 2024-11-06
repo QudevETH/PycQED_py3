@@ -58,7 +58,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 # 'meas_obj_sweep_points_map': self.sweep_points.get_meas_obj_sweep_points_map(
                 #     [qb.name for qb in self.meas_objs]),
                 'data_to_fit': {},  # FIXME understand why this is needed
-                'training_settings': optimizer.training_settings,
                 'optimize': self.optimize,
                 'qb_names': self.qb_names,  # FIXME needed?
             })
@@ -85,6 +84,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                     indexed_sweep=True,
                 ))
                 self.exp_metadata.update({
+                    'training_settings': optimizer.training_settings,
                     'hybrid': self.optimizer.hybrid,
                     'plot_raw_data': False,
                     'optim_param_names': self.params,
