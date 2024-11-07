@@ -60,8 +60,10 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             between two measurement runs.
         - TriggerDevice.prepend_zeros: set to 0 because no AWGs are
             programmed and therefore no zeros need to be prepended.
-        - qb.ro_fixed_lo_freq: Set to None such that RO LO can be shifted to
-            the drive frequency regime.
+        - qb.ro_fixed_lo_freq: Set to
+            `{'step': 100e6, 'min': 1e9, 'max': 8e9}` such that RO LO
+            can be shifted to the drive frequency regime even for SHF
+            acquisition devices.
         - qb.acq_length: set to default_acq_length
         - further parameters defined in qb.drive_mixer_calib_settings. These
             settings overwrite the previously mentioned parameters.
@@ -109,6 +111,9 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             try:
                 for qb_obj in self.get_qubits()[0]:
                     tmp_vals += [
+                        # Change ro_fixed_lo_freq prior to other readout
+                        # frequencies so that it is correctly applied
+                        (qb_obj.ro_fixed_lo_freq, {"step": 100e6, "min": 1e9, "max": 8e9}),
                         # read out at the drive sideband frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() - 2 *
                          qb_obj.ge_mod_freq()),
@@ -118,7 +123,6 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                          trigger_sep),
                         (qb_obj.instr_pulsar.get_instr().prepend_zeros,
                          kw.get('prepend_zeros', 0)),
-                        (qb_obj.ro_fixed_lo_freq, None),
                         (qb_obj.acq_length, default_acq_length),
                         *qb_obj._drive_mixer_calibration_tmp_vals()
                     ]
@@ -333,8 +337,10 @@ class MixerCarrier(twoqbcal.CalibBuilder):
             between two measurement runs.
         - TriggerDevice.prepend_zeros: set to 0 because no AWGs are
             programmed and therefore no zeros need to be prepended.
-        - qb.ro_fixed_lo_freq: Set to None such that RO LO can be shifted to
-            the drive frequency regime.
+        - qb.ro_fixed_lo_freq: Set to
+            `{'step': 100e6, 'min': 1e9, 'max': 8e9}` such that RO LO
+            can be shifted to the drive frequency regime even for SHF
+            acquisition devices.
         - qb.acq_length: set to default_acq_length.
         - further parameters defined in qb.drive_mixer_calib_settings. These
             settings overwrite the previously mentioned parameters.
@@ -394,6 +400,10 @@ class MixerCarrier(twoqbcal.CalibBuilder):
             try:
                 for qb_obj in self.get_qubits()[0]:
                     tmp_vals += [
+                        # Change ro_fixed_lo_freq prior to other readout
+                        # frequencies so that it is correctly applied
+                        (qb_obj.ro_fixed_lo_freq,
+                         {"step": 100e6, "min": 1e9, "max": 8e9}),
                         (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         # read out at the drive leakage frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() -
@@ -403,7 +413,6 @@ class MixerCarrier(twoqbcal.CalibBuilder):
                          trigger_sep),
                         (qb_obj.instr_pulsar.get_instr().prepend_zeros,
                          kw.get('prepend_zeros', 0)),
-                        (qb_obj.ro_fixed_lo_freq, None),
                         (qb_obj.acq_length, default_acq_length),
                         *qb_obj._drive_mixer_calibration_tmp_vals()
                     ]
