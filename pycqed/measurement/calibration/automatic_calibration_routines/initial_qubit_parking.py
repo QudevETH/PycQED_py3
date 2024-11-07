@@ -521,16 +521,31 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
     def create_routine_template(self):
         """Creates routine template."""
         super().create_routine_template()
+        step_labels = [step[1] for step in self.routine_template]
         # Loop in reverse order so that the correspondence between the index
         # of the loop and the index of the routine_template steps is preserved
         # when new steps are added
         for i, step in reversed(list(enumerate(self.routine_template))):
             self.split_step_for_parallel_groups(index=i)
-        if len(self.routine_steps) == 0:
+        # Verify that we did not drop any qubits from any steps
+        qubits_per_step = {
+            step_label: {qb.name for qb in self.qubits}
+            for step_label in step_labels
+        }
+        for step in self.routine_template:
+            qubits_per_step[step[1]] -= {qb.name for qb in step[2]['qubits']}
+        # Each step in qubits_per_step should now be an empty set
+        error_states = ()
+        for step_label in step_labels:
+            qb_set = qubits_per_step[step_label]
+            if len(qb_set) > 0:
+                error_states += (f"in {step_label}, {qb_set}",)
+        if len(error_states) > 0:
             log.warning(
-                "All routine steps have been removed by "
-                "split_step_for_parallel_groups(). Please check that these "
-                "qubits exist in one of the groups in Groups.json"
+                f"Qubits have been dropped from some routine steps: "
+                f"{'; '.join(error_states)}. "
+                "Please check that the qubits are present in the relevant "
+                "parallel groups (e.g. in Groups.json)."
             )
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
