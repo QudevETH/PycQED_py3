@@ -71,6 +71,7 @@ code_quality_slim:
 # FIXME: mypy's report is too massive right now - enable later
 #    - gitlab-cq --output gl-code-quality-report.json --merge mypy .
   artifacts:
+    when: on_success
     reports:
       codequality: gl-code-quality-report.json
     expire_in: 90 days
