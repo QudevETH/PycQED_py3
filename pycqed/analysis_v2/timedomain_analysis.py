@@ -15423,8 +15423,10 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             c = 1
         if xtransform:
             x = xtransform(x)
-        xlabel = xlabel or self.sp.get_sweep_params_property('label')
-        xunit = xunit or self.sp.get_sweep_params_property('unit')
+        xlabel = xlabel or self.sp.get_sweep_params_property(
+            'label', param_names=self.mospm[qbH_name][0])
+        xunit = xunit or self.sp.get_sweep_params_property(
+            'unit', param_names=self.mospm[qbH_name][0])
         fact = 1
         while abs(max(x)) < 1e-3:
             x *= 1e3
@@ -15442,7 +15444,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             'plotfn': self.plot_line,
             'xvals': x_resampled / fact,
             'yvals': model_func(x_resampled, **self.fit_res.best_values),
-            'xlabel': xlabel,
+            'xlabel': xlabel + ('' if xunit is None else f" ({xunit})"),
             'xunit': '',
             'ylabel': '$|2\\rangle$ state pop.',
             'yunit': '',
