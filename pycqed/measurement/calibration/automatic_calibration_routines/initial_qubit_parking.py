@@ -521,35 +521,14 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
     def create_routine_template(self):
         """Creates routine template."""
         super().create_routine_template()
+        # Cache original step labels for later error check
         step_labels = [step[1] for step in self.routine_template]
         # Loop in reverse order so that the correspondence between the index
         # of the loop and the index of the routine_template steps is preserved
         # when new steps are added
         for i, step in reversed(list(enumerate(self.routine_template))):
             self.split_step_for_parallel_groups(index=i)
-        # FIXME generalize this check for dropped qubits and apply to other
-        #       methods (nontrivial since we need self.routine_template to exist
-        #       and not every method calls self.split_steps_for_parallel_groups)
-        # Verify that we did not drop any qubits from any steps
-        qubits_per_step = {
-            step_label: {qb.name for qb in self.qubits}
-            for step_label in step_labels
-        }
-        for step in self.routine_template:
-            qubits_per_step[step[1]] -= {qb.name for qb in step[2]['qubits']}
-        # Each step in qubits_per_step should now be an empty set
-        error_states = ()
-        for step_label in step_labels:
-            qb_set = qubits_per_step[step_label]
-            if len(qb_set) > 0:
-                error_states += (f"in {step_label}, {qb_set}",)
-        if len(error_states) > 0:
-            log.warning(
-                f"Qubits have been dropped from some routine steps: "
-                f"{'; '.join(error_states)}. "
-                "Please check that the qubits are present in the relevant "
-                "parallel groups (e.g. in Groups.json)."
-            )
+        super().check_for_dropped_qubits(step_labels)
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [FeedlineSpectroscopyStep, 'feedline_spectroscopy', {}],

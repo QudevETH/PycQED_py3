@@ -137,11 +137,14 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
     def create_routine_template(self):
         """Creates routine template."""
         super().create_routine_template()
+        # Cache original step labels for later error check
+        step_labels = [step[1] for step in self.routine_template]
         # Loop in reverse order so that the correspondence between the index
         # of the loop and the index of the routine_template steps is preserved
         # when new steps are added
         for i, step in reversed(list(enumerate(self.routine_template))):
             self.split_step_for_parallel_groups(index=i)
+        super().check_for_dropped_qubits(step_labels)
 
     def post_run(self):
         """Save the results of the routine."""

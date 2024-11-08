@@ -819,6 +819,28 @@ class AutomaticCalibrationRoutine(Step):
         # making sure all subroutines update relevant parameters
         self.routine_template.update_all_step_settings({"update": True})
 
+    def check_for_dropped_qubits(self, step_labels: List[str]) -> None:
+        # Verify that we did not drop any qubits from any steps
+        qubits_per_step = {
+            step_label: {qb.name for qb in self.qubits}
+            for step_label in step_labels
+        }
+        for step in self.routine_template:
+            qubits_per_step[step[1]] -= {qb.name for qb in step[2]['qubits']}
+        # Each step in qubits_per_step should now be an empty set
+        error_states = ()
+        for step_label in step_labels:
+            qb_set = qubits_per_step[step_label]
+            if len(qb_set) > 0:
+                error_states += (f"in {step_label}, {qb_set}",)
+        if len(error_states) > 0:
+            log.warning(
+                f"Qubits have been dropped from some routine steps: "
+                f"{'; '.join(error_states)}. "
+                "Please check that the qubits are present in the relevant "
+                "parallel groups (e.g. in Groups.json)."
+            )
+
     def final_init(self, **kwargs):
         """A function to be called after the initialization of all base classes,
         since some functionality in the init of a routine needs the base
