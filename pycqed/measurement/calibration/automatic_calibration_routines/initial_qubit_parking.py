@@ -527,6 +527,9 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
         # when new steps are added
         for i, step in reversed(list(enumerate(self.routine_template))):
             self.split_step_for_parallel_groups(index=i)
+        # FIXME generalize this check for dropped qubits and apply to other
+        #       methods (nontrivial since we need self.routine_template to exist
+        #       and not every method calls self.split_steps_for_parallel_groups)
         # Verify that we did not drop any qubits from any steps
         qubits_per_step = {
             step_label: {qb.name for qb in self.qubits}
