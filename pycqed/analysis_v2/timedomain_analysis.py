@@ -991,6 +991,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         else:
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
+            # TODO Could extend to allow processing correlated states (gg, ...)
             self.proc_data_dict['projected_data_dict'] = OrderedDict()
 
             for qbn, data_dict in self.proc_data_dict[
@@ -2178,11 +2179,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.proc_data_dict['preselection_masks'] = preselection_masks
 
         # process single shots per qubit
-        for qbn, shots in shots_per_qb.items():
-            if predict_proba:
+        if predict_proba:
+            for qbn, shots in shots_per_qb.items():
                 # shots become probabilities with shape (n_shots, n_states)
                 try:
-                    shots = a_tools.predict_gm_proba_from_clf(
+                    shots_per_qb[qbn] = a_tools.predict_gm_proba_from_clf(
                         shots, classifier_params[qbn])
                 except ValueError as e:
                     log.error(f'If the following error relates to number'
@@ -2192,6 +2193,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' than in the current measurement): {e}')
                     raise e
 
+            if self.get_param_value('correlate_proba', False):
+                # Note that this could be used as well if predict_proba = False
+                # if that is meaningful
+                shots_correlated, states_map = self._correlate_single_shots(
+                    shots_per_qb, n_shots, n_seqs, states_map)
+                # FIXME this duplication is a hack, so that all the processing
+                #  and plotting based on qubit names still works
+                shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
+                # TODO This could be used to plot readout-corrected correlated
+                #  data, see the case self.rotate = False in self.process_data.
+                self.default_options['plot_proj_data'] = False
+
+        for qbn, shots in shots_per_qb.items():
             if thresholding:
                 # shots become one-hot encoded arrays with length n_states
                 # shots has shape (n_shots, n_states)
@@ -2239,6 +2253,24 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.proc_data_dict['meas_results_per_qb'][qbn]):
                     self.proc_data_dict['meas_results_per_qb'][qbn][k] = \
                         averaged_shots[i]
+
+    def _correlate_single_shots(self, shots, n_shots, n_seqs, states_map):
+        assert len(self.qb_names) == 2  # FIXME generalise
+
+        s1 = shots[self.qb_names[0]]
+        s2 = shots[self.qb_names[1]]
+        sc_dict = {}
+        for i in range(s1.shape[1]):  # shape = (flattened sweep dims, states)
+            for j in range(s2.shape[1]):
+                s_ij = s1[:, i] * s2[:, j]
+                sc_dict[states_map[i] + states_map[j]] = s_ij
+        states_map_corr = {i: k for i, k in enumerate(sc_dict)}  # {0: 'gg'...}
+        # For compatibility with further processing in process_single_shots
+        shots_corr = np.array(list(sc_dict.values()))
+        # shape = (corr_states, flattened sweep dims)
+        shots_corr = shots_corr.T
+        # shape = (flattened sweep dims, corr_states)
+        return shots_corr, states_map_corr
 
     def prepare_plots(self):
         """
