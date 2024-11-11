@@ -14747,7 +14747,6 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.task_list = self.get_param_value('task_list')
-        self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
 
     def get_qubit_objects_from_names(self, qb_names):
         # as soon as any instrument setting of a qubit is accessed,
