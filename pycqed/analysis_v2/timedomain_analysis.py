@@ -997,8 +997,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'meas_results_per_qb'].items():
                 self.proc_data_dict['projected_data_dict'][qbn] = OrderedDict()
                 for state_prob in ['pg', 'pe', 'pf']:
+                    # Transpose: see FIXME of self.proc_data_dict
                     self.proc_data_dict['projected_data_dict'][qbn].update(
-                        {state_prob: data for key, data in data_dict.items()
+                        {state_prob: data.T for key, data in data_dict.items()
                          if state_prob in key})
 
             # correct probabilities given calibration matrix
@@ -1035,6 +1036,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qbn, prob_data in self.proc_data_dict[
                 'projected_data_dict' + suffix].items():
             if len(prob_data) and qbn in self.data_to_fit:
+                # In the case predict_proba = True,
+                # rotate = False and self.data_to_fit[qbn] is therefore empty
+                if not self.data_to_fit[qbn]:
+                    continue
                 self.proc_data_dict['data_to_fit'][qbn] = prob_data[
                     self.data_to_fit[qbn]]
 
