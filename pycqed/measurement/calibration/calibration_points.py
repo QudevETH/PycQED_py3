@@ -199,11 +199,26 @@ class CalibrationPoints:
 
     @staticmethod
     def multi_qubit(qb_names, states, n_per_state=2, all_combinations=False):
+        """
+        Creates calibration points for multiple qubits. See docstring of
+        MultiTaskingExperiment.create_cal_points() for details.
+        """
         n_qubits = len(qb_names)
         if n_qubits == 0:
             return CalibrationPoints(qb_names, [])
 
-        if all_combinations:
+        if np.ndim(states) == 2:  # handle custom list of cal_states
+            # check if cal_states list has as many states as meas_objs
+            if len(qb_names) != len(states[0]):
+                raise ValueError(
+                    f"{len(qb_names)} measurement objects were "
+                    f" given but custom states were specified for "
+                    f"{len(states[0])} measurement objects (qubits).")
+            if all_combinations:
+                log.warning(f"Provided custom cal_states, thus ignoring "
+                            f"all_states_combinations=True.")
+            labels = states
+        elif all_combinations:
             labels_array = np.tile(
                 list(itertools.product(states, repeat=n_qubits)), n_per_state)
             labels = [tuple(seg_label)

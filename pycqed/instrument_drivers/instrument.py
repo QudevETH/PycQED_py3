@@ -72,12 +72,24 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
             return ins
 
 
+# FIXME: Is this class really needed?
 class InstrumentModule(QcodesInstrumentModule):
+    """
+    Custom extension of QcodesInstrumentModule for ResetScheme.
+
+    See QCoDeS docs & reset_schemes.py for more details.
+    """
+
     def get_idn(self):
+        """Get the Instrument Module's ID and Name.
+
+        See QCoDeS docs for more details.
+
+        Returns:
+            dict: A dictionary with two keys: 'driver' and 'name'.
+                The values are the name of the driver and the name of the instrument (set during initialization).
         """
-        Required as a standard interface for QCoDeS instrument modules.
-        """
-        return {'driver': str(self.__class__), 'name': self.name}
+        return {'driver': self.__class__.__name__, 'name': self.name}
 
 
 class DummyVisaHandle:

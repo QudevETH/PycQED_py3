@@ -3809,6 +3809,13 @@
     "Type": "Double",
     "Unit": "None"
   },
+  "sgchannels/0/output/delay": {
+    "Node": "SGCHANNELS/0/OUTPUT/DELAY",
+    "Description": "This value adds a delay to both the signal and trigger/marker outputs.",
+    "Properties": "Read, Write, Setting",
+    "Type": "Double",
+    "Unit": "s"
+  },
   "sgchannels/0/sines/0/i/enable": {
     "Node": "SGCHANNELS/0/SINES/0/I/ENABLE",
     "Description": "[empty]",
@@ -4063,6 +4070,13 @@
     "Properties": "Read, Write, Setting",
     "Type": "Double",
     "Unit": "None"
+  },
+  "sgchannels/1/output/delay": {
+    "Node": "SGCHANNELS/1/OUTPUT/DELAY",
+    "Description": "This value adds a delay to both the signal and trigger/marker outputs.",
+    "Properties": "Read, Write, Setting",
+    "Type": "Double",
+    "Unit": "s"
   },
   "sgchannels/1/sines/0/i/enable": {
     "Node": "SGCHANNELS/1/SINES/0/I/ENABLE",
@@ -4319,6 +4333,13 @@
     "Type": "Double",
     "Unit": "None"
   },
+  "sgchannels/2/output/delay": {
+    "Node": "SGCHANNELS/2/OUTPUT/DELAY",
+    "Description": "This value adds a delay to both the signal and trigger/marker outputs.",
+    "Properties": "Read, Write, Setting",
+    "Type": "Double",
+    "Unit": "s"
+  },
   "sgchannels/2/sines/0/i/enable": {
     "Node": "SGCHANNELS/2/SINES/0/I/ENABLE",
     "Description": "[empty]",
@@ -4573,6 +4594,13 @@
     "Properties": "Read, Write, Setting",
     "Type": "Double",
     "Unit": "None"
+  },
+  "sgchannels/3/output/delay": {
+    "Node": "SGCHANNELS/3/OUTPUT/DELAY",
+    "Description": "This value adds a delay to both the signal and trigger/marker outputs.",
+    "Properties": "Read, Write, Setting",
+    "Type": "Double",
+    "Unit": "s"
   },
   "sgchannels/3/sines/0/i/enable": {
     "Node": "SGCHANNELS/3/SINES/0/I/ENABLE",
@@ -4829,6 +4857,13 @@
     "Type": "Double",
     "Unit": "None"
   },
+  "sgchannels/4/output/delay": {
+    "Node": "SGCHANNELS/4/OUTPUT/DELAY",
+    "Description": "This value adds a delay to both the signal and trigger/marker outputs.",
+    "Properties": "Read, Write, Setting",
+    "Type": "Double",
+    "Unit": "s"
+  },
   "sgchannels/4/sines/0/i/enable": {
     "Node": "SGCHANNELS/4/SINES/0/I/ENABLE",
     "Description": "[empty]",
@@ -5083,6 +5118,13 @@
     "Properties": "Read, Write, Setting",
     "Type": "Double",
     "Unit": "None"
+  },
+  "sgchannels/5/output/delay": {
+    "Node": "SGCHANNELS/5/OUTPUT/DELAY",
+    "Description": "This value adds a delay to both the signal and trigger/marker outputs.",
+    "Properties": "Read, Write, Setting",
+    "Type": "Double",
+    "Unit": "s"
   },
   "sgchannels/5/sines/0/i/enable": {
     "Node": "SGCHANNELS/5/SINES/0/I/ENABLE",

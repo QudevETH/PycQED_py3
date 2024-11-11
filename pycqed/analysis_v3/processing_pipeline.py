@@ -631,7 +631,7 @@ class ProcessingPipeline(list):
                             for keyo in keys_out_temp]
         return keys_out
 
-    def run(self, data_dict=None, **params):
+    def run(self, data_dict=None, overwrite_data_dict=False, **params):
         """
         Calls all the functions specified by node_name keys of each node in self
 
@@ -645,11 +645,16 @@ class ProcessingPipeline(list):
         'keys_out' in the the **node_params of each node.
 
         :param data_dict: dictionary where to store the processed results
+        :overwrite_data_dict: force to overwrite existing data_dict. Defaults
+            to False.
         :param params: keyword arguments
         """
         if data_dict is None:
             data_dict = {}
-        self.data_dict.update(data_dict)
+        if overwrite_data_dict:
+            self.data_dict = data_dict
+        else:
+            self.data_dict.update(data_dict)
         self.data_dict['processing_pipeline'] = repr(self)
 
         try:

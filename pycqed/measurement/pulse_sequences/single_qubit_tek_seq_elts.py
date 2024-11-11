@@ -66,18 +66,36 @@ def pulse_list_list_seq(pulse_list_list, name='pulse_list_list_sequence',
 
 def add_preparation_pulses(pulse_list, operation_dict, qb_names,
                            reset_params=None):
-    from pycqed.measurement.waveform_control import circuit_builder as cb_mod
-    from pycqed.instrument_drivers.instrument import Instrument
-    # evil breaking of abstraction layers: But used only as a hack for
+    """
+    Adds preparation pulses to the initialization sequence of a quantum circuit.
+
+    Args:
+        `pulse_list`: A list of dictionaries representing the preparation
+        pulses, with keys "time" and "operation".
+        `operation_dict`: A dictionary mapping qubit names to operation libraries.
+        `qb_names`: A list of qubit names.
+        `reset_params` (optional): A dictionary specifying reset parameters for
+        the qubits.
+
+    Returns:
+        A list of dictionaries representing the initialization sequence of
+        pulses, including preparation pulses and the initializaton sequence.
+    """
+    # FIXME: evil breaking of abstraction layers: But used only as a hack for
     # functions which are not yet refactored to use the CircuitBuilder
     # and QuantumExperiment framework
+    from pycqed.measurement.waveform_control import circuit_builder as cb_mod
+    from pycqed.instrument_drivers.instrument import Instrument
+
     try:
         qubits = [Instrument.find_instrument(qbn) for qbn in qb_names]
     except Exception:
         # in that scenario, CircuitBuilder will not be able to add a reset block
         qubits = qb_names
+
     cb = cb_mod.CircuitBuilder(qubits=qubits, operation_dict=operation_dict,
                                reset_params=reset_params)
+
     init_pulses = cb.initialize().build()
     init_pulses[0]['ref_pulse'] = 'init_start'
     return init_pulses + pulse_list

@@ -10,6 +10,8 @@ class Sweep_function(object):
     sweep_functions class for MeasurementControl(Instrument)
     '''
 
+    supports_batch_mode = False
+
     def __init__(self, **kw):
         self.set_kw(**kw)
 
@@ -58,6 +60,13 @@ class Sweep_function(object):
                 upload and was configured successfully.
         """
         return False
+
+    def get_nr_parameters(self):
+        """
+        Returns:
+            int: Number of parameters set by this sweep_function
+        """
+        return 1
 
 
 class UploadingSweepFunction(Sweep_function):
@@ -131,7 +140,7 @@ class UploadingSweepFunction(Sweep_function):
                 self.upload_finished_callback()
 
     def configure_upload(self, upload=True, upload_first=True,
-                        start_pulsar=True):
+                         start_pulsar=True):
         """Overwrites parent method
         :meth:`~pycqed.measurement.sweep_function.Sweep_function.configure_upload`
         and sets the correspoding attributes.
@@ -403,7 +412,7 @@ class multi_sweep_function(Soft_Sweep):
             sweep_function.prepare(**kw)
 
     def configure_upload(self, upload=True, upload_first=True,
-                        start_pulsar=True):
+                         start_pulsar=True):
         for sweep_function in self.sweep_functions:
             if sweep_function.configure_upload(upload, upload_first,
                                                start_pulsar):
@@ -684,3 +693,21 @@ class SpectroscopyHardSweep(UploadingSweepFunction, Hard_Sweep):
 
     def set_parameter(self, value):
         pass  # Set in the Segment, see docstring
+
+
+class AcquisitionLengthSweep(Soft_Sweep):
+    """A soft sweep function for sweeping the acquisition length.
+
+    Args:
+        get_detector_function: callback function that returns the detector
+            function
+        **kw: keyword arguments for the init of Soft_Sweep (except for the
+            argument parameter_name, which is fixed to 'acq_length', and the
+            unit, which is fixed to 's')
+    """
+    def __init__(self, get_detector_function, **kw):
+        super().__init__(parameter_name='acq_length', unit='s', **kw)
+        self.get_detector_function = get_detector_function
+
+    def set_parameter(self, value):
+        self.get_detector_function().set_acq_length(value)

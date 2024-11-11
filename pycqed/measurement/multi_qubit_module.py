@@ -333,11 +333,17 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
     elif df_name == 'inp_avg_det':
         return det.MultiPollDetector([
             det.AveragingPollDetector(
-                acq_dev=uhf_instances[uhf], AWG=AWG, nr_averages=nr_averages,
+                acq_dev=uhf_instances[uhf],
+                AWG=(AWG if enforce_pulsar_restart
+                     else uhf_instances[uhf].get_awg_control_object()[0]),
+                prepare_and_finish_pulsar=(not enforce_pulsar_restart),
+                nr_averages=nr_averages,
                 acquisition_length=max_int_len[uhf],
                 channels=inp_channels[uhf],
                 **kw)
-            for uhf in uhfs])
+            for uhf in uhfs],
+            AWG=(trigger_dev if len(uhfs) > 1 and not enforce_pulsar_restart
+                 else None))
     elif df_name == 'int_corr_det':
         return det.MultiPollDetector([
             det.UHFQC_correlation_detector(
@@ -515,7 +521,7 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
     operation_dict = dev.get_operation_dict(qubits=qubits)
 
     if preselection:
-        log.warning("Using `preselection` keyword agrument is deprecated and"
+        log.warning("Using `preselection` keyword argument is deprecated and"
                     " will be removed in a future MR. Please use `reset_params"
                     "='preselection'` instead.")
         reset_params = "preselection"
@@ -579,18 +585,18 @@ def measure_ssro(dev, qubits, states=('g', 'e'), n_shots=10000, label=None,
         a = tda.MultiQutrit_Singleshot_Readout_Analysis(**analysis_kwargs)
         for qb in qubits:
             classifier_params = a.proc_data_dict[
-                'analysis_params']['classifier_params'][qb.name]
+                'analysis_params']['classifier_params'][qb.name][0]
             if update:
                 qb.acq_classifier_params().update(classifier_params)
                 if 'state_prob_mtx_masked' in a.proc_data_dict[
                         'analysis_params']:
                     qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
-                        'state_prob_mtx_masked'][qb.name])
+                        'state_prob_mtx_masked'][qb.name][0])
                 else:
                     log.warning('Measurement was not run with preselection. '
                                 'state_prob_matx updated with non-masked one.')
                     qb.acq_state_prob_mtx(a.proc_data_dict['analysis_params'][
-                        'state_prob_mtx'][qb.name])
+                        'state_prob_mtx'][qb.name][0])
         return a
 
 
@@ -711,39 +717,30 @@ def find_optimal_weights(dev, qubits, states=('g', 'e'), upload=True,
                 seq = sequence.Sequence("timetrace",
                                         cp.create_segments(operation_dict,
                                                            reset_params=reset_params))
+                # FIXME: understand limitations of scope mode
+                #        (e.g. segmenting) more fully
+                # For the moment, warn users when they have multiple
+                # acquisitions configured (e.g. due to pre-selection)
+                # for this measurement since it relies on the ZI UHF/SHF
+                # scope mode where no state information is available.
+                if seq.n_acq_elements() > 1:
+                    raise ValueError(
+                        f"The sequence has {seq.n_acq_elements()} "
+                        "readouts but only one is supported by scope "
+                        "mode. Check whether you have disabled readout-"
+                        "based reset for this measurement (e.g. in a "
+                        "temporary value)."
+                    )
                 # set sweep function and run measurement
-                if len(set(qb.instr_acq() for qb in qubits)) == 1:
-                    # No synchronization between AWGs is needed if only a single
-                    # acq device is used. We will keep other AWGs free running
-                    # and only start the acq device for repetitions or averages
-                    # of the timetrace measurement.
-                    single_acq_dev = qubits[0].instr_acq.get_instr()
-                    # FIXME: use df.prepare_and_finish_pulsar instead
-                    MC.set_sweep_function(awg_swf.SegmentHardSweep(
-                        sequence=seq, upload=upload, start_pulsar=True,
-                        start_exclude_awgs=[single_acq_dev.name]))
-                else:
-                    single_acq_dev = None
-                    MC.set_sweep_function(awg_swf.SegmentHardSweep(
-                        sequence=seq, upload=upload))
-
+                MC.set_sweep_function(awg_swf.SegmentHardSweep(
+                    sequence=seq, upload=upload))
                 MC.set_sweep_points(sweep_points)
                 if df_kwargs is None:
                     df_kwargs = {}
                 df = get_multiplexed_readout_detector_functions(
                     'inp_avg_det', qubits, **df_kwargs)
-                if single_acq_dev is not None:
-                    df.AWG = single_acq_dev
                 MC.set_detector_function(df)
-                try:
-                    MC.run(name=name, exp_metadata=exp_metadata)
-                finally:
-                    try:
-                        if single_acq_dev is not None:
-                            # FIXME: use df.prepare_and_finish_pulsar instead
-                            ps.Pulsar.get_instance().stop()
-                    except Exception:
-                        pass
+                MC.run(name=name, exp_metadata=exp_metadata)
 
     if analyze:
         tps = [a_tools.latest_data(

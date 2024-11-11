@@ -27,13 +27,10 @@ from pycqed.instrument_drivers.mock_qcodes_interface import Parameter, \
 
 log = logging.getLogger(__name__)
 
-try:
-    import qutip
-    qutip_imported = True
-except Exception:
+import pycqed.utilities.qutip_compat as qtp
+if not qtp.is_imported:
     log.warning('qutip was not imported. qutip objects will be stored as '
                 'strings.')
-    qutip_imported = False
 
 
 class Data(h5py.File):
@@ -97,6 +94,9 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
     for key, item in data_dict.items():
         if isinstance(key, tuple):
             key = str(key)
+        # hdf5 does not allow int as a group name
+        if isinstance(key, int):
+            key = f"dict_idx_{key}"
 
         # Basic types
         if isinstance(item, (str, float, int, bool, np.number,
@@ -110,8 +110,8 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                 log.error('Exception occurred while writing'
                       ' {}:{} of type {}'.format(key, item, type(item)))
         elif isinstance(item, np.ndarray) or (
-                qutip_imported and isinstance(item, qutip.qobj.Qobj)):
-            if qutip_imported and isinstance(item, qutip.qobj.Qobj):
+                qtp.is_imported and isinstance(item, qtp.qobj.Qobj)):
+            if qtp.is_imported and isinstance(item, qtp.qobj.Qobj):
                 item = item.full()
             try:
                 entry_point.create_dataset(key, data=item)
@@ -440,6 +440,15 @@ class HDF5Loader(Loader):
 
                             inst = Instrument(inst_path[-1])
                             inst.add_parameter(param)
+                            # Load class name. This only needs to be done
+                            # manually because the instrument is loaded only
+                            # partially here, and not via load_instrument.
+                            try:
+                                inst.add_classname(read_attribute_from_hdf5(
+                                    '.'.join(inst_path) + '.__class__',
+                                    config_file))
+                            except ParameterNotFoundError:
+                                pass  # do not set a class name
                     except ParameterNotFoundError:
                         try:
                             # Parameter is in fact an instrument, entire
@@ -451,7 +460,7 @@ class HDF5Loader(Loader):
                             # path to the instrument
                             inst_path = path_to_param.split('.')
 
-                        except ParameterNotFoundError:
+                        except KeyError:
                             # Exception is not raised here to not break the
                             # flow of loading the station. It is raised when
                             # user tries to get access to the parameter

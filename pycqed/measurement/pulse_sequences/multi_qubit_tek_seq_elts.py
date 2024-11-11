@@ -279,7 +279,8 @@ def ramsey_add_pulse_seq_active_reset(
     seq = pulse_list_list_seq(swept_pulses_with_prep, seq_name, upload=False)
 
     # add calibration segments
-    seq.extend(cal_points.create_segments(operation_dict, **reset_params))
+    seq.extend(cal_points.create_segments(operation_dict,
+                                          reset_params=reset_params))
 
     # reuse sequencer memory by repeating readout pattern
     seq.repeat_ro(f"RO {measured_qubit_name}", operation_dict)

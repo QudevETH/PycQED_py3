@@ -1,5 +1,5 @@
 """
-File containing the BaseDataAnalyis class.
+File containing the BaseDataAnalysis class.
 """
 from inspect import signature
 import os
@@ -9,10 +9,13 @@ import copy
 from collections import OrderedDict
 from inspect import signature
 import numbers
+from matplotlib.axes import Axes
 from matplotlib import pyplot as plt
 import matplotlib as mpl
+from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D
 from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.analysis_v2 import analysis_daemon
 from pycqed.instrument_drivers.mock_qcodes_interface import \
     ParameterNotFoundError
 from pycqed.utilities.general import (NumpyJsonEncoder, raise_warning_image,
@@ -23,6 +26,7 @@ from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
     flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from typing import Tuple, Union, Optional
 import datetime
 import json
 import lmfit
@@ -122,6 +126,7 @@ class BaseDataAnalysis(object):
                                 should be loaded. Note: data_file_path has
                                 priority, i.e. if this argument is given time
                                 stamps are ignored.
+                                FIXME: `data_file_path` not used anymore
         :param close_figs: Close the figure (do not display)
         :param options_dict: available options are:
                                 -'presentation_mode'
@@ -290,9 +295,6 @@ class BaseDataAnalysis(object):
                         # make the plots
                         self.plot(key_list='auto')
 
-                if self.options_dict.get('save_figs', False):
-                    self.save_figures(close_figs=self.options_dict.get(
-                        'close_figs', False))
             self._raise_warning()
         except Exception as e:
             if self.raise_exceptions:
@@ -408,7 +410,7 @@ class BaseDataAnalysis(object):
         if a_tools.ignore_delegate_plotting:
             return False
         if self.get_param_value("delegate_plotting", False):
-            if len(self.timestamps) == 1:
+            if isinstance(self.raw_data_dict, dict):
                 f = self.raw_data_dict['folder']
             else:
                 f = self.raw_data_dict[0]['folder']
@@ -422,6 +424,65 @@ class BaseDataAnalysis(object):
 
         with open(filepath, "w") as f:
             f.write(job)
+
+    @staticmethod
+    def get_analysis_object_from_hdf5_file_path(data_file_path: str):
+        """Reconstructs `BaseDataAnalysis` object from HDF5 file.
+
+        Checks the HDF5 file for `BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF`
+        value under 'Analysis' group and if it exists, gets analysis object
+        from the value.
+        FIXME. Can't have return types for static methods that return class
+         instances in Python <= 3.9. Both Optional[BaseDataAnalysis] and
+         Optional[Self] are invalid. Fix when Python >= 3.10 syntax becomes
+         standard (we stop being backwards compatible with 3.9). Use
+         BaseDataAnalysis.
+
+        Args:
+            data_file_path: string path to an HDF5 file.
+
+        Raises:
+            LookupError: when the file does not contain
+                `BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF` value under
+                'Analysis'.
+
+        Returns:
+            Optional[BaseDataAnalysis]: analysis object reconstructed from
+                the job string saved in the HDF5 file or None.
+        """
+        with h5py.File(data_file_path, 'r') as data_file:
+            try:
+                job = hdf5_io.read_from_hdf5(
+                    BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF,
+                    data_file['Analysis']
+                )
+            except Exception as exception:
+                raise LookupError(
+                    f"File '{data_file_path}' contains no "
+                    f"{BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF}"
+                    f"in 'Analysis' group"
+                )
+
+        # FIXME: we should think about how to rewrite this in the future
+        #  in a way that avoids or reduces string processing. E.g., we
+        #  could have an initial string processing to convert all arguments
+        #  into a dictionary and then perform the modifications there
+        #  instead of by string replacements. Alternatively, one could also
+        #  think about a different way of saving jobs which would save the
+        #  arguments that are replaced here more explicit (not as a single
+        #  string) thus letting us avoid string manipulation all together.
+
+        # Replace some analysis object parameters in job string to speed the
+        # job up. We can change the parameters since the purpose of this
+        # function is only to get the analysis object and not to actually
+        # perform the saved job to full extent. Assuming the job is saved with
+        # "extract_only=False", "'save_figs': True" and "'close_figs': True",
+        # changing them speeds up the process significantly.
+        job = job.replace("extract_only=False", "extract_only=True")
+        job = job.replace("'save_figs': True", "'save_figs': False")
+        job = job.replace("'close_figs': True", "'close_figs': False")
+
+        return analysis_daemon.AnalysisDaemon.execute_job(job)
 
     def _get_param_value(self, param_name, default_value=None, metadata_index=0):
         log.warning('Deprecation warning: please use new function '
@@ -476,28 +537,29 @@ class BaseDataAnalysis(object):
     def get_reset_params(self, qbn=None, default_value=None):
         """Retrieves the reset parameters for the analysis.
 
-        This method retrieves the reset parameters to be used for the analysis. It
-        first checks if the legacy way of specifying reset parameters is used by
-        checking the value of 'preparation_params' and 'reset_params' attributes.
-        If 'reset_params' is not specified while 'preparation_params' is present,
-        a warning is logged indicating the deprecation of using 'preparation_params'
-        and suggests using 'reset_params' instead. The method assumes that the
-        provided 'preparation_params' are in the adequate format (legacy format)
-        for the analysis and returns 'preparation_params' in this case.
+        It first checks if the legacy way of specifying reset parameters is used
+        by checking the value of 'preparation_params' and 'reset_params'
+        attributes:
 
-        If 'reset_params' is provided, the method calls the
-        'translate_reset_to_prep_params' method to translate the reset parameters
-        to preparation parameters required by the analysis framework.
+        - If 'reset_params' is not specified while 'preparation_params' is
+        present, a warning is logged indicating the deprecation of using
+        'preparation_params' and suggests using 'reset_params' instead. The
+        method assumes that the provided 'preparation_params' are in the
+        adequate format (legacy format) for the analysis and returns
+        'preparation_params' in this case.  
+        - If 'reset_params' is provided, the method calls the
+        'translate_reset_to_prep_params' method to translate the reset
+        parameters to preparation parameters required by the analysis framework.
 
         Args:
             qbn (Optional[str]): Qubit name of which the reset parameters
-            should be extracted. In the new framework, each qubit
-             can have its own type of reset and thus the
-             returned analysis instructions can depend on the qubit.
-             In the old framework, there is only one global set of preparation
-             parameters. `qbn` indicates the reset parameters of which are used
-             as global preparation parameters for the legacy analysis code.
-             Defaults to the first qubit listed in reset_params['analysis_instructions'].
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
             default_value (Optional): Default value to be returned if the reset
                 parameters do not match any known patterns. Defaults to None.
 
@@ -534,13 +596,13 @@ class BaseDataAnalysis(object):
         Args:
             reset_params (str or dict): The reset parameters to be translated.
             qbn (Optional[str]): Qubit name of which the reset parameters
-            should be extracted. In the new framework, each qubit
-             can have its own type of reset and thus the
-             returned analysis instructions can depend on the qubit.
-             In the old framework, there is only one global set of preparation
-             parameters. `qbn` indicates the reset parameters of which are used
-             as global preparation parameters for the legacy analysis code.
-             Defaults to the first qubit listed in reset_params['analysis_instructions'].
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
             default_value (Optional): Default value to be returned if the reset
                 parameters do not match any known patterns. Defaults to None.
 
@@ -583,7 +645,6 @@ class BaseDataAnalysis(object):
         # in most QE based measurements the stored reset params is a dict which
         # stores instructions for the analysis.
         elif isinstance(reset_params, dict):
-            print(reset_params)
             if "analysis_instructions" not in reset_params:
                 log.warning(f'Reset params dictionary does not contain '
                             f'"analysis_instructions": {reset_params}.'
@@ -592,11 +653,18 @@ class BaseDataAnalysis(object):
                 return dict(preparation_type="wait")
             else:
                 if qbn is None:
-                    qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    if reset_params['analysis_instructions']:
+                        qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    else:
+                        log.warning('reset_params[analysis_instructions] is empty.\n'
+                                    'Likely the reset used does not require any '
+                                    ' special instructions for data analysis.')
+                        return dict(preparation_type="wait")
                 if len(reset_params['analysis_instructions'][qbn]) == 0:
                     # empty list, i.e. no reset steps
                     return dict(preparation_type="wait")
                 elif len(reset_params['analysis_instructions'][qbn]) > 1:
+                # FIXME: Implement the support of multiple steps / analysis_instructions
                     log.warning(f'Reset params dictionary contains several'
                                 f' steps: {reset_params["steps"]}, '
                                 f'currently the analysis will consider'
@@ -753,6 +821,21 @@ class BaseDataAnalysis(object):
             raw_data_dict = raw_data_dict[0]
         return raw_data_dict
 
+    def _extract_param_from_det(self, param, default=None):
+        det_metadata = self.metadata.get("Detector Metadata", None)
+        val = None
+        if det_metadata is not None:
+            # multi detector function: look for child "detectors"
+            # assumes at least 1 child and that all children have the same
+            # number of averages
+            val = det_metadata.get(param, None)
+            if val is None:
+                det = list(det_metadata.get('detectors', {}).values())[0]
+                val = det.get(param, None)
+        if val is None:
+            val = default
+        return val
+
     @staticmethod
     def add_measured_data(raw_data_dict, compression_factor=1,
                           sweep_points=None, cal_points=None,
@@ -842,6 +925,7 @@ class BaseDataAnalysis(object):
                         prep_params = dict()
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
+                    reset_reps = 0
                     if 'active' in prep_params.get('preparation_type', 'wait'):
                         reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
@@ -867,7 +951,7 @@ class BaseDataAnalysis(object):
                         idx_dict_1 = next(iter(cal_points.get_indices(
                             cal_points.qb_names, prep_params).values()))
                         num_cal_segments = len([i for j in idx_dict_1.values()
-                                                for i in j])
+                                                for i in j]) * (reset_reps + 1)
                         # take out CalibrationPoints from the end of each
                         # segment, and reshape the remaining data based on the
                         # hard (1st dimension) and soft (1st dimension)
@@ -1013,8 +1097,7 @@ class BaseDataAnalysis(object):
 
     def save_figures(self, savedir: str = None, savebase: str = None,
                      tag_tstamp: bool = True, dpi: int = 300,
-                     fmt: str = 'png', key_list: list = 'auto',
-                     close_figs: bool = True):
+                     fmt: str = 'png', key_list: list = 'auto'):
 
         if savedir is None:
             if isinstance(self.raw_data_dict, tuple):
@@ -1038,6 +1121,7 @@ class BaseDataAnalysis(object):
 
         if key_list == 'auto' or key_list is None:
             key_list = self.figs.keys()
+        key_list = [k for k in key_list if k in self.figs]
 
         try:
             os.mkdir(savedir)
@@ -1048,18 +1132,12 @@ class BaseDataAnalysis(object):
             print('Saving figures to %s' % savedir)
 
         for key in key_list:
+            savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
+            self.figs[key].savefig(savename, bbox_inches='tight',
+                                   format=fmt, dpi=dpi)
             if self.presentation_mode:
-                savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.' + fmt)
-                self.figs[key].savefig(savename, bbox_inches='tight',
-                                       format=fmt, dpi=dpi)
                 savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.svg')
                 self.figs[key].savefig(savename, bbox_inches='tight', format='svg')
-            else:
-                savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
-                self.figs[key].savefig(savename, bbox_inches='tight',
-                                       format=fmt, dpi=dpi)
-        if close_figs:
-            self.close_figs(key_list)
 
     def close_figs(self, key_list='auto'):
         """Closes specified figures.
@@ -1073,6 +1151,7 @@ class BaseDataAnalysis(object):
         """
         if key_list == 'auto' or key_list is None:
             key_list = self.figs.keys()
+        key_list = [k for k in key_list if k in self.figs]
         axes_to_pop = []
         for key in list(key_list):
             axes_to_pop.extend(self.figs[key].axes)
@@ -1191,6 +1270,8 @@ class BaseDataAnalysis(object):
                 # because we have observed recent lmfit versions showing a
                 # warning when passing this parameter.
                 fit_kwargs['steps'] = fit_dict['steps']
+            if 'max_nfev' in fit_dict:
+                fit_kwargs['max_nfev'] = fit_dict['max_nfev']
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -1366,26 +1447,97 @@ class BaseDataAnalysis(object):
         return dic
 
     def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
-             transparent_background=None, no_label=False):
-        """
-        Plot figures defined in self.plot_dict.
-        Args.
-            key_list (list): list of keys in self.plot_dicts
-            axs_dict (dict): will be used to define self.axs
-            presentation_mode (bool): whether to prepare for presentation
-            no_label (bool): whether figure should have a label
-        """
-        self._prepare_for_plot(key_list, axs_dict, no_label)
-        if presentation_mode is None:
-            presentation_mode = self.presentation_mode
-        if transparent_background is None:
-            transparent_background = self.transparent_background
-        if presentation_mode:
-            self.plot_for_presentation(self.key_list, transparent_background)
-        else:
-            self._plot(self.key_list, transparent_background)
+             transparent_background=None, no_label=False, fig_id=None):
+        """Plot figures defined in self.plot_dict.
 
-    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
+        Args.
+            key_list (list): list of keys in self.plot_dicts.
+            axs_dict (dict): will be used to define self.axs.
+            presentation_mode (bool): whether to prepare for presentation.
+            transparent_background (bool): if true, figures will have
+                transparent background.
+            no_label (bool): whether figure should have a label.
+            fig_id (str): figure id from `self.plot_dicts`. If passed only
+                specified figure will be plotted.
+        """
+
+        key_list = self._get_key_list(key_list)
+        self._generate_fig_ids()
+        # Select entries corresponding to key_list, i.e., to be plotted
+        plot_dicts = {k: p for k, p in self.plot_dicts.items()
+                      if k in key_list}
+
+        # p['fig_id'] always exists after _generate_fig_ids
+        unique_fig_names = set(p['fig_id'] for k, p in plot_dicts.items())
+        # Create and close each figure successively, such that only one figure
+        # is open in memory at a time
+        for unique_fig_name in unique_fig_names:
+            fig_key_list = [k for k, p in plot_dicts.items()
+                            if p['fig_id'] == unique_fig_name]
+            self._prepare_for_plot(fig_key_list, axs_dict, no_label,
+                                   presentation_mode)
+            self._plot(fig_key_list, transparent_background, fig_id=fig_id)
+            if self.options_dict['save_figs']:
+                self.save_figures(key_list=[unique_fig_name])
+            if self.options_dict['close_figs']:
+                self.close_figs(key_list=[unique_fig_name])
+
+    def plot_for_gui(self, fig_id: str) -> Tuple[Figure, Union[Axes, np.array]]:
+        """Prepares and creates a plot for GUI and returns one figure and axes.
+
+        Args:
+            fig_id: figure id from `self.plot_dicts` to be plotted.
+
+        Raises:
+            ValueError: when axs with fig_id does not have a `Figure` object.
+
+        Returns:
+            tuple: with `Figure` and either `Axes` or `np.array` with
+                multiple `Axes`.
+        """
+        key_list = self._get_key_list()
+        self._generate_fig_ids()
+        # FIXME calling this for fig_id only might be faster, as in plot().
+        #  Kept as it is for now as this is only relevant to the gui.
+        self._prepare_for_plot(key_list=key_list)
+        self._plot(key_list=key_list, fig_id=fig_id)
+
+        figure = None
+        if isinstance(self.axs[fig_id], Axes):
+            figure = self.axs[fig_id].get_figure()
+        elif isinstance(self.axs[fig_id], np.ndarray):
+            for axis in self.axs[fig_id]:
+                figure = axis.get_figure()
+                break
+
+        if not isinstance(figure, Figure):
+            raise ValueError(f"Could not find figure with id: {fig_id}")
+
+        return figure, self.axs[fig_id]
+
+    def _get_key_list(self, key_list='auto'):
+        if key_list == 'auto':
+            key_list = self.auto_keys
+        if key_list is None:
+            key_list = self.plot_dicts.keys()
+        if type(key_list) is str:
+            key_list = [key_list]
+        return key_list
+
+    def _generate_fig_ids(self):
+        """Ensure that each dict in plot_dicts has a key fig_id"""
+        for key in self.plot_dicts:
+            pdict = self.plot_dicts[key]
+            # Use the key of the plot_dict if no ax_id is specified
+            pdict['fig_id'] = pdict.get('fig_id', key)
+            pdict['ax_id'] = pdict.get('ax_id', None)
+
+            if isinstance(pdict['ax_id'], str):
+                pdict['fig_id'] = pdict['ax_id']
+                pdict['ax_id'] = None
+
+    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False,
+                          presentation_mode=None):
         """
         Goes over the entries in self.plot_dict specified by key_list, and
         prepares them for plotting. If key_list is None, the keys of
@@ -1395,42 +1547,31 @@ class BaseDataAnalysis(object):
             key_list (list): list of keys in self.plot_dicts
             axs_dict (dict): will be used to define self.axs
             no_label (bool): whether figure should have a label
+            presentation_mode (bool): whether to prepare for presentation
         """
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
-        if key_list == 'auto':
-            key_list = self.auto_keys
-        if key_list is None:
-            key_list = self.plot_dicts.keys()
-        if type(key_list) is str:
-            key_list = [key_list]
-        self.key_list = key_list
 
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
             if 'no_label' not in pdict:
                 pdict['no_label'] = no_label
-            # Use the key of the plot_dict if no ax_id is specified
-            pdict['fig_id'] = pdict.get('fig_id', key)
-            pdict['ax_id'] = pdict.get('ax_id', None)
 
-            if isinstance(pdict['ax_id'], str):
-                pdict['fig_id'] = pdict['ax_id']
-                pdict['ax_id'] = None
+            if presentation_mode is None:
+                presentation_mode = self.presentation_mode
+            if presentation_mode:
+                pdict['title'] = None
 
             if pdict['fig_id'] not in self.axs:
-                # This fig variable should perhaps be a different
-                # variable for each plot!!
-                # This might fix a bug.
                 self.figs[pdict['fig_id']], self.axs[pdict['fig_id']] = plt.subplots(
                     pdict.get('numplotsy', 1), pdict.get('numplotsx', 1),
                     sharex=pdict.get('sharex', False),
                     sharey=pdict.get('sharey', False),
                     figsize=pdict.get('plotsize', None),
-                    gridspec_kw=pdict.get('gridspec_kw', None),
                     # plotsize None uses .rc_default of matplotlib
+                    gridspec_kw=pdict.get('gridspec_kw', None),
                 )
                 if pdict.get('3d', False):
                     self.axs[pdict['fig_id']].remove()
@@ -1450,18 +1591,47 @@ class BaseDataAnalysis(object):
                 if isinstance(i := pdict.get(ak + '_id'), int):
                     pdict[ak] = self.axs[pdict['fig_id']].flatten()[i]
 
-    def _plot(self, key_list, transparent_background=False):
-        """
-        Creates the figures specified by key_list.
+        # Allows to hide a subplot (to create complex fig layouts by leaving
+        # out some axes blank)
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            if pdict.get('set_axis_off'):
+                ax = self.axs[pdict['fig_id']].flatten()[pdict['ax_id']]
+                ax.set_axis_off()
 
-        Args.
-            key_list (list): list of keys in self.plot_dicts
+        # Allows to set axis formatters (e.g. for nonlinear axes scalings)
+        # Example use: fmt = {'yaxis': Formatter}
+        for key in key_list:
+            pdict = self.plot_dicts[key]
+            if fmt := pdict.get('set_major_formatter'):
+                ax = self.axs[pdict['fig_id']].flatten()[pdict['ax_id']]
+                for ax_name, formatter in fmt.items():
+                    getattr(ax, ax_name).set_major_formatter(formatter)
+
+    def _plot(self, key_list, transparent_background=None, fig_id=None):
+        """Creates the figures specified by key_list.
+
+        Args:
+            key_list (list): list of keys in self.plot_dicts.
+            transparent_background (bool): if true, figures will have
+                transparent background.
+            fig_id (str): figure id from `self.plot_dicts`. If passed only
+                specified figure will be plotted.
+
+        Raises:
+            ValueError: in case the used plot function is not valid.
         """
         for key in key_list:
             pdict = self.plot_dicts[key]
+            if fig_id and pdict['fig_id'] != fig_id:
+                continue
             plot_touching = pdict.get('touching', False)
 
-            if type(pdict['plotfn']) is str:
+            if 'plotfn' not in pdict:
+                raise ValueError(f"No 'plotfn' set in plot_dicts['{key}']!")
+            elif pdict['plotfn'] is None:
+                continue  # Do not plot anything if the plotfn is None
+            elif type(pdict['plotfn']) is str:
                 plotfn = getattr(self, pdict['plotfn'])
             else:
                 plotfn = pdict['plotfn']
@@ -1480,9 +1650,13 @@ class BaseDataAnalysis(object):
                     plotfn(pdict=pdict,
                            axs=self.axs[pdict['fig_id']].flatten()[
                                pdict['ax_id']])
-                    self.axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
-                        hspace=0.35)
+                    # FIXME forcing subplots_adjust after the plotting in
+                    #  plotfn (which possibly calls tight_layout()) is bad
+                    #  design, but many analyses currently rely on this (e.g.
+                    #  raw data plots) and should be cleaned if removing it
+                    if pdict.get('force_subplots_adjust', True):
+                        self.axs[pdict['fig_id']].flatten()[
+                            pdict['ax_id']].figure.subplots_adjust(hspace=0.35)
 
             # most normal plot functions also work, it is required
             # that these accept an "ax" argument to plot on and **kwargs
@@ -1496,19 +1670,35 @@ class BaseDataAnalysis(object):
                     plotfn(pdict=pdict,
                            axs=self.axs[pdict['fig_id']].flatten()[
                                pdict['ax_id']])
-                    self.axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
-                        hspace=0.35)
+                    # FIXME forcing subplots_adjust after the plotting in
+                    #  plotfn (which possibly calls tight_layout()) is bad
+                    #  design, but many analyses currently rely on this (e.g.
+                    #  raw data plots) and should be cleaned if removing it
+                    if pdict.get('force_subplots_adjust', True):
+                        self.axs[pdict['fig_id']].flatten()[
+                            pdict['ax_id']].figure.subplots_adjust(hspace=0.35)
             else:
                 raise ValueError(
                     '"{}" is not a valid plot function'.format(plotfn))
 
+            if transparent_background is None:
+                transparent_background = self.transparent_background
             if transparent_background and 'fig_id' in pdict:
                 # transparent background around axes for presenting data
                 self.figs[pdict['fig_id']].patch.set_alpha(0)
 
         self.format_datetime_xaxes(key_list)
         self.add_to_plots(key_list=key_list)
+
+    def get_fig_ids(self) -> list:
+        """Gets unique figure ids from `self.plot_dicts`.
+
+        Returns:
+            list: list of unique figure ids.
+        """
+        self._generate_fig_ids()
+        fig_ids = [v['fig_id'] for v in self.plot_dicts.values()]
+        return list(np.unique(fig_ids))
 
     def add_to_plots(self, key_list=None):
         pass
@@ -1521,19 +1711,6 @@ class BaseDataAnalysis(object):
                 if (type(pdict['xvals'][0]) is datetime.datetime and
                         key in self.axs.keys()):
                     self.axs[key].figure.autofmt_xdate()
-
-    def plot_for_presentation(self, key_list=None, transparent_background=True):
-        """
-        Prepares and produces plots for presentation.
-        Args.
-            key_list (list): list of keys in self.plot_dicts
-        """
-        if key_list is None:
-            key_list = list(self.plot_dicts.keys())
-        for key in key_list:
-            self.plot_dicts[key]['title'] = None
-
-        self._plot(key_list, transparent_background)
 
     def plot_bar(self, pdict, axs):
         pfunc = getattr(axs, pdict.get('func', 'bar'))
@@ -1558,6 +1735,8 @@ class BaseDataAnalysis(object):
         plot_xtick_labels = pdict.get('xtick_labels', None)
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_barkws = pdict.get('bar_kws', {})
@@ -1605,6 +1784,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -1750,6 +1932,8 @@ class BaseDataAnalysis(object):
                 plot_linekws['yerr'] = plot_linekws.get('yerr', yerr)
             if xerr is not None:
                 plot_linekws['xerr'] = plot_linekws.get('xerr', xerr)
+        if pdict.get('scatter'):
+            pdict['func'] = 'scatter'
 
         pdict['line_kws'] = plot_linekws
         plot_xvals = pdict['xvals']
@@ -1758,15 +1942,26 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict.get('ylabel', None)
         plot_xunit = pdict.get('xunit', None)
         plot_yunit = pdict.get('yunit', None)
+        plot_xtick_labels = pdict.get('xtick_labels', None)
+        plot_ytick_labels = pdict.get('ytick_labels', None)
+        plot_xtick_loc = pdict.get('xtick_loc', None)
+        plot_ytick_loc = pdict.get('ytick_loc', None)
+        plot_xtick_rotation = pdict.get('xtick_rotation', 90)
+        plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
         plot_grid = pdict.get('grid', None)
+        plot_opposite_axis = pdict.get('opposite_axis', False)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
-        if pdict.get('color', False):
-            plot_linekws['color'] = pdict.get('color')
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
+        # Ensures that 'color' can be passed both ways (and that it does not
+        # collide with plot_linekws).
+        plot_color = pdict.get('color', plot_linekws.pop('color') if
+                               'color' in plot_linekws else None)
 
         plot_linekws['alpha'] = pdict.get('alpha', 1)
         # plot_multiple = pdict.get('multiple', False)
@@ -1795,11 +1990,20 @@ class BaseDataAnalysis(object):
         if plot_multiple:
             p_out = []
             len_color_cycle = pdict.get('len_color_cycle', len(plot_yvals))
-            # Default gives max contrast
-            cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
-            colors = get_color_list(len_color_cycle, cmap)
-            if cmap == 'tab10':
-                len_color_cycle = min(10, len_color_cycle)
+            if plot_color is None:  # Default
+                # Default gives max contrast
+                cmap = pdict.get('cmap', 'tab10')  # Default matplotlib cycle
+                if cmap == 'tab10':
+                    len_color_cycle = min(10, len_color_cycle)
+                plot_color = get_color_list(len_color_cycle, cmap)
+            else:
+                # Distinguish if plot_color is a single color (we need to first
+                # make a list out of it) or already a list of colors.
+                # FIXME: might be useful to have more complete checks to
+                #  distinguish e.g. an array of 3-4 numbers corresponding to
+                #  a single color
+                if isinstance(plot_color, str):
+                    plot_color = [plot_color]*len_color_cycle
 
             # plot_*vals is the list of *vals arrays
             pfunc = getattr(axs, pdict.get('func', 'plot'))
@@ -1807,8 +2011,7 @@ class BaseDataAnalysis(object):
                 p_out.append(pfunc(xvals, yvals,
                                    linestyle=plot_linestyle,
                                    marker=plot_marker,
-                                   color=plot_linekws.pop(
-                                       'color', colors[i % len_color_cycle]),
+                                   color=plot_color[i % len_color_cycle],
                                    label='%s%s' % (
                                        dataset_desc, dataset_label[i]),
                                    **plot_linekws))
@@ -1818,7 +2021,7 @@ class BaseDataAnalysis(object):
             p_out = pfunc(plot_xvals, plot_yvals,
                           linestyle=plot_linestyle, marker=plot_marker,
                           label='%s%s' % (dataset_desc, dataset_label),
-                          **plot_linekws)
+                          color=plot_color, **plot_linekws)
 
         if plot_xrange is None:
             pass  # Do not set xlim if xrange is None as the axs gets reused
@@ -1832,6 +2035,9 @@ class BaseDataAnalysis(object):
                             verticalalignment='bottom',
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -1861,6 +2067,19 @@ class BaseDataAnalysis(object):
             axs.set_xscale(plot_xscale)
         if plot_grid:
             axs.grid(True)
+        if plot_xtick_loc is not None:
+            axs.xaxis.set_ticks(plot_xtick_loc)
+        if plot_ytick_loc is not None:
+            axs.yaxis.set_ticks(plot_ytick_loc)
+        if plot_xtick_labels is not None:
+            axs.xaxis.set_ticklabels(plot_xtick_labels,
+                                     rotation=plot_xtick_rotation)
+        if plot_ytick_labels is not None:
+            axs.yaxis.set_ticklabels(plot_ytick_labels,
+                                     rotation=plot_ytick_rotation)
+        if plot_opposite_axis:
+            axs.yaxis.set_label_position("right")
+            axs.yaxis.tick_right()
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -1882,6 +2101,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_nolabel = pdict.get('no_label', False)
         plot_title = pdict['title']
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         slice_idxs = pdict['sliceidxs']
         slice_label = pdict.get('slicelabel', '')
         slice_units = pdict.get('sliceunits', '')
@@ -1922,6 +2143,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -2032,6 +2256,8 @@ class BaseDataAnalysis(object):
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_xtick_loc = pdict.get('xtick_loc', None)
         plot_ytick_loc = pdict.get('ytick_loc', None)
+        plot_xtick_rotation = pdict.get('xtick_rotation', 90)
+        plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_transpose = pdict.get('transpose', False)
         plot_nolabel = pdict.get('no_label', False)
         plot_nolabel_units = pdict.get('no_label_units', False)
@@ -2143,10 +2369,10 @@ class BaseDataAnalysis(object):
         # FIXME Ignores thranspose option. Is it ok?
         if plot_xtick_labels is not None:
             axs.xaxis.set_ticklabels(plot_xtick_labels,
-                                     rotation=pdict.get(
-                                         'xlabels_rotation', 90))
+                                     rotation=plot_xtick_rotation)
         if plot_ytick_labels is not None:
-            axs.yaxis.set_ticklabels(plot_ytick_labels)
+            axs.yaxis.set_ticklabels(plot_ytick_labels,
+                                     rotation=plot_ytick_rotation)
         if plot_xtick_loc is not None:
             axs.xaxis.set_ticks(plot_xtick_loc)
         if plot_ytick_loc is not None:
@@ -2181,6 +2407,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_yunit = pdict['yunit']
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         if plot_transpose:
             # transpose switches X and Y
             set_axis_label('x', axs, plot_ylabel, plot_yunit)
@@ -2194,6 +2422,8 @@ class BaseDataAnalysis(object):
                             verticalalignment='bottom',
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
     def plot_colorbar(self, cax=None, key=None, pdict=None, axs=None,
                       orientation='vertical', no_label=None):
@@ -2214,6 +2444,7 @@ class BaseDataAnalysis(object):
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        plot_cbar_opposite_axis = pdict.get('cbar_opposite_axis', False)
         if not isinstance(axs, Axes3D):
             cmap = axs.cmap
         else:
@@ -2233,7 +2464,10 @@ class BaseDataAnalysis(object):
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
-            axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
+            # Ensure the colorbar is added to the figure that the axis
+            # is a part of
+            fig = axs.get_figure()
+            axs.cbar = fig.colorbar(cmap, cax=axs.cax, orientation=orientation)
         else:
             norm = mpl.colors.Normalize(0, 1)
             axs.cbar = mpl.colorbar.ColorbarBase(axs.cax, cmap=cmap, norm=norm)
@@ -2243,9 +2477,16 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
-        if orientation == 'horizontal':
+        if orientation == 'horizontal' and not plot_cbar_opposite_axis:
+            # Defaults to top here (matplotlib defaults to bottom),
+            # unless plot_cbar_opposite_axis
             axs.cax.xaxis.set_label_position("top")
             axs.cax.xaxis.tick_top()
+        if orientation == 'vertical' and plot_cbar_opposite_axis:
+            # Defaults to right (as in matplotlib),
+            # unless plot_cbar_opposite_axis
+            axs.cax.yaxis.set_label_position("left")
+            axs.cax.yaxis.tick_left()
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -2485,8 +2726,12 @@ class BaseDataAnalysis(object):
             return self.get_instrument_setting(
                 f'{awg}.clock_freq')
         except ParameterNotFoundError:
-            model = self.get_instrument_setting(
-                f'{awg}.IDN').get('model', None)
+            try:
+                return self.get_instrument_setting(
+                    f'{awg}.system_clocks_sampleclock_freq')
+            except ParameterNotFoundError:
+                model = self.get_instrument_setting(f'{awg}.IDN').get(
+                    'model', None)
         if model == 'HDAWG8':
             return 2.4e9
         elif model == 'UHFQA':

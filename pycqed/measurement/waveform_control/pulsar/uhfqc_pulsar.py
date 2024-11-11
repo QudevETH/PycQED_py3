@@ -369,9 +369,14 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if self.pulsar.use_mcc() and self.awg_mcc:
             self.multi_core_compiler.sequencer_code_mcc[self.awg.name] = (
-                self.awg_mcc.awgs[0], awg_str)
+                self.awg_mcc.awgs[0], dict(
+                    sequencer_program=awg_str,
+                    waveforms=";".join([s + ".csv"
+                                        for s in self._defined_waves])))
             self.multi_core_compiler.post_sequencer_code_upload[
                 self.awg.name] = [(self._update_device_ready_status_mcc, {})]
+            self.awg.store_awg_source_string(0, awg_str)
+            # otherwise, configure_awg_from_string stores it automatically
         else:
             if self.pulsar.use_mcc():
                 log.warning(

@@ -141,6 +141,7 @@ class RemoteInstrument(FurtherInstrumentsDictMixIn):
                     return self._create_instr(remote_instr)
 
             f.get_instr = get_instr
+            f.instrument = self
             return f
         else:
             result = self.remote_call([self._name, None, p])

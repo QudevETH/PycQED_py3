@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 class T1FrequencySweep(CalibBuilder):
 
     default_experiment_name = 'T1_frequency_sweep'
+    kw_for_task_keys = ['transition_name']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
         """
@@ -51,8 +52,8 @@ class T1FrequencySweep(CalibBuilder):
             If this parameter is provided it will be used for all qubits.
         :param qubits: list of QuDev_transmon class instances
         :param kw: keyword arguments
-            for_ef (bool, default: False): passed to get_cal_points; see
-                docstring there.
+            transition_name (str, default: 'ge'): Qubit transition to
+                measure. Supported values: 'ge', 'ef'.
             spectator_op_codes (list, default: []): see t1_flux_pulse_block
             all_fits (bool, default: True) passed to run_analysis; see
                 docstring there
@@ -76,17 +77,25 @@ class T1FrequencySweep(CalibBuilder):
                 if not isinstance(task['qb'], str):
                     task['qb'] = task['qb'].name
 
+            if 'cal_states' not in kw:
+                kw['cal_states'] = "gef" if ('ef' in [
+                    task.get('transition_name') for task in task_list]
+                    + [kw.get('transition_name')]) else "ge"
+
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points, **kw)
 
             self.analysis = None
-            self.data_to_fit = {qb: 'pe' for qb in self.meas_obj_names}
             self.sweep_points = SweepPoints(
                 [{}, {}] if self.sweep_points is None else self.sweep_points)
             self.task_list = self.add_amplitude_sweep_points(
                 [copy(t) for t in self.task_list], **kw)
 
             self.preprocessed_task_list = self.preprocess_task_list(**kw)
+            trans_to_pop = {'ge': 'pe', 'ef': 'pf'}
+            self.data_to_fit = {
+                task['qb']: trans_to_pop[task.get('transition_name', 'ge')]
+                for task in self.preprocessed_task_list}
             if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
                 self.sweep_points.reduce_dim(1, inplace=True)
                 self._num_sweep_dims = 1
@@ -109,40 +118,55 @@ class T1FrequencySweep(CalibBuilder):
             traceback.print_exc()
 
     def add_amplitude_sweep_points(self, task_list=None, **kw):
-        """
+        """Guarantees that pulse amplitudes are in sweep_points in each task.
+
         If flux pulse amplitudes are not in the sweep_points in each task, but
         qubit frequencies are, then amplitudes will be calculated based on
         the frequencies and the fit_ge_freq_from_flux_pulse_amp qubit parameter.
-        sweep_points entry in each task_list will be updated.
-        :param task_list: list of dictionaries describing the the measurement
-            for each qubit.
-        :return: updated task list
+        The sweep_points entry in each task_list will be updated.
+
+        Args:
+            task_list (list): A list of dictionaries describing the measurement
+                for each qubit.
+
+        Returns:
+            list: Updated task list with amplitude sweep points added.
         """
         if task_list is None:
             task_list = self.task_list
-        # TODO: check combination of sweep points in task and in sweep_points
+
         for task in task_list:
+
+            # Combine sweep points in task and in sweep_points
             sweep_points = task.get('sweep_points', [{}, {}])
             sweep_points = SweepPoints(sweep_points)
             if len(sweep_points) == 1:
                 sweep_points.add_sweep_dimension()
+            if len(self.sweep_points) == 1:
+                self.sweep_points.add_sweep_dimension()
+            for i in range(len(sweep_points)):
+                sweep_points[i].update(self.sweep_points[i])
             if 'qubit_freqs' in sweep_points[1]:
                 qubit_freqs = sweep_points['qubit_freqs']
-            elif len(self.sweep_points) >= 2 and \
-                    'qubit_freqs' in self.sweep_points[1]:
-                qubit_freqs = self.sweep_points['qubit_freqs']
             else:
                 qubit_freqs = None
-            if 'amplitude' in sweep_points[1]:
-                amplitudes = sweep_points['amplitude']
-            elif len(self.sweep_points) >= 2 and \
-                    'amplitude' in self.sweep_points[1]:
-                amplitudes = self.sweep_points['amplitude']
-            else:
-                amplitudes = None
+
+            # Fetch amplitudes from sweep_points
+            amplitudes = None
+            for key in sweep_points[1]:
+                if 'amplitude' in key:  # Detect e.g. amplitude2 from 2qb gates
+                    amplitudes = sweep_points[key]
+
+            # Computing either qubit_freqs or amplitudes, if not passed.
+            # Both can also be passed, e.g. to cache or use a different model.
             qubits, _ = self.get_qubits(task['qb'])
-            if qubit_freqs is None and qubits is not None:
-                qb = qubits[0]
+            qb = qubits[0] if qubits else None
+
+            if qubit_freqs is None and amplitudes is None:
+                raise ValueError("Please specify either qubit_freqs or "
+                                 "amplitudes!")
+
+            if qubit_freqs is None and qb is not None:
                 qubit_freqs = qb.calculate_frequency(
                     amplitude=amplitudes,
                     **kw.get('vfc_kwargs', {})
@@ -150,13 +174,15 @@ class T1FrequencySweep(CalibBuilder):
                 freq_sweep_points = SweepPoints('qubit_freqs', qubit_freqs,
                                                 'Hz', 'Qubit frequency')
                 sweep_points.update([{}] + freq_sweep_points)
+
             if amplitudes is None:
-                if qubits is None:
-                    raise KeyError('qubit_freqs specified in sweep_points, '
-                                   'but no qubit objects available, so that '
-                                   'the corresponding amplitudes cannot be '
-                                   'computed.')
-                qb = qubits[0]
+                if qb is None:
+                    raise KeyError(
+                        f"qubit_freqs specified in sweep_points for task"
+                        f" {task}, but no qubit objects available. The "
+                        f"corresponding amplitudes cannot be computed."
+                    )
+
                 amplitudes = qb.calculate_flux_voltage(
                     frequency=qubit_freqs,
                     flux=qb.flux_parking(),
@@ -168,17 +194,29 @@ class T1FrequencySweep(CalibBuilder):
                 amp_sweep_points = SweepPoints('amplitude', amplitudes,
                                                'V', 'Flux pulse amplitude')
                 sweep_points.update([{}] + amp_sweep_points)
+
+            # Check if LO_freq is in range of the qubit of interest
+            if qb is not None:
+                LO_freq = qb.get_ge_lo_freq()
+                if np.min(qubit_freqs) <= LO_freq <= np.max(qubit_freqs):
+                    log.warning(
+                        f"LO frequency {LO_freq} is within the range of"
+                        f" frequencies of {qb.name}."
+                    )
+
             task['sweep_points'] = sweep_points
+
         return task_list
 
-    def t1_flux_pulse_block(self, qb, sweep_points,
-                            prepend_pulse_dicts=None, **kw):
+    def t1_flux_pulse_block(self, qb, sweep_points, prepend_pulse_dicts=None,
+                            op_code=None, **kw):
         """
         Function that constructs the experiment block for one qubit
         :param qb: name or list with the name of the qubit
             to measure. This function expect only one qubit to measure!
         :param sweep_points: SweepPoints class instance
         :param prepend_pulse_dicts: dictionary of pulses to prepend
+        :param op_code: optional op_code for the flux pulse
         :param kw: keyword arguments
             spectator_op_codes: list of op_codes for spectator qubits
         :return: precompiled block
@@ -188,17 +226,24 @@ class T1FrequencySweep(CalibBuilder):
         if isinstance(qubit_name, list):
             qubit_name = qubit_name[0]
         hard_sweep_dict, soft_sweep_dict = sweep_points
-        pb = self.block_from_pulse_dicts(prepend_pulse_dicts)
+        pp = [self.block_from_pulse_dicts(prepend_pulse_dicts)]
 
         pulse_modifs = {'all': {'element_name': 'pi_pulse'}}
-        pp = self.block_from_ops('pipulse',
+        pp += [self.block_from_ops('pipulse',
                                  [f'X180 {qubit_name}'] +
                                  kw.get('spectator_op_codes', []),
-                                 pulse_modifs=pulse_modifs)
+                                 pulse_modifs=pulse_modifs)]
+        if kw.get('transition_name') == 'ef':
+            pp += [self.block_from_ops('pipulse_ef',
+                                     [f'X180_ef {qubit_name}'] +
+                                     kw.get('spectator_op_codes', []),
+                                     pulse_modifs=pulse_modifs)]
+
 
         pulse_modifs = {
             'all': {'element_name': 'flux_pulse', 'pulse_delay': 0}}
-        fp = self.block_from_ops('flux', [f'FP {qubit_name}'],
+        op_code = f'FP {qubit_name}' if op_code is None else op_code
+        fp = self.block_from_ops('flux', [op_code],
                                  pulse_modifs=pulse_modifs)
         for k in hard_sweep_dict:
             for p in fp.pulses:
@@ -208,9 +253,9 @@ class T1FrequencySweep(CalibBuilder):
             for p in fp.pulses:
                 if k in p:
                     p[k] = ParametricValue(k)
+        pp += [fp]
 
-        return self.sequential_blocks(f't1 flux pulse {qubit_name}',
-                                      [pb, pp, fp])
+        return self.sequential_blocks(f't1 flux pulse {qubit_name}', pp)
 
     @Timer()
     def run_analysis(self, **kw):
@@ -1095,7 +1140,9 @@ class Cryoscope(CalibBuilder):
             for i, fpd in enumerate(flux_pulse_dicts):
                 pd_temp = {'element_name': 'dummy'}
                 pd_temp.update(self.get_pulses(fpd['op_code'])[0])
-                pulse_length = seg_mod.UnresolvedPulse(pd_temp).pulse_obj.length
+                pulse_length = seg_mod.UnresolvedPulse(pd_temp,
+                                                       fast_mode=self.fast_mode
+                                                       ).pulse_obj.length
                 if 'truncation_lengths' in fpd:
                     tr_lens = fpd['truncation_lengths']
                 elif 'spacing' in fpd:
@@ -1780,7 +1827,7 @@ class SingleQubitGateCalibExperiment(CalibBuilder):
     def define_cal_states_rotations(self):
         """
         Creates cal_states_rotations for each qubit based on the information
-        in the preprocessed_task_list and self.meas_obj_names, 
+        in the preprocessed_task_list and self.meas_obj_names,
         and adds it to exp_metadata.
         This is of the form {qb_name: {cal_state: cal_state_order_index}}
         and will be used by the analyses.
@@ -3353,6 +3400,13 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
         Moreover, the following keyword arguments are understood:
             for_leakage (bool, default: False): if True, runs the experiment
                 without the first X90 pulse and sets cal_states to 'gef'
+            update_pi_half_track_pi (bool, default: True): If updating the pi
+                pulse amplitude should also update the pi/2 amplitude by
+                the same factor. True is useful, e.g., when finetuning the
+                pi amplitude while keeping a fixed 1/2 scaling for the pi/2.
+                False can be useful when there are significant drive
+                nonlinearities, in order to calibrate pi and pi/2 independently
+                (and considering that a good pi/2 is necessary to calibrate pi)
     """
 
     default_experiment_name = 'NPulseAmplitudeCalib'
@@ -3363,8 +3417,10 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
     kw_for_task_keys = ['n_pulses_pi', 'fixed_scaling']
 
     def __init__(self, task_list=None, sweep_points=None, qubits=None,
-                 amp_scalings=None, n_pulses_pi=1, fixed_scaling=None, **kw):
+                 amp_scalings=None, n_pulses_pi=1, fixed_scaling=None,
+                 update_pi_half_track_pi=True, **kw):
         try:
+            self.update_pi_half_track_pi = update_pi_half_track_pi
             super().__init__(task_list, qubits=qubits,
                              sweep_points=sweep_points,
                              amp_scalings=amp_scalings,
@@ -3577,6 +3633,16 @@ class NPulseAmplitudeCalib(SingleQubitErrorAmplificationExperiment):
                 amp180 = self.analysis.proc_data_dict['analysis_params_dict'][
                     qubit.name]['correct_amplitude']
                 qubit.set(f'{task["transition_name_input"]}_amp180', amp180)
+                if not self.update_pi_half_track_pi:
+                    # Correct the relative scaling of the pi/2 pulse to keep
+                    # its amplitude constant even though the pi amp changed
+                    amp180_sc = self.analysis.proc_data_dict[
+                        'analysis_params_dict'][qubit.name][
+                        'correct_scalings_mean']
+                    curr_90_sc = qubit.get(
+                        f'{task["transition_name_input"]}_amp90_scale')
+                    qubit.set(f'{task["transition_name_input"]}_amp90_scale',
+                              curr_90_sc / amp180_sc)
             elif ideal_sc == 0.5:
                 # pi/2 pulse amp calibration
                 amp90_sc = self.analysis.proc_data_dict['analysis_params_dict'][
@@ -4306,6 +4372,1197 @@ class Reset(CalibBuilder):
     def run_update(self, **kw):
         print('Update')
 
+
+class f0g1AcStark(SingleQubitGateCalibExperiment):
+    """
+    Class for the Ac Stark shift calibration measurement for f0g1 transition:
+    gets the Ac Stark shift for all drive amplitudes.
+
+    This calibration is based on and explained in the section 5.3
+    of Dr. Philipp Kurpiers PhD Thesis, 2019
+    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+
+    Args:
+        qubits (list): array of qubits for which the calibration is done
+        amp (np.array): array of values for amplitudes of the pulse that are
+            going to be swept (dimension 1). Recall that in PycQED the
+            dimension of this array is volts (i.e., volts peak, Vp).
+        transitionWidthCoefs (np.array): coefficients of the polynomial
+            [c0, c1, ...] that determine the width of the range of frequencies
+            to sweep. For each amplitude the frequency width is calculated as:
+                (c0*amp + c1*amp + c2*amp^2)
+        freqPointsPerAmp (float): number of frequency points to sweep.
+        length_per_volt (float):
+            In this calibration both the pulse amplitude and the pulse length
+            are swept such as the product of the two is kept constant.
+            The value of the pulse length is therefore inversely proportional
+            to the value of the pulse amplitude; It is calculated as follows:
+                              length * amplitude = length_per_volt
+                        =>                length = length_per_volt / amplitude
+
+    optional args:
+        fit_degree (int): degree of the polynomial for the fitting.
+            If fit_degree = i, then is going to fit an even polynomial of
+            ith degree:  c0 + c2 x^2 +...+ ci x^i. Default value is 4.
+        fit_threshold (float): to do the fittings all population values
+            above this threshold will be ignored. Default value is 0.
+            One can also specify an array of floats, hence fit_threshold
+            will be different for each amplitude as per array specified
+        update (boolean): if True, the 'f0g1_AcStark_IFCoefs' and
+            'f0g1_AcStark_IFCoefs_error' of the qubit object are going to be updated
+            after the fitting. If False (default value), nothing will happen.
+    """
+
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys
+    kw_for_sweep_points = {
+        "freq_i": dict(
+            param_name="mod_frequency", unit="Hz", label="Pulse frequency", dimension=0
+        ),
+        "leng": dict(
+            param_name="pulse_length", unit="s", label="Pulse length", dimension=1
+        ),
+        "amp": dict(param_name="amplitude", unit="V", label="Amplitude", dimension=1),
+    }
+    default_experiment_name = "f0g1AcStark"
+    call_parallel_sweep = False  # pulse sequence changes between segments
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
+        kw[
+            "transition_name"
+        ] = "ef"  # we use 'ef' transition name so PycQED know that has to measure
+        # populations for g, e and f state
+        # this way PycQED creates a X180_ge pulse automatically too
+
+        # if values are not given use the default ones
+        if not "fit_degree" in kw:
+            kw["fit_degree"] = 4
+        if not "fit_threshold" in kw:
+            kw["fit_threshold"] = 0
+        if type(kw["fit_threshold"]) == int or type(kw["fit_threshold"]) == float:
+            kw["fit_threshold"] = np.zeros_like(kw["amp"]) + kw["fit_threshold"]
+        # to be sure that we have a np.array and not a python list we do:
+        kw["fit_threshold"] = np.array(kw["fit_threshold"])
+
+        # if values are not given use the default ones, however these values should be given, print a message if
+        # some value is not given
+        if not "length_per_volt" in kw:
+            kw["length_per_volt"] = 50e-9
+            print(
+                "length_per_volt not specified, using default value: length_per_volt = 50e-9"
+            )
+        if not "freqPointsPerAmp" in kw:
+            kw["freqPointsPerAmp"] = 20
+            print(
+                "freqPointsPerAmp not specified, using default value: freqPointsPerAmp = 20"
+            )
+        if not "transitionWidthCoefs" in kw:
+            kw["transitionWidthCoefs"] = np.array([50e6, 50e6])
+            print(
+                "transitionWidthCoefs not specified, using default: transitionWidthCoefs = np.array([25e6, 100e6])"
+            )
+
+        # length of the pulse is usually not given, but calculated with 'length_per_volt'
+        if not "leng" in kw:
+            kw["leng"] = kw["length_per_volt"] / kw["amp"]
+
+        kw["freqPointsPerAmp"] = int(
+            kw["freqPointsPerAmp"]
+        )  # we say that it has to be an integer
+        # we create a list that is not going to be used but needed for PycQED to have a list in the sweeping parm
+        kw["freq_i"] = np.arange(kw["freqPointsPerAmp"])
+
+        # now we create two dictionaries
+        # 'frequencies': to save the actual frequencies that are going to be swept each amplitude value will have a
+        #                different range of frequencies
+        # 'IFCoefs': to save the 'f0g1_AcStark_IFCoefs' of each qubit
+        kw["frequencies"] = odict()
+        kw["IFCoefs"] = odict()
+        for qb in qubits:  # we loop for the qubits
+            array1D = np.array([])  # will use this array to append all the frequencies
+            kw["IFCoefs"][qb.name] = qb.f0g1_AcStark_IFCoefs()
+            for amp in kw["amp"]:  # we loop for the amplitudes
+                middle_point = np.polyval(
+                    np.flip(kw["IFCoefs"][qb.name]), amp
+                )  # calculate middle of frequency range for this amplitude
+                width = np.polyval(
+                    np.flip(kw["transitionWidthCoefs"]), amp
+                )  # calculate width of frequency range for this amplitude
+                array1D = np.append(
+                    array1D,  # append in the array the frequency points for this amplitude
+                    np.linspace(
+                        middle_point - width / 2,
+                        middle_point + width / 2,
+                        kw["freqPointsPerAmp"],
+                    ),
+                )
+            kw["frequencies"][qb.name] = array1D.reshape(
+                kw["amp"].size, kw["freqPointsPerAmp"]
+            )  # we reshape the array
+            # so to have a row for each amplitude
+
+        self.frequencies = kw["frequencies"]  # create a variable for frequencies
+
+        try:
+            super().__init__(task_list, qubits=qubits, sweep_points=sweep_points, **kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
+        # in this case we have specified in the 'SingleQubitGateCalibExperiment' class that we want to modify
+        # each point manually. Meaning that 'sp1d_idx' is going to count the points in the 0 dimension and
+        # 'sp2d_idx' the 1 dimension.
+        # We do that because for this experiment the pulse sequence is not identical for each amplitude of the pulse
+        # (amplitude is the swept variable in dimension 1): the frequency range changes for each amplitude
+        # (frequency is the swept variable in dimension 0)
+        parallel_block_list = []
+        for i, task in enumerate(self.preprocessed_task_list):
+            sweep_points = task["sweep_points"]
+            qb = task["qb"]
+
+            prepend_blocks = super().sweep_block(
+                **task
+            )  # prepend blocks needed (super function)
+
+            # for the flattop_f0g1 pulse we want our state to be 'f', as we have put 'ef' as transition name then
+            # PycQED creates a X180_ge pulse automatically, then we need a X180_ef pulse to populate the f state
+            # and once we are in f state we apply the flattop_f0g1 pulse
+            # so we create the block of pulses that is going to do that for each point
+            AcStark_block = self.block_from_ops(
+                f"AcStark_pulses_{qb}", [f"X180_ef {qb}", f"flattop_f0g1 {qb}"]
+            )
+
+            # we specify the value for pulse frequency length, and amplitude we are going to use for this point
+            AcStark_block.pulses[1]["mod_frequency"] = self.frequencies[qb][sp2d_idx][
+                sp1d_idx
+            ]  # here the frequency
+            AcStark_block.pulses[1][
+                "pulse_length"
+            ] = sweep_points.get_sweep_params_property("values", 1, "pulse_length")[
+                sp2d_idx
+            ]  # here the length
+            AcStark_block.pulses[1][
+                "amplitude"
+            ] = sweep_points.get_sweep_params_property("values", 1, "amplitude")[
+                sp2d_idx
+            ]  # here the amplitude
+
+            parallel_block_list += [
+                self.sequential_blocks(
+                    f"flattop_f0g1_{qb}", prepend_blocks + [AcStark_block]
+                )
+            ]
+
+        # return the blocks
+        return self.simultaneous_blocks(
+            f"flattop_f0g1_{sp2d_idx}_{sp1d_idx}",
+            parallel_block_list,
+            block_align="end",
+        )
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # here we run the analysis
+
+        # first we call the super function
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        # then we call the class defined for this analysis: 'f0g1AcStarkAnalysis'
+        self.analysis = tda.f0g1AcStarkAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp, **analysis_kwargs
+        )
+
+    def run_update(self, **kw):
+        # here we update the values found: 'f0g1_AcStark_IFCoefs' and 'f0g1_AcStark_IFCoefs_error'
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task["qb"]][0]
+            IFCoefs = np.array(
+                list(self.analysis.proc_data_dict["IFCoefs"][qubit.name].values())
+            )
+            IFCoefs_error = np.array(
+                list(self.analysis.proc_data_dict["IFCoefs_error"][qubit.name].values())
+            )
+
+            qubit.set("f0g1_AcStark_IFCoefs", IFCoefs)  # update f0g1_AcStark_IFCoefs
+            qubit.set(
+                "f0g1_AcStark_IFCoefs_error", IFCoefs_error
+            )  # update f0g1_AcStark_IFCoefs_error
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d["sweeping_parameters"].update(
+            {
+                f0g1AcStark.__name__: {
+                    0: {
+                        "frequency": "Hz",
+                    },
+                    1: {
+                        "length": "s",
+                    },
+                    1: {
+                        "amplitude": "V",
+                    },
+                }
+            }
+        )
+        return d
+
+
+class f0g1RabiRate(SingleQubitGateCalibExperiment):
+    """
+    Class for the Rabi rate calibration measurement for f0g1 transition:
+    gets the f0g1 transition speed (gTilde) for all drive amplitudes.
+
+    This calibration is based on and explained in the section 5.3
+    of Dr. Philipp Kurpiers PhD Thesis, 2019
+    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+
+    args:
+        qubits (list): array of qubits for which the calibration is done
+        amp (np.array): array of values for amplitudes of the pulse that are
+            going to be swept (dimension 1, outer sweep dimension).
+        max_len_per_volt (float): the inner sweep range (pulse lengths) is
+            computed dynamically per pulse amplitude. max_len_per_volt
+            determines the maximum pulse length for given amplitude
+            via the expression max_len = max_len_per_volt / amplitude
+        lengPointsPerAmp (int): gives the number of values for the pulse length
+            Values swept are np.linspace(0, max_len, lengPointsPerAmp)
+
+    optional args:
+        fit_kappa (float): We are fitting the f state population via the
+            damped oscillations model. Kappa could be fixed for that fit by
+            specifying this parameter; fit_kappa is the value to be used.
+            If fit_kappa is not specified, or given to be 0/False, then
+            kappa will also be used as a parameter to be optimised.
+        fit_degree (int): degree of the polynomial for the fitting
+            (default value is 3, max 5). If fit_degree = i, then we are going to
+             fit an odd polynomial of ith degree: c1 x^1 + c3 x^3 + ... + ci x^i.
+        update (boolean): if True, the 'f0g1_RabiRate_Coefs' and
+            'f0g1_RabiRate_Coefs_error' of the qubit object are going to be updated
+            after the fitting. If False (default value), nothing will happen.
+    """
+
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys
+    kw_for_sweep_points = {  # we define the parameters that we want to sweep
+        "leng_i": dict(
+            param_name="pulse_length", unit="s", label="Pulse length", dimension=0
+        ),
+        "amp": dict(param_name="amplitude", unit="V", label="Amplitude", dimension=1),
+        "freq_i": dict(
+            param_name="mod_frequency", unit="Hz", label="Frequency", dimension=1
+        ),
+    }
+    default_experiment_name = "f0g1RabiRate"
+    call_parallel_sweep = False  # pulse sequence changes between segments
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
+        # we create two lists that are not going to be used, but are needed
+        # for PycQED to have a list in the sweeping parm
+        kw["freq_i"] = np.arange(kw["amp"].size)
+        kw["leng_i"] = np.arange(kw["lengPointsPerAmp"])
+
+        kw["transition_name"] = "ef"  # we use 'ef' transition name so
+        # PycQED knows that it has to measure populations for g, e and f states
+        # This way PycQED creates a X180_ge pulse automatically too
+
+        if not "fit_degree" in kw:
+            kw["fit_degree"] = 3
+        if not "fit_kappa" in kw:
+            kw["fit_kappa"] = 0
+
+        # frequencies of the pulses are calculated with the
+        # f0g1_AcStark_IFCoefs of the qubits
+        kw["freq"] = {}
+        self.frequencies = {}
+        for qb in qubits:  # we do it for all qubits
+            kw["freq"][qb.name] = np.polyval(
+                np.flip(qb.f0g1_AcStark_IFCoefs()), kw["amp"]
+            )
+            self.frequencies[qb.name] = kw["freq"][qb.name]
+
+        # we add in the metadata all the parameters of the qubit
+        parameters = [
+            "f0g1_kappa",
+            "f0g1_RabiRate_Coefs",
+            "T1_ef",
+        ]  # list of parameters
+        for param in parameters:
+            kw[param] = odict()  # for each we create a dict
+        for qb in qubits:  # for each qubit
+            for param in parameters:
+                kw[param][qb.name] = qb.get(f"{param}")  # we put each param in its dict
+
+        # here we calculate the pulse lengths that are going to be used
+        kw["lengths"] = odict()  # Variable to store the lengths
+
+        for qb in qubits:
+            mlpv = kw["max_len_per_volt"]
+            lppa = kw["lengPointsPerAmp"]
+            # 2D array of lengths, each line -- lengths from 0 to max_len
+            # so that max_len * amplitude product is constant (hence mlpv/amp)
+            length_array2D = np.array(
+                [np.linspace(0, mlpv / amp, lppa) for amp in kw["amp"]]
+            )
+            kw["lengths"][qb.name] = length_array2D
+
+        self.lengths = kw["lengths"]  # create a variable for lengths
+
+        try:
+            super().__init__(task_list, qubits=qubits, sweep_points=sweep_points, **kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
+        # in this case we have specified in the 'SingleQubitGateCalibExperiment' class that we want to modify
+        # each point manually. Meaning that 'sp1d_idx' is going to count the points in the 0 dimension and
+        # 'sp2d_idx' the 1 dimension.
+        # We do that because for this experiment the pulse sequence is not identical for each amplitude of the pulse
+        # (amplitude and frequency are swept variable in dimension 1)
+        # (length is the swept variable in dimension 0)
+        parallel_block_list = []
+        for i, task in enumerate(self.preprocessed_task_list):
+            sweep_points = task["sweep_points"]
+            qb = task["qb"]
+
+            prepend_blocks = super().sweep_block(
+                **task
+            )  # prepend blocks needed (super function)
+
+            # for the flattop_f0g1 pulse we want our state to be 'f', as we have put 'ef' as transition name then
+            # PycQED creates a X180_ge pulse automatically, then we need a X180_ef pulse to populate the f state
+            # and once we are in f state we apply the flattop_f0g1 pulse
+            # so we create the block of pulses that is going to do that for each point
+            block = self.block_from_ops(
+                f"rabi_pulses_{qb}", [f"X180_ef {qb}", f"flattop_f0g1 {qb}"]
+            )
+
+            # we specify the value for pulse frequency length, and amplitude we are going to use for this point
+            block.pulses[1]["pulse_length"] = self.lengths[qb][sp2d_idx][
+                sp1d_idx
+            ]  # here the length (dim 0)
+            block.pulses[1]["amplitude"] = sweep_points.get_sweep_params_property(
+                "values", 1, "amplitude"
+            )[sp2d_idx]  # here the amplitude (dim 1)
+            block.pulses[1]["mod_frequency"] = self.frequencies[qb][
+                sp2d_idx
+            ]  # here de frequency (dim 1)
+
+            parallel_block_list += [
+                self.sequential_blocks(f"flattop_f0g1_{qb}", prepend_blocks + [block])
+            ]
+
+        # return the blocks
+        return self.simultaneous_blocks(
+            f"flattop_f0g1_{sp2d_idx}_{sp1d_idx}",
+            parallel_block_list,
+            block_align="end",
+        )
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # here we run the analysis
+
+        # first we call the super function
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        # then we call the class defined for this analysis: 'f0g1RabiRateAnalysis'
+        self.analysis = tda.f0g1RabiRateAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp, **analysis_kwargs
+        )
+
+    def run_update(self, **kw):
+        # here we update the values found: 'f0g1_RabiRate_Coefs', 'f0g1_RabiRate_Coefs_error' and 'f0g1_kappa'
+        for task in self.preprocessed_task_list:
+            qubit = [qb for qb in self.meas_objs if qb.name == task["qb"]][0]
+            Coefs = np.array(self.analysis.proc_data_dict["Coefs"][qubit.name])
+            Coefs_error = np.array(
+                self.analysis.proc_data_dict["Coefs_error"][qubit.name]
+            )
+            kappa = self.analysis.proc_data_dict["kappa"][qubit.name]
+            kappa_error = self.analysis.proc_data_dict["kappa_error"][qubit.name]
+
+            # Updating the parameters of the qubit object
+            qubit.set("f0g1_RabiRate_Coefs", Coefs)
+            qubit.set("f0g1_RabiRate_Coefs_error", Coefs_error)
+            qubit.set("f0g1_kappa", kappa)
+            qubit.set("f0g1_kappa_error", kappa_error)
+            qubit.set("f0g1_catch_kappa", kappa)
+            qubit.set("f0g1_catch_kappa_error", kappa_error)
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d["sweeping_parameters"].update(
+            {
+                f0g1RabiRate.__name__: {
+                    0: {
+                        "length": "s",
+                    },
+                    1: {
+                        "amplitude": "V",
+                    },
+                    1: {
+                        "mod_frequency": "Hz",
+                    },
+                }
+            }
+        )
+        return d
+
+
+class efWithf0g1AcStark(SingleQubitGateCalibExperiment):
+    """
+    Class for the Ac Stark shift calibration measurement for ef transition
+    driven by a f0g1 pulse:
+    gets the Ac Stark shift for all drive amplitudes.
+
+    This calibration is based on and explained in the section 5.3
+    of Dr. Philipp Kurpiers PhD Thesis, 2019
+    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+
+    Args:
+        :param qubits: (list) array of qubits for which the calibration is done
+        :param amp: (np.array) array of values for amplitudes of the f0g1 pulse that
+        are going to be swept (dimension 1). Recall that in PycQED the
+            dimension of this array is volts (i.e., volts peak, Vp).
+        :param width_per_volt: (float) width of the frequency points to sweep for 1V
+            of f0g1 drive. Default=80 MHz.
+        :param freqPointsPerAmp: (float) number of ef frequency points to sweep.
+        :param length_per_volt: (float)
+            In this calibration both the f0g1 amplitude and the pulses length
+            are swept such as the product of the two is kept constant.
+            The value of the pulse length is therefore inversely proportional
+            to the value of the pulse amplitude; It is calculated as follows:
+                              length * amplitude = length_per_volt
+                        =>                length = length_per_volt / amplitude
+
+    :param kw: keyword arguments:
+        fit_degree: (int) degree of the polynomial for the fitting.
+            If fit_degree = i, then is going to fit an even polynomial of
+            ith degree:  c0 + c2 x^2 +...+ ci x^i. Default value is 4.
+        fit_threshold: (float) to do the fittings all population values
+            above this threshold will be ignored. Default value is 0.
+        update: (boolean) if True, the 'ef_for_f0g1_reset_pulse_AcStark_IFCoefs'
+            and 'ef_for_f0g1_reset_pulse_AcStark_IFCoefs_error' of the qubit
+            object are going to be updated after the fitting. If False (default
+            value), nothing will happen.
+    """
+
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys
+    kw_for_sweep_points = {
+        "freq_i": dict(
+            param_name="mod_frequency", unit="Hz", label="Pulse frequency", dimension=0
+        ),
+        "leng": dict(
+            param_name="pulse_length", unit="s", label="Pulse length", dimension=1
+        ),
+        "amp": dict(param_name="amplitude", unit="V", label="Amplitude", dimension=1),
+    }
+    default_experiment_name = "efAcStark"
+    call_parallel_sweep = False  # pulse sequence changes between segments
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
+        kw[
+            "transition_name"
+        ] = "ef"  # we use 'ef' transition name so PycQED know that has to measure
+        # populations for g, e and f state
+        # this way PycQED creates a X180_ge pulse automatically too
+
+        # if values are not given use the default ones
+        if not "fit_degree" in kw:
+            kw["fit_degree"] = 4
+        if not "fit_threshold" in kw:
+            kw["fit_threshold"] = 0
+
+        # if values are not given use the default ones, however these values should be given, print a message if
+        # some value is not given
+        if not "length_per_volt" in kw:
+            kw["length_per_volt"] = 50e-9
+            print(
+                "length_per_volt not specified, using default value: length_per_volt = 50e-9"
+            )
+        if not "freqPointsPerAmp" in kw:
+            kw["freqPointsPerAmp"] = 20
+            print(
+                "freqPointsPerAmp not specified, using default value: freqPointsPerAmp = 20"
+            )
+        if not "width_per_volt" in kw:
+            kw["width_per_volt"] = 80e6
+            print(
+                "transitionWidthCoefs not specified, using default: transitionWidthCoefs = 80e6"
+            )
+
+        # length of the pulse is usually not given, but calculated with 'length_per_volt'
+        if not "leng" in kw:
+            kw["leng"] = kw["length_per_volt"] / kw["amp"]
+
+        kw["freqPointsPerAmp"] = int(
+            kw["freqPointsPerAmp"]
+        )  # we say that it has to be an integer
+        # we create a list that is not going to be used but needed for PycQED to have a list in the sweeping parm
+        kw["freq_i"] = np.arange(kw["freqPointsPerAmp"])
+
+        # now we create two dictionaries
+        # 'frequencies': to save the actual frequencies that are going to be swept each amplitude value will have a
+        #                different range of frequencies
+        # 'IFCoefs': to save the 'ef_AcStark_IFCoefs' of each qubit
+        kw["frequencies"] = odict()
+        kw["IFCoefs"] = odict()
+        self.f0g1_IFCoefs = {}
+        self.ef_for_f0g1_reset_pulse_amplitude = {}
+
+        for qb in qubits:  # we loop for the qubits
+            array1D = np.array([])  # will use this array to append all the frequencies
+            kw["IFCoefs"][qb.name] = qb.ef_for_f0g1_reset_pulse_AcStark_IFCoefs()
+            self.f0g1_IFCoefs[qb.name] = qb.f0g1_AcStark_IFCoefs()
+            self.ef_for_f0g1_reset_pulse_amplitude[
+                qb.name
+            ] = qb.ef_for_f0g1_reset_pulse_amplitude()
+
+            for amp in kw["amp"]:  # we loop for the amplitudes
+                # calculate middle of frequency range for this amplitude
+                middle_point = np.polyval(np.flip(kw["IFCoefs"][qb.name]), amp)
+                width = amp * kw["width_per_volt"]
+                array1D = np.append(
+                    array1D,  # append in the array the frequency points for this amplitude
+                    np.linspace(
+                        middle_point - width,
+                        middle_point + width,
+                        kw["freqPointsPerAmp"],
+                    ),
+                )
+            kw["frequencies"][qb.name] = array1D.reshape(
+                kw["amp"].size, kw["freqPointsPerAmp"]
+            )  # we reshape the array
+            # so to have a row for each amplitude
+
+        self.frequencies = kw["frequencies"]  # create a variable for frequencies
+
+        try:
+            super().__init__(task_list, qubits=qubits, sweep_points=sweep_points, **kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
+        # in this case we have specified in the 'SingleQubitGateCalibExperiment' class that we want to modify
+        # each point manually. Meaning that 'sp1d_idx' is going to count the points in the 0 dimension and
+        # 'sp2d_idx' the 1 dimension.
+        # We do that because for this experiment the pulse sequence is not identical for each amplitude of the pulse
+        # (amplitude is the swept variable in dimension 1): the frequency range changes for each amplitude
+        # (frequency is the swept variable in dimension 0)
+        parallel_block_list = []
+        for i, task in enumerate(self.preprocessed_task_list):
+            sweep_points = task["sweep_points"]
+            qb = task["qb"]
+
+            prepend_blocks = super().sweep_block(
+                **task
+            )  # prepend blocks needed (super function)
+
+            # for the ef pulse we want our initial state to be 'e'
+            # PycQED creates a X180_ge pulse automatically
+            # once we are in e state we apply the flattop_f0g1 pulse and the ef
+            # pulse simultaneously
+            # so we create the block of pulses that is going to do that for
+            # each f0g1 amplitude
+
+            # we first create the simultaneous block of ef + f0g1 pulses
+            block_ef = self.block_from_ops(
+                f"ef180_{qb}", [f"ef_for_f0g1_reset_pulse {qb}"]
+            )
+            block_f0g1 = self.block_from_ops(
+                f"f0g1_reset_pulse {qb}", [f"f0g1_reset_pulse {qb}"]
+            )
+
+            # we specify the values of length, frequency, amplitudes
+            block_f0g1.pulses[0]["mod_frequency"] = np.polyval(
+                np.flip(self.f0g1_IFCoefs[qb]),
+                sweep_points.get_sweep_params_property("values", 1, "amplitude")[
+                    sp2d_idx
+                ],
+            )
+            block_ef.pulses[0]["mod_frequency"] = self.frequencies[qb][sp2d_idx][
+                sp1d_idx
+            ]
+            block_f0g1.pulses[0][
+                "pulse_length"
+            ] = sweep_points.get_sweep_params_property("values", 1, "pulse_length")[
+                sp2d_idx
+            ]
+            block_ef.pulses[0]["pulse_length"] = sweep_points.get_sweep_params_property(
+                "values", 1, "pulse_length"
+            )[sp2d_idx]
+            block_f0g1.pulses[0]["amplitude"] = sweep_points.get_sweep_params_property(
+                "values", 1, "amplitude"
+            )[sp2d_idx]
+            block_ef.pulses[0]["amplitude"] = self.ef_for_f0g1_reset_pulse_amplitude[qb]
+
+            simu_blocks = self.simultaneous_blocks(
+                f"ef_AcStark_pulses_{qb}", [block_ef, block_f0g1], block_align="end"
+            )
+
+            parallel_block_list += [
+                self.sequential_blocks(
+                    f"ef_AcStark_pulses_{qb}", prepend_blocks + [simu_blocks]
+                )
+            ]
+
+        # return the blocks
+        return self.simultaneous_blocks(
+            f"ef_f0g1_AcStark_pulses_{sp2d_idx}_{sp1d_idx}",
+            parallel_block_list,
+            block_align="end",
+        )
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # here we run the analysis
+
+        # first we call the super function
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        # then we call the class defined for this analysis: 'efWithf0g1AcStarkAnalysis'
+        self.analysis = tda.efWithf0g1AcStarkAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp, **analysis_kwargs
+        )
+
+    def run_update(self, **kw):
+        try:
+            # here we update the values found: 'f0g1_AcStark_IFCoefs' and 'f0g1_AcStark_IFCoefs_error'
+            for task in self.preprocessed_task_list:
+                qubit = [qb for qb in self.meas_objs if qb.name == task["qb"]][0]
+                IFCoefs = np.array(
+                    list(self.analysis.proc_data_dict["IFCoefs"][qubit.name].values())
+                )
+                IFCoefs_error = np.array(
+                    list(
+                        self.analysis.proc_data_dict["IFCoefs_error"][
+                            qubit.name
+                        ].values()
+                    )
+                )
+
+                qubit.set(
+                    "ef_for_f0g1_reset_pulse_AcStark_IFCoefs", IFCoefs
+                )  # update f0g1_AcStark_IFCoefs
+                qubit.set(
+                    "ef_for_f0g1_reset_pulse_AcStark_IFCoefs_error", IFCoefs_error
+                )  # update f0g1_AcStark_IFCoefs_error
+        except:
+            print("does not update IF Coefficients since no fitting occured")
+
+    #
+    @classmethod
+    def gui_kwargs(cls, device):
+        try:
+            d = super().gui_kwargs(device)
+            d["sweeping_parameters"].update(
+                {
+                    efWithf0g1AcStark.__name__: {
+                        0: {
+                            "frequency": "Hz",
+                        },
+                        1: {
+                            "length": "s",
+                        },
+                        1: {
+                            "amplitude": "V",
+                        },
+                    }
+                }
+            )
+            return d
+        except:
+            print("")
+
+
+class f0g1ResetRabiCalib(SingleQubitGateCalibExperiment):
+    """
+    Class for calibrating the Rabi rate of the ef transition while drivng with a f0g1, in order to perform reset
+
+    This calibration is based on and explained in the section 5.3
+    of Dr. Paul Magnard PhD Thesis, 2021
+
+    :param qubits: list of qubits for which the calibration is done
+    :param amp: array of values for amplitudes of the f0g1 pulse that are
+        going to be swept (dimension 1, outer sweep dimension).
+
+    :param kw: keyword arguments:
+        max_len_per_volt: (float) if 'leng' is not provided, the inner
+            sweep range (pulse lengths) is computed dynamically per pulse amplitude.
+            max_len_per_volt determines the maximum pulse length for given amplitude
+            via the expression max_len = max_len_per_volt / amplitude
+        lengPointsPerAmp: (float) if 'leng' is not provided, the inner
+            sweep range (pulse lengths) is computed dynamically per pulse amplitude.
+            'lengPointsPerAmp' gives the number of values for the pulse length.
+            Values swept are np.linspace(0, max_len, lengPointsPerAmp)
+        amp_ef: (float) amplitude of the f0g1 pulse, default=ef_for_f0g1_reset_pulse_amplitude()
+        freq_ef: (float) modulation frequency of the ef pulse, default=ef_for_f0g1_reset_pulse_mod_frequency()
+        start_from_ef: (boolean) Equals false if the reset is calibrated
+            starting from the e state (default value). Otherwise, the reset is
+            calibrated from the f state.
+
+    """
+
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys
+    kw_for_sweep_points = {  # we define the parameters that we want to sweep
+        "leng_i": dict(
+            param_name="pulse_length", unit="s", label="Pulse length", dimension=0
+        ),
+        "amp": dict(param_name="amplitude", unit="V", label="Amplitude", dimension=1),
+        "freq_i": dict(
+            param_name="mod_frequency", unit="Hz", label="Frequency", dimension=1
+        ),
+    }
+    default_experiment_name = "f0g1ResetRabiCalib"
+    call_parallel_sweep = False  # pulse sequence changes between segments
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
+        # if leng is not given, kw['lengPointsPerAmp'] has to be an integer
+        # if leng is given, then kw['lengPointsPerAmp'] is its number of points
+        kw["lengPointsPerAmp"] = (
+            int(kw["lengPointsPerAmp"]) if not "leng" in kw else kw["leng"].size
+        )
+        self.start_from_ef = False if not "start_from_ef" in kw else kw["start_from_ef"]
+
+        # we create two lists that are not going to be used, but are needed
+        # for PycQED to have a list in the sweeping parm
+        kw["freq_i"] = np.arange(kw["amp"].size)
+        kw["leng_i"] = np.arange(kw["lengPointsPerAmp"])
+
+        kw["transition_name"] = "ef"  # we use 'ef' transition name so
+        # PycQED knows that it has to measure populations for g, e and f states
+        # This way PycQED creates a X180_ge pulse automatically too
+
+        # frequencies of the pulses are calculated with the
+        # f0g1_AcStark_IFCoefs of the qubits, and the ef frequency is deduced from previous calibration
+        kw["freq_f0g1"] = {}
+        kw["freq_ef"] = {}
+        kw["amp_ef"] = {}
+
+        self.freq_f0g1 = {}
+        self.freq_ef = {}
+        self.amp_ef = {}
+        for qb in qubits:  # we do it for all qubits
+            kw["freq_f0g1"][qb.name] = np.polyval(
+                np.flip(qb.f0g1_AcStark_IFCoefs()), kw["amp"]
+            )
+            self.freq_f0g1[qb.name] = kw["freq_f0g1"][qb.name]
+            kw["freq_ef"][qb.name] = np.polyval(
+                np.flip(qb.ef_for_f0g1_reset_pulse_AcStark_IFCoefs()), kw["amp"]
+            )
+            self.freq_ef[qb.name] = kw["freq_ef"][qb.name]
+            kw["amp_ef"][qb.name] = qb.ef_for_f0g1_reset_pulse_amplitude()
+            self.amp_ef[qb.name] = kw["amp_ef"][qb.name]
+
+        # we add in the metadata all the parameters of the qubit
+        parameters = ["kappa", "gamma1", "RabiRate_Coefs"]  # list of parameters
+        for param in parameters:
+            kw[param] = {}  # for each we create a dict
+        for qb in qubits:  # for each qubit
+            for param in parameters:
+                kw[param][qb.name] = qb.get(
+                    f"f0g1_{param}"
+                )  # we put each param in its dict
+
+        # here we calculate the pulse lengths that are going to be used
+        kw[
+            "lengths"
+        ] = odict()  # here we will put the pulse lengths that are going to be swept,
+        # for each amplitude we can have a different range of pulse lengths
+        for qb in qubits:  # we loop for the qubits
+            array1D = np.array([])  # will use this array to append all the frequencies
+            for amp in kw["amp"]:  # we loop for the amplitudes
+                # calculate the max length keeping the
+                # length * amplitude product constant
+                max_len = kw["max_len_per_volt"] / amp
+                array1D = np.append(
+                    array1D,  # append in the array the frequency points for this amplitude
+                    np.linspace(0, max_len, kw["lengPointsPerAmp"]),
+                )
+
+            # we reshape the array so to have a row for each amplitude
+            kw["lengths"][qb.name] = array1D.reshape(
+                kw["amp"].size, kw["lengPointsPerAmp"]
+            )
+
+        self.lengths = kw["lengths"]  # create a variable for lengths
+
+        try:
+            super().__init__(task_list, qubits=qubits, sweep_points=sweep_points, **kw)
+
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, sp1d_idx, sp2d_idx, **kw):
+        # in this case we have specified in the 'SingleQubitGateCalibExperiment' class that we want to modify
+        # each point manually. Meaning that 'sp1d_idx' is going to count the points in the 0 dimension and
+        # 'sp2d_idx' the 1 dimension.
+        # We do that because for this experiment the pulse sequence is not identical for each amplitude of the pulse
+        # (amplitude and frequency are swept variable in dimension 1)
+        # (length is the swept variable in dimension 0)
+        parallel_block_list = []
+        for i, task in enumerate(self.preprocessed_task_list):
+            sweep_points = task["sweep_points"]
+            qb = task["qb"]
+
+            prepend_blocks = super().sweep_block(
+                **task
+            )  # prepend blocks needed (super function)
+
+            # we first create the simultaneous block of ef + f0g1 pulses
+            block_ef = self.block_from_ops(
+                f"ef180_{qb}", [f"ef_for_f0g1_reset_pulse {qb}"]
+            )
+            block_f0g1 = self.block_from_ops(
+                f"f0g1_reset_pulse {qb}", [f"f0g1_reset_pulse {qb}"]
+            )
+
+            # we specify the values of length, frequency, amplitudes
+            block_f0g1.pulses[0]["pulse_length"] = self.lengths[qb][sp2d_idx][
+                sp1d_idx
+            ]  # here the length (dim 0)
+            block_ef.pulses[0]["pulse_length"] = self.lengths[qb][sp2d_idx][
+                sp1d_idx
+            ]  # here the length (dim 0)
+            block_f0g1.pulses[0]["amplitude"] = sweep_points.get_sweep_params_property(
+                "values", 1, "amplitude"
+            )[sp2d_idx]  # here the amplitude (dim 1)
+            block_ef.pulses[0]["amplitude"] = self.amp_ef[qb]
+            block_f0g1.pulses[0]["mod_frequency"] = self.freq_f0g1[qb][
+                sp2d_idx
+            ]  # here de frequency (dim 1)
+            block_ef.pulses[0]["mod_frequency"] = self.freq_ef[qb][sp2d_idx]
+
+            simu_blocks = self.simultaneous_blocks(
+                f"reset_pulses_{qb}", [block_ef, block_f0g1], block_align="end"
+            )
+
+            # for the flattop_f0g1 pulse we want our state to be 'f', as we have put 'ef' as transition name then
+            # PycQED creates a X180_ge pulse automatically, then we need a X180_ef pulse to populate the f state
+            # and once we are in f state we apply the flattop_f0g1 pulse
+            # so we create the block of pulses that is going to do that for each point, and add it to the simultaneous
+            # block precedently created
+            if self.start_from_ef:
+                # adding an ef pulse at the start of the reset calibration
+                block = self.sequential_blocks(
+                    f"reset_calib_pulses_{qb}",
+                    [
+                        self.block_from_ops(f"ini_pulse_{qb}", [f"X180_ef {qb}"]),
+                        simu_blocks,
+                    ],
+                    destroy=True,
+                )
+            else:
+                block = simu_blocks
+
+            parallel_block_list += [
+                self.sequential_blocks(
+                    f"f0g1_reset_calib_{qb}", prepend_blocks + [block]
+                )
+            ]
+
+        # return the blocks
+        return self.simultaneous_blocks(
+            f"f0g1_reset_cal_{sp2d_idx}_{sp1d_idx}",
+            parallel_block_list,
+            block_align="end",
+        )
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # here we run the analysis
+
+        # first we call the super function
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        # then we call the class defined for this analysis: 'f0g1ResetCalibAnalysis'
+        self.analysis = tda.f0g1ResetCalibAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp, **analysis_kwargs
+        )
+
+
+class f0g1Pitch(SingleQubitGateCalibExperiment):
+    """
+    class for the f0g1 pitch calibration: check whether the calibrations of AcStark and RabiRate work correctly
+
+    this calibration is explained in 5.4 section of Dr. Philipp Kurpiers PhD Thesis, 2019
+
+    args:
+        qubits (list): array of qubits to which do the calibration
+        gamma1 (np.array): array of values for gamma1 that are going to be swept (dimension 1)
+            gamma1 is exponential rate of the rising edge of the emitted photon
+        pulseTrunc (np.array): array of values for pulseTrunc that ara going to be swept (dimension 0)
+
+    optional args:
+        gamma2 (np.array): array of values for gamma2 that are going to be swept (dimension 1)
+            gamma2 is exponential rate of the falling edge of the emitted photon
+            if 'gamma2' is not given, then 'gamma2' = 'gamma1' will be used
+        photonTrunc (float):
+            pulseTrunc and photonTrunc dictates how to truncate the pulse. For pulseTrunc=1, the pulse is
+            truncated at -photonTrunc*2/gamma1 and photonTrunc*2/gamma2. For pulseTrunc<1, the pulse is truncated
+            such that it has the same start time, but a pulse length of pulseTrunc*pulseLength
+        junctionTrunc (float):
+        junctionSigma (float):
+            information about the junction bridging the AWG amplitude
+            from the truncated pulse value at the end and zero. These variables denote the junction truncation,
+            width and type respectively
+    """
+
+    kw_for_task_keys = SingleQubitGateCalibExperiment.kw_for_task_keys
+    kw_for_sweep_points = {  # we define the parameters that we want to sweep
+        "pulseTrunc": dict(
+            param_name="pulseTrunc",
+            unit="-",  # ? not sure about the unit
+            label="Pulse Truncation",
+            dimension=0,
+        ),
+        "gamma1": dict(param_name="gamma1", unit="Hz", label="gamma1", dimension=1),
+        "gamma2": dict(param_name="gamma2", unit="Hz", label="gamma2", dimension=1),
+    }
+    default_experiment_name = "f0g1Pitch"
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None, **kw):
+        kw[
+            "transition_name"
+        ] = "ef"  # we use 'ef' transition name so PycQED know that has to measure
+        # populations for g, e and f state
+        # this way PycQED creates a X180_ge pulse automatically too
+
+        # -- we put the default values of the pulse for each qubit if no values are given when the object is created
+        #   if values given then we change the default values
+        #   this way all these values are going to be in the metadata of the experiment
+        if not "photonTrunc" in kw:
+            kw["photonTrunc"] = [qb.f0g1_photonTrunc() for qb in qubits]
+        else:
+            for qb in qubits:
+                qb.f0g1_photonTrunc(kw["photonTrunc"])
+            kw["photonTrunc"] = [kw["photonTrunc"] for _ in qubits]
+
+        if not "junctionTrunc" in kw:
+            kw["junctionTrunc"] = [qb.f0g1_junctionTrunc() for qb in qubits]
+        else:
+            for qb in qubits:
+                qb.f0g1_junctionTrunc(kw["junctionTrunc"])
+            kw["junctionTrunc"] = [kw["junctionTrunc"] for _ in qubits]
+
+        if not "junctionSigma" in kw:
+            kw["junctionSigma"] = [qb.f0g1_junctionSigma() for qb in qubits]
+        else:
+            for qb in qubits:
+                qb.f0g1_junctionSigma(kw["junctionSigma"])
+            kw["junctionSigma"] = [kw["junctionSigma"] for _ in qubits]
+        # --
+
+        # if the user only gives gamma or gamma1 we use the same array for gamma2
+        if "gamma1" in kw and not "gamma2" in kw:
+            kw["gamma2"] = kw["gamma1"]
+
+        try:  # call the 'SingleQubitGateCalibExperiment' init
+            super().__init__(task_list, qubits=qubits, sweep_points=sweep_points, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qb, sweep_points, transition_name, **kw):
+        # here we specify the pulses that we want to apply and for which do we want to sweep its parameters
+
+        prepend_blocks = super().sweep_block(
+            qb, sweep_points, transition_name, **kw
+        )  # prepend blocks needed (super function)
+
+        # for the f0g1 pulse we want our state to be 'f', as we have put 'ef' as transition name then
+        # PycQED creates a X180_ge pulse automatically, then we need a X180_ef pulse to populate the f state
+        # and once we are in f state we apply the f0g1 pulse
+        # so we create the block of pulses that is going to do that
+        block = self.block_from_ops(
+            f"f0g1_pulses_{qb}", [f"X180_ef {qb}", f"f0g1 {qb}"]
+        )
+
+        # we specify which parameters we want to sweep thanks to the 'sweep_points':
+        # 'sweep_points' is an array of dictionaries (the length of the array is defining the dimensions of the sweep,
+        # if the array has 2 components we seep in dimension 0 and dimension 1 (2D sweep).
+        # each dictionary has as keys the names of the parameter swept  ('param_name') in that dimension
+        for sweep_dict in sweep_points:
+            for param_name in sweep_dict:
+                pulse_dict = block.pulses[1]  # we seep the f0g1 pulse
+                if (
+                    param_name in pulse_dict
+                ):  # if the parameters are parameters of the f0g1 pulse
+                    pulse_dict[param_name] = ParametricValue(
+                        param_name
+                    )  # we use the 'ParametricValue' function
+                    # to be able to sweep that parameter
+
+        # return the blocks
+        return self.sequential_blocks(f"f0g1_pitch_{qb}", prepend_blocks + [block])
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        # here we run the analysis
+
+        # first we call the super function
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+
+        # then we call the class defined for this analysis: 'f0g1PitchAnalysis'
+        self.analysis = tda.f0g1PitchAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp, **analysis_kwargs
+        )
+
+    @classmethod
+    def gui_kwargs(cls, device):
+        d = super().gui_kwargs(device)
+        d["sweeping_parameters"].update(
+            {
+                f0g1Pitch.__name__: {
+                    0: {
+                        "pulseTrunc": "-",
+                    },
+                    1: {
+                        "gamma1": "Hz",
+                        "gamma2": "Hz",
+                    },
+                }
+            }
+        )
+        return d
+
+class LeakageReductionUnit(SingleQubitGateCalibExperiment):
+    """LRU calibration experiment.
+
+    LRU measurement for finding the amplitude, frequency and pulse length of
+    the LRU. This is a SingleQubitGateCalibExperiment, see docstring there
+    for general information.
+
+    The following keys in a task are interpreted by this class in
+    addition to the ones recognized by the parent classes:
+        - amps (float): Amplitude of the pulse.
+        - freqs (float): Frequency of the pulse.
+
+    The following keyword arguments will be copied as a key to tasks
+    that do not have their own value specified:
+        - num_LRUs (int; default: 1): the number of LRUs
+    """
+
+    kw_for_sweep_points = {
+        'freqs': dict(param_name='frequency', unit='Hz',
+                      label=r'modulation frequency',
+                      dimension=1),
+        'amps': dict(param_name='amplitude', unit='V',
+                       label=r'modulation amplitude',
+                       dimension=0),
+    }
+    kw_for_task_keys = ['num_LRUs', 'init_state', 'lru_opcodes']
+    default_experiment_name = 'Leakage_reduction_unit'
+
+    def __init__(self, task_list=None, sweep_points=None, qubits=None,
+                 amps=None, length= None, **kw):
+        init_state = kw.get('init_state')
+        # Need to set transition_name here since it is used to determine the
+        # calibration points
+        kw['transition_name'] = '' if init_state == 'g' else (
+            'ge' if init_state == 'e' else (
+                'ef' if init_state == 'f' else 'fh'))
+        try:
+            super().__init__(task_list, qubits=qubits,
+                             sweep_points=sweep_points,
+                             amps=amps, length=length, **kw)
+        except Exception as x:
+            self.exception = x
+            traceback.print_exc()
+
+    def sweep_block(self, qb, sweep_points, init_state,
+                    lru_opcodes='auto', num_LRUs=1, **kw):
+        """
+        This function creates the blocks for the leakage-reduction task. If
+        there are several PFM ppulses (lru_opcodes is a list), the parameters
+        of the last pulse in the list are swept. Parameters of the other pulses
+        can be swept by adding a suffix to the parameter name. The suffix
+        should be the last part of the parameter name, e.g. 'frequency_ge'.
+        Note that to modify explicitly the PFM between g and e, the suffix
+        should be 'ge' even though the opcode is 'PFM' without suffix. This
+        is in order to distinguish between no suffix and 'ge' suffix.
+        :param qb: qubit name
+        :param sweep_points: SweepPoints instance
+        :param init_state: 'g', 'e', 'f', or  'h'. Initial state
+                            of all segments except the calibration points.
+        :param lru_opcodes: list of PFM opcodes for the LRU pulses e.g.
+                            ['PFM_fh', 'PFM_ef'] (the order is taken as in the
+                            list) or 'auto', in which case a single PFM
+                            pulse is used to move to the next lower state
+                            e.g. PFM_fh for init_state 'h'. If
+                            'auto' is used and init_state is
+                            'g', 'PFM' is used.
+        :param num_LRUs: number of LRUs, default is 1. In case lru_opcodes is
+                            a list larger than 1, all opcodes will be repeated
+                            num_LRUs times.
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        # Remove transition_name from kw to avoid passing it to the parent.
+        # transition_name='' is passed explicitly to the parent to avoid
+        # creating addiitonal preparation pulses which are already covered
+        # by init_state.
+        kw.pop('transition_name')
+        prepend_blocks = super().sweep_block(qb=qb, sweep_points=sweep_points,
+                                             transition_name='', **kw)
+        if lru_opcodes == 'auto':
+            lru_transition = 'fh' if init_state == 'h' else (
+                'ef' if init_state == 'f' else '')
+            lru_opcodes = [f'PFM_{lru_transition} {qb}']
+        else:
+            lru_opcodes = [f'{opcode} {qb}' for opcode in lru_opcodes]
+        # add modulation pulse
+        modulation_block = self.block_from_ops(f'modulation_pulses_{qb}',
+                                                lru_opcodes)
+        # create ParametricValues from param_name in sweep_points
+        for sweep_dict in sweep_points:
+            for param_name in sweep_dict:
+                # get the suffix of the param_name if is exists, otherwise use
+                # the last suffix in lru_opcodes. the suffix is used to
+                # determine which pulse should be swept
+                suffix = param_name.split('_')[-1] if '_' in param_name else ''
+                pulse_param = '_'.join(
+                    param_name.split('_')[:-1]) if suffix in [
+                    'ge', 'ef', 'fh'] else param_name
+                suffix = suffix if suffix in ['ge', 'ef', 'fh'] else \
+                    lru_opcodes[-1].split('_')[-1].split(' ')[0]
+                for pulse_dict in modulation_block.pulses:
+                    if (pulse_param in pulse_dict) and \
+                            (suffix in pulse_dict['op_code']):
+                        pulse_dict[pulse_param] = ParametricValue(
+                            param_name)
+        modulation_block = [modulation_block] * num_LRUs
+        return self.sequential_blocks(f'leakage_reduction_unit_{qb}',
+                                      prepend_blocks + modulation_block)
+
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        :param analysis_kwargs: (dict) keyword arguments for analysis class
+        :param kw: keyword arguments
+            Passed to parent method.
+        """
+
+        super().run_analysis(analysis_kwargs=analysis_kwargs, **kw)
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        self.analysis = tda.LeakageReductionUnitAnalysis(
+            qb_names=self.meas_obj_names, t_start=self.timestamp,
+            **analysis_kwargs)
 
 class DriveAmplitudeNonlinearityCurve(CalibBuilder):
     """
