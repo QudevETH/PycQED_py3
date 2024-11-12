@@ -15,6 +15,7 @@ import time
 import h5py
 import numpy as np
 import logging
+from typing import IO
 
 # Do not remove, used inside eval()
 from numpy import array
@@ -514,21 +515,23 @@ def safe_file_open(
         mode: str = 'a',
         max_open_attempts: int = 12,
         sleep_duration: int = 10,
-):
+) -> IO | None:
     """Open an HDF5 file safely.
 
     Arguments:
-        file_path (str): path to file to open
-        mode (str): mode to open the file in. See the options for
-            `h5py.File()`.
-        max_open_attempts (int): maximum number of times to try opening
-            the file. Defaults to 12.
-        sleep_duration (int): duration to wait in between each
-            attempt at opening the file. Defaults to 10 seconds.
+        file_path: A string specifying the path to the file to open.
+        mode: A string specifying the mode to open the file in. See
+            the options for `h5py.File()`. Optional, defaults to 'a'.
+        max_open_attempts: An integer specifying the maximum number of
+            times to try opening the file. Optional, defaults to 12.
+        sleep_duration: An integer specifying the duration (in seconds)
+            to wait in between each attempt at opening the file.
+            Optional, defaults to 10 seconds.
 
     Returns:
-        file_object: Python file object of the opened HDF5 file (if
-            opening succeeds). Use like normal in context managers.
+        file_object: An IO object of the opened HDF5 file (if opening
+            succeeds) or None (if it fails). Use like normal in context
+            managers.
     """
     cur_open_attempt = 0
     file_opened = False
