@@ -3933,12 +3933,14 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 # Plot population loss for the first flux pulse length as a
                 # function of flux pulse amplitude
                 label = f'Pop_loss_{qb}{suffix}_{self.data_to_fit[qb]}'
+                yvals = 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask]
                 self.plot_dicts[label] = {
+                    'fig_id': label,
                     'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
                     'plotfn': self.plot_line,
                     'linestyle': '-',
                     'xvals': param_values[qb][mask],
-                    'yvals': 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask],
+                    'yvals': yvals,
                     'xlabel': xlabel,
                     'xunit': 'V' if p == 0 else 'Hz',
                     'ylabel': r'Pop. loss {} @ {:.0f} ns'.format(
@@ -3946,7 +3948,24 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         self.lengths[qb][0]/1e-9
                     ),
                     'yunit': '',
+                    'setlabel': 'Pop. loss',
                 }
+                # interaction_freqs/_amps
+                int_vals = self.get_param_value('interaction'+suffix+'s', {})
+                int_vals_qb = int_vals.get(qb, {})
+                for i, (int_qb, int_val) in enumerate(int_vals_qb.items()):
+                    self.plot_dicts[label + '_vline_' + int_qb] = {
+                        'fig_id': label,
+                        'plotfn': self.plot_vlines,
+                        'x': int_val[0],
+                        'ymin': np.min(yvals),
+                        'ymax': np.max(yvals),
+                        'colors': f'C{i}',
+                        'line_kws': {'alpha': 0.5},
+                        'linestyles': '--',
+                        'setlabel': int_val[1] + ' <-> ' + int_qb,
+                        'do_legend': True,
+                    }
 
             # Plot all fits in single figure
             if self.get_param_value('all_fits', False) and self.do_fitting:
