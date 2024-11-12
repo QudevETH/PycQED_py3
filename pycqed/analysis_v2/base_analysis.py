@@ -33,7 +33,7 @@ import lmfit
 import h5py
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
-from pycqed.utilities.io import hdf5 as hdf5_io
+from pycqed.utilities.io import hdf5 as h5d
 import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
@@ -388,11 +388,11 @@ class BaseDataAnalysis(object):
         """Saves `self.job` in analysis result file under "Analysis" group.
         """
         file_path = self._get_analysis_result_file_path()
-        with hdf5_io.safe_file_open(file_path, mode='a') as data_file:
-            analysis_group = hdf5_io.get_hdf_group_by_name(
+        with h5d.safe_file_open(file_path, mode='a') as data_file:
+            analysis_group = h5d.get_hdf_group_by_name(
                 data_file, "Analysis")
             if isinstance(analysis_group, h5py.Group):
-                hdf5_io.write_dict_to_hdf5(
+                h5d.write_dict_to_hdf5(
                     {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
                     entry_point=analysis_group
                 )
@@ -447,9 +447,9 @@ class BaseDataAnalysis(object):
             Optional[BaseDataAnalysis]: analysis object reconstructed from
                 the job string saved in the HDF5 file or None.
         """
-        with hdf5_io.safe_file_open(data_file_path, mode='r') as data_file:
+        with h5d.safe_file_open(data_file_path, mode='r') as data_file:
             try:
-                job = hdf5_io.read_from_hdf5(
+                job = h5d.read_from_hdf5(
                     BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF,
                     data_file['Analysis']
                 )
@@ -773,7 +773,7 @@ class BaseDataAnalysis(object):
                         continue
                     elif file_par == 'Timers':
                         raw_data_dict_ts[save_par] = \
-                            hdf5_io.read_dict_from_hdf5({}, data_file[file_par])
+                            h5d.read_dict_from_hdf5({}, data_file[file_par])
                     elif len(file_par.split('.')) == 1:
                         # Group was not specified. The following code tries to find an
                         # attribute or subgroup in any of the groups in the hdf file.
@@ -786,7 +786,7 @@ class BaseDataAnalysis(object):
                         for i, group_name in enumerate(data_file.keys()):
                             try:
                                 raw_data_dict_ts[save_par] = \
-                                    hdf5_io.read_from_hdf5(
+                                    h5d.read_from_hdf5(
                                         par_name, data_file[group_name])
                             except ParameterNotFoundError as e:
                                 if i == len(data_file.keys()) - 1:
@@ -797,7 +797,7 @@ class BaseDataAnalysis(object):
                             break  # keep first found parameter
                     else:
                         raw_data_dict_ts[save_par] = \
-                            hdf5_io.read_from_hdf5(file_par, data_file)
+                            h5d.read_from_hdf5(file_par, data_file)
                 a_tools.close_files([data_file])
                 # add settings
                 raw_data_dict_ts.update(
@@ -1322,9 +1322,9 @@ class BaseDataAnalysis(object):
             if self.verbose:
                 print('Saving fitting results to %s' % fn)
 
-            with hdf5_io.safe_file_open(fn, mode='a') as data_file:
+            with h5d.safe_file_open(fn, mode='a') as data_file:
                 try:
-                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                    analysis_group = h5d.get_hdf_group_by_name(
                         data_file, "Analysis")
 
                     # Iterate over all the fit result dicts as not to
@@ -1341,7 +1341,7 @@ class BaseDataAnalysis(object):
                             fr_group = analysis_group.create_group(fr_key)
 
                         d = self._convert_dict_rec(copy.deepcopy(fit_res))
-                        hdf5_io.write_dict_to_hdf5(d, entry_point=fr_group)
+                        h5d.write_dict_to_hdf5(d, entry_point=fr_group)
                 except Exception as e:
                     data_file.close()
                     raise e
@@ -1395,19 +1395,19 @@ class BaseDataAnalysis(object):
             if self.verbose:
                 print('Saving fitting results to %s' % fn)
 
-            with hdf5_io.safe_file_open(fn, mode='a') as data_file:
+            with h5d.safe_file_open(fn, mode='a') as data_file:
                 try:
-                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                    analysis_group = h5d.get_hdf_group_by_name(
                         data_file, "Analysis")
-                    proc_data_group = hdf5_io.get_hdf_group_by_name(
+                    proc_data_group = h5d.get_hdf_group_by_name(
                         analysis_group, "Processed data")
 
                     if key in proc_data_group.keys():
                         del proc_data_group[key]
 
                     d = {key: self.proc_data_dict[key]}
-                    hdf5_io.write_dict_to_hdf5(d, entry_point=proc_data_group,
-                                       overwrite=overwrite)
+                    h5d.write_dict_to_hdf5(d, entry_point=proc_data_group,
+                                           overwrite=overwrite)
                 except Exception as e:
                     data_file.close()
                     raise e
