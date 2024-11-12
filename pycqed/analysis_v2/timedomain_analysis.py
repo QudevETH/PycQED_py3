@@ -10178,7 +10178,12 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
     """
 
     def extract_data(self):
+        self.default_options['data_filter'] = lambda x: x
+        self.default_options['plot_raw_data'] = False
+        self.default_options['plot_proj_data'] = False
         super().extract_data()
+        self.data_to_fit = {}  # FIXME seems needed
+
         if self.qb_names is None:
             # try to get qb_names from cal_points
             try:
@@ -10222,12 +10227,11 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
                     projdd_per_prep_state
 
     def prepare_plots(self):
+        super().prepare_plots()
         # prepare raw population plots
         legend_bbox_to_anchor = (1, -0.20)
         legend_pos = 'upper right'
         legend_ncol = 2 #len(self.sp.get_values("initialize"))
-        # overwrite baseAnalysis plots
-        self.plot_dicts = OrderedDict()
         basekey = 'projected_data_dict_per_prep_state'
         suffixes = ('', '_corrected')
         keys = {basekey + suffix: suffix for suffix in suffixes
@@ -10240,7 +10244,7 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
                         for seq_nr, pop in enumerate(data_prep_state.T):
                             plt_key = 'data_{}_{}_{}_{}_{}'.format(
                                  k, qbn, state, prep_state, seq_nr)
-                            fig_key = f"populations_{qbn}_{prep_state}{keys[k]}"
+                            fig_key = f"populations_{qbn}_state{j}_{prep_state}{keys[k]}"
                             self.plot_dicts[plt_key] = {
                                 'plotfn': self.plot_line,
                                 'fig_id':fig_key,
@@ -10258,7 +10262,7 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                                                 ),
                                 'title': self.raw_data_dict['timestamp'] + ' ' +
                                          self.raw_data_dict['measurementstring']
-                                         + " " + prep_state,
+                                         + " " + qbn + " " + prep_state,
                                 'titlepad': 0.2,
                                 'linestyle': '-',
                                 'color': f'C{i}',
@@ -10267,13 +10271,16 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 'legend_ncol': legend_ncol,
                                 'legend_bbox_to_anchor': legend_bbox_to_anchor,
                                 'legend_pos': legend_pos,
-                                'legend_fontsize': 5}
+                                'legend_fontsize': 5,
+                                'grid': True,
+                                'yrange': [5e-4, 1.2],
+                            }
 
                             # add feedback params info to plot
                             textstr = self._get_feedback_params_text_str(qbn)
                             self.plot_dicts[f'text_msg_{qbn}_' \
                                             f'{prep_state}{keys[k]}'] = {
-                                'fig_id': f"populations_{qbn}_{prep_state}{keys[k]}",
+                                'fig_id': fig_key,
                                 'ypos': -0.21,
                                 'xpos': 0,
                                 'horizontalalignment': 'left',
