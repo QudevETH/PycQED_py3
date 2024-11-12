@@ -298,23 +298,27 @@ class QCNNExperiment(VariationalAlgorithm):
 
     def __init__(self, prep_params_filename=None, *args, **kw):
         self.prep_params_filename = prep_params_filename
+        self.do_qcnn = True
         super().__init__(*args, **kw)
 
     def pp9(self, h_index, param_index):
-        if h_index == 21:
-            gs_prep_param = (np.array(
-                [0, 3/2*np.pi, 0, 0, 3/2*np.pi, 0, 0, 3/2*np.pi, 0,
-                np.pi, np.pi, np.pi,
-                0, 0, 0, 0, 0, 0, 0, 0, 0,
-                np.pi, np.pi, np.pi,
-                0, 0, 0, 3/2*np.pi, 0, 3/2*np.pi, 0, 0, 0,
-                np.pi, np.pi,
-                3/2*np.pi, 1/2*np.pi, 3/2*np.pi, 1/2*np.pi, 1/2*np.pi,
-                 1/2*np.pi, 3/2*np.pi, 1/2*np.pi, 3/2*np.pi]
-            ) * 180 / np.pi)[::-1]
-            return gs_prep_param[param_index]
-        elif h_index == 22:
-            return 0
+        # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 1
+        # h_index = 21, ..., 28, validation set
+        h_index = int(round(h_index))
+        if h_index >= 21:
+            test_prep_params = np.zeros((8, 44))
+            # test_prep_params[0] is all-zero to prepare 0000
+            test_prep_params[1][0:9] = 180  # all 1
+            test_prep_params[2][0:9] = 90  # all +
+            test_prep_params[3][0:9] = -90  # all -
+            test_prep_params[4][[1, 3, 5, 7]] = 180  # 010101010
+            test_prep_params[5][[0, 2, 4, 6, 8]] = 180  # 101010101
+            pm = np.empty(9)
+            pm[::2] = 90
+            pm[1::2] = -90
+            test_prep_params[6][0:9] = pm  # +-+-+-+-+
+            test_prep_params[7][0:9] = -pm  # -+-+-+-+-
+            return test_prep_params[h_index - 21][param_index]
         if not hasattr(self, 'prep_params_vs_h'):
             if self.prep_params_filename is None:
                 raise ValueError("self.prep_params_filename is None!")
@@ -338,7 +342,6 @@ class QCNNExperiment(VariationalAlgorithm):
                 log.warning(
                     "Can't find prep params file! Using zeros instead")
                 self.prep_params_vs_h = np.zeros((21, 44))
-        h_index = int(round(h_index))
         return self.prep_params_vs_h[h_index, param_index]
 
     def pp(self, h_index, param_index):
@@ -346,19 +349,21 @@ class QCNNExperiment(VariationalAlgorithm):
 
         Short name for convenience when using in an op code
         """
+        # TODO h_index is a misnomer, should rename/clean up
         # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 2
-        # h_index = 21, prepare TP state with explicit parameters below
-        # h_index = 22, prepare |0000> state by setting all params to 0
-        if h_index == 21:
-            gs_prep_param = np.array([0,np.pi/2,np.pi/2,0,\
-                       np.pi,\
-                       -np.pi/2,0,np.pi/2,-np.pi/2,\
-                       np.pi,\
-                        np.pi,\
-                       -np.pi,np.pi/2,-np.pi/2,0]) * 180 / np.pi
-            return gs_prep_param[param_index]
-        elif h_index == 22:
-            return 0
+        # h_index = 21, ..., 28, validation set
+        h_index = int(round(h_index))
+        if h_index >= 21:
+            test_prep_params = np.zeros((8, 15))
+            # test_prep_params[0] is all zero for 0000
+            test_prep_params[1][0:4] = 180  # 1111
+            test_prep_params[2][0:4] = 90  # ++++
+            test_prep_params[3][0:4] = -90  # ----
+            test_prep_params[4][0:4] = np.array([0, 180, 0, 180])  # 0101
+            test_prep_params[5][0:4] = np.array([180, 0, 180, 0])  # 1010
+            test_prep_params[6][0:4] = np.array([90, -90, 90, -90])  # +-+-
+            test_prep_params[7][0:4] = np.array([-90, 90, -90, 90])  # -+-+
+            return test_prep_params[h_index - 21][param_index]
         if not hasattr(self, 'prep_params_vs_h'):
             if self.prep_params_filename is None:
                 raise ValueError("self.prep_params_filename is None!")
@@ -367,12 +372,12 @@ class QCNNExperiment(VariationalAlgorithm):
                     self.prep_params_vs_h = np.array(fileObject['angles_opt'])*180/np.pi
             except FileNotFoundError:
                 log.warning("Can't find prep params file! Using zeros instead")
-                self.prep_params_vs_h = np.zeros((21, 15))
-        param_index = [3,0,1,2,4,8,5,6,7,9,10,14,11,12,13][param_index]
-        h_index = int(round(h_index))
+                self.prep_params_vs_h = np.zeros((21, 15))  #TODO
+        param_index = [3,0,1,2,4,5,6,7,8,12,9,10,11,13,14,18,15,16,
+                       17][param_index]
         return self.prep_params_vs_h[h_index, param_index]
 
-    def _add_ry_block(self, prefix, qbns, params=None):
+    def _add_rxy_block(self, prefix, qbns, params=None, rot='Y'):
         if params is None:
             params = [f"{prefix}_{qbn}" for qbn in qbns]
         qbns = [qbn if isinstance(qbn, str) else self.qubits[qbn].name
@@ -382,7 +387,7 @@ class QCNNExperiment(VariationalAlgorithm):
         self._blocks.append(self.simultaneous_blocks(
                 block_name=prefix,
                 blocks=[self.block_from_anything(
-                    f"Y{op_code_params[i]} {qbns[i]}",
+                    f"{rot}{op_code_params[i]} {qbns[i]}",
                     f"{prefix}_{qbns[i]}")
                     for i in range(len(qbns))],
                 block_align='middle',
@@ -416,80 +421,71 @@ class QCNNExperiment(VariationalAlgorithm):
         self.params = []
 
         if len(self.qubits) == 2:
-            self._add_ry_block('RYp1', range(len(self.qubits)),
+            self._add_rxy_block('RYp1', range(len(self.qubits)),
                                [90, '[theta_p]/2'])
             self._add_cz_block('CZp1', [[0, 1]],
                                [180])
-            self._add_ry_block('RYp2', range(len(self.qubits)),
+            self._add_rxy_block('RYp2', range(len(self.qubits)),
                                 [0, '[basis]',])
         elif len(self.qubits) == 4:
             op_code = "cb.pp([h_index],{i})"
             # TODO maybe remove prefix if not needed
-            self._add_ry_block('RYp1', range(len(self.qubits)),
+            self._add_rxy_block('RYp1', range(len(self.qubits)),
                                [op_code.format(i=i) for i in [0, 1, 2, 3]])
             self._add_cz_block('CZp1', [[1, 2]],
                                [op_code.format(i=4)])
-            self._add_ry_block('RYp2', range(len(self.qubits)),
+            self._add_rxy_block('RYp2', range(len(self.qubits)),
                                [op_code.format(i=i) for i in [5, 6, 7, 8]])
             self._add_cz_block('CZp2', [[2, 3], [0, 1]],
                                [op_code.format(i=i) for i in [9, 10]])
-            self._add_ry_block('RYp3', range(len(self.qubits)),
+            self._add_rxy_block('RYp3', range(len(self.qubits)),
                                [op_code.format(i=i) for i in [11, 12, 13, 14]])
-            # QCNN. Each gate has an independent parameter.
-            self._add_ry_block('RY1', range(len(self.qubits)),
-                               ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
-                               # ['theta_b', 'theta_b', 'theta_b', 'theta_b'])
-            self._add_cz_block('CZ1', [[0, 1], [2, 3]], ['CZ1', 'CZ2'])
-            self._add_ry_block('RY2', range(len(self.qubits)),
-                               ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
-            self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
-            self._add_ry_block('RY3', range(len(self.qubits)),
-                               ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
+            # temporary X gate to switch measurement bases for state
+            # preparation check
+            # self._add_rxy_block('RY', range(len(self.qubits)), [90]*4)
+            if self.do_qcnn:
+                # QCNN. Each gate has an independent parameter.
+                self._add_rxy_block('RY1', range(len(self.qubits)),
+                                   ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
+                self._add_cz_block('CZ1', [[0, 1], [2, 3]], ['CZ1', 'CZ2'])
+                self._add_rxy_block('RY2', range(len(self.qubits)),
+                                   ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
+                self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
+                self._add_rxy_block('RY3', range(len(self.qubits)),
+                                   ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
         elif len(self.qubits) == 9:
             op_code = "cb.pp9([h_index],{i})"
             # TODO maybe remove prefix if not needed
-            self._add_ry_block('RYp1', range(len(self.qubits)),
+            self._add_rxy_block('RYp1', range(len(self.qubits)),
                                [op_code.format(i=i) for i in range(0, 9)])
-
             self._add_cz_block('CZp1', [[2, 3], [5, 6]],
                                [op_code.format(i=i) for i in range(9, 11)])
-            # self._add_cz_block('CZp2', [[5, 6]],
-            #                    [op_code.format(i=10)])
-
-            self._add_ry_block('RYp2', range(len(self.qubits)),
+            self._add_rxy_block('RYp2', range(len(self.qubits)),
                                [op_code.format(i=i) for i in range(11, 20)])
-
             self._add_cz_block('CZp2', [[1, 2], [4, 5], [7, 8]],
                                [op_code.format(i=i) for i in range(20, 23)])
-            # self._add_cz_block('CZp4', [[4, 5]],
-            #                    [op_code.format(i=21)])
-            # self._add_cz_block('CZp5', [[7, 8]],
-            #                    [op_code.format(i=22)])
-
-            self._add_ry_block('RYp3', range(len(self.qubits)),
+            self._add_rxy_block('RYp3', range(len(self.qubits)),
                                [op_code.format(i=i) for i in range(23, 32)])
-
             self._add_cz_block('CZp3', [[0, 1], [3, 4], [6, 7]],
                                [op_code.format(i=i) for i in range(32, 35)])
-            # self._add_cz_block('CZp7', [[3, 4]],
-            #                    [op_code.format(i=33)])
-            # self._add_cz_block('CZp8', [[6, 7]],
-            #                    [op_code.format(i=34)])
-
-            self._add_ry_block('RYp4', range(len(self.qubits)),
+            self._add_rxy_block('RYp4', range(len(self.qubits)),
                                [op_code.format(i=i) for i in range(35, 44)])
-            # QCNN. Each gate has an independent parameter.
-            self._add_ry_block('RY1', range(len(self.qubits)))
-            self._add_cz_block('CZ1', [[1, 2], [4, 5], [8, 7]])
-            self._add_ry_block('RY2', range(len(self.qubits)))
-            self._add_cz_block('CZ2', [[0, 1], [3, 4], [6, 7]])
-            self._add_ry_block('RY3', range(len(self.qubits)))
-            self._add_cz_block('CZ3', [[2, 3], [5, 6]])
-            self._add_ry_block('RY4', range(len(self.qubits)))
+            # temporary X gate to switch measurement bases for state
+            # preparation check
+            # self._add_rxy_block('RY', range(len(self.qubits)), [90]*9)
+            if self.do_qcnn:
+                # QCNN. Each gate has an independent parameter.
+                self._add_rxy_block('RY1', range(len(self.qubits)))
+                self._add_cz_block('CZ1', [[1, 2], [4, 5], [8, 7]])
+                self._add_rxy_block('RY2', range(len(self.qubits)))
+                self._add_cz_block('CZ2', [[0, 1], [3, 4], [6, 7]])
+                self._add_rxy_block('RY3', range(len(self.qubits)))
+                self._add_cz_block('CZ3', [[2, 3], [5, 6]])
+                self._add_rxy_block('RY4', range(len(self.qubits)))
         elif len(self.qubits) == 1:
-            self._add_ry_block('RYp', [qb.name for qb in self.qubits],
+            self._add_rxy_block('RYp', [qb.name for qb in self.qubits],
                                ['theta_p'])
-            self._add_ry_block('RYt', [qb.name for qb in self.qubits],
+            self._add_rxy_block('RYt', [qb.name for qb in self.qubits],
                                ['theta_t'])
         else:
             raise ValueError("Only 4 or 9 qubits are supported!")
@@ -500,37 +496,6 @@ class QCNNExperiment(VariationalAlgorithm):
                                             self._blocks,
                                             set_end_after_all_pulses=True,
                                             destroy=True)
-
-    #
-    # def set_block_and_params(self):
-    #     self._blocks = []
-    #     self.params = []
-    #     if len(self.qubits) == 2:
-    #         # Prep circuit
-    #         self._add_ry_block('RYp1', range(len(self.qubits)))
-    #         self._add_cz_block('CZp1', [[0, 1]])
-    #         self._add_ry_block('RY2', [0])
-    #     self.block = self.sequential_blocks('QCNN',
-    #                                         self._blocks,
-    #                                         set_end_after_all_pulses=True,
-    #                                         destroy=True)
-
-
-    # def set_block_and_params(self):
-    #     self._blocks = []
-    #     self.params = []
-    #     if len(self.qubits) == 4:
-    #         # Prep circuit
-    #         self._add_ry_block('RYp1', [0, 1, 2, 3])
-    #         # self._add_ry_block('RYp1', [1])
-    #         self._add_ry_block('RY1', [0, 1, 2, 3])
-    #         # self._add_ry_block('RY1', [1])
-    #     else:
-    #         raise ValueError("Only 4 or 9 qubits are supported!")
-    #     self.block = self.sequential_blocks('QCNN',
-    #                                         self._blocks,
-    #                                         set_end_after_all_pulses=True,
-    #                                         destroy=True)
 
 class QCNNExperiment_old(VariationalAlgorithm):
     """QuantumExperiment to perform training of the 3qb spin chain QCNN for quantum phase recognition.

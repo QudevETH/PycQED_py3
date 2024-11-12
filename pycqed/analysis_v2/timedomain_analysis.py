@@ -3051,21 +3051,19 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freqs, bitstrings_labels = self.cpp_histogram(shots)
         # shape: (bitstring, hard sweep, soft sweep)
         weights = self.get_param_value('weights')
-        # targets_axis_sp is the dimension of targets in self.sp,
+        # targets_sp_axis is the dimension of targets in self.sp,
         # targets_axis is that in freqs and the extended targets
         targets = None
-        targets_axis_sp = None
+        targets_sp_axis = None
         targets_axis = None
         targets_num = None
-        virtual_sp = self.sp
+        virtual_sp = copy(self.sp)  # TODO check that this does not change
         if self.get_param_value('optimize'):
             # training mode
             targets = self.get_param_value(
                 'targets', self.raw_data_dict['optimizer']['targets'])
-            # line below based on the assumption that param batch has a
-            # shape of (n_batch_size, n_targets)
-            # this targets_axis_sp does not represent the targets axis in sp
-            targets_axis_sp = 0
+            # this targets_sp_axis does not represent the targets axis in sp
+            targets_sp_axis = 0
             targets_axis = 2
             targets_num = len(targets)
             # shape: (bitstring, n_sets_trainable_pars * n_targets, n_iter)
@@ -3088,9 +3086,9 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             )
         elif self.sp.find_parameter('targets') is not None:
             # sweep mode with targets
-            targets_axis_sp = self.sp.find_parameter('targets')
-            targets_axis = targets_axis_sp + 1
-            targets_num = self.sp.length()[targets_axis_sp]
+            targets_sp_axis = self.sp.find_parameter('targets')
+            targets_axis = targets_sp_axis + 1
+            targets_num = self.sp.length()[targets_sp_axis]
             targets = self.get_param_value('targets', self.sp['targets'])
             # slice-plot output along the hard sweep axis
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
@@ -3099,8 +3097,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
         # freqs.shape = (n_states, ..., n_targets, ...)
         # n_states corresponds to dimension state_axis
-        # n_targets corresponds to dimension targets_axis_sp among the other
-        # dims (meaning targets_axis_sp + 1 if state_axis < targets_axis_sp)
+        # n_targets corresponds to dimension targets_sp_axis among the other
+        # dims (meaning targets_sp_axis + 1 if state_axis < targets_sp_axis)
         shape = freqs.shape
         state_axis = 0  # Else the next line should be generalised
         if targets is not None:
@@ -3127,7 +3125,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 (targets, np.zeros(shape_fms)),
                 axis=targets_axis)
             virtual_sp = self._adjust_sp_length(self.sp,
-                    axis=targets_axis_sp, scale=(targets_num+1)/targets_num)
+                    axis=targets_sp_axis, scale=(targets_num+1)/targets_num)
             targets_num += 1
         elif self.get_param_value('fms', False):
             # Replace all states (soft dim) with target==0 by a mixed state
@@ -3160,7 +3158,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             self.cpp_results.update({
                 'cost': (cost, virtual_sp),
                 'training_set_cost': (training_set_cost,
-                    self._adjust_sp_length(virtual_sp, axis=targets_axis_sp,
+                    self._adjust_sp_length(virtual_sp, axis=targets_sp_axis,
                                            scale=1/targets_num)),
                 'weights': (weights, 'noplot'),  # plotting won't work
             })
@@ -3176,7 +3174,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.cpp_results.update({
                     p_name: (
                     optim_param_values[id_param],
-                    self._adjust_sp_length(virtual_sp, axis=targets_axis_sp,
+                    self._adjust_sp_length(virtual_sp, axis=targets_sp_axis,
                     scale=1/targets_num))
                 })
                 self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
@@ -3441,11 +3439,9 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freqs, _ = VariationalAlgorithmAnalysis.cpp_histogram(shots)
         # targets_axis: the axis of targets in freqs
         targets_axis = 2
-        print('freqs.shape:', freqs.shape)
-        print('targets.shape:', targets.shape)
         # freqs shape: (bitstring, hard sweep, soft sweep)
         # targets shape: (n_non_trainable_params,)
-        # targets_axis_sp=1 means targets correspond to the soft_sweep (sp[1])
+        # targets_sp_axis=1 means targets correspond to the soft_sweep (sp[1])
         targets = np.array(targets)
         if len(targets.shape) == 1:
             # Ensures that targets has the same shape as freqs, if they were
@@ -3453,15 +3449,13 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # This expansion makes reading a bit harder but makes coding easier
             targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
                 targets, freqs.shape, current_axes=[targets_axis])
-        # TODO allow other targets_axis_sp
+        # TODO allow other targets_sp_axis
         weights = VariationalAlgorithmAnalysis.cpp_opt_bxe_weights(
             freqs, targets=targets, targets_axis=targets_axis)
         # TODO the only difference with the other call to this method is
         #  taking the mean. Unify this?
         _, _, training_set_cost = VariationalAlgorithmAnalysis.cpp_bxe_output(
             freqs, weights=weights, targets=targets, targets_axis=targets_axis)
-        print('targets.shape:', targets.shape)
-        print('training_set_cost.shape:', training_set_cost.shape)
         return training_set_cost
 
     @staticmethod
