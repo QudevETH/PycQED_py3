@@ -10459,7 +10459,6 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                             # plot fit results
                             fit_key = \
                                 f'fit_rate_{qbn}_{prep_state}_seq_{seq_nr}{keys[k]}'
-                            self.fit_res = self.fit_res or {}
                             if fit_key in self.fit_res and \
                                     not fit_key in self.plot_dicts:
                                 res = self.fit_res[fit_key]
