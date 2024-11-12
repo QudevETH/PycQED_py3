@@ -1,12 +1,17 @@
 """Library containing various pulse shapes.
 """
 
+import itertools
 import logging
 import sys
 
 import numpy as np
 import scipy as sp
 from scipy.interpolate import interp1d
+# For Python < 3.10, itertools doesn't contain pairwise
+# FIXME remove once python minimum version >= 3.10
+if sys.version_info < (3, 10):
+    from more_itertools import pairwise
 
 from pycqed.measurement.waveform_control import pulse
 
@@ -1249,8 +1254,10 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
 
     @classmethod
     def pulse_params(cls):
-        """Returns a dictionary of pulse parameters and initial values. These parameters are set upon calling the
-        super().__init__ method.
+        """Return a dictionary of pulse parameters and initial values.
+
+        These parameters are set upon calling the super().__init__
+        method.
         """
         params = {
             'pulse_type': 'GaussFilteredCosIQPulse',
@@ -1265,23 +1272,58 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
             'alpha': 1,
             'phi_skew': 0,
             'gaussian_filter_sigma': 0,
+            'multistep_amp_factor_duration_tuples': None,
         }
         return params
 
     def chan_wf(self, chan, tvals, **kw):
-        if self.gaussian_filter_sigma == 0:
-            wave = np.ones_like(tvals) * self.amplitude
-            wave *= (tvals >= self.algorithm_time() + self.buffer_length_start)
-            wave *= (tvals <
-                     self.algorithm_time() + self.buffer_length_start +
-                     self.pulse_length)
+        multistep_amp_factor_duration_tuples = (
+            self.multistep_amp_factor_duration_tuples or []
+        )
+        tstart = self.algorithm_time() + self.buffer_length_start
+        tend = tstart + self.pulse_length
+        # Verify and precompute info for multistep segments if present
+        if multistep_amp_factor_duration_tuples:
+            # Check that the length of the multistep readout
+            # components is less than the total pulse length
+            self._validate_multistep_ro_tuples(
+                multistep_amp_factor_duration_tuples,
+                self.pulse_length,
+            )
+            # Compute the amplitude multiplier and starting time for
+            # each step in the pulse
+            amps, tstarts = self._compute_piecewise_amplitude_times(
+                multistep_amp_factor_duration_tuples,
+                tstart,
+            )
+            # Group into start and end times for each step in the pulse
+            if sys.version_info < (3, 10):
+                # FIXME: Should be deleted once python >= 3.10 is standard
+                pairwise_tstarts = pairwise(tstarts)
+            else:
+                pairwise_tstarts = itertools.pairwise(tstarts)
         else:
-            tstart = self.algorithm_time() + self.buffer_length_start
-            tend = tstart + self.pulse_length
-            scaling = 1 / np.sqrt(2) / self.gaussian_filter_sigma
-            wave = 0.5 * (sp.special.erf(
-                (tvals - tstart) * scaling) - sp.special.erf(
-                (tvals - tend) * scaling)) * self.amplitude
+            # Single step pulse; generate default values to allow for
+            # unified waveform envelope generation logic
+            amps = [1.0]
+            pairwise_tstarts = [(tstart, tend)]
+        # Combine the amplitude factors with the gaussian waves
+        wave = self.amplitude * np.sum(
+            [
+                amp_factor * self._apply_gaussian_sigma(
+                        tvals,
+                        self.gaussian_filter_sigma,
+                        ts,
+                        te,
+                    )
+                for amp_factor, (ts, te) in zip(amps, pairwise_tstarts)
+            ],
+            axis=0,
+        )
+        # Note that we only pay a performance penalty above if multistep
+        # readout segments are used or if gaussian filtering is used
+        # TODO possible performance optimization: consider appending
+        #      separate segments for each amplitude rather than summing
         I_mod, Q_mod = apply_modulation(
             wave,
             np.zeros_like(wave),
@@ -1307,8 +1349,78 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         phase += 360 * self.phase_lock * self.mod_frequency \
                  * self.algorithm_time()
         hashlist += [self.alpha, self.phi_skew, phase]
+        if self.multistep_amp_factor_duration_tuples is not None:
+            # So it is a list of tuples (which are immutable hence hashable)
+            hashlist += self.multistep_amp_factor_duration_tuples
         return hashlist
 
+    @staticmethod
+    def _validate_multistep_ro_tuples(
+            multistep_amp_factor_duration_tuples,
+            pulse_length,
+    ):
+        """Validate the multistep amp factor duration tuples.
+
+        Checks that the total length does not exceed the pulse length
+        """
+        total_length = list(
+            map(sum, zip(*multistep_amp_factor_duration_tuples))
+        )[1]
+        # returns amplitude sum, length sum, so we take the second element
+        if total_length > pulse_length:
+            log.warning(
+                "The current multistep readout amplitude factor and "
+                "duration tuples have a total length (%e) greater than "
+                "the pulse length (%e).", total_length, pulse_length
+            )
+
+    @staticmethod
+    def _compute_piecewise_amplitude_times(
+            multistep_amp_factor_duration_tuples,
+            tstart,
+    ):
+        """Compute the piecewise-constant pulse amplitudes and start times.
+
+        Accumulates the multistep readout param pairs.
+
+        Assumes that the input multistep readout param pairs are valid
+        (not longer than the pulse length).
+
+        Args:
+            multistep_amp_factor_duration_tuples: see name
+            tstart: pulse start time (relative to tvals)
+            tend: pulse end time (relative to tvals)
+
+        Returns:
+            amplitudes: list of pulse amplitudes at each step starting time.
+            start_times: list of starting times of each of these amplitudes.
+        """
+        amps, durations = zip(
+            *multistep_amp_factor_duration_tuples
+        )
+
+        # Including starting time so that the times are calculated
+        # correctly and so that we can use pairs of values from this
+        # list for applying each segment of the multistep readout
+        start_times = list(itertools.accumulate((tstart,) + durations))
+        return list(amps), start_times
+
+    @staticmethod
+    def _apply_gaussian_sigma(tvals, sigma, tstart, tend):
+        """Apply the Gaussian sigma to the wavefunction.
+
+        No cost operation (no-op) if the sigma is zero
+        """
+        if sigma == 0:
+            return np.logical_and(
+                (tvals >= tstart), (tvals < tend)
+            )
+        else:
+            scaling = 1 / np.sqrt(2) / sigma
+            return 0.5 * (
+                    sp.special.erf((tvals - tstart) * scaling)
+                    - sp.special.erf((tvals - tend) * scaling)
+            )
 
 
 class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):

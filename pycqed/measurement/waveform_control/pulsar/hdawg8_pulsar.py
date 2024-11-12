@@ -925,8 +925,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
     def _configure_awg_str(
             self,
-            awg_str
+            awg_str,
+            **kw,
     ):
+        # Ignore kws because they are not needed for legacy compiler
         self._awg.configure_awg_from_string(
             self._awg_nr,
             program_string=awg_str,
