@@ -271,9 +271,6 @@ class T1FrequencySweep(CalibBuilder):
             all_fits (bool, default: True): whether to do all fits
         """
 
-        if len(self.sweep_points) == 1:
-            self.analysis = tda.MultiQubit_TimeDomain_Analysis()
-            return
         self.all_fits = kw.get('all_fits', True)
         self.do_fitting = kw.get('do_fitting', True)
         self.analysis = tda.T1FrequencySweepAnalysis(

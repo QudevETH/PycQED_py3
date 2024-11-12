@@ -3789,6 +3789,8 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
     def process_data(self):
+        self.default_options['plot_raw_data'] = False
+        self.default_options['plot_proj_data'] = False
         super().process_data()
 
         pdd = self.proc_data_dict
@@ -3801,31 +3803,45 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
             if len(len_key) == 0:
                 raise KeyError('Couldn"t find sweep points corresponding to '
                                'flux pulse length.')
+            len_key = len_key[0]
             self.lengths[qbn] = self.sp.get_sweep_params_property(
-                'values', 0, len_key[0])
+                'values', 'all', len_key)
 
             amp_key = [pn for pn in self.mospm[qbn] if 'amp' in pn]
-            if len(len_key) == 0:
+            if len(amp_key) == 0:
                 raise KeyError('Couldn"t find sweep points corresponding to '
                                'flux pulse amplitude.')
+            amp_key = amp_key[0]
             self.amps[qbn] = self.sp.get_sweep_params_property(
-                'values', 1, amp_key[0])
+                'values', 'all', amp_key)
 
             freq_key = [pn for pn in self.mospm[qbn] if 'freq' in pn]
             if len(freq_key) == 0:
                 self.freqs[qbn] = None
             else:
+                freq_key = freq_key[0]
                 self.freqs[qbn] =self.sp.get_sweep_params_property(
-                    'values', 1, freq_key[0])
-
+                    'values', 'all', freq_key)
         nr_amps = len(self.amps[self.qb_names[0]])
         nr_lengths = len(self.lengths[self.qb_names[0]])
 
-        # make matrix out of vector
-        data_reshaped_no_cp = {qb: np.reshape(deepcopy(
-                pdd['data_to_fit'][qb][
-                :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]).flatten(),
-                (nr_amps, nr_lengths)) for qb in self.qb_names}
+        data_reshaped_no_cp = {
+            qb: pdd['data_to_fit'][qb][
+                :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]
+            for qb in self.qb_names}
+
+        if self.sp.find_parameter(len_key)==1:
+            # Transpose from (amp, len) to (len, amp) in terms of sweep points.
+            # Note that data_to_fit is transposed w.r.t. sweep points,
+            # so the final shape of the data is (amp, len), see FIXME of
+            # self.proc_data_dict
+            data_reshaped_no_cp = {
+                k: v.T for k, v in data_reshaped_no_cp.items()
+            }
+
+        if nr_lengths==1:
+            # Cannot fit T1 decay in this case
+            self.do_fitting = False
 
         pdd['data_reshaped_no_cp'] = data_reshaped_no_cp
 
@@ -3867,6 +3883,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     pdd['mask'][qb][i] = False
 
     def prepare_plots(self):
+        super().prepare_plots()
         pdd = self.proc_data_dict
         rdd = self.raw_data_dict
 
@@ -3876,8 +3893,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     continue
                 suffix = '_amp' if p == 0 else '_freq'
                 mask = pdd['mask'][qb]
-                xlabel = r'Flux pulse amplitude' if p == 0 else \
-                    r'Derived qubit ge frequency'
+                xlabel = f'{qb} flux pulse amplitude' if p == 0 else \
+                    f'Derived {qb} ge frequency'
 
                 if self.do_fitting:
                     # Plot T1 vs flux pulse amplitude
@@ -3896,23 +3913,23 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         'color': 'blue',
                     }
 
-                # Plot rotated integrated average in dependece of flux pulse
-                # amplitude and length
-                label = f'T1_color_plot_{qb}{suffix}_{self.data_to_fit[qb]}'
-                self.plot_dicts[label] = {
-                    'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
-                    'plotfn': self.plot_colorxy,
-                    'linestyle': '-',
-                    'xvals': param_values[qb][mask],
-                    'yvals': self.lengths[qb],
-                    'zvals': np.transpose(pdd['data_reshaped_no_cp'][qb][mask]),
-                    'xlabel': xlabel,
-                    'xunit': 'V' if p == 0 else 'Hz',
-                    'ylabel': r'Flux pulse length',
-                    'yunit': 's',
-                    'clabel': self.get_yaxis_label(qb)
-                }
-
+                if len(self.lengths[qb])>1:
+                    # Plot rotated integrated average in dependece of flux pulse
+                    # amplitude and length
+                    label = f'T1_color_plot_{qb}{suffix}_{self.data_to_fit[qb]}'
+                    self.plot_dicts[label] = {
+                        'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
+                        'plotfn': self.plot_colorxy,
+                        'linestyle': '-',
+                        'xvals': param_values[qb][mask],
+                        'yvals': self.lengths[qb],
+                        'zvals': np.transpose(pdd['data_reshaped_no_cp'][qb][mask]),
+                        'xlabel': xlabel,
+                        'xunit': 'V' if p == 0 else 'Hz',
+                        'ylabel': r'Flux pulse length',
+                        'yunit': 's',
+                        'clabel': self.get_yaxis_label(qb)
+                    }
                 # Plot population loss for the first flux pulse length as a
                 # function of flux pulse amplitude
                 label = f'Pop_loss_{qb}{suffix}_{self.data_to_fit[qb]}'
@@ -4197,9 +4214,9 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 xvals = self.metadata['amplitudes'][mask] if \
                     self.metadata['frequencies'] is None else \
                     self.metadata['frequencies'][mask]
-                xlabel = r'Flux pulse amplitude' if \
+                xlabel = f'{qb} flux pulse amplitude' if \
                     self.metadata['frequencies'] is None else \
-                    r'Derived qubit ge frequency'
+                    f'Derived {qb} ge frequency'
                 # Final T2(freq or amp) plot
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
