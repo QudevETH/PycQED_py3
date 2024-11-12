@@ -4310,20 +4310,14 @@ class Reset(CalibBuilder):
                                                    ()))
         self.cal_states = kw.get('cal_states', ())
 
+        # FIXME: If qubits have no reset steps, no reset happens in this QE
+        #  If qubits have reset, and disable_reset is True, this QE does one
+        #  reset (with reset_steps steps). If disable_reset is False,
+        #  twice this number of resets are done. Is this all expected?
         if disable_reset:
             kw['init_kwargs'] = dict(reset_params=dict(steps=[]))
 
         self.preprocessed_task_list = self.preprocess_task_list(**kw)
-
-        # If default sweep points are used, add the pulse modifiers to switch off reset
-        # pulses in reference sequence.
-        if self.sweep_points.find_parameter("pulse_off") is not None:
-            pulse_modifs = {'all': {"pulse_off": ParametricValue("pulse_off")}}
-            for t in self.preprocessed_task_list:
-                pm = t.get('pulse_modifs', {})
-                pm.update(pulse_modifs)
-                t['pulse_modifs'] = pm
-            kw['pulse_modifs'] = pulse_modifs
 
         self.sequences, self.mc_points = \
             self.parallel_sweep(self.preprocessed_task_list,
@@ -4336,7 +4330,26 @@ class Reset(CalibBuilder):
     def sweep_block(self, qb, **kw):
         if isinstance(qb, str):
             qb = [qb]
-        return self.reset(qb_names=qb, **kw)
+
+        # If default sweep points are used, add the pulse modifiers to switch
+        # off reset pulses in reference sequence.
+        if self.sweep_points.find_parameter("pulse_off") is not None:
+            # Disables all reset pulses except the readout (to still readout
+            # the populations)
+            pulse_modifs = {
+                # Deactivates all pulses in the reset block (agnostic of
+                # reset type)
+                'attr=pulse_off': ParametricValue("pulse_off"),
+                # Second to be resolved: re-enables readout
+                'attr=pulse_off,op_code=RO_feedback': False,
+            }
+        else:
+            pulse_modifs = {}
+        return self.reset(
+            qb_names=qb,
+            pulse_modifs=pulse_modifs,
+            **kw
+        )
 
 
     # def reset(self, **kws):
