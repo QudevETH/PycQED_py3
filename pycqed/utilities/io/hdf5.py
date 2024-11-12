@@ -15,7 +15,7 @@ import time
 import h5py
 import numpy as np
 import logging
-from typing import IO
+from typing import IO, Optional
 
 # Do not remove, used inside eval()
 from numpy import array
@@ -515,7 +515,8 @@ def safe_file_open(
         mode: str = 'a',
         max_open_attempts: int = 12,
         sleep_duration: int = 10,
-) -> IO | None:
+) -> Optional[IO]:
+    # FIXME replace Optional[IO] with IO | None once we use python > 3.10
     """Open an HDF5 file safely.
 
     Arguments:
