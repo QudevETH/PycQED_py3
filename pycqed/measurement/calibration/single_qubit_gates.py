@@ -96,10 +96,6 @@ class T1FrequencySweep(CalibBuilder):
             self.data_to_fit = {
                 task['qb']: trans_to_pop[task.get('transition_name', 'ge')]
                 for task in self.preprocessed_task_list}
-            if not self.force_2D_sweep and (self.sweep_points.length(0) <= 1
-                    or self.sweep_points.length(1) <= 1):
-                self.sweep_points.reduce_dim(1, inplace=True)
-                self._num_sweep_dims = 1
             self.sequences, self.mc_points = \
                 self.parallel_sweep(self.preprocessed_task_list,
                                     self.t1_flux_pulse_block, **kw)
