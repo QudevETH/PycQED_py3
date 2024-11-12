@@ -33,6 +33,8 @@ def run_fitting(data_dict, keys_in='all', **params):
 
     for fit_name, fit_dict in fit_dicts.items():
         fit_one_dict(fit_dict)
+        if not 'fit_res' in fit_dict:
+            continue
         for par in fit_dict['fit_res'].params:
             if fit_dict['fit_res'].params[par].stderr is None:
                 fit_dict['fit_res'].params[par].stderr = 0
@@ -84,8 +86,12 @@ def fit_one_dict(fit_dict, **params):
             for gd_key, val in list(guess_dict.items()):
                 model.set_param_hint(gd_key, **val)
             guess_pars = model.make_params()
-    fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals,
+    try:
+        fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals,
                                     params=guess_pars, **fit_kwargs)
+    except Exception as e:
+        log.warning(e)
+        pass
 
 
 def prepare_cos_fit_dict(data_dict, keys_in=None, **params):
