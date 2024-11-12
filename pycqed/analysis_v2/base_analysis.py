@@ -4,7 +4,6 @@ File containing the BaseDataAnalysis class.
 from inspect import signature
 import os
 import sys
-import time
 import numpy as np
 import copy
 from collections import OrderedDict
