@@ -365,7 +365,10 @@ def cal_two_qubit_gates(
                     **kw,
                 )
         mmnts.append(mmnt)
+        if param == 'do_check':
+            continue
 
+        # Extract best sweep parameter value
         converged = []
         for i, (qbh, qbl) in enumerate(gate_list):
             if 'CPhase' in experiment_name:
@@ -400,7 +403,7 @@ def cal_two_qubit_gates(
                 print("Optimization failed. Starting next measurement")
                 try_index = 0
                 meas_index += 1
-        return mmnts
+    return mmnts
 
 
 def cal_dyn_phase(
