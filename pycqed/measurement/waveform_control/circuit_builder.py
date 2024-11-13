@@ -512,7 +512,10 @@ class CircuitBuilder:
                             func_angle = eval('lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
                             func_angle = lambda x: x
-                        # parameter func
+                        # In this case, func (function determining the
+                        # physical parameter, the basis rotation) is the
+                        # same as func_angle (determining the gate angle,
+                        # as indicated in the op_code)
                         func = (lambda x, qb=qbn[0], sign=sign, f=func_angle:
                                 {qb: sign * f(x)})
                         p[0]['basis_rotation'] = ParametricValue(
@@ -526,11 +529,12 @@ class CircuitBuilder:
                     corr_func = qb[0].calculate_nonlinearity_correction
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            # combine the mathematical expression with a
-                            # function that calculates the amplitude
                             func_angle = eval('lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
                             func_angle = lambda x: x
+                        # func (function determining the pulse amplitude)
+                        # combines func_angle (function determining the gate
+                        # angle) with the nonlinearity correction
                         func = lambda x, a=p[0]['amplitude'], sign=sign,\
                                       f=func_angle: a * corr_func(
                                 ((sign * f(x) + 180) % (-360) + 180) / 180)
