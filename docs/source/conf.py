@@ -26,7 +26,7 @@ builtins.__sphinx_build__ = True
 # -- Project information -----------------------------------------------------
 
 project = "PycQED"
-copyright = "2023, Quantum Device Laboratory"
+copyright = "2024, Quantum Device Laboratory"
 
 
 # -- General configuration ---------------------------------------------------
@@ -53,7 +53,7 @@ napoleon_use_mathjax = True
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 
 # Enable writing pages both in ReStructuredText and Markdown
-source_suffix = [".rst", ".md"]
+source_suffix = {".rst": "restructuredtext", ".md": "restructuredtext"}
 
 # Include figure number
 numfig = True
