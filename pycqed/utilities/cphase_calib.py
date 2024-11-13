@@ -171,7 +171,8 @@ def cal_two_qubit_gates(
         cz_pulse_name='CZ_nztc', phi=None, phi_target=None,
         do_check_msmt=True, only_check_msmt=False,
         nr_phases=8, measure=True, update=True, optimize=False,
-        acq_averages=None, chevron_acq_averages=None, chevron_soft_avg=None,
+        cphase_acq_avg=None, chevron_acq_avg=None,
+        cphase_soft_avg=None, chevron_soft_avg=None,
         acq_weights_type=None, task_kw=None,
         spectator_map=False, include_spec_of_data_qubits=False,
         spectator_pulse_opcode="X90", extra_prepend_pulses=None,
@@ -202,209 +203,203 @@ def cal_two_qubit_gates(
     sweep_range_dict = deepcopy(sweep_range_dict)
     dev.prepare_mwg()
     tmp_vals = []
-    chev_tmp_vals = []
+    if acq_weights_type is not None:
+        tmp_vals += [
+            (dev.acq_weights_type, acq_weights_type),
+        ]
     for qbh, qbl in gate_list:
         if qbh.ge_freq() < qbl.ge_freq():
             print(f'Did you mix up qbH and qbL? {qbh}, {qbl}')
-        if acq_averages is not None:
-            tmp_vals += [
-                (dev.acq_averages, acq_averages),
-                (dev.acq_shots, acq_averages),
-            ]
-        if chevron_acq_averages is not None:
-            chev_tmp_vals += [
-                (dev.acq_averages, chevron_acq_averages),
-                (dev.acq_shots, chevron_acq_averages),
-            ]
-        if chevron_soft_avg is not None:
-            chev_tmp_vals += [
-                (dev.instr_mc.get_instr().soft_avg, chevron_soft_avg),
-            ]
-        if acq_weights_type is not None:
-            tmp_vals += [
-                (dev.acq_weights_type, acq_weights_type),
-            ]
 
     chevron_mnt_params = ('pulse_length', 'amplitude_offset2',
                           'amplitude_offset')
     mmnts = []
-    with temporary_value(*tmp_vals):
-        if True:
-            meas_index = 0
+    meas_index = 0
+    try_index = 0
+    if only_check_msmt:
+        sweep_params = []
+    if do_check_msmt:
+        # Will be used to run a CPhase without sweeping any param
+        sweep_params.append('do_check')
+    while meas_index < len(sweep_params):
+        # Param name, e.g. 'amplitude-chevron'
+        param = sweep_params[meas_index]
+        pulse_params = []  # Real pulse param for each gate
+        for i, (qbh, qbl) in enumerate(gate_list):
+            pp = param.split('-')[0]
+            # Can be different for each gate
+            if pp == 'amp_ctrl_param':
+                pp = dev.get_pulse_par(
+                cz_pulse_name, qbh, qbl, 'amp_ctrl_param')()
+            pulse_params.append(pp)
+        task_list = []
+
+        if np.ndim(sweep_range_dict[param]) != 0:
+            sweep_range_dict[param], num_soft_swpts = sweep_range_dict[
+                param]
+        else:
+            num_soft_swpts = (7 if param in ['amplitude2', 'amplitude']
+                              else 11)
+        if param in chevron_mnt_params or param.endswith('-chevron'):
+            experiment_name = f'Chevron_{param}_sweep'
+
+            for i, (qbh, qbl) in enumerate(gate_list):
+                sweep_values = dev.get_pulse_par(
+                    cz_pulse_name, qbh, qbl, pulse_params[i])() +\
+                    np.linspace(
+                        -sweep_range_dict[param],
+                        sweep_range_dict[param], num_soft_swpts)
+                sweep_points = sp_mod.SweepPoints(
+                    pulse_params[i], sweep_values,
+                    unit_dict[pulse_params[i]],
+                    dimension=0)
+
+                task = dict(
+                    qbc=qbh, qbt=qbl,
+                    sweep_points=sweep_points,
+                    # qbr=qbl,
+                    num_cz_gates=n_cz,
+                    cz_pulse_name=cz_pulse_name+('' if phi is None
+                                                 else str(phi)),
+                )
+                if i == 0 and spectator_map:
+                    task['prepend_pulse_dicts'] = \
+                        get_spectator_pulses(
+                            dev,
+                            get_spectators(
+                                dev,
+                                spectator_map,
+                                gate_list,
+                                include_spec_of_data_qubits=\
+                                    include_spec_of_data_qubits
+                            ),
+                            opcode=spectator_pulse_opcode,
+                        )
+
+                if i == 0 and extra_prepend_pulses:
+                    print('pushaway')
+                    print(extra_prepend_pulses)
+                    task['prepend_pulse_dicts'] = extra_prepend_pulses \
+                        + task.get('prepend_pulse_dicts', [])
+                task.update(task_kw)
+                task_list.append(task)
+            with temporary_value(
+                *tmp_vals,
+                (dev.acq_averages, chevron_acq_avg),
+                (dev.acq_shots, chevron_acq_avg),
+                (dev.instr_mc.get_instr().soft_avg, chevron_soft_avg),
+            ):
+                mmnt = twoqbcal.Chevron(
+                    task_list,
+                    dev=dev,
+                    cz_pulse_name=cz_pulse_name,
+                    cal_states="gef",
+                    compression_seg_lim=200,
+                    experiment_name=experiment_name,
+                    measure=measure, analyze=False,
+                    **kw,
+                )
+            mmnt.analysis = tda.SingleRowChevronAnalysis()
+        else:
+            if param=='do_check':
+                experiment_name = 'CPhase_measurement_check'
+            else:
+                experiment_name = f'CPhase_measurement_{param}_sweep'
+            for i, (qbh, qbl) in enumerate(gate_list):
+                if param=='do_check':
+                    sweep_param_dict = {'nothing': {'values': [0]}}
+                else:
+                    sweep_param_dict = {
+                        pulse_params[i]: {
+                            'values':
+                                dev.get_pulse_par(
+                                    cz_pulse_name, qbh, qbl,
+                                    pulse_params[i])() + \
+                                np.linspace(-sweep_range_dict[param],
+                                            sweep_range_dict[param],
+                                            num_soft_swpts),
+                            'unit': unit_dict[pulse_params[i]],
+                        }
+                    }
+                task_list.append(dict(
+                    qbl=qbh, qbr=qbl,
+                    sweep_points=[{}, sweep_param_dict],
+                    cz_pulse_name=cz_pulse_name,
+                    cphase=phi,
+                ))
+                if i == 0 and spectator_map:
+                    task_list[-1]['prepend_pulse_dicts'] = \
+                        get_spectator_pulses(
+                            dev,
+                            get_spectators(
+                                dev,
+                                spectator_map,
+                                gate_list,
+                                include_spec_of_data_qubits=\
+                                    include_spec_of_data_qubits
+                            ),
+                            opcode=spectator_pulse_opcode,
+                        )
+                if i == 0 and extra_prepend_pulses:
+                    print('pushaway')
+                    print(extra_prepend_pulses)
+                    task_list[-1]['prepend_pulse_dicts'] = extra_prepend_pulses \
+                        + task_list[-1].get('prepend_pulse_dicts', [])
+                task_list[-1].update(task_kw)
+            with temporary_value(
+                *tmp_vals,
+                (dev.acq_averages, cphase_acq_avg),
+                (dev.acq_shots, cphase_acq_avg),
+                (dev.instr_mc.get_instr().soft_avg, cphase_soft_avg),
+            ):
+                mmnt = twoqbcal.CPhase(
+                    task_list=task_list,
+                    dev=dev,
+                    nr_phases=nr_phases,
+                    cz_pulse_name=cz_pulse_name,
+                    delegate_plotting=True,
+                    measure=measure,
+                    experiment_name=experiment_name,
+                    num_cz_gates=n_cz,
+                    ref_pi_half=True,
+                    **kw,
+                )
+        mmnts.append(mmnt)
+
+        converged = []
+        for i, (qbh, qbl) in enumerate(gate_list):
+            if 'CPhase' in experiment_name:
+                best_val, c = get_optimal_amp(
+                    qbh, qbl, timestamp=None,
+                    # parfit=True,
+                    analysis_object=mmnt.analysis,
+                    phi=phi_target,
+                )
+                converged.append(c)
+            else:
+                best_val, c = mmnt.analysis.get_leakage_best_val(
+                    qbh.name, qbl.name,
+                    minimize='auto',
+                )
+                converged.append(c)
+                mmnt.analysis.plot()
+                mmnt.analysis.save_figures()
+            print(f'The optimal {param} is: {best_val}')
+            optimal_values[param] = best_val
+            if update:
+                dev.get_pulse_par(cz_pulse_name, qbh, qbl,
+                                  pulse_params[i])(best_val)
+        if all(converged) or not optimize:
             try_index = 0
-            if only_check_msmt:
-                sweep_params = []
-            if do_check_msmt:
-                # Will be used to run a CPhase without sweeping any param
-                sweep_params.append('do_check')
-            while meas_index < len(sweep_params):
-                # Param name, e.g. 'amplitude-chevron'
-                param = sweep_params[meas_index]
-                pulse_params = []  # Real pulse param for each gate
-                for i, (qbh, qbl) in enumerate(gate_list):
-                    pp = param.split('-')[0]
-                    # Can be different for each gate
-                    if pp == 'amp_ctrl_param':
-                        pp = dev.get_pulse_par(
-                        cz_pulse_name, qbh, qbl, 'amp_ctrl_param')()
-                    pulse_params.append(pp)
-                task_list = []
-
-                if np.ndim(sweep_range_dict[param]) != 0:
-                    sweep_range_dict[param], num_soft_swpts = sweep_range_dict[
-                        param]
-                else:
-                    num_soft_swpts = (7 if param in ['amplitude2', 'amplitude']
-                                      else 11)
-                if param in chevron_mnt_params or param.endswith('-chevron'):
-                    experiment_name = f'Chevron_{param}_sweep'
-
-                    for i, (qbh, qbl) in enumerate(gate_list):
-                        sweep_values = dev.get_pulse_par(
-                            cz_pulse_name, qbh, qbl, pulse_params[i])() +\
-                            np.linspace(
-                                -sweep_range_dict[param],
-                                sweep_range_dict[param], num_soft_swpts)
-                        sweep_points = sp_mod.SweepPoints(
-                            pulse_params[i], sweep_values,
-                            unit_dict[pulse_params[i]],
-                            dimension=0)
-
-                        task = dict(
-                            qbc=qbh, qbt=qbl,
-                            sweep_points=sweep_points,
-                            # qbr=qbl,
-                            num_cz_gates=n_cz,
-                            cz_pulse_name=cz_pulse_name+('' if phi is None
-                                                         else str(phi)),
-                        )
-                        if i == 0 and spectator_map:
-                            task['prepend_pulse_dicts'] = \
-                                get_spectator_pulses(
-                                    dev,
-                                    get_spectators(
-                                        dev,
-                                        spectator_map,
-                                        gate_list,
-                                        include_spec_of_data_qubits=\
-                                            include_spec_of_data_qubits
-                                    ),
-                                    opcode=spectator_pulse_opcode,
-                                )
-
-                        if i == 0 and extra_prepend_pulses:
-                            print('pushaway')
-                            print(extra_prepend_pulses)
-                            task['prepend_pulse_dicts'] = extra_prepend_pulses \
-                                + task.get('prepend_pulse_dicts', [])
-                        task.update(task_kw)
-                        task_list.append(task)
-                    with temporary_value(*tmp_vals, *chev_tmp_vals):
-                        mmnt = twoqbcal.Chevron(
-                            task_list,
-                            dev=dev,
-                            cz_pulse_name=cz_pulse_name,
-                            cal_states="gef",
-                            compression_seg_lim=200,
-                            experiment_name=experiment_name,
-                            measure=measure, analyze=False,
-                            **kw,
-                        )
-                    mmnt.analysis = tda.SingleRowChevronAnalysis()
-                else:
-                    if param=='do_check':
-                        experiment_name = 'CPhase_measurement_check'
-                    else:
-                        experiment_name = f'CPhase_measurement_{param}_sweep'
-                    for i, (qbh, qbl) in enumerate(gate_list):
-                        if param=='do_check':
-                            sweep_param_dict = {'nothing': {'values': [0]}}
-                        else:
-                            sweep_param_dict = {
-                                pulse_params[i]: {
-                                    'values':
-                                        dev.get_pulse_par(
-                                            cz_pulse_name, qbh, qbl,
-                                            pulse_params[i])() + \
-                                        np.linspace(-sweep_range_dict[param],
-                                                    sweep_range_dict[param],
-                                                    num_soft_swpts),
-                                    'unit': unit_dict[pulse_params[i]],
-                                }
-                            }
-                        task_list.append(dict(
-                            qbl=qbh, qbr=qbl,
-                            sweep_points=[{}, sweep_param_dict],
-                            cz_pulse_name=cz_pulse_name,
-                            cphase=phi,
-                        ))
-                        if i == 0 and spectator_map:
-                            task_list[-1]['prepend_pulse_dicts'] = \
-                                get_spectator_pulses(
-                                    dev,
-                                    get_spectators(
-                                        dev,
-                                        spectator_map,
-                                        gate_list,
-                                        include_spec_of_data_qubits=\
-                                            include_spec_of_data_qubits
-                                    ),
-                                    opcode=spectator_pulse_opcode,
-                                )
-                        if i == 0 and extra_prepend_pulses:
-                            print('pushaway')
-                            print(extra_prepend_pulses)
-                            task_list[-1]['prepend_pulse_dicts'] = extra_prepend_pulses \
-                                + task_list[-1].get('prepend_pulse_dicts', [])
-                        task_list[-1].update(task_kw)
-                    mmnt = twoqbcal.CPhase(
-                        task_list=task_list,
-                        dev=dev,
-                        nr_phases=nr_phases,
-                        cz_pulse_name=cz_pulse_name,
-                        delegate_plotting=True,
-                        measure=measure,
-                        experiment_name=experiment_name,
-                        num_cz_gates=n_cz,
-                        ref_pi_half=True,
-                        **kw,
-                    )
-                mmnts.append(mmnt)
-
-                converged = []
-                for i, (qbh, qbl) in enumerate(gate_list):
-                    if 'CPhase' in experiment_name:
-                        best_val, c = get_optimal_amp(
-                            qbh, qbl, timestamp=None,
-                            # parfit=True,
-                            analysis_object=mmnt.analysis,
-                            phi=phi_target,
-                        )
-                        converged.append(c)
-                    else:
-                        best_val, c = mmnt.analysis.get_leakage_best_val(
-                            qbh.name, qbl.name,
-                            minimize='auto',
-                        )
-                        converged.append(c)
-                        mmnt.analysis.plot()
-                        mmnt.analysis.save_figures()
-                    print(f'The optimal {param} is: {best_val}')
-                    optimal_values[param] = best_val
-                    if update:
-                        dev.get_pulse_par(cz_pulse_name, qbh, qbl,
-                                          pulse_params[i])(best_val)
-                if all(converged) or not optimize:
-                    try_index = 0
-                    meas_index += 1
-                else:
-                    try_index += 1
-                    if try_index < 10:
-                        print("Did not converge! Retrying...")
-                    else:
-                        print("Optimization failed. Starting next measurement")
-                        try_index = 0
-                        meas_index += 1
+            meas_index += 1
+        else:
+            try_index += 1
+            if try_index < 10:
+                print("Did not converge! Retrying...")
+            else:
+                print("Optimization failed. Starting next measurement")
+                try_index = 0
+                meas_index += 1
         return mmnts
 
 
