@@ -200,7 +200,6 @@ def cal_two_qubit_gates(
 
     default_sweep_range_dict.update(sweep_range_dict)
     sweep_range_dict = default_sweep_range_dict
-    sweep_range_dict = deepcopy(sweep_range_dict)
     dev.prepare_mwg()
     tmp_vals = []
     if acq_weights_type is not None:
@@ -295,7 +294,6 @@ def cal_two_qubit_gates(
                     dev=dev,
                     cz_pulse_name=cz_pulse_name,
                     cal_states="gef",
-                    compression_seg_lim=200,
                     experiment_name=experiment_name,
                     measure=measure, analyze=False,
                     **kw,
@@ -343,7 +341,8 @@ def cal_two_qubit_gates(
                 if i == 0 and extra_prepend_pulses:
                     print('pushaway')
                     print(extra_prepend_pulses)
-                    task_list[-1]['prepend_pulse_dicts'] = extra_prepend_pulses \
+                    task_list[-1]['prepend_pulse_dicts'] =\
+                        extra_prepend_pulses \
                         + task_list[-1].get('prepend_pulse_dicts', [])
                 task_list[-1].update(task_kw)
             with temporary_value(
@@ -357,7 +356,6 @@ def cal_two_qubit_gates(
                     dev=dev,
                     nr_phases=nr_phases,
                     cz_pulse_name=cz_pulse_name,
-                    delegate_plotting=True,
                     measure=measure,
                     experiment_name=experiment_name,
                     num_cz_gates=n_cz,
@@ -366,6 +364,7 @@ def cal_two_qubit_gates(
                 )
         mmnts.append(mmnt)
         if param == 'do_check':
+            meas_index += 1
             continue
 
         # Extract best sweep parameter value
@@ -429,7 +428,8 @@ def cal_dyn_phase(
                           'num_cz_gates': n_cz,
                           })
         # add qubits that have pushaway flux pulses
-        flux_channels = {qb.flux_pulse_channel(): qb for qb in dev.get_qubits()}
+        flux_channels = {
+            qb.flux_pulse_channel(): qb for qb in dev.get_qubits()}
         try:
             add_qubits = [flux_channels[ch] for ch in [
                 pd[p] for pd in dev.get_pulse_par(cz_pulse_name, qbh, qbl,
@@ -467,7 +467,6 @@ def cal_dyn_phase(
             reset_phases_before_measurement=reset_phases_before_measurement,
             update=update,
             analyze=True,
-            delegate_plotting=True,
             **kw
         )
     if update:
@@ -477,6 +476,8 @@ def cal_dyn_phase(
         if update:
             dyn_phase = dynphase_obj.dyn_phases[
                 f'{cz_pulse_name} {qbh.name} {qbl.name}']
-            dev.get_pulse_par(cz_pulse_name, qbh, qbl, 'basis_rotation')(dyn_phase)
-            print(dev.get_pulse_par(cz_pulse_name, qbh, qbl, 'basis_rotation')())
+            dev.get_pulse_par(cz_pulse_name, qbh, qbl, 'basis_rotation')(
+                dyn_phase)
+            print(
+                dev.get_pulse_par(cz_pulse_name, qbh, qbl, 'basis_rotation')())
     return dynphase_obj
