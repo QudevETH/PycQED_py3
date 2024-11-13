@@ -2386,6 +2386,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if TwoD is None:
             TwoD = self.get_param_value('TwoD', False)
         for ax_id, ro_channel in enumerate(raw_data_dict):
+            if len(raw_data_dict) == 1:
+                # Single channel: only one axis
+                ax_id = None
             ro_unit = value_units.get(ro_channel, 'a.u.')
             sp2dd = self.proc_data_dict.get('sweep_points_2D_dict', {}).get(
                 qb_name)
@@ -2473,9 +2476,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     'plotsize': (plotsize[0]*numplotsx,
                                  plotsize[1]*numplotsy),
                     'title': fig_title}
-        if len(raw_data_dict) == 1:
-            self.plot_dicts[
-                plot_name + '_' + list(raw_data_dict)[0]]['ax_id'] = None
 
     def prepare_projected_data_plots(self):
         """
