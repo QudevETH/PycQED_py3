@@ -17,7 +17,7 @@ Example:
     Usage in your notebook::
 
         qb.add_reset_schemes()
-        qb.reset.steps(['preselection', 'feedback_reset', 'parametric_flux_reset'])
+        qb.reset.steps(['preselection', 'feedback_reset'])
 
 By default the following reset schemes are added by add_reset_schemes():
 
