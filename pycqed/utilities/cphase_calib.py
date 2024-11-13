@@ -168,8 +168,8 @@ def get_spectator_pulses(dev, spectators, opcode='X90'):
 def cal_two_qubit_gates(
         sweep_params, gate_list, dev,
         sweep_range_dict=None, n_cz=1,
-        cz_pulse_name='CZ_nztc', only_check_msmt=False,
-        do_check_msmt=True, phi=None, phi_target=None,
+        cz_pulse_name='CZ_nztc', phi=None, phi_target=None,
+        do_check_msmt=True, only_check_msmt=False,
         nr_phases=8, measure=True, update=True, optimize=False,
         acq_averages=None, chevron_acq_averages=None, chevron_soft_avg=None,
         acq_weights_type=None, task_kw=None,
@@ -229,9 +229,14 @@ def cal_two_qubit_gates(
                           'amplitude_offset')
     mmnts = []
     with temporary_value(*tmp_vals):
-        if not only_check_msmt:
+        if True:
             meas_index = 0
             try_index = 0
+            if only_check_msmt:
+                sweep_params = []
+            if do_check_msmt:
+                # Will be used to run a CPhase without sweeping any param
+                sweep_params.append('do_check')
             while meas_index < len(sweep_params):
                 # Param name, e.g. 'amplitude-chevron'
                 param = sweep_params[meas_index]
@@ -307,18 +312,26 @@ def cal_two_qubit_gates(
                         )
                     mmnt.analysis = tda.SingleRowChevronAnalysis()
                 else:
-                    experiment_name = f'CPhase_measurement_{param}_sweep'
+                    if param=='do_check':
+                        experiment_name = 'CPhase_measurement_check'
+                    else:
+                        experiment_name = f'CPhase_measurement_{param}_sweep'
                     for i, (qbh, qbl) in enumerate(gate_list):
-                        sweep_param_dict = {
-                            pulse_params[i]: {
-                                'values':
-                                    dev.get_pulse_par(cz_pulse_name, qbh, qbl,
-                                                      pulse_params[i])() + \
-                                    np.linspace(-sweep_range_dict[param],
-                                                sweep_range_dict[param],
-                                                num_soft_swpts),
-                                'unit': unit_dict[pulse_params[i]]}
-                        }
+                        if param=='do_check':
+                            sweep_param_dict = {'nothing': {'values': [0]}}
+                        else:
+                            sweep_param_dict = {
+                                pulse_params[i]: {
+                                    'values':
+                                        dev.get_pulse_par(
+                                            cz_pulse_name, qbh, qbl,
+                                            pulse_params[i])() + \
+                                        np.linspace(-sweep_range_dict[param],
+                                                    sweep_range_dict[param],
+                                                    num_soft_swpts),
+                                    'unit': unit_dict[pulse_params[i]],
+                                }
+                            }
                         task_list.append(dict(
                             qbl=qbh, qbr=qbl,
                             sweep_points=[{}, sweep_param_dict],
@@ -392,54 +405,6 @@ def cal_two_qubit_gates(
                         print("Optimization failed. Starting next measurement")
                         try_index = 0
                         meas_index += 1
-        # check measurement
-        if do_check_msmt:
-            param = 'amplitude2'
-            experiment_name = 'CPhase_measurement_check'
-
-            task_list = []
-            for i, (qbh, qbl) in enumerate(gate_list):
-                sweep_param_dict = {param: {'values': [
-                    dev.get_pulse_par(cz_pulse_name, qbh, qbl, param)()],
-                    'unit': unit_dict[param]}}
-                task_list.append(dict(qbl=qbh, qbr=qbl,
-                                      sweep_points=[{}, sweep_param_dict],
-                                      cz_pulse_name=cz_pulse_name,
-                                      cphase=phi,
-                                      ))
-                if i == 0 and spectator_map:
-                    task_list[-1]['prepend_pulse_dicts'] = \
-                        get_spectator_pulses(
-                            dev,
-                            get_spectators(
-                                dev,
-                                spectator_map,
-                                gate_list,
-                                include_spec_of_data_qubits= \
-                                    include_spec_of_data_qubits
-                            ),
-                            opcode=spectator_pulse_opcode,
-                        )
-                if i == 0 and extra_prepend_pulses:
-                    print('pushaway')
-                    print(extra_prepend_pulses)
-                    task_list[-1]['prepend_pulse_dicts'] = extra_prepend_pulses \
-                                + task_list[-1].get('prepend_pulse_dicts', [])
-                    task_list[-1].update(task_kw)
-            mmnt = twoqbcal.CPhase(
-                task_list=task_list,
-                dev=dev,
-                nr_phases=nr_phases,
-                cz_pulse_name=cz_pulse_name,
-                delegate_plotting=True,
-                measure=measure,
-                experiment_name=experiment_name,
-                num_cz_gates=n_cz,
-                ref_pi_half=True,
-                **kw,
-            )
-
-            mmnts.append(mmnt)
         return mmnts
 
 
