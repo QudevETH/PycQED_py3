@@ -36,6 +36,7 @@ dependencies = [
     "qcodes",
     "qcodes-loop",
     "qutip",
+    "qutip-qip",
     "requests",
     "scikit-learn",
     "scipy",
@@ -74,9 +75,7 @@ measurement_setup = [
 ]
 user = [
     "cython < 3.0.0",               # Due to Qutip 4.7.5
-    "jupyter",
-    "jupyter-contrib-nbextensions",
-    "notebook < 7.0.0",
+    "jupyterlab",
     "psutil",
     "plotly",
     "pyyaml",
