@@ -15363,6 +15363,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
     def extract_data(self):
         # Necessary for data processing and plotting since sweep_points are 2D
         self.default_options['TwoD'] = True
+        self.do_fitting = False  # Fitting in the super() is only for 2D
         super().extract_data()
 
     def prepare_projected_data_plots(self):
