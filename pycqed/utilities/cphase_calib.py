@@ -169,10 +169,10 @@ def cal_two_qubit_gates(
         sweep_params, gate_list, dev,
         sweep_range_dict=None, n_cz=1,
         cz_pulse_name='CZ_nztc', phi=None, phi_target=None,
-        do_check_msmt=True, only_check_msmt=False,
+        do_check_msmt=False, only_check_msmt=False,
         nr_phases=8, measure=True, update=True, optimize=False,
-        cphase_acq_avg=None, chevron_acq_avg=None,
-        cphase_soft_avg=None, chevron_soft_avg=None,
+        cphase_acq_avg=2**13, chevron_acq_avg=2**16,
+        cphase_soft_avg=1, chevron_soft_avg=1,
         acq_weights_type=None, task_kw=None,
         spectator_map=False, include_spec_of_data_qubits=False,
         spectator_pulse_opcode="X90", extra_prepend_pulses=None,
@@ -234,21 +234,22 @@ def cal_two_qubit_gates(
             pulse_params.append(pp)
         task_list = []
 
-        if np.ndim(sweep_range_dict[param]) != 0:
-            sweep_range_dict[param], num_soft_swpts = sweep_range_dict[
-                param]
+        if param=='do_check':
+            pass
+        elif np.ndim(sweep_range_dict[param]) != 0:
+            # A tuple was passed: (sweep_range, num_soft_swpts)
+            sweep_range, num_soft_swpts = sweep_range_dict[param]
         else:
-            num_soft_swpts = (7 if param in ['amplitude2', 'amplitude']
-                              else 11)
+            # Only sweep_range was passed
+            sweep_range = sweep_range_dict[param]
+            num_soft_swpts = 11
         if param in chevron_mnt_params or param.endswith('-chevron'):
             experiment_name = f'Chevron_{param}_sweep'
 
             for i, (qbh, qbl) in enumerate(gate_list):
                 sweep_values = dev.get_pulse_par(
                     cz_pulse_name, qbh, qbl, pulse_params[i])() +\
-                    np.linspace(
-                        -sweep_range_dict[param],
-                        sweep_range_dict[param], num_soft_swpts)
+                    np.linspace(-sweep_range, sweep_range, num_soft_swpts)
                 sweep_points = sp_mod.SweepPoints(
                     pulse_params[i], sweep_values,
                     unit_dict[pulse_params[i]],
@@ -315,8 +316,7 @@ def cal_two_qubit_gates(
                                 dev.get_pulse_par(
                                     cz_pulse_name, qbh, qbl,
                                     pulse_params[i])() + \
-                                np.linspace(-sweep_range_dict[param],
-                                            sweep_range_dict[param],
+                                np.linspace(-sweep_range, sweep_range,
                                             num_soft_swpts),
                             'unit': unit_dict[pulse_params[i]],
                         }
@@ -412,16 +412,16 @@ def cal_dyn_phase(
         reset_phases_before_measurement=True, nr_phases=5,
         spectator_map=False, include_spec_of_data_qubits=False,
         spectator_pulse_opcode="X90", extra_prepend_pulses=None,
-        acq_averages=None,
+        acq_avg=2**13,
         **kw):
     if extra_prepend_pulses is None:
         extra_prepend_pulses = []
     task_list = []
     tmp_vals = []
-    if acq_averages is not None:
+    if acq_avg is not None:
         tmp_vals += [
-            (dev.acq_averages, acq_averages),
-            (dev.acq_shots, acq_averages),
+            (dev.acq_averages, acq_avg),
+            (dev.acq_shots, acq_avg),
         ]
     for i, (qbh, qbl) in enumerate(gate_list):
         task_list.append({'op_code': f'CZ {qbh.name} {qbl.name}',
