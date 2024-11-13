@@ -124,12 +124,3 @@ html_show_sourcelink = False
 
 # FIXME: This one is broken
 # autodoc_instrument_configs_file = os.path.abspath("./autodoc_instrument_configs.yaml")
-
-# -- enable macOS doc building --------------------------------------------
-
-import multiprocessing
-
-try:
-    multiprocessing.set_start_method('forkserver')
-except RuntimeError:
-    pass  # Method already set
