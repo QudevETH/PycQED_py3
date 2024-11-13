@@ -296,9 +296,9 @@ class QCNNExperiment(VariationalAlgorithm):
 
     default_experiment_name = 'QCNN_n_qubit'
 
-    def __init__(self, prep_params_filename=None, *args, **kw):
+    def __init__(self, prep_params_filename=None, do_qcnn=True, *args, **kw):
         self.prep_params_filename = prep_params_filename
-        self.do_qcnn = True
+        self.do_qcnn = do_qcnn
         super().__init__(*args, **kw)
 
     def pp9(self, h_index, param_index):

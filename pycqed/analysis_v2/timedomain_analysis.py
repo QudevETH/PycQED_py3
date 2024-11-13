@@ -3181,6 +3181,14 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     p_name, [(':', 'smcol')]
                 )
 
+        # state preparation analysis (stabilizer analysis)
+        # print('tda: doing stabilizer analysis')
+        # stab_dict = self.cpp_stabilizers_4(shots)
+        # for k, v in stab_dict.items():
+        #     self.cpp_results.update({
+        #         k: (v, self.sp)
+        #     })
+
         for key, (values, sp) in self.cpp_results.items():
             self.add_dummy_qb_data(key, values, sp)
 
@@ -3387,6 +3395,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         epsilon_stable = 1e-10  # small parameter to avoid division by zero
         freq1 = np.sum(freqs * targets, axis=targets_axis) /\
                 np.sum(targets, axis=targets_axis)
+        assert np.any(1 - targets) > 0, "No 0 targets!"
         freq0 = np.sum(freqs * (1 - targets), axis=targets_axis) /\
             np.sum(1 - targets, axis=targets_axis)
         weights_opt = freq1 / (freq0 + freq1 + epsilon_stable)
@@ -3435,10 +3444,14 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return output, cost, training_set_cost
 
     @staticmethod
-    def cpp_bxe_cost_function(shots, targets):
+    def cpp_bxe_cost_function(shots, targets, fms=False):
         freqs, _ = VariationalAlgorithmAnalysis.cpp_histogram(shots)
         # targets_axis: the axis of targets in freqs
+        # TODO allow other shape orders
+        print('freqs shape during training, before fms:', freqs.shape)
+        state_axis = 0
         targets_axis = 2
+        shape = freqs.shape
         # freqs shape: (bitstring, hard sweep, soft sweep)
         # targets shape: (n_non_trainable_params,)
         # targets_sp_axis=1 means targets correspond to the soft_sweep (sp[1])
@@ -3449,7 +3462,21 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # This expansion makes reading a bit harder but makes coding easier
             targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
                 targets, freqs.shape, current_axes=[targets_axis])
-        # TODO allow other targets_sp_axis
+        if np.all(targets == 1):
+            # There is no target 0: add a fully mixed state as target 0
+            shape_fms = list(shape)
+            shape_fms[targets_axis] = 1  # Add one target, along targets_axis
+            freqs = np.concatenate(
+                (freqs, np.ones(shape_fms) / shape[state_axis]),
+                axis=targets_axis)
+            # Amounts to np.concatenate((targets, [0])) for 1D targets
+            targets = np.concatenate(
+                (targets, np.zeros(shape_fms)),
+                axis=targets_axis)
+        elif fms:
+            # Replace all states (soft dim) with target==0 by a mixed state
+            # Using the fact that targets has the same shape as freqs
+            freqs[targets == 0] = 1 / shape[state_axis]  # Uniform probs
         weights = VariationalAlgorithmAnalysis.cpp_opt_bxe_weights(
             freqs, targets=targets, targets_axis=targets_axis)
         # TODO the only difference with the other call to this method is
