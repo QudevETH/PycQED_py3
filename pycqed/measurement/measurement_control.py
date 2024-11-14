@@ -2140,9 +2140,9 @@ class MeasurementControl(Instrument):
             # a context manager, such that it is closed after save method.
             if not data_object.__bool__():
                 with h5d.Data(name=self.get_measurement_name(),
-                  datadir=self.datadir(),
-                  timestamp=self.last_timestamp(),
-                                       auto_increase=False) as data_object:
+                              datadir=self.datadir(),
+                              timestamp=self.last_timestamp(),
+                              auto_increase=False) as data_object:
                     MeasurementControl.save_station_in_hdf(data_object,
                                                             self.station)
             else:

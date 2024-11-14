@@ -1,7 +1,6 @@
 import os
 import sys
 import numpy as np
-import h5py
 import json
 import time
 import datetime
@@ -452,7 +451,7 @@ def load_settings_onto_instrument_v2(instrument, load_from_instr: str=None,
                                             older_than=older_than)
                 filepath = a_tools.measurement_filename(folder)
 
-            f = h5py.File(filepath, 'r')
+            f = h5d.safe_file_open(filepath, mode='r')
             snapshot = {}
             h5d.read_dict_from_hdf5(snapshot, h5_group=f['Snapshot'])
 
