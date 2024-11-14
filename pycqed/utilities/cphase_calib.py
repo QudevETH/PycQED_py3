@@ -215,6 +215,7 @@ def cal_two_qubit_gates(
     mmnts = []
     meas_index = 0
     try_index = 0
+    sweep_params = deepcopy(sweep_params)
     if only_check_msmt:
         sweep_params = []
     if do_check_msmt:
