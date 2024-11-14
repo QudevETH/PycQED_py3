@@ -485,7 +485,6 @@ class FeedbackReset(ResetScheme):
                                      'device return the reset data (defaut). '
                                      'If False, the reset data will not be '
                                      'logged and returned by the device.',
-                           # TODO determine what happens if not possible
                            initial_value=True, vals=validators.Bool(),
                            parameter_class=ManualParameter,
                            )

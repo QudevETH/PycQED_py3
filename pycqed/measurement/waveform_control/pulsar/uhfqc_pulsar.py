@@ -213,6 +213,18 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             #  - log_acquisition is contained in acq (in Segment)
             acq = metadata.get('acq', False)
             log_acquisition = metadata.get('log_acquisition', True)
+            if not log_acquisition:
+                from packaging import version
+                from pycqed.utilities import general as gen
+                core_ver = gen.get_zhinst_modules_versions()[0]['zhinst-core']
+                if version.parse(core_ver) < version.parse('24.7'):
+                    raise NotImplementedError(
+                        'UHFQA sequencer does not support *not* returning '
+                        f'acquired data with version {core_ver} < {24.7}!')
+                if getattr(self.awg.daq, 'server', None) == 'emulator':
+                    raise NotImplementedError(
+                        'UHFQA sequencer does not support *not* returning '
+                        f'acquired data with a virtual server!')
             # Remark on allow_filter in the call to _zi_playback_string:
             # the element may be skipped via segment filtering only if
             # play_element was called with allow_filter=True *and* the
