@@ -46,8 +46,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
         "\n"
-        "{codeword_table_defs}\n"
-        "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
         "}}\n"
@@ -683,6 +681,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     two analog channels and two marker channels. Please refer to ZI user manual
     https://docs.zhinst.com/hdawg_user_manual/overview.html
     for more details."""
+
+    COMMAND_TABLE_MAX_SIZE = 1024
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
