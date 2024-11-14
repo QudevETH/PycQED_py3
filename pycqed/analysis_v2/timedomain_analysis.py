@@ -2197,10 +2197,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 # Note that this could be used as well if predict_proba = False
                 # if that is meaningful
                 shots_correlated, states_map = self._correlate_single_shots(
-                    shots_per_qb, n_shots, n_seqs, states_map)
-                # FIXME this duplication is a hack, so that all the processing
+                    shots_per_qb, states_map)
+                # FIXME this is a hack, so that all the processing
                 #  and plotting based on qubit names still works
-                shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
+                qbn = list(shots_per_qb)[0]
+                shots_per_qb = {qbn: shots_correlated}
                 # TODO This could be used to plot readout-corrected correlated
                 #  data, see the case self.rotate = False in self.process_data.
                 self.default_options['plot_proj_data'] = False
@@ -2254,23 +2255,59 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     self.proc_data_dict['meas_results_per_qb'][qbn][k] = \
                         averaged_shots[i]
 
-    def _correlate_single_shots(self, shots, n_shots, n_seqs, states_map):
-        assert len(self.qb_names) == 2  # FIXME generalise
+    @staticmethod
+    def _correlate_single_shots(shots_per_qb, states_map):
+        # Convert dict to array, with shape = (n_qb, other dims..., n_states):
+        shots = np.array([
+            shots_per_qb[key] for key in shots_per_qb.keys()
+        ])
+        shape = shots.shape
+        n_qb, n_states = shape[0], shape[-1]
+        shape = shape[1:-1]  # To recover the original dims at the end
 
-        s1 = shots[self.qb_names[0]]
-        s2 = shots[self.qb_names[1]]
-        sc_dict = {}
-        for i in range(s1.shape[1]):  # shape = (flattened sweep dims, states)
-            for j in range(s2.shape[1]):
-                s_ij = s1[:, i] * s2[:, j]
-                sc_dict[states_map[i] + states_map[j]] = s_ij
-        states_map_corr = {i: k for i, k in enumerate(sc_dict)}  # {0: 'gg'...}
-        # For compatibility with further processing in process_single_shots
-        shots_corr = np.array(list(sc_dict.values()))
-        # shape = (corr_states, flattened sweep dims)
-        shots_corr = shots_corr.T
-        # shape = (flattened sweep dims, corr_states)
-        return shots_corr, states_map_corr
+        # One-hot encoded states, with shape = (n_qb, -1, n_states):
+        shots = shots.reshape([n_qb, -1, n_states])
+
+        # Convert to numerical (0, 1, 2... indicating the state per qubit),
+        # with shape = (n_qb, -1):
+        convrt = np.arange(n_states)  # [0, 1, 2] if n_states = 3
+        shots = np.tensordot(shots, convrt, axes=1)  # 1 means summing one axis
+
+        # Convert to numerical (0, 1, ..., n_states**n_qb-1 indicating the
+        # state), with shape = (-1)
+        # Conversion matrix: [n_states**n_qb, n_states**(n_qb-1), ... 1]
+        # Decreasing order, such that the first qubit corresponds to the
+        # highest value (most significant, on the left of the bitstring)
+        convrt = n_states ** np.arange(n_qb)[::-1]
+        shots = np.tensordot(convrt, shots, axes=1)  # 1 means summing one axis
+
+        # Convert back to a one-hot encoding,
+        # with shape = (-1, n_states**n_qb):
+        convrt = np.eye(n_states**n_qb)
+        shots = convrt[shots]
+
+        # Recover original shape, shape = (other dims..., n_states**n_qb)
+        shots = np.reshape(shots, (*shape, n_states**n_qb))
+
+        # Create new state map for each possible correlated state state_val
+        # digit = e.g. '20' for a gfg state
+        # join returns e.g. 'fg' for a gfg state
+        new_states_map = {
+            state_val: ''.join([
+                states_map[int(digit)]
+                for digit in np.base_repr(state_val, n_states)
+            ])
+            for state_val in np.arange(0, n_states ** n_qb)
+        }
+        # Pad with the correct number of states_map[0]
+        # e.g. add 'g'*1 to 'fg' for a gfg state
+        max_string_len = np.max([len(s) for s in new_states_map.values()])
+        new_states_map = {
+            k: states_map[0] * (max_string_len - len(s)) + s
+            for k, s in new_states_map.items()
+        }
+
+        return shots, new_states_map
 
     def prepare_plots(self):
         """
