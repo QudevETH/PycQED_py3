@@ -14817,7 +14817,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
             return J_min, Delta_argmin
 
-        def add_fit_dict(qbH_name, qbL_name, data, key):
+        def add_fit_dict(task):
             """ Creates the dictionary used for fitting
 
              The dictionary includes the fitting-model, the function be fitted to, the x and y data, the method used for
@@ -14840,6 +14840,13 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             -------
             A fit-dictionary
             """
+
+            qbH_name, qbL_name = self._get_qbH_qbL(task)
+            key = f'chevron_fit_{qbH_name}_{qbL_name}'
+            if qbH_name is None:
+                # qbH not passed in self.qubits: skip task
+                return
+            data = self.proc_data_dict['projected_data_dict'][qbH_name]['pe']
             model = self.get_param_value('model', 'transmon_res')
             J_guess_boundary_scale = self.get_param_value(
                 'guess_paramater_scale', 1.5)
@@ -14855,13 +14862,19 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
             t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points']
 
-            # Not sure according to which rule the qbs are ordered in the string, maybe high q.number to low
-            sweep_point_name = qbH_name + '_' + qbL_name + '_amplitude2'
-            if sweep_point_name in self.proc_data_dict['sweep_points_2D_dict'][qbL_name]:
-                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+            prefix = task['prefix']
+            param_names = self.proc_data_dict['sweep_points_dict'][
+                qbH_name]['param_names']
+            # Find which amp_name was swept
+            if prefix + 'amplitude' in param_names:
+                amp_swept_name = 'amplitude'
+                amp_fixed_name = 'amplitude2'
             else:
-                sweep_point_name = qbL_name + '_' + qbH_name + '_amplitude2'
-                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+                amp_swept_name = 'amplitude'
+                amp_fixed_name = 'amplitude2'
+
+            amp_swept = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][
+                prefix + amp_swept_name]
 
             cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
             device_name = self.get_param_value('device_name')
@@ -14871,13 +14884,14 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                         'pycqed.instrument_drivers.meta_instrument.device.Device',
                         hdf_file_index)[0]
                 except KeyError:
-                    raise KeyError('For old data, the device name has to be given as an input "device_name" ')
+                    raise KeyError('For old data, the device name has to be '
+                                   'given as an input "device_name" ')
 
-            path = f"{device_name}.{cz_name}_{qbH_name}_{qbL_name}_amplitude"
-            amp = self.get_instrument_setting(path)
-            qbL_tuned_freq_arr = qbL.calculate_frequency(amplitude=amp2,
+            path = f"{device_name}.{cz_name}_{prefix + amp_fixed_name}"
+            amp_fixed = self.get_instrument_setting(path)
+            qbL_tuned_freq_arr = qbL.calculate_frequency(amplitude=amp_swept,
                                                          model=model)
-            qbH_tuned_ef_freq = qbH.calculate_frequency(amplitude=amp,
+            qbH_tuned_ef_freq = qbH.calculate_frequency(amplitude=amp_fixed,
                                                         model=model) + \
                                 qbH.anharmonicity()
 
@@ -14933,12 +14947,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
         for task in self.get_param_value('task_list'):
-            qbH_name, qbL_name = self._get_qbH_qbL(task)
-            if qbH_name is not None:
-                data = self.proc_data_dict['projected_data_dict'][qbH_name][
-                    'pe']
-                add_fit_dict(qbH_name=qbH_name, qbL_name=qbL_name, data=data,
-                             key= f'chevron_fit_{qbH_name}_{qbL_name}')
+            add_fit_dict(task)
 
     def _get_qbH_qbL(self, task):
         qbH_name, qbL_name = task['qbc'], task['qbt']
@@ -15402,6 +15411,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
     def extract_data(self):
         # Necessary for data processing and plotting since sweep_points are 2D
         self.default_options['TwoD'] = True
+        self.do_fitting = False  # Fitting in the super() is only for 2D
         super().extract_data()
 
     def prepare_projected_data_plots(self):
@@ -15460,8 +15470,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             colors = ['C0', 'C1']
         data = self.proc_data_dict['projected_data_dict'][qbH_name][
                    'pf'][0, :-3]
-        x = self.sp.get_sweep_params_property('values',
-                                              dimension=0).copy()
+        x = self.sp[self.mospm[qbH_name][0]]
         if minimize == 'auto':
             minimize = data[len(data) // 2] < (data[0] + data[-1])/2
         if minimize:
@@ -15472,8 +15481,10 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             c = 1
         if xtransform:
             x = xtransform(x)
-        xlabel = xlabel or self.sp.get_sweep_params_property('label')
-        xunit = xunit or self.sp.get_sweep_params_property('unit')
+        xlabel = xlabel or self.sp.get_sweep_params_property(
+            'label', param_names=self.mospm[qbH_name][0])
+        xunit = xunit or self.sp.get_sweep_params_property(
+            'unit', param_names=self.mospm[qbH_name][0])
         fact = 1
         while abs(max(x)) < 1e-3:
             x *= 1e3
@@ -15491,7 +15502,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             'plotfn': self.plot_line,
             'xvals': x_resampled / fact,
             'yvals': model_func(x_resampled, **self.fit_res.best_values),
-            'xlabel': xlabel,
+            'xlabel': xlabel + ('' if xunit is None else f" ({xunit})"),
             'xunit': '',
             'ylabel': '$|2\\rangle$ state pop.',
             'yunit': '',
@@ -15516,4 +15527,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             'ymax': np.max(data),
             'colors': 'gray',
         }
-        return best_val
+        best_val_clipped = np.clip(best_val, x[0] / fact, x[-1] / fact)
+        converged = best_val_clipped == best_val
+        return best_val_clipped, converged
+
