@@ -2200,8 +2200,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                     shots_per_qb, states_map)
                 # FIXME this is a hack, so that all the processing
                 #  and plotting based on qubit names still works
-                qbn = list(shots_per_qb)[0]
-                shots_per_qb = {qbn: shots_correlated}
+                shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
                 # TODO This could be used to plot readout-corrected correlated
                 #  data, see the case self.rotate = False in self.process_data.
                 self.default_options['plot_proj_data'] = False
