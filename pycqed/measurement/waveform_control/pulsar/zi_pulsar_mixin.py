@@ -1103,8 +1103,7 @@ class ZIGeneratorModule:
                     phase=metadata.get('mod_config', {})\
                         .get(self.i_channel_name, {}).get("phase", 0)
 
-
-                    # Find entry index
+                    # entry_index will be set to a value below
                     entry = self._generate_command_table_entry(
                         entry_index=None,
                         wave_index=self._wave_idx_lookup[element][cw],
