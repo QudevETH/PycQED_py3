@@ -1895,54 +1895,35 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 unit = unit[0]
         return label, unit
 
-    def _get_single_shots_per_qb(self, raw=False, qb_names=None):
+    @staticmethod
+    def _obfuscate_single_shots_per_qb(meas_res, qb_names, twoD=True):
         """
         Gets single shots from the proc_data_dict and arranges
-        them as arrays per qubit
+        them as arrays per qubit, in a very unclear way, for easier processing
         Args:
-            raw (bool): whether or not to return raw shots (before
-            data filtering)
-            qb_names (list): Qubits for which to extract the data. If None
-            (default): uses self.qb_names. This can be useful if extracting
-            data for qubits which are not in self.qb_names.
-            E.g.: Doing an experiment on qb1 (self.qb_names = ['qb1']) but
+            meas_res (dict): shots in the form {'mobjn': {'val_name': array}},
+            e.g. as in proc_data_dict['meas_results_per_qb(_raw)']
+            qb_names (list): Qubits for which to extract the data. This can be
+            useful if extracting data for qubits not in analysis.qb_names
+            E.g.: Doing an experiment on qb1 (analysis.qb_names = ['qb1']) but
             preselecting on qb2, meaning that we need the data from both.
-        Returns: shots_per_qb: dict where keys are qb_names and
-            values are arrays of shape (n_shots, n_value_names) for
-            1D measurements and (n_shots*n_soft_sp, n_value_names) for
-            2D measurements
+        Returns: shots_per_qb: dict where keys are qb_names and values are
+            arrays of shape (n_shots * n_hard_sp * n_soft_sp, n_value_names).
 
         """
         # prepare data in convenient format, i.e. arrays per qubit
         shots_per_qb = dict()        # store shots per qb and per state
-        pdd = self.proc_data_dict    # for convenience of notation
-        key = 'meas_results_per_qb'
-        if raw:
-            key += "_raw"
-        if qb_names is None:
-            qb_names = self.qb_names
         for qbn in qb_names:
-            # if "1D measurement" , shape is (n_shots, n_vn) i.e. one
-            # column for each value_name (often equal to n_ro_ch)
             shots_per_qb[qbn] = \
                 np.asarray(list(
-                    pdd[key][qbn].values())).T
-            n_vn = shots_per_qb[qbn].shape[-1]
-            if (sc := self.get_param_value('sweep_control'))\
-                    and sc[0] == 'soft':
-                # 1D soft sweep with single shots: turn into a 2D measurement
-                # with shape (n_soft_sp, n_shots, n_vn)
-                soft_control = True
-                nr_shots = self.get_param_value(
-                    "nr_shots", self._extract_param_from_det("nr_shots"))
-                shots_per_qb[qbn] = shots_per_qb[qbn].reshape((-1, nr_shots,
-                                                               n_vn))
-            else:
-                soft_control = False
-            # if "2D measurement" reshape from (n_soft_sp, n_shots, n_vn)
-            #  to ( n_shots * n_soft_sp, n_ro_ch)
+                    meas_res[qbn].values())).T
+            # If 1D measurement, shape at this point is (n_shots*n_sp, n_vn)
+            #  i.e. one column for each value_name (often equal to n_ro_ch).
+            # If 2D measurement, the following reshapes from
+            #  (n_soft_sp, n_shots * n_hard_sp, n_vn)
+            #  to a 1D-like format (n_shots * n_hard_sp * n_soft_sp, n_ro_ch).
             if np.ndim(shots_per_qb[qbn]) == 3:
-                assert self.get_param_value("TwoD", False) or soft_control, \
+                assert twoD, \
                     "'TwoD' is False but single shot data seems to be 2D"
                 # put softsweep as inner most loop for easier processing
                 shots_per_qb[qbn] = np.swapaxes(shots_per_qb[qbn], 0, 1)
@@ -2073,8 +2054,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         Returns:
 
         """
-        if states_map is None:
-            states_map = {0: "g", 1: "e", 2: "f", 3: "h"}
 
         # get preselection information
         prep_params_presel = self.prep_params.get('preparation_type', "wait") \
@@ -2083,63 +2062,114 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # activate preselection flag only if preselection is in prep_params
         # and the user wants to use the preselection readouts
         preselection = prep_params_presel and use_preselection
-
-        # returns for each qb: (n_shots, n_ch) or (n_soft_sp* n_shots, n_ch)
-        # where n_soft_sp is the inner most loop i.e. the first dim is ordered as
-        # (shot0_ssp0, shot0_ssp1, ... , shot1_ssp0, shot1_ssp1, ...)
-        shots_per_qb = self._get_single_shots_per_qb()
-
-        # save single shots in proc_data_dict, as they will be overwritten in
-        # 'meas_results_per_qb' with their averaged values for the rest of the
-        # analysis to work.
-        self.proc_data_dict['single_shots_per_qb'] = deepcopy(shots_per_qb)
+        pdd = self.proc_data_dict  # will be filled by _process_single_shots
 
         # determine number of shots
         n_shots = self.get_param_value(
             "nr_shots", self._extract_param_from_det("nr_shots"))
 
         # determine number of readouts per sequence
-        if self.get_param_value("TwoD", False):
+        twoD = self.get_param_value("TwoD", False)
+        if twoD:
             n_seqs = self.sp.length(1)  # corresponds to number of soft sweep points
         else:
             n_seqs = 1
+
+        # get qubits for which data should be extracted
+        preselection_qbs = self.get_param_value("preselection_qbs")
+
+        # get classification parameters
+        if classifier_params is None:
+            classifier_params = self.get_data_from_timestamp_list({
+                f'{qbn}': f"Instrument settings.{qbn}.acq_classifier_params"
+                for qbn in self.qb_names})  # FIXME was qb_names_to_extract
+
+        correlate_proba = self.get_param_value('correlate_proba', False)
+        if correlate_proba:
+            # TODO This could be used to plot readout-corrected correlated
+            #  data, see the case self.rotate = False in self.process_data.
+            self.default_options['plot_proj_data'] = False
+
+        self._process_single_shots(
+            pdd=pdd,
+            n_shots=n_shots,
+            qb_names=self.qb_names,
+            predict_proba=predict_proba,
+            classifier_params=classifier_params,
+            states_map=states_map,
+            thresholding=thresholding,
+            preselection_qbs=preselection_qbs,
+            preselection=preselection,
+            twoD=twoD,
+            n_seqs=n_seqs,
+            classified_ro=self.get_param_value('classified_ro', False),
+            correlate_proba=correlate_proba,
+        )
+
+    @staticmethod
+    def _process_single_shots(
+            pdd,
+            n_shots,
+            qb_names,
+            predict_proba=False,
+            classifier_params=None,
+            states_map=None,
+            thresholding=False,
+            preselection_qbs=None,
+            preselection=False,
+            twoD=True,
+            n_seqs=1,
+            classified_ro=False,
+            correlate_proba=False,
+    ):
+        if states_map is None:
+            states_map = {0: "g", 1: "e", 2: "f", 3: "h"}
+
+        # returns for each qb: (n_shots * n_hard_sp * n_soft_sp, n_ro_ch)
+        # where n_soft_sp is the inner most loop i.e. the first dim is ordered as
+        # (shot0_hsp0_ssp0, shot0_hsp0_ssp1, ...,
+        #  shot0_hsp1_ssp0, shot0_hsp1_ssp1, ...)
+        key = 'meas_results_per_qb'
+        shots_per_qb = \
+            MultiQubit_TimeDomain_Analysis._obfuscate_single_shots_per_qb(
+                pdd[key], qb_names=qb_names, twoD=twoD)
+
+        # save single shots in proc_data_dict, as they will be overwritten in
+        # 'meas_results_per_qb' with their averaged values for the rest of the
+        # analysis to work.
+        pdd['single_shots_per_qb'] = deepcopy(shots_per_qb)
+
         # n_readouts refers to the number of readouts per sequence after
         # filtering out e.g. preselection readouts
         n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots *
                                                                  n_seqs)
 
-        # get qubits for which data should be extracted
-        preselection_qbs = self.get_param_value("preselection_qbs")
         if preselection_qbs is None:
-            # by default, extract data for all qubits in self.qb_names
-            qb_names_to_extract = self.qb_names
+            # by default, extract data for all qubits in qb_names
+            qb_names_to_extract = qb_names
         else:
-            # Data should be extracted both for qubits in self.qb_names
+            # Data should be extracted both for qubits in qb_names
             # (qubits on which the experiment is performed), and for qubits
             # used in preselection. These two sets may or not be distinct.
             # Preselection will not work if data is not extracted for the
             # preselection qubits as well.
-            # E.g. self.qb_names = ['qb1'] (only qubit to analyse) and
+            # E.g. qb_names = ['qb1'] (only qubit to analyse) and
             # preselection_qbs = {"qb1": ["qb1", "qb2"]},
             # i.e. preselection is done for qb1 using ['qb1', 'qb2'] so we
             # should exctract data no only for qb1 but also qb2.
             qb_names_to_extract = [qbn for qbns in list(
                 preselection_qbs.values()) for qbn in qbns]
             qb_names_to_extract = qb_names_to_extract + [
-                qbn for qbn in self.qb_names if qbn not in qb_names_to_extract]
-
-        # get classification parameters
-        if classifier_params is None:
-            classifier_params = self.get_data_from_timestamp_list({
-                f'{qbn}': f"Instrument settings.{qbn}.acq_classifier_params"
-                for qbn in qb_names_to_extract})
+                qbn for qbn in qb_names if qbn not in qb_names_to_extract]
 
         # prepare preselection mask
         if preselection:
 
             # get preselection readouts for selected qubits
-            shots_per_qb_before_filtering = self._get_single_shots_per_qb(
-                raw=True, qb_names=qb_names_to_extract)
+            key = 'meas_results_per_qb_raw'
+            shots_per_qb_before_filtering = \
+                MultiQubit_TimeDomain_Analysis._obfuscate_single_shots_per_qb(
+                    pdd[key], qb_names=qb_names_to_extract, twoD=twoD)
 
             n_ro_before_filtering = \
                 list(shots_per_qb_before_filtering.values())[0].shape[0] // \
@@ -2165,18 +2195,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # create boolean array of shots to keep.
             # each time ro is the ground state --> true otherwise false
             g_state_int = [k for k, v in states_map.items() if v == "g"][0]
-            preselection_masks = self._get_preselection_masks(
-                presel_shots_per_qb,
-                preselection_qbs=self.get_param_value("preselection_qbs"),
-                predict_proba=not self.get_param_value('classified_ro', False),
-                classifier_params=classifier_params,
-                preselection_state_int=g_state_int)
-            self.proc_data_dict['percent_data_after_presel'] = {} #initialize
+            preselection_masks = \
+                MultiQubit_TimeDomain_Analysis._get_preselection_masks(
+                    presel_shots_per_qb,
+                    preselection_qbs=preselection_qbs,
+                    predict_proba=not classified_ro,
+                    classifier_params=classifier_params,
+                    preselection_state_int=g_state_int)
+            pdd['percent_data_after_presel'] = {} #initialize
         else:
             # keep all shots
             preselection_masks = {qbn: np.ones(len(shots), dtype=bool)
                                   for qbn, shots in shots_per_qb.items()}
-        self.proc_data_dict['preselection_masks'] = preselection_masks
+        pdd['preselection_masks'] = preselection_masks
 
         # process single shots per qubit
         if predict_proba:
@@ -2193,17 +2224,15 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' than in the current measurement): {e}')
                     raise e
 
-            if self.get_param_value('correlate_proba', False):
+            if correlate_proba:
                 # Note that this could be used as well if predict_proba = False
                 # if that is meaningful
-                shots_correlated, states_map = self._correlate_single_shots(
+                shots_correlated, states_map = \
+                    MultiQubit_TimeDomain_Analysis._correlate_single_shots(
                     shots_per_qb, states_map)
                 # FIXME this is a hack, so that all the processing
                 #  and plotting based on qubit names still works
                 shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
-                # TODO This could be used to plot readout-corrected correlated
-                #  data, see the case self.rotate = False in self.process_data.
-                self.default_options['plot_proj_data'] = False
 
         for qbn, shots in shots_per_qb.items():
             if thresholding:
@@ -2212,9 +2241,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
                 shots = a_tools.threshold_shots(shots)
 
-                if 'single_shots_per_qb_thresholded' not in self.proc_data_dict:
-                    self.proc_data_dict['single_shots_per_qb_thresholded'] = {}
-                self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
+                if 'single_shots_per_qb_thresholded' not in pdd:
+                    pdd['single_shots_per_qb_thresholded'] = {}
+                pdd['single_shots_per_qb_thresholded'][qbn] = \
                     shots
 
             averaged_shots = [] # either raw voltage shots or probas
@@ -2228,7 +2257,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                 len(presel_mask_single_ro))
                 averaged_shots.append(
                     np.mean(shots_single_ro[presel_mask_single_ro], axis=0))
-            if self.get_param_value("TwoD", False):
+            if twoD:
                 # Shape: (n_readouts*n_seqs, n), with n = n_prob or n_ch or 1
                 averaged_shots = np.reshape(averaged_shots, (n_readouts, n_seqs, -1))
                 # Shape: (n_readouts, n_seqs, n)
@@ -2238,20 +2267,20 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # Shape: (n, n_readouts) if 1d, or (n, n_readouts, n_ssp) if 2d
 
             if preselection:
-                self.proc_data_dict['percent_data_after_presel'][qbn] = \
+                pdd['percent_data_after_presel'][qbn] = \
                     f"{np.mean(preselection_percentages):.2f} $\\pm$ " \
                     f"{np.std(preselection_percentages):.2f}%"
             if predict_proba:
                 # value names are different from what was previously in
                 # meas_results_per_qb and therefore "artificial" values
                 # are made based on states
-                self.proc_data_dict['meas_results_per_qb'][qbn] = \
+                pdd['meas_results_per_qb'][qbn] = \
                     {"p" + states_map[i]: p for i, p in enumerate(averaged_shots)}
             else:
                 # reuse value names that were already there if did not classify
                 for i, k in enumerate(
-                        self.proc_data_dict['meas_results_per_qb'][qbn]):
-                    self.proc_data_dict['meas_results_per_qb'][qbn][k] = \
+                        pdd['meas_results_per_qb'][qbn]):
+                    pdd['meas_results_per_qb'][qbn][k] = \
                         averaged_shots[i]
 
     @staticmethod
