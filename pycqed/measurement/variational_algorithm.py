@@ -170,13 +170,12 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     #     # reshape cost_func to 2D: for EGO
     #     return cost_func.reshape((-1, 1))
 
-    # @staticmethod  # FIXME?
     def _data_processing_function(self, vals,
                                   dset=None  # TODO remove
                                   ):
 
         vals = np.atleast_2d(vals)
-        meas_objs = self.meas_objs  # Only non-static variable
+        meas_objs = self.meas_objs
 
         classifier_params = {mobj.name: mobj.acq_classifier_params()
                              for mobj in meas_objs}
@@ -187,22 +186,26 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             step.get('reset_reps', 0)
             for step in analysis_instructions[meas_objs[0].name]])
         data_filter = lambda x: x[reset_reps::reset_reps + 1]
+        vals = data_filter(vals)
 
-        # Creating a dummy meas_obj_value_names_map since this is
-        #  only used in _process_single_shots to re-extract the data
-        movnm = {mobj.name: [f'{mobj.name}_{i}' for i in range(2)]  # I,Q
-                 for mobj in meas_objs}
         # Construct an initial data dict with the raw data
-        data_dict = {}
-        data_dict['meas_results_per_qb'] = {
-            mobj.name: {
-                movnm[mobj.name][ch_i]: data_filter(vals[:, 2*mobj_i+ch_i])
-                for ch_i in [0, 1]
-            } for mobj_i, mobj in enumerate(meas_objs)
+        value_names = self.df.value_names
+        movnm = self.df.get_meas_obj_value_names_map()
+        inverse_movnm = {
+            vn: mobjn
+            for mobjn, vns in movnm.items()
+            for vn in vns
         }
+        data_dict = {}
+        for i, vn in enumerate(value_names):
+            qbn = inverse_movnm[vn]
+            if qbn not in data_dict:
+                data_dict[qbn] = {}
+            data_dict[qbn][vn] = vals[:, i:i+1]
 
+        self.pdd = {'meas_results_per_qb': data_dict}
         tda.MultiQubit_TimeDomain_Analysis._process_single_shots(
-            pdd=data_dict,
+            pdd=self.pdd,
             n_shots=self.meas_objs[0].acq_shots(),
             qb_names=list(movnm),
             predict_proba=True,
@@ -216,9 +219,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             classified_ro=False,
             correlate_proba=False,
         )
-        self.pdd = data_dict
-
-        return data_dict
+        return self.pdd
 
     def _prepare_sequences(self, sequences=None, sequence_function=None,
                            sequence_kwargs=None):
