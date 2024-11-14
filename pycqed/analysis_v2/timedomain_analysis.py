@@ -982,6 +982,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         else:
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
+            # TODO Could extend to allow processing correlated states (gg, ...)
             self.proc_data_dict['projected_data_dict'] = OrderedDict()
 
             for qbn, data_dict in self.proc_data_dict[
@@ -1027,6 +1028,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qbn, prob_data in self.proc_data_dict[
                 'projected_data_dict' + suffix].items():
             if len(prob_data) and qbn in self.data_to_fit:
+                # In the case predict_proba = True,
+                # rotate = False and self.data_to_fit[qbn] is therefore empty
+                if not self.data_to_fit[qbn]:
+                    continue
                 self.proc_data_dict['data_to_fit'][qbn] = prob_data[
                     self.data_to_fit[qbn]]
 
@@ -2151,11 +2156,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.proc_data_dict['preselection_masks'] = preselection_masks
 
         # process single shots per qubit
-        for qbn, shots in shots_per_qb.items():
-            if predict_proba:
+        if predict_proba:
+            for qbn, shots in shots_per_qb.items():
                 # shots become probabilities with shape (n_shots, n_states)
                 try:
-                    shots = a_tools.predict_gm_proba_from_clf(
+                    shots_per_qb[qbn] = a_tools.predict_gm_proba_from_clf(
                         shots, classifier_params[qbn])
                 except ValueError as e:
                     log.error(f'If the following error relates to number'
@@ -2165,6 +2170,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' than in the current measurement): {e}')
                     raise e
 
+            if self.get_param_value('correlate_proba', False):
+                # Note that this could be used as well if predict_proba = False
+                # if that is meaningful
+                shots_correlated, states_map = self._correlate_single_shots(
+                    shots_per_qb, n_shots, n_seqs, states_map)
+                # FIXME this duplication is a hack, so that all the processing
+                #  and plotting based on qubit names still works
+                shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
+                # TODO This could be used to plot readout-corrected correlated
+                #  data, see the case self.rotate = False in self.process_data.
+                self.default_options['plot_proj_data'] = False
+
+        for qbn, shots in shots_per_qb.items():
             if thresholding:
                 # shots become one-hot encoded arrays with length n_states
                 # shots has shape (n_shots, n_states)
@@ -2212,6 +2230,24 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.proc_data_dict['meas_results_per_qb'][qbn]):
                     self.proc_data_dict['meas_results_per_qb'][qbn][k] = \
                         averaged_shots[i]
+
+    def _correlate_single_shots(self, shots, n_shots, n_seqs, states_map):
+        assert len(self.qb_names) == 2  # FIXME generalise
+
+        s1 = shots[self.qb_names[0]]
+        s2 = shots[self.qb_names[1]]
+        sc_dict = {}
+        for i in range(s1.shape[1]):  # shape = (flattened sweep dims, states)
+            for j in range(s2.shape[1]):
+                s_ij = s1[:, i] * s2[:, j]
+                sc_dict[states_map[i] + states_map[j]] = s_ij
+        states_map_corr = {i: k for i, k in enumerate(sc_dict)}  # {0: 'gg'...}
+        # For compatibility with further processing in process_single_shots
+        shots_corr = np.array(list(sc_dict.values()))
+        # shape = (corr_states, flattened sweep dims)
+        shots_corr = shots_corr.T
+        # shape = (flattened sweep dims, corr_states)
+        return shots_corr, states_map_corr
 
     def prepare_plots(self):
         """
@@ -2415,6 +2451,23 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                      plotsize[1]*numplotsy),
                         'title': fig_title,
                         'clabel': f'{ro_channel} ({ro_unit})'}
+            elif len(xvals) == 1 and not TwoD:  # 0D (single point)
+                yvals = raw_data_dict[ro_channel]
+                self.plot_dicts[plot_name + '_' + ro_channel] = {
+                    'fig_id': plot_name,
+                    'ax_id': ax_id,
+                    'plotfn': self.plot_line,
+                    'xvals': xvals,
+                    'xlabel': xlabel,
+                    'xunit': xunit,
+                    'yvals': yvals,
+                    'ylabel': f'{ro_channel} ({ro_unit})',
+                    'yunit': '',
+                    'numplotsx': numplotsx,
+                    'numplotsy': numplotsy,
+                    'plotsize': (plotsize[0]*numplotsx,
+                                 plotsize[1]*numplotsy),
+                    'title': fig_title}
             elif len(xvals) == 1:  # 1D along 2nd sweep dimension (rare)
                 # FIXME this logic probably does not work yet when using
                 #  slice_idxs_1d_raw_plot (which would mean creating a 0D
@@ -7160,7 +7213,7 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
 
 class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
-    def __init__(self, *args, extract_only=False, **kwargs):
+    def __init__(self, *args, **kwargs):
         """
         This class is different to the other single qubit calib analysis classes
         (Rabi, Ramsey, QScale, T1).
@@ -7171,7 +7224,8 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         analysis.
         """
         auto = kwargs.pop('auto', True)
-        super().__init__(*args, auto=False, extract_only=extract_only, **kwargs)
+        # auto=False, echo_analysis.run_analysis will be called below instead
+        super().__init__(*args, auto=False, **kwargs)
 
         # get experimental metadata from file
         self.metadata = self.get_data_from_timestamp_list(
@@ -7185,21 +7239,19 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
         self.run_ramsey = self.artificial_detuning_dict is not None and \
                 any(list(self.artificial_detuning_dict.values()))
 
-        # Define options_dict for call to RamseyAnalysis or T1Analysis
-        options_dict = deepcopy(kwargs.pop('options_dict', dict()))
-        options_dict['save_figs'] = False  # plots will be made by EchoAnalysis
-
+        # extract_only=True to avoid doing any plots for now.
+        # self.echo_analysis.plot will be called below in self.plot
+        # after self.prepare_plots has updated self.echo_analysis.plot_dicts.
+        kwargs.pop('extract_only', None)
         if self.run_ramsey:
             # artificial detuning was used and it is not 0
             self.echo_analysis = RamseyAnalysis(*args, auto=auto,
                                                 extract_only=True,
-                                                options_dict=options_dict,
                                                 **kwargs)
         else:
             options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
             self.echo_analysis = T1Analysis(*args, auto=auto,
                                             extract_only=True,
-                                            options_dict=options_dict,
                                             **kwargs)
 
         if auto:
@@ -7317,11 +7369,6 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
         self.echo_analysis.plot(key_list='auto')
-
-    def save_figures(self, **kw):
-        # Overload base method to run the method in echo_analysis
-        self.echo_analysis.save_figures(
-            close_figs=self.get_param_value('close_figs', True))
 
 
 class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -9752,6 +9799,10 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             else:
                 self.plot_multiplexed_plots(**kwargs)
 
+        if self.options_dict['save_figs']:
+            self.save_figures(key_list='auto')  # All figures created above
+        if self.options_dict['close_figs']:
+            self.close_figs(key_list='auto')
         # plots fidelity trend plot
         super().plot(**kwargs)
 
@@ -9895,7 +9946,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             for cw, state in mapping.items():
                 main_ax.annotate("0b{:02b}".format(cw) + f":{state}",
                                  ax_frac[cw], xycoords='axes fraction')
-            fig_key = f'{qbn}_{self.classif_method}_classifier_{dk}' \
+            fig_key = f'{qbn}_classifier_{self.classif_method}_{dk}' \
                       f'{f"_sp_{sweep_indx}" if slice_title is not None else ""}'
             self.figs[fig_key] = fig
         if show:
@@ -15195,7 +15246,6 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.task_list = self.get_param_value('task_list')
-        self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
 
     def get_qubit_objects_from_names(self, qb_names):
         # as soon as any instrument setting of a qubit is accessed,
@@ -15376,8 +15426,6 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                 'fit_xvals': {'t': t_mod_flat, 'Delta': Delta_mod_flat},
                 'fit_yvals': {'data': pe_flat},
                 'guess_pars': guess_pars,
-                'max_nfev': self.get_param_value('max_nfev',
-                                                 1e8*len(guess_pars)),
             }
 
         for task in self.get_param_value('task_list'):

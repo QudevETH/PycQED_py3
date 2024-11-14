@@ -26,6 +26,8 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
             been started by Pulsar (keys are indices of acquisition units).
         _acq_scope_memory (int): Number of points that the scope can acquire
             in one hardware run.
+        ACQ_N_RESULTS_MAX (int): Maximum number of acquisition results
+          per hardware run.
     """
     acq_length_granularity = 16
 
@@ -41,6 +43,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     # (this is not a symmetrical signal in f, hence I/Q)
     acq_sampling_rate = 2.0e9
     _acq_scope_memory = 2 ** 18
+    # Maximum acquisition shots according to YS
+    # (Can check in the LabOne GUI by typing larger numbers in)
+    ACQ_N_RESULTS_MAX = 2 ** 17  # 131072
     acq_weights_n_samples = 4096
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
@@ -848,7 +853,20 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
                 f'Acquisition length {self._acq_length} corresponds to '
                 f'{n_samples} samples, which is not a multiple of the '
                 f'granularity {self.acq_length_granularity}.')
-
+        if (
+                self._acq_n_results > self.ACQ_N_RESULTS_MAX
+                # Only for readout, not spectroscopy
+                and self._acq_mode == 'int_avg'
+                and any([self._acq_units_modes[i] == "readout"
+                         for i in self._acq_units_used])
+        ):
+            raise ValueError(
+                f'Acquisition device {self.name} ({self.devname}): '
+                f'The number of acquisition results, {self._acq_n_results},'
+                f' is too large for the SHF (which supports a max of '
+                f'{self.ACQ_N_RESULTS_MAX}). '
+                f'Please reduce the compression_seg_lim, the number of 1D '
+                f'sweep points, or the nr_shots.')
 
     def acquisition_set_weights(self, channels, **kw):
         # Makes super call faster

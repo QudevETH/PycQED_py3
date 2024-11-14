@@ -13,9 +13,9 @@ Welcome to PycQED's documentation!
 .. toctree::
    :maxdepth: 2
    :caption: Tutorials:
+   :glob:
 
-   tutorials/tips_measurement
-   tutorials/tips_analysis
+   tutorials/*
 
 .. toctree::
    :maxdepth: 4
