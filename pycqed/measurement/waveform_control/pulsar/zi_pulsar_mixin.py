@@ -497,8 +497,8 @@ class ZIGeneratorModule:
         "}}\n"
     )
 
-    COMMAND_TABLE_MAX_SIZE = 4096
-    """Specifies the maximum number of the command tables of the generator 
+    COMMAND_TABLE_MAX_SIZE = None  # Should be defined in child classes
+    """Specifies the maximum size of the command tables of the generator
     module."""
     
     #NOTE: the internal shift is limited to 1024, thus the commands for reset, 

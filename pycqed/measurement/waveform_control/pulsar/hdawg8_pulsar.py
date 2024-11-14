@@ -682,6 +682,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     https://docs.zhinst.com/hdawg_user_manual/overview.html
     for more details."""
 
+    COMMAND_TABLE_MAX_SIZE = 1024
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

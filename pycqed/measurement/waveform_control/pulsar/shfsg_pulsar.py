@@ -542,6 +542,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
     https://docs.zhinst.com/shfsg_user_manual/overview.html
     for details."""
 
+    COMMAND_TABLE_MAX_SIZE = 4096
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
