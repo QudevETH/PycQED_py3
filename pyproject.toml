@@ -76,6 +76,7 @@ measurement_setup = [
 user = [
     "cython < 3.0.0",               # Due to Qutip 4.7.5
     "jupyterlab",
+    "notebook < 7.0.0",
     "psutil",
     "plotly",
     "pyyaml",
