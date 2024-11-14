@@ -4,7 +4,6 @@ log = logging.getLogger(__name__)
 import os
 import shutil
 import time
-import h5py
 import datetime
 import numpy as np
 # used by compare_instrument_settings_timestamp():
@@ -14,6 +13,7 @@ from matplotlib.colors import LogNorm
 from matplotlib.colors import LinearSegmentedColormap as lscmap
 from sklearn.mixture import GaussianMixture as GM
 from pycqed.utilities.get_default_datadir import get_default_datadir
+from pycqed.utilities.io import hdf5 as h5d
 from scipy.interpolate import griddata
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import Bounds, LinearConstraint, minimize
@@ -393,7 +393,7 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
             assert timestamp is not None
             folder = get_folder(timestamp)
         filepath = measurement_filename(folder, file_id=file_id, **kw)
-    return h5py.File(filepath, mode)
+    return h5d.safe_file_open(filepath, mode=mode)
 
 
 def open_config_file(timestamp=None, folder=None, filepath=None, mode='r',
@@ -543,14 +543,14 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
     try:
         if isinstance(a, str):
             h5filepath = measurement_filename(get_folder(a, folder=folder))
-            file_a = h5py.File(h5filepath, h5mode)
+            file_a = h5d.safe_file_open(h5filepath, mode=h5mode)
             files_to_close += [file_a]
         else:
             file_a = a.data_file
             a = getattr(a, 'timestamp', 'file a').replace('/', '_')
         if isinstance(b, str):
             h5filepath = measurement_filename(get_folder(b, folder=folder))
-            file_b = h5py.File(h5filepath, h5mode)
+            file_b = h5d.safe_file_open(h5filepath, mode=h5mode)
             files_to_close += [file_b]
         else:
             file_b = b.data_file
@@ -1537,21 +1537,26 @@ def predict_gm_proba_from_clf(X, clf_params):
         in each level
 
     """
-    reqs_params = ['means_', 'covariances_', 'covariance_type',
-                   'weights_', 'precisions_cholesky_']
-    clf_params = deepcopy(clf_params)
-    for r in reqs_params:
-        assert r in clf_params, "Required Classifier parameter {} " \
-                                "not given.".format(r)
-    gm = GM(covariance_type=clf_params.pop('covariance_type'))
-    for param_name, param_value in clf_params.items():
-        setattr(gm, param_name, param_value)
+    gm = load_gm_from_clf_params(clf_params)
 
     X_to_use = deepcopy(X)
     if X.ndim == 1:
         X_to_use = X.reshape(1, -1) if len(X) == 1 else X.reshape(-1, 1)
     probas = gm.predict_proba(X_to_use)
     return probas
+
+
+def load_gm_from_clf_params(clf_params):
+    reqs_params = ['means_', 'covariances_', 'covariance_type',
+                   'weights_', 'precisions_cholesky_']
+    clf_params = deepcopy(clf_params)
+    for r in reqs_params:
+        assert r in clf_params, f"Required Classifier parameter {r} not given."
+    gm = GM(covariance_type=clf_params.pop('covariance_type'))
+    for param_name, param_value in clf_params.items():
+        setattr(gm, param_name, param_value)
+    setattr(gm, 'n_components', clf_params['means_'].shape[0])
+    return gm
 
 
 def threshold_shots(data):

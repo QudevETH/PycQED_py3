@@ -4,6 +4,8 @@ from pycqed.instrument_drivers.acquisition_devices.base import \
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments\
     .UHFQA_core import UHFQA_core
 from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import ZI_base_qudev
+from pycqed.instrument_drivers.physical_instruments.ZurichInstruments import \
+    snapshot_whitelist as snw
 import logging
 log = logging.getLogger(__name__)
 
@@ -20,6 +22,8 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             index, see parameter filter_segments in Pulsar
         USER_REG_LAST_SEGMENT (int): index of user register for last segment
             index, see parameter filter_segments in Pulsar
+        ACQ_N_RESULTS_MAX (int): Maximum number of acquisition results
+          per hardware run.
     """
 
     USER_REG_FIRST_SEGMENT = 5
@@ -38,6 +42,9 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                      'index': [],
                      'none': [],
                      }
+    # Maximum acquisition shots according to YS
+    # (Can check in the LabOne GUI by typing larger numbers in)
+    ACQ_N_RESULTS_MAX = 2 ** 20
     # private lookup dict to translate a data_type to an index understood by
     # the UHF
     _res_logging_indices = {
@@ -57,19 +64,7 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
         super().__init__(*args, interface=interface, server=server, **kwargs)
         self.interface = interface
         self.server = server
-        self._snapshot_whitelist = {
-            'IDN',
-            'clockbase',}
-        for i in range(1):
-            self._snapshot_whitelist.update({
-                'awgs_{}_enable'.format(i),
-                'awgs_{}_outputs_0_amplitude'.format(i),
-                'awgs_{}_outputs_1_amplitude'.format(i)})
-        for i in range(2):
-            self._snapshot_whitelist.update({
-                'sigouts_{}_offset'.format(i),
-                'sigouts_{}_on'.format(i) ,
-                'sigouts_{}_range'.format(i),})
+        self._snapshot_whitelist = snw.generate_snapshot_whitelist_uhfqa()
         ZI_AcquisitionDevice.__init__(self, *args, **kwargs)
 
     def prepare_poll_before_AWG_start(self):
@@ -188,10 +183,12 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
         # samples is supported by the UHF (2**20 is hardcoded). This limit
         # is usually not reached for averaged readout measurement, but could
         # be exceeded in case of single-shot readout.
-        if self._acq_n_results > 2 ** 20:
+        if self._acq_n_results > self.ACQ_N_RESULTS_MAX:
             raise ValueError(
-                f'Acquisition device {self.name} ({self.devname}):'
-                f'{self._acq_n_results} > 1048576 not supported by the UHF.'
+                f'Acquisition device {self.name} ({self.devname}): '
+                f'The number of acquisition results, {self._acq_n_results},'
+                f' is too large for the UHF (which supports a max of '
+                f'{self.ACQ_N_RESULTS_MAX}). '
                 f'Please reduce the compression_seg_lim, the number of 1D '
                 f'sweep points, or the nr_shots.')
 

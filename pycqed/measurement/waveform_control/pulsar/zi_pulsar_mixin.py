@@ -290,7 +290,7 @@ class ZIPulsarMixin:
                            prepend_zeros=0, placeholder_wave=False,
                            command_table_index=None,
                            internal_mod=False,
-                           allow_filter=False):
+                           allow_filter=False, trigger_source=None):
         playback_string = []
         if allow_filter:
             playback_string.append(
@@ -299,7 +299,8 @@ class ZIPulsarMixin:
             playback_string.append(f"playZero({prepend_zeros});")
         w1, w2 = self.zi_waves_to_wavenames(wave)
         use_hack = True # set this to false once the bugs with HDAWG are fixed
-        playback_string += self.zi_wait_trigger(name, device)
+        playback_string += self.zi_wait_trigger(name, device,
+                                                trigger_source=trigger_source)
 
         if codeword and not (w1 is None and w2 is None):
             playback_string.append("playWaveDIO();")
@@ -333,9 +334,10 @@ class ZIPulsarMixin:
             playback_string.append("}")
         return playback_string
 
-    def zi_wait_trigger(self, name, device):
+    def zi_wait_trigger(self, name, device, trigger_source=None):
         playback_string = []
-        trig_source = self.pulsar.get("{}_trigger_source".format(name))
+        trig_source = trigger_source or self.pulsar.get(
+            f"{name}_trigger_source")
         if trig_source == "Dig1":
             playback_string.append(
                 "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
@@ -419,9 +421,9 @@ class MultiCoreCompilerZhinstToolkit:
         self.sequencer_code_mcc = dict()
         """Sequencer strings to be compiled and uploaded by the multicore 
         compiler. This variable is a dictionary {module_name: 
-        (awg_core, sequencer_program)}, where awg_core is a ZI API node for 
-        operating the corresponding AWG module and sequencer_program is a 
-        string containing the sequencer code."""
+        (awg_core, kw)}, where awg_core is a ZI API node for
+        operating the corresponding AWG module and kw is a dict
+        containing kwargs for load_sequencer_program from zhinst.qcodes."""
 
         self.post_sequencer_code_upload = dict()
         """Upload functions to be executed after programming the sequencer 
@@ -455,10 +457,10 @@ class MultiCoreCompilerZhinstToolkit:
         futures = []
         with self.session.set_transaction(), ThreadPoolExecutor() as executor:
             # Compile sequencer code for all AWGs in parallel.
-            for awg_core, awg_string in self.sequencer_code_mcc.values():
+            for awg_core, kw in self.sequencer_code_mcc.values():
                 future_seqc = executor.submit(
                     awg_core.load_sequencer_program,
-                    awg_string
+                    **kw,
                 )
                 futures.append(future_seqc)
 
@@ -513,6 +515,9 @@ class ZIGeneratorModule:
     ):
         self._awg = awg
         """Instrument driver of the parent device."""
+
+        self._awg_name = awg.name
+        """Cached name of the parent device (since qcodes .name is slow)."""
 
         self._device_type = "none"
         """Device type of this generator. This parameter should be rewritten 
@@ -755,7 +760,7 @@ class ZIGeneratorModule:
             self,
             awg_sequence,
     ):
-        self._update_i_channel_name()
+        self.update_i_channel_name()
         self._update_use_placeholder_wave_flag()
         self._update_use_filter_flag(awg_sequence=awg_sequence)
         self._update_use_command_table_flag()
@@ -783,7 +788,7 @@ class ZIGeneratorModule:
         self._upload_sine_generation_config(
             sine_config=sine_config.get(self.i_channel_name, dict()))
 
-    def _update_i_channel_name(self):
+    def update_i_channel_name(self):
         """Get I channel name from self.pulsar.channels ."""
         self.i_channel_name = self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],
@@ -1448,9 +1453,16 @@ class ZIGeneratorModule:
         except KeyError:
             prev_dio_valid_polarity = None
 
+        kw = {}
+        if not self._use_placeholder_waves:
+            # Need to pass these to the driver if using CSV files
+            kw["waveforms"] = ";".join([s + ".csv"
+                                        for s in self._defined_waves])
+
         if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
             self.multi_core_compiler.sequencer_code_mcc[self.module_name] = (
-                self._awg_interface.awg_mcc_generators[self._awg_nr], awg_str)
+                self._awg_interface.awg_mcc_generators[self._awg_nr],
+                dict(sequencer_program=awg_str, **kw))
             self._save_awg_str(awg_str=awg_str)
         else:
             if self.pulsar.use_mcc():
@@ -1459,7 +1471,7 @@ class ZIGeneratorModule:
                     f'{self._awg.name} ({self._awg.devname}), see debug '
                     f'log when adding the AWG to pulsar.')
             self._save_awg_str(awg_str=awg_str)
-            self._configure_awg_str(awg_str=awg_str)
+            self._configure_awg_str(awg_str=awg_str, **kw)
 
         if prev_dio_valid_polarity is not None:
             self._awg.set('awgs_{}_dio_valid_polarity'.format(self._awg_nr),
@@ -1468,6 +1480,7 @@ class ZIGeneratorModule:
     def _configure_awg_str(
             self,
             awg_str,
+            **kw,
     ):
         raise NotImplementedError("This method should be rewritten in child "
                                   "classes.")

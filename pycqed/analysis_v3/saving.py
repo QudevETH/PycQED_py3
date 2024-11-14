@@ -8,7 +8,7 @@ import lmfit
 import datetime
 import traceback
 import numpy as np
-import qutip as qtp
+import pycqed.utilities.qutip_compat as qtp
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from collections import OrderedDict
@@ -60,11 +60,11 @@ class Save:
             if filename is not None:
                 filename = filename + f'.{extension}'
             else:
-                filename = self.savedir.split('\\')[-1] + f'_{file_suffix}.{extension}'
+                filename = os.path.split(self.savedir)[-1] + f'_{file_suffix}.{extension}'
             if add_timestamp:
                 filename = '{:%Y%m%d_%H%M%S}--{}'.format(
                     datetime.datetime.now(), filename)
-            self.filepath = self.savedir + '\\' + filename
+            self.filepath = os.path.join(self.savedir, filename)
             if save_processed_data:
                 self.save_data_dict()
             if save_figures and hlp_mod.get_param('figures', self.data_dict) \
@@ -83,7 +83,7 @@ class Save:
         except values corresponding to the keys "plot_dicts", "axes",
         "figures", "data_files"
         """
-        with h5py.File(self.filepath, 'a') as analysis_file:
+        with h5d.safe_file_open(self.filepath, mode='a') as analysis_file:
             self.dump_to_file(self.data_dict, analysis_file)
 
     def dump_to_file(self, data_dict, entry_point):

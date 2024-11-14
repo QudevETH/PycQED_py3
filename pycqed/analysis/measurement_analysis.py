@@ -10,7 +10,6 @@ from matplotlib import pyplot as plt
 from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.utilities.settings_manager as setman
 from pycqed.analysis import fitting_models as fit_mods
-import pycqed.utilities.io.hdf5 as h5d
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import scipy.optimize as optimize
 import lmfit
@@ -33,15 +32,10 @@ except: #ModuleNotFoundError:
 import pycqed.analysis.tools.plotting as pl_tools
 from pycqed.analysis.tools.plotting import (set_xlabel, set_ylabel,
                                             SI_prefix_and_scale_factor)
-
-
-try:
-    import qutip as qtp
-except ImportError as e:
-    if str(e).find('qutip') >= 0:
-        log.warning('Could not import qutip')
-    else:
-        raise
+from pycqed.utilities.io import hdf5 as h5d
+import pycqed.utilities.qutip_compat as qtp
+if not qtp.is_imported:
+    log.warning('Could not import qutip')
 importlib.reload(dm_tools)
 
 
@@ -104,7 +98,10 @@ class MeasurementAnalysis(object):
             folder = self.folder
         self.h5filepath = a_tools.measurement_filename(folder)
         h5mode = kw.pop('h5mode', 'r+')
-        self.data_file = h5py.File(self.h5filepath, h5mode)
+        self.data_file = h5d.safe_file_open(
+            self.h5filepath,
+            mode=h5mode,
+        )
         if not file_only:
             for k in list(self.data_file.keys()):
                 if type(self.data_file[k]) == h5py.Group:
@@ -128,7 +125,10 @@ class MeasurementAnalysis(object):
             mode = 'w'
         else:
             mode = 'r+'
-        return h5py.File(os.path.join(self.folder, name + '.hdf5'), mode)
+        return h5d.safe_file_open(
+            os.path.join(self.folder, name + '.hdf5'),
+            mode=mode,
+        )
 
     def default_fig(self, **kw):
         figsize = kw.pop('figsize', None)
@@ -4662,6 +4662,16 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
     """
 
     def __init__(self, label='Source', **kw):
+        # TODO: Remove this class in the future as it's superceded by QE
+        log.warning(
+            "Deprecation warning: This analysis class is outdated. "
+            "Please use QubitSpectroscopy1DAnalysis in analysis_v2/"
+            "spectroscopy_analysis.py.\n"
+            "If you see this message but did not call Qubit_Spectroscopy_Analysis"
+            " explicitly, you are likely using deprecated measurement "
+            "functions/classes."
+        )
+
         kw['label'] = label
         kw['h5mode'] = 'r+'  # Read write mode, file must exist
         super(self.__class__, self).__init__(**kw)
@@ -4931,13 +4941,16 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
 
         scale = SI_prefix_and_scale_factor(val=max(abs(ax_dist.get_xticks())),
                                            unit=self.sweep_unit[0])[0]
+
+        timestamp_underscore = list(a_tools.verify_timestamp(self.timestamp))
+        timestamp_underscore = '_'.join(timestamp_underscore)
         if analyze_ef:
             try:
                 sm = setman.SettingsManager()
                 old_freq = sm.get_parameter(self.qb_name + '.ge_freq',
-                                            self.timestamp)
+                                            timestamp_underscore)
                 old_freq_ef = sm.get_parameter(self.qb_name + '.ef_freq',
-                                               self.timestamp)
+                                               timestamp_underscore)
                 label = 'f0={:.5f} GHz ' \
                         '\nold f0={:.5f} GHz' \
                         '\nkappa0={:.4f} MHz' \
@@ -4967,7 +4980,9 @@ class Qubit_Spectroscopy_Analysis(MeasurementAnalysis):
             label = 'f0={:.5f} GHz '.format(
                 self.fit_res.params['f0'].value * scale)
             try:
-                old_freq = eval(instr_set[self.qb_name].attrs['f_qubit'])
+                sm = setman.SettingsManager()
+                old_freq = sm.get_parameter(self.qb_name + '.ge_freq',
+                                            timestamp_underscore)
                 label += '\nold f0={:.5f} GHz' .format(
                     old_freq * scale)
             except (TypeError, KeyError, ValueError):
