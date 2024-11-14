@@ -6,8 +6,8 @@ import numpy as np
 import pycqed.analysis.analysis_toolbox as a_tools
 import pycqed.simulations.transmon as transmon
 import scipy
+from pycqed.utilities.io import hdf5 as h5d
 from pycqed.utilities.state_and_transition_translation import *
-import h5py
 from pycqed.instrument_drivers.mock_qcodes_interface \
     import ParameterNotFoundError
 from pycqed.utilities import settings_manager as setman
@@ -1067,7 +1067,7 @@ class HamiltonianFittingAnalysis:
         """
         path = a_tools.data_from_time(timestamp)
         filepath = a_tools.measurement_filename(path)
-        data = h5py.File(filepath, "r")
+        data = h5d.safe_file_open(filepath, mode='r')
 
         if "_ge_" in filepath:
             transition = "ge"

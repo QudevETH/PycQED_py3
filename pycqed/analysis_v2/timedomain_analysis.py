@@ -6750,9 +6750,12 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                                                 extract_only=True,
                                                 **kwargs)
         else:
-            options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
+            options_dict = deepcopy(kwargs.pop('options_dict', dict()))
+            # pe saturates at 0.5 not 0
+            options_dict.setdefault('vary_offset', True)
             self.echo_analysis = T1Analysis(*args, auto=auto,
                                             extract_only=True,
+                                            options_dict=options_dict,
                                             **kwargs)
 
         if auto:

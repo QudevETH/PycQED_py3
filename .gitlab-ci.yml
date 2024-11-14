@@ -61,13 +61,21 @@ code_quality_slim:
   script:
     - pip install pipx
     - export PATH="$PATH:/root/.local/bin"
-# FIXME: mypy - see below
-    - pipx install gitlab-cq ruff pyright
-    - gitlab-cq --output gl-code-quality-report.json ruff check .
-    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
+    - pipx install gitlab-cq ruff
+    - echo "Fetching branch:"
+    - echo $CI_DEFAULT_BRANCH
+    - git fetch origin $CI_DEFAULT_BRANCH  # Fetch the target branch
+    - git diff --name-only origin/$CI_DEFAULT_BRANCH  # Compare against the fetched branch
+    - CHANGED_FILES=$(git diff --name-only origin/$CI_DEFAULT_BRANCH)
+    - CHANGED_PY_FILES=$(echo "$CHANGED_FILES" | grep '\.py$')
+    - echo $CHANGED_PY_FILES
+    - gitlab-cq --output gl-code-quality-report.json ruff check $CHANGED_PY_FILES
+# FIXME: pyright - too verbose right now / we have too many problems
+#    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
 # FIXME: mypy's report is too massive right now - enable later
 #    - gitlab-cq --output gl-code-quality-report.json --merge mypy .
   artifacts:
+    when: on_success
     reports:
       codequality: gl-code-quality-report.json
     expire_in: 90 days
