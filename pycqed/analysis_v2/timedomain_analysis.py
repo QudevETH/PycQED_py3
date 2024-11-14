@@ -2263,48 +2263,57 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         ])
         shape = shots.shape
         n_qb, n_states = shape[0], shape[-1]
+        n_corr_states = n_states ** n_qb
         shape = shape[1:-1]  # To recover the original dims at the end
 
-        # One-hot encoded states, with shape = (n_qb, -1, n_states):
-        shots = shots.reshape([n_qb, -1, n_states])
+        # Convert to one-hot encoded states with shape (-1, 1, n_qb, n_states):
+        shots = shots.reshape([n_qb, 1, -1, n_states])
+        shots = np.swapaxes(shots, 0, 2)
 
-        # Convert to numerical (0, 1, 2... indicating the state per qubit),
-        # with shape = (n_qb, -1):
-        convrt = np.arange(n_states)  # [0, 1, 2] if n_states = 3
-        shots = np.tensordot(shots, convrt, axes=1)  # 1 means summing one axis
+        # Basis of one-hot encoded matrices, e.g. for 3 qb and 2 states,
+        # with the first qubit being the most significant:
+        #   | 1 0 |  | 1 0 |  | 1 0 |  | 1 0 |  | 0 1 |
+        # [ | 1 0 |, | 1 0 |, | 0 1 |, | 0 1 |, | 1 0 | ... ]
+        #   | 1 0 |  | 0 1 |  | 1 0 |  | 0 1 |  | 1 0 |
+        # (a list of n_corr_states matrices)
+        # We first compute this list as [ [0, 0, 0], [0, 0, 1], [0, 1, 0]... ]
+        # (a list of n_corr_states lists, each of length n_qb, containing
+        # entries with values up to n_states-1)
+        basis = [  # This list is left-truncated: [ [0], [1], [1, 0]... ]
+            [
+                int(digit)
+                for digit in np.base_repr(corr_state, n_states)
+            ]
+            for corr_state in range(n_corr_states)
+        ]
+        # Pad with zeros to obtain [ [0, 0, 0], [0, 0, 1], [0, 1, 0]... ]:
+        basis = [
+            [0] * (n_qb - len(s)) + s
+            for s in basis
+        ]
+        # Convert to one-hot encoded states:
+        basis_onehot = np.array([
+            np.eye(n_states)[corr_state]
+            for corr_state in basis
+        ])
+        # We have a basis array with shape (n_corr_states, n_qb, n_states)
 
-        # Convert to numerical (0, 1, ..., n_states**n_qb-1 indicating the
-        # state), with shape = (-1)
-        # Conversion matrix: [n_states**n_qb, n_states**(n_qb-1), ... 1]
-        # Decreasing order, such that the first qubit corresponds to the
-        # highest value (most significant, on the left of the bitstring)
-        convrt = n_states ** np.arange(n_qb)[::-1]
-        shots = np.tensordot(convrt, shots, axes=1)  # 1 means summing one axis
+        # Shots have shape (-1, 1, n_qb, n_states).
+        # Elementwise multiplying to project on each matrix in the basis
+        # yields shape (-1, n_corr_states, n_qb, n_states)
+        shots = shots * basis_onehot
+        # We sum over states to get the only entry which is nonzero
+        shots = np.sum(shots, axis=-1)
+        # We get the probability of a given correlated state by multiplying
+        # the marginal probabilities for each qubit
+        shots = np.prod(shots, axis=-1)
 
-        # Convert back to a one-hot encoding,
-        # with shape = (-1, n_states**n_qb):
-        convrt = np.eye(n_states**n_qb)
-        shots = convrt[shots]
-
-        # Recover original shape, shape = (other dims..., n_states**n_qb)
-        shots = np.reshape(shots, (*shape, n_states**n_qb))
-
-        # Create new state map for each possible correlated state state_val
-        # digit = e.g. '20' for a gfg state
-        # join returns e.g. 'fg' for a gfg state
+        # Create new state map for each possible correlated state corr_state
+        # e.g. basis[corr_state] = [0,2,0] yields 'gfg'
         new_states_map = {
-            state_val: ''.join([
-                states_map[int(digit)]
-                for digit in np.base_repr(state_val, n_states)
-            ])
-            for state_val in np.arange(0, n_states ** n_qb)
-        }
-        # Pad with the correct number of states_map[0]
-        # e.g. add 'g'*1 to 'fg' for a gfg state
-        max_string_len = np.max([len(s) for s in new_states_map.values()])
-        new_states_map = {
-            k: states_map[0] * (max_string_len - len(s)) + s
-            for k, s in new_states_map.items()
+            corr_state:
+                ''.join(states_map[digit] for digit in basis[corr_state])
+            for corr_state in range(n_corr_states)
         }
 
         return shots, new_states_map
