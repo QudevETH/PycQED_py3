@@ -175,63 +175,50 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                                   dset=None  # TODO remove
                                   ):
 
+        vals = np.atleast_2d(vals)
         meas_objs = self.meas_objs  # Only non-static variable
 
-        # FIXME this won't exist when running a separate analysis offline
         classifier_params = {mobj.name: mobj.acq_classifier_params()
                              for mobj in meas_objs}
-        # # FIXME using these as a hack for now
-        # classifier_params = hlp_mod.get_clf_params_from_hdf_file(
-        #     '20240415_182839', [mobj.name for mobj in meas_objs])
-        # Could do readout correction here:
-        # state_prob_mtxs = qb.acq_state_prob_mtx() ...
 
-        probability_states = ['pg', 'pe', 'pf']
-
-        # Setup pipeline
-        pp = pp_mod.ProcessingPipeline()
-        # FIXME: creating a dummy meas_obj_value_names_map since this is
-        #  only used in the first node to re-extract the data (keys_in='raw')
-        #  Can this create any problems? How to re-run offline?
-        movnm = {mobj.name: [f'{mobj.name}_{i}' for i in range(2)]  # I,Q
-                 for mobj in meas_objs}
         analysis_instructions = self.get_reset_params()[
             'analysis_instructions']
-        for mobj in meas_objs:
-            reset_reps = sum([step.get('reset_reps', 0)
-                              for step in analysis_instructions[mobj.name]])
-            pp.add_node('filter_data', keys_in='raw',
-                        data_filter=lambda x: x[reset_reps::reset_reps+1],
-                        meas_obj_names=mobj.name)
-            pp.add_node('classify_gm', keys_in='previous',
-                        keys_out=[f'{mobj.name}.classify_gm.{ps}'
-                                  for ps in probability_states],
-                        clf_params=classifier_params.get(mobj.name, None),
-                        meas_obj_names=mobj.name)
+        reset_reps = sum([
+            step.get('reset_reps', 0)
+            for step in analysis_instructions[meas_objs[0].name]])
+        data_filter = lambda x: x[reset_reps::reset_reps + 1]
 
-            pp.add_node('do_postselection_f_level', keys_in='previous',
-                        keys_out=[f'{mobj.name}.post_selected'],
-                        meas_obj_names=mobj.name)
-        pp.resolve(meas_obj_value_names_map=movnm)
-
-        # Run pipeline with raw data
-        vals = np.atleast_2d(vals)
-        # Construct an initial data dict with the raw data (vals, TODO rename)
-        # data_dict = { TODO
-        data_dict = {
+        # Creating a dummy meas_obj_value_names_map since this is
+        #  only used in _process_single_shots to re-extract the data
+        movnm = {mobj.name: [f'{mobj.name}_{i}' for i in range(2)]  # I,Q
+                 for mobj in meas_objs}
+        # Construct an initial data dict with the raw data
+        data_dict = {}
+        data_dict['meas_results_per_qb'] = {
             mobj.name: {
-                movnm[mobj.name][ch_i]: vals[:, 2*mobj_i+ch_i]
+                movnm[mobj.name][ch_i]: data_filter(vals[:, 2*mobj_i+ch_i])
                 for ch_i in [0, 1]
             } for mobj_i, mobj in enumerate(meas_objs)
         }
-        pp.run(data_dict, overwrite_data_dict=True)
 
-        # data shape: {qb.name: flattened three state readout}
-        data = {qb.name: np.array([v for v in pp.data_dict[qb.name][
-            'classify_gm'].values()]).T for qb in meas_objs}
-        # Transpose: to have the 3 states as last dimension
-        # TODO write exact shape of the data here
-        return data
+        tda.MultiQubit_TimeDomain_Analysis._process_single_shots(
+            pdd=data_dict,
+            n_shots=self.meas_objs[0].acq_shots(),
+            qb_names=list(movnm),
+            predict_proba=True,
+            classifier_params=classifier_params,
+            states_map=None,
+            thresholding=True,
+            preselection_qbs=None,
+            preselection=False,
+            twoD=True,
+            n_seqs=1,  # 1 training iteration
+            classified_ro=False,
+            correlate_proba=False,
+        )
+        self.pdd = data_dict
+
+        return data_dict
 
     def _prepare_sequences(self, sequences=None, sequence_function=None,
                            sequence_kwargs=None):
@@ -655,16 +642,22 @@ class VQAOptimizer:
 
     def _full_circuit(self, params):
         all_params, batch_shape, targets = self.get_batch_params(params)
-        data = self.measurement_function(all_params)
+        # Same format as analysis.proc_data_dict
+        pdd = self.measurement_function(all_params)
         self.iterations += 1
-        data = np.array([
-            data[key].reshape((-1, *batch_shape, 3)) for key in data.keys()
+        shots = pdd['single_shots_per_qb_thresholded']
+        # TODO use _get_binary_shots_array
+        #  the only difference now is that here there is no "soft sweep" dim,
+        #  and the hard sweep dim is trainable_pars * non_trainable_pars
+        shots = np.array([
+            shots[key] for key in shots.keys()
         ])
-        # shape: (n_qb, n_shots, sets of trainable params (batch size),
-        #   sets of non trainable params (prep circuit), 3 states)
+        # shape: (n_qb, n_shots * trainable_pars * non_trainable_pars, states)
         # Take the e state probability (now array contains 0s and 1s)
-        data = data[..., 1]
-        # shape: (n_qb, n_shots, sets_trainable_params, sets_non_trainable)
+        shots = shots[..., 1]
+        shots = shots.reshape((shots.shape[0], -1, *batch_shape))
+        # shape: (n_qb, n_shots, sets of trainable params (batch size),
+        #   sets of non trainable params (prep circuit))
 
         # if self.hybrid:
         #     costs = []
@@ -681,7 +674,7 @@ class VQAOptimizer:
         #     costs = np.array(costs)
 
         # batch_shape = (sets_trainable, sets_non_trainable)
-        costs = self.cost_function(data, targets).reshape((-1, 1))  # TODO
+        costs = self.cost_function(shots, targets).reshape((-1, 1))  # TODO
         # cost must be 2D list of values for EGO to work
         # [[value_1], [value_2], ... [value_n_trainable]]
         self.optim_param_values.append(np.atleast_2d(params))
