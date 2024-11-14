@@ -37,7 +37,7 @@ def reload_settings(timestamp=None, timestamp_filters=None, load_flux_bias=True,
         gen.load_settings(dev, timestamp=timestamp)
         dev.configure_pulsar()
 
-    if load_flux_bias:  # reload and set flux bias
+    if load_flux_bias and qubits:  # reload and set flux bias
 
         if DCSources is None or fluxlines_dict is None:
             ts = f"({timestamp}) " if timestamp is not None else ""

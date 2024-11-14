@@ -590,8 +590,6 @@ def rb_analysis(data_dict, keys_in, sweep_type=None, **params):
     data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
     keys_in = list(data_to_proc_dict)
 
-    prep_fit_dicts = hlp_mod.pop_param('prep_fit_dicts', data_dict,
-                                       default_value=True, node_params=params)
     do_fitting = hlp_mod.pop_param('do_fitting', data_dict,
                                    default_value=True, node_params=params)
     prepare_plotting = hlp_mod.pop_param('prepare_plotting', data_dict,
@@ -610,16 +608,15 @@ def rb_analysis(data_dict, keys_in, sweep_type=None, **params):
                                              mospm[mobjn])[0]
 
     # prepare fitting
-    if prep_fit_dicts:
+    if do_fitting:
         prepare_rb_fitting(data_dict, data_to_proc_dict, cliffords, nr_seeds,
                         **params)
 
-        if do_fitting:
-            getattr(fit_mod, 'run_fitting')(data_dict, keys_in=list(
-                    data_dict['fit_dicts']),**params)
-            # extract EPC, leakage, and seepage from fits and save to
-            # data_dict[meas_obj_name]
-            analyze_rb_fit_results(data_dict, keys_in, **params)
+        getattr(fit_mod, 'run_fitting')(data_dict, keys_in=list(
+                data_dict['fit_dicts']),**params)
+        # extract EPC, leakage, and seepage from fits and save to
+        # data_dict[meas_obj_name]
+        analyze_rb_fit_results(data_dict, keys_in, **params)
 
     # prepare plots
     if prepare_plotting:
