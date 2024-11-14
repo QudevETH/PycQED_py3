@@ -353,7 +353,17 @@ class QCNNExperiment(VariationalAlgorithm):
         # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 2
         # h_index = 21, ..., 28, validation set
         h_index = int(round(h_index))
-        if h_index >= 21:
+        if h_index == 29:
+            test_prep_params = np.array(
+                [0, np.pi / 2, np.pi / 2, 0,
+                 np.pi,
+                 -np.pi / 2, 0, np.pi / 2,
+                 -np.pi / 2,
+                 np.pi,
+                 np.pi,
+                 -np.pi, np.pi / 2, -np.pi / 2, 0]) * 180 / np.pi
+            return test_prep_params[param_index]
+        elif h_index >= 21:
             test_prep_params = np.zeros((8, 15))
             # test_prep_params[0] is all zero for 0000
             test_prep_params[1][0:4] = 180  # 1111
@@ -373,8 +383,7 @@ class QCNNExperiment(VariationalAlgorithm):
             except FileNotFoundError:
                 log.warning("Can't find prep params file! Using zeros instead")
                 self.prep_params_vs_h = np.zeros((21, 15))  #TODO
-        param_index = [3,0,1,2,4,5,6,7,8,12,9,10,11,13,14,18,15,16,
-                       17][param_index]
+        param_index = [3,0,1,2,4,8,5,6,7,9,10,14,11,12,13][param_index]
         return self.prep_params_vs_h[h_index, param_index]
 
     def _add_rxy_block(self, prefix, qbns, params=None, rot='Y'):
@@ -453,6 +462,9 @@ class QCNNExperiment(VariationalAlgorithm):
                 self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
                 self._add_rxy_block('RY3', range(len(self.qubits)),
                                    ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
+            else:
+                self._add_rxy_block('RYb', range(len(self.qubits)),
+                                    ['theta_b']*4)
         elif len(self.qubits) == 9:
             op_code = "cb.pp9([h_index],{i})"
             # TODO maybe remove prefix if not needed
@@ -482,6 +494,9 @@ class QCNNExperiment(VariationalAlgorithm):
                 self._add_rxy_block('RY3', range(len(self.qubits)))
                 self._add_cz_block('CZ3', [[2, 3], [5, 6]])
                 self._add_rxy_block('RY4', range(len(self.qubits)))
+            else:
+                self._add_rxy_block('RYb', range(len(self.qubits)),
+                                    ['theta_b']*9)
         elif len(self.qubits) == 1:
             self._add_rxy_block('RYp', [qb.name for qb in self.qubits],
                                ['theta_p'])

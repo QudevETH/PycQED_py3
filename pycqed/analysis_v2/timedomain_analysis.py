@@ -3128,6 +3128,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     axis=targets_sp_axis, scale=(targets_num+1)/targets_num)
             targets_num += 1
         elif self.get_param_value('fms', False):
+            print('replace target-0 data with fms')
             # Replace all states (soft dim) with target==0 by a mixed state
             # Using the fact that targets has the same shape as freqs
             freqs[targets == 0] = 1 / shape[state_axis]  # Uniform probs
@@ -3183,7 +3184,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
         # state preparation analysis (stabilizer analysis)
         # print('tda: doing stabilizer analysis')
+        # if shots.shape[0] == 4:
         # stab_dict = self.cpp_stabilizers_4(shots)
+        # elif shots.shape[0] == 9:
+        # stab_dict = self.cpp_stabilizers_9(shots)
+        # else:
+        # raise Exception('Stabilizer analysis only for 4 and 9 qbs')
         # for k, v in stab_dict.items():
         #     self.cpp_results.update({
         #         k: (v, self.sp)
@@ -3287,7 +3293,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             shots_flat = shots.reshape([shape[0], shape[1], -1])
             parity = np.zeros(shots_flat.shape)
             for index in np.arange(4):
-                parity[index] = np.sum(shots_flat[[index, (index + 2) % 4]],
+                parity[index] = np.sum(shots_flat[[index, (index + 1) % 4]],
                                        axis=0) % 2
 
             parity = np.mean(parity, axis=1)
@@ -3462,6 +3468,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # This expansion makes reading a bit harder but makes coding easier
             targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
                 targets, freqs.shape, current_axes=[targets_axis])
+        # TODO modularize the fms procedure
         if np.all(targets == 1):
             # There is no target 0: add a fully mixed state as target 0
             shape_fms = list(shape)
