@@ -10298,14 +10298,16 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
                     self.proc_data_dict.get(pdd + suffix, {}).items():
                 prep_states = self.sp.get_values("initialize")
                 for j, (state, data) in enumerate(data_qbi.items()):
-                    n_ro = data.shape[0] # infer number of readouts per sequence
+                    # infer number of readouts per sequence
+                    n_ro = data.shape[1]
                     projdd_per_prep_state[qbn][state] = dict()
                     for i, prep_state in enumerate(prep_states):
                         projdd_per_prep_state[qbn][state].update(
                             {f"prep_{prep_state}":
-                                 data[i*n_ro//len(prep_states):
-                                      (i+1)*n_ro//len(prep_states),
-                                 :]})
+                                 data[
+                                 :, i*n_ro//len(prep_states):
+                                 (i+1)*n_ro//len(prep_states),
+                                 ]})
 
             if len(projdd_per_prep_state):
                 self.proc_data_dict[pdd + '_per_prep_state' + suffix] = \
@@ -10326,7 +10328,7 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
                 for i, (state, data) in enumerate(data_qbi.items()):
                     for j, (prep_state, data_prep_state) in \
                             enumerate(data.items()):
-                        for seq_nr, pop in enumerate(data_prep_state.T):
+                        for seq_nr, pop in enumerate(data_prep_state):
                             plt_key = 'data_{}_{}_{}_{}_{}'.format(
                                  k, qbn, state, prep_state, seq_nr)
                             fig_key = f"populations_{qbn}_state{j}_{prep_state}{keys[k]}"
