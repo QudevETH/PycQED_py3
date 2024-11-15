@@ -991,14 +991,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         else:
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
+            # TODO Could extend to allow processing correlated states (gg, ...)
             self.proc_data_dict['projected_data_dict'] = OrderedDict()
 
             for qbn, data_dict in self.proc_data_dict[
                     'meas_results_per_qb'].items():
                 self.proc_data_dict['projected_data_dict'][qbn] = OrderedDict()
                 for state_prob in ['pg', 'pe', 'pf']:
+                    # Transpose: see FIXME of self.proc_data_dict
                     self.proc_data_dict['projected_data_dict'][qbn].update(
-                        {state_prob: data for key, data in data_dict.items()
+                        {state_prob: data.T for key, data in data_dict.items()
                          if state_prob in key})
 
             # correct probabilities given calibration matrix
@@ -1035,6 +1037,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qbn, prob_data in self.proc_data_dict[
                 'projected_data_dict' + suffix].items():
             if len(prob_data) and qbn in self.data_to_fit:
+                # In the case predict_proba = True,
+                # rotate = False and self.data_to_fit[qbn] is therefore empty
+                if not self.data_to_fit[qbn]:
+                    continue
                 self.proc_data_dict['data_to_fit'][qbn] = prob_data[
                     self.data_to_fit[qbn]]
 
@@ -2173,11 +2179,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         self.proc_data_dict['preselection_masks'] = preselection_masks
 
         # process single shots per qubit
-        for qbn, shots in shots_per_qb.items():
-            if predict_proba:
+        if predict_proba:
+            for qbn, shots in shots_per_qb.items():
                 # shots become probabilities with shape (n_shots, n_states)
                 try:
-                    shots = a_tools.predict_gm_proba_from_clf(
+                    shots_per_qb[qbn] = a_tools.predict_gm_proba_from_clf(
                         shots, classifier_params[qbn])
                 except ValueError as e:
                     log.error(f'If the following error relates to number'
@@ -2187,6 +2193,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' than in the current measurement): {e}')
                     raise e
 
+            if self.get_param_value('correlate_proba', False):
+                # Note that this could be used as well if predict_proba = False
+                # if that is meaningful
+                shots_correlated, states_map = self._correlate_single_shots(
+                    shots_per_qb, states_map)
+                # FIXME this duplication is a hack, so that all the processing
+                #  and plotting based on qubit names still works
+                shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
+                # TODO This could be used to plot readout-corrected correlated
+                #  data, see the case self.rotate = False in self.process_data.
+                self.default_options['plot_proj_data'] = False
+
+        for qbn, shots in shots_per_qb.items():
             if thresholding:
                 # shots become one-hot encoded arrays with length n_states
                 # shots has shape (n_shots, n_states)
@@ -2234,6 +2253,69 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                         self.proc_data_dict['meas_results_per_qb'][qbn]):
                     self.proc_data_dict['meas_results_per_qb'][qbn][k] = \
                         averaged_shots[i]
+
+    @staticmethod
+    def _correlate_single_shots(shots_per_qb, states_map):
+        # Convert dict to array, with shape = (n_qb, other dims..., n_states):
+        shots = np.array([
+            shots_per_qb[key] for key in shots_per_qb.keys()
+        ])
+        shape = shots.shape
+        n_qb, n_states = shape[0], shape[-1]
+        n_corr_states = n_states ** n_qb
+        shape = shape[1:-1]  # To recover the original dims at the end
+
+        # Convert to one-hot encoded states with shape (-1, 1, n_qb, n_states):
+        shots = shots.reshape([n_qb, 1, -1, n_states])
+        shots = np.swapaxes(shots, 0, 2)
+
+        # Basis of one-hot encoded matrices, e.g. for 3 qb and 2 states,
+        # with the first qubit being the most significant:
+        #   | 1 0 |  | 1 0 |  | 1 0 |  | 1 0 |  | 0 1 |
+        # [ | 1 0 |, | 1 0 |, | 0 1 |, | 0 1 |, | 1 0 | ... ]
+        #   | 1 0 |  | 0 1 |  | 1 0 |  | 0 1 |  | 1 0 |
+        # (a list of n_corr_states matrices)
+        # We first compute this list as [ [0, 0, 0], [0, 0, 1], [0, 1, 0]... ]
+        # (a list of n_corr_states lists, each of length n_qb, containing
+        # entries with values up to n_states-1)
+        basis = [  # This list is left-truncated: [ [0], [1], [1, 0]... ]
+            [
+                int(digit)
+                for digit in np.base_repr(corr_state, n_states)
+            ]
+            for corr_state in range(n_corr_states)
+        ]
+        # Pad with zeros to obtain [ [0, 0, 0], [0, 0, 1], [0, 1, 0]... ]:
+        basis = [
+            [0] * (n_qb - len(s)) + s
+            for s in basis
+        ]
+        # Convert to one-hot encoded states:
+        basis_onehot = np.array([
+            np.eye(n_states)[corr_state]
+            for corr_state in basis
+        ])
+        # We have a basis array with shape (n_corr_states, n_qb, n_states)
+
+        # Shots have shape (-1, 1, n_qb, n_states).
+        # Elementwise multiplying to project on each matrix in the basis
+        # yields shape (-1, n_corr_states, n_qb, n_states)
+        shots = shots * basis_onehot
+        # We sum over states to get the only entry which is nonzero
+        shots = np.sum(shots, axis=-1)
+        # We get the probability of a given correlated state by multiplying
+        # the marginal probabilities for each qubit
+        shots = np.prod(shots, axis=-1)
+
+        # Create new state map for each possible correlated state corr_state
+        # e.g. basis[corr_state] = [0,2,0] yields 'gfg'
+        new_states_map = {
+            corr_state:
+                ''.join(states_map[digit] for digit in basis[corr_state])
+            for corr_state in range(n_corr_states)
+        }
+
+        return shots, new_states_map
 
     def prepare_plots(self):
         """
@@ -6713,9 +6795,12 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                                                 extract_only=True,
                                                 **kwargs)
         else:
-            options_dict['vary_offset'] = True  # pe saturates at 0.5 not 0
+            options_dict = deepcopy(kwargs.pop('options_dict', dict()))
+            # pe saturates at 0.5 not 0
+            options_dict.setdefault('vary_offset', True)
             self.echo_analysis = T1Analysis(*args, auto=auto,
                                             extract_only=True,
+                                            options_dict=options_dict,
                                             **kwargs)
 
         if auto:
@@ -14948,7 +15033,6 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.task_list = self.get_param_value('task_list')
-        self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
 
     def get_qubit_objects_from_names(self, qb_names):
         # as soon as any instrument setting of a qubit is accessed,
@@ -15016,7 +15100,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
             return J_min, Delta_argmin
 
-        def add_fit_dict(qbH_name, qbL_name, data, key):
+        def add_fit_dict(task):
             """ Creates the dictionary used for fitting
 
              The dictionary includes the fitting-model, the function be fitted to, the x and y data, the method used for
@@ -15039,6 +15123,13 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             -------
             A fit-dictionary
             """
+
+            qbH_name, qbL_name = self._get_qbH_qbL(task)
+            key = f'chevron_fit_{qbH_name}_{qbL_name}'
+            if qbH_name is None:
+                # qbH not passed in self.qubits: skip task
+                return
+            data = self.proc_data_dict['projected_data_dict'][qbH_name]['pe']
             model = self.get_param_value('model', 'transmon_res')
             J_guess_boundary_scale = self.get_param_value(
                 'guess_paramater_scale', 1.5)
@@ -15054,13 +15145,19 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
 
             t = self.proc_data_dict['sweep_points_dict'][qbH_name]['msmt_sweep_points']
 
-            # Not sure according to which rule the qbs are ordered in the string, maybe high q.number to low
-            sweep_point_name = qbH_name + '_' + qbL_name + '_amplitude2'
-            if sweep_point_name in self.proc_data_dict['sweep_points_2D_dict'][qbL_name]:
-                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+            prefix = task['prefix']
+            param_names = self.proc_data_dict['sweep_points_dict'][
+                qbH_name]['param_names']
+            # Find which amp_name was swept
+            if prefix + 'amplitude' in param_names:
+                amp_swept_name = 'amplitude'
+                amp_fixed_name = 'amplitude2'
             else:
-                sweep_point_name = qbL_name + '_' + qbH_name + '_amplitude2'
-                amp2 = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][sweep_point_name]
+                amp_swept_name = 'amplitude'
+                amp_fixed_name = 'amplitude2'
+
+            amp_swept = self.proc_data_dict['sweep_points_2D_dict'][qbL_name][
+                prefix + amp_swept_name]
 
             cz_name = self.get_param_value("exp_metadata")["cz_pulse_name"]
             device_name = self.get_param_value('device_name')
@@ -15070,13 +15167,14 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
                         'pycqed.instrument_drivers.meta_instrument.device.Device',
                         hdf_file_index)[0]
                 except KeyError:
-                    raise KeyError('For old data, the device name has to be given as an input "device_name" ')
+                    raise KeyError('For old data, the device name has to be '
+                                   'given as an input "device_name" ')
 
-            path = f"{device_name}.{cz_name}_{qbH_name}_{qbL_name}_amplitude"
-            amp = self.get_instrument_setting(path)
-            qbL_tuned_freq_arr = qbL.calculate_frequency(amplitude=amp2,
+            path = f"{device_name}.{cz_name}_{prefix + amp_fixed_name}"
+            amp_fixed = self.get_instrument_setting(path)
+            qbL_tuned_freq_arr = qbL.calculate_frequency(amplitude=amp_swept,
                                                          model=model)
-            qbH_tuned_ef_freq = qbH.calculate_frequency(amplitude=amp,
+            qbH_tuned_ef_freq = qbH.calculate_frequency(amplitude=amp_fixed,
                                                         model=model) + \
                                 qbH.anharmonicity()
 
@@ -15132,12 +15230,7 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             }
 
         for task in self.get_param_value('task_list'):
-            qbH_name, qbL_name = self._get_qbH_qbL(task)
-            if qbH_name is not None:
-                data = self.proc_data_dict['projected_data_dict'][qbH_name][
-                    'pe']
-                add_fit_dict(qbH_name=qbH_name, qbL_name=qbL_name, data=data,
-                             key= f'chevron_fit_{qbH_name}_{qbL_name}')
+            add_fit_dict(task)
 
     def _get_qbH_qbL(self, task):
         qbH_name, qbL_name = task['qbc'], task['qbt']
@@ -15601,6 +15694,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
     def extract_data(self):
         # Necessary for data processing and plotting since sweep_points are 2D
         self.default_options['TwoD'] = True
+        self.do_fitting = False  # Fitting in the super() is only for 2D
         super().extract_data()
 
     def prepare_projected_data_plots(self):
@@ -15659,8 +15753,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             colors = ['C0', 'C1']
         data = self.proc_data_dict['projected_data_dict'][qbH_name][
                    'pf'][0, :-3]
-        x = self.sp.get_sweep_params_property('values',
-                                              dimension=0).copy()
+        x = self.sp[self.mospm[qbH_name][0]]
         if minimize == 'auto':
             minimize = data[len(data) // 2] < (data[0] + data[-1])/2
         if minimize:
@@ -15671,8 +15764,10 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             c = 1
         if xtransform:
             x = xtransform(x)
-        xlabel = xlabel or self.sp.get_sweep_params_property('label')
-        xunit = xunit or self.sp.get_sweep_params_property('unit')
+        xlabel = xlabel or self.sp.get_sweep_params_property(
+            'label', param_names=self.mospm[qbH_name][0])
+        xunit = xunit or self.sp.get_sweep_params_property(
+            'unit', param_names=self.mospm[qbH_name][0])
         fact = 1
         while abs(max(x)) < 1e-3:
             x *= 1e3
@@ -15690,7 +15785,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             'plotfn': self.plot_line,
             'xvals': x_resampled / fact,
             'yvals': model_func(x_resampled, **self.fit_res.best_values),
-            'xlabel': xlabel,
+            'xlabel': xlabel + ('' if xunit is None else f" ({xunit})"),
             'xunit': '',
             'ylabel': '$|2\\rangle$ state pop.',
             'yunit': '',
@@ -15715,4 +15810,7 @@ class SingleRowChevronAnalysis(ChevronAnalysis):
             'ymax': np.max(data),
             'colors': 'gray',
         }
-        return best_val
+        best_val_clipped = np.clip(best_val, x[0] / fact, x[-1] / fact)
+        converged = best_val_clipped == best_val
+        return best_val_clipped, converged
+

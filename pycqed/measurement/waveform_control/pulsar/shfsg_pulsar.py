@@ -58,8 +58,6 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
     _shfsg_sequence_string_template = (
         "{wave_definitions}\n"
         "\n"
-        "{codeword_table_defs}\n"
-        "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
         "}}\n"
@@ -543,6 +541,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
     the other generating quadrature (Q-) signal. Please refer to ZI user manual
     https://docs.zhinst.com/shfsg_user_manual/overview.html
     for details."""
+
+    COMMAND_TABLE_MAX_SIZE = 4096
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
