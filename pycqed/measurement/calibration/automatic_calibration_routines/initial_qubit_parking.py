@@ -521,7 +521,7 @@ class InitialQubitParking(AutomaticCalibrationRoutine):
     def create_routine_template(self):
         """Creates routine template."""
         super().create_routine_template()
-        super().split_routine_template_for_parallel_groups()
+        self.split_routine_template_for_parallel_groups()
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [FeedlineSpectroscopyStep, 'feedline_spectroscopy', {}],

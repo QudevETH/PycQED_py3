@@ -137,7 +137,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
     def create_routine_template(self):
         """Creates routine template."""
         super().create_routine_template()
-        super().split_routine_template_for_parallel_groups()
+        self.split_routine_template_for_parallel_groups()
 
     def post_run(self):
         """Save the results of the routine."""

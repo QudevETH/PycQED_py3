@@ -644,7 +644,7 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
         """Creates routine template.
         """
         super().create_routine_template()
-        super().split_routine_template_for_parallel_groups()
+        self.split_routine_template_for_parallel_groups()
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [RabiStep, 'rabi', {}],
@@ -1122,7 +1122,7 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                                                    step_tmp_settings)
 
         self.routine_template = detailed_routine_template
-        super().split_routine_template_for_parallel_groups()
+        self.split_routine_template_for_parallel_groups()
 
 
     class SQCPreparation(IntermediateStep):
