@@ -318,7 +318,7 @@ class Device(Instrument):
         """
         Creates and returns the fluxlines dict.
 
-        Takes qb.instr_flux_dc and  qb.flux_dc_channel and creates
+        Takes qb.instr_flux_dc and qb.flux_dc_channel and creates
         a dictionary with qubit names as keys and qcodes parameters
         as values.
 
