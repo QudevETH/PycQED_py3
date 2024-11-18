@@ -2217,7 +2217,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 shots_correlated, states_map = \
                     MultiQubit_TimeDomain_Analysis._correlate_single_shots(
                     shots_per_qb, states_map)
-                # FIXME this is a hack, so that all the processing
+                # FIXME this duplication is a hack, so that all the processing
                 #  and plotting based on qubit names still works
                 shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
 
