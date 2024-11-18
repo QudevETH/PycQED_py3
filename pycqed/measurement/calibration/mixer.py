@@ -8,6 +8,9 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement.sweep_points import SweepPoints
 
+from pycqed.instrument_drivers.acquisition_devices.shf import SHFQA\
+    as shfqa_class
+
 import logging
 log = logging.getLogger(__name__)
 
@@ -110,10 +113,18 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             tmp_vals = []
             try:
                 for qb_obj in self.get_qubits()[0]:
+                    if isinstance(qb_obj.instr_acq.get_instr(), shfqa_class):
+                        # Needed for the SHF since it cannot set its
+                        # center frequency to arbitrary frequencies
+                        ro_fixed_lo_freq = {"step": 100e6, "min": 1e9, "max": 8e9}
+                    else:
+                        # UHF + UC board + LO can set the LO to
+                        # arbitrary frequencies
+                        ro_fixed_lo_freq = None
                     tmp_vals += [
                         # Change ro_fixed_lo_freq prior to other readout
                         # frequencies so that it is correctly applied
-                        (qb_obj.ro_fixed_lo_freq, {"step": 100e6, "min": 1e9, "max": 8e9}),
+                        (qb_obj.ro_fixed_lo_freq, ro_fixed_lo_freq),
                         # read out at the drive sideband frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() - 2 *
                          qb_obj.ge_mod_freq()),
