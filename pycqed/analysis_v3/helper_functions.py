@@ -1358,7 +1358,7 @@ def get_observables(data_dict, keys_out=None, preselection_shift=-1,
     # add all combinations
     for i, states in enumerate(combination_list):
         name = ''.join(['e' if s else 'g' for s in states])
-        obs_name = '$\| ' + name + '\\rangle$'
+        obs_name = r'$\| ' + name + '\\rangle$'
         observables[obs_name] = dict(zip(mobj_names, states))
         # add preselection condition
         if do_preselection:

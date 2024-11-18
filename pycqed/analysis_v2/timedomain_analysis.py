@@ -162,11 +162,11 @@ class PhaseErrorsAnalysisMixin():
         fit_stderr *= scaling_factor
 
         if self.pulse_par_name == 'motzoi':
-            return f'Qscale ={chr}{fit_val:.4f} $\pm$ {fit_stderr:.4f}' + \
+            return rf'Qscale ={chr}{fit_val:.4f} $\pm$ {fit_stderr:.4f}' + \
                    f'\nold Qscale ={chr}{old_pulse_par_val:.4f}'
         else:
             return f'Envelope mod. freq. ={chr}' \
-                   f'{fit_val:.4f} MHz $\pm$ {fit_stderr:.4f} MHz' + \
+                   rf'{fit_val:.4f} MHz $\pm$ {fit_stderr:.4f} MHz' + \
                    f'\nold envelope mod. freq. ={chr}{old_pulse_par_val:.4f} MHz'
 
 
@@ -5194,7 +5194,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'yvals': np.array([fit_res.model.func(
                         rabi_amplitudes[k]['piPulse'],
                         **fit_res.best_values)]),
-                    'setlabel': '$\pi$-Pulse amp',
+                    'setlabel': r'$\pi$-Pulse amp',
                     'color': 'r',
                     'marker': 'o',
                     'line_kws': {'markersize': 10},
@@ -5221,7 +5221,7 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     'yvals': np.array([fit_res.model.func(
                         rabi_amplitudes[k]['piHalfPulse'],
                         **fit_res.best_values)]),
-                    'setlabel': '$\pi /2$-Pulse amp',
+                    'setlabel': r'$\pi /2$-Pulse amp',
                     'color': 'm',
                     'marker': 'o',
                     'line_kws': {'markersize': 10},
@@ -5254,17 +5254,17 @@ class RabiAnalysis(MultiQubit_TimeDomain_Analysis):
                     old_pihalfpulse_val = 0  # FIXME: explain why
                 old_pihalfpulse_val *= old_pipulse_val
 
-                textstr = ('  $\pi-Amp$ = {:.3f} V'.format(
+                textstr = (r'  $\pi-Amp$ = {:.3f} V'.format(
                     rabi_amplitudes[k]['piPulse']) +
-                           ' $\pm$ {:.3f} V '.format(
+                           r' $\pm$ {:.3f} V '.format(
                     rabi_amplitudes[k]['piPulse_stderr']) +
-                           '\n$\pi/2-Amp$ = {:.3f} V '.format(
+                           '\n$\\pi/2-Amp$ = {:.3f} V '.format(
                     rabi_amplitudes[k]['piHalfPulse']) +
-                           ' $\pm$ {:.3f} V '.format(
+                           r' $\pm$ {:.3f} V '.format(
                     rabi_amplitudes[k]['piHalfPulse_stderr']) +
-                           '\n  $\pi-Amp_{old}$ = ' + '{:.3f} V '.format(
+                           '\n  $\\pi-Amp_{old}$ = ' + '{:.3f} V '.format(
                     old_pipulse_val) +
-                           '\n$\pi/2-Amp_{old}$ = ' + '{:.3f} V '.format(
+                           '\n$\\pi/2-Amp_{old}$ = ' + '{:.3f} V '.format(
                     old_pihalfpulse_val))
                 self.plot_dicts['text_msg_' + k] = {
                     'fig_id': base_plot_name,
@@ -5746,11 +5746,11 @@ class T1Analysis(MultiQubit_TimeDomain_Analysis):
                 if old_T1_val != old_T1_val:
                     old_T1_val = 0  # FIXME: explain why
                 T1_dict = self.proc_data_dict['analysis_params_dict']
-                textstr = '$T_1$ = {:.2f} $\mu$s'.format(
+                textstr = r'$T_1$ = {:.2f} $\mu$s'.format(
                     T1_dict[k]['T1'] * 1e6) \
-                          + ' $\pm$ {:.2f} $\mu$s'.format(
+                          + r' $\pm$ {:.2f} $\mu$s'.format(
                     T1_dict[k]['T1_stderr'] * 1e6) \
-                          + '\nold $T_1$ = {:.2f} $\mu$s'.format(
+                          + '\nold $T_1$ = {:.2f} $\\mu$s'.format(
                     old_T1_val * 1e6)
                 self.plot_dicts['text_msg_' + k] = {
                     'fig_id': base_plot_name,
@@ -5956,32 +5956,32 @@ class RamseyAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                     if i != 0:
                         textstr += '\n'
                     textstr += \
-                        ('$f_{{qubit \_ new \_ {{{key}}} }}$ = '.format(
+                        (r'$f_{{qubit \_ new \_ {{{key}}} }}$ = '.format(
                             key=('exp' if i == 0 else 'gauss')) +
                             '{:.6f} GHz '.format(
                             ramsey_pars_dict[fit_type]['new_qb_freq']*1e-9) +
-                                '$\pm$ {:.3f} MHz '.format(
+                                r'$\pm$ {:.3f} MHz '.format(
                             ramsey_pars_dict[fit_type][
                                 'new_qb_freq_stderr']*1e-6))
                     T2_star_str += \
-                        ('\n$T_{{2,{{{key}}} }}^\star$ = '.format(
+                        ('\n$T_{{2,{{{key}}} }}^\\star$ = '.format(
                             key=('exp' if i == 0 else 'gauss')) +
-                            '{:.2f} $\mu$s'.format(
+                            r'{:.2f} $\mu$s'.format(
                             fit_res.params['tau'].value*1e6) +
-                            '$\pm$ {:.2f} $\mu$s'.format(
+                            r'$\pm$ {:.2f} $\mu$s'.format(
                             fit_res.params['tau'].stderr*1e6))
 
-                textstr += '\n$f_{qubit \_ old}$ = '+'{:.6f} GHz '.format(
+                textstr += '\n$f_{qubit \\_ old}$ = '+'{:.6f} GHz '.format(
                     old_qb_freq*1e-9)
                 art_det = ramsey_pars_dict[exp_dec_k][
                               'artificial_detuning']*1e-6
                 delta_f = (ramsey_pars_dict[exp_dec_k]['new_qb_freq'] -
                            old_qb_freq)*1e-6
-                textstr += ('\n$\Delta f$ = {:.4f} MHz '.format(delta_f) +
-                            '$\pm$ {:.3f} kHz'.format(
+                textstr += ('\n$\\Delta f$ = {:.4f} MHz '.format(delta_f) +
+                            r'$\pm$ {:.3f} kHz'.format(
                     self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
                         'frequency'].stderr*1e-3) +
-                    '\n$f_{Ramsey}$ = '+'{:.4f} MHz $\pm$ {:.3f} kHz'.format(
+                    '\n$f_{Ramsey}$ = '+r'{:.4f} MHz $\pm$ {:.3f} kHz'.format(
                     self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
                         'frequency'].value*1e-6,
                     self.fit_dicts[f'{exp_dec_k}_{outer_key}']['fit_res'].params[
@@ -6341,12 +6341,12 @@ class ResidualZZAnalysis(RamseyAnalysis):
                 textstr = ''
                 for fk, residual_zz in residual_zz_dict.items():
                     key = fk.split('_')[0]
-                    textstr += f'$\Delta f_{{0_{{{key}}}}}$ = ' \
+                    textstr += rf'$\Delta f_{{0_{{{key}}}}}$ = ' \
                                + f'{1e-3*residual_zz["freq_g"]:.3f} kHz\n'
-                    textstr += f'$\Delta f_{{1_{{{key}}}}}$ = ' \
+                    textstr += rf'$\Delta f_{{1_{{{key}}}}}$ = ' \
                                + f'{1e-3*residual_zz["freq_e"]:.3f} kHz\n'
-                    textstr += f'$\Omega_{{ZZ_{{{key}}}}}/2\pi$ = ' \
-                               + f'{1e-3*residual_zz["shift_Hz"]:.3f} $\pm$ ' \
+                    textstr += rf'$\Omega_{{ZZ_{{{key}}}}}/2\pi$ = ' \
+                               + rf'{1e-3*residual_zz["shift_Hz"]:.3f} $\pm$ ' \
                                + f'{1e-3*residual_zz["shift_Hz_stderr"]:.3f} ' \
                                + f'kHz\n'
                 textstr += f'target: {qb}, control: {qbc}'
@@ -6787,11 +6787,11 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
                 textstr = 'Echo Measurement with'
                 art_det = self.artificial_detuning_dict[qbn]*1e-6
                 textstr += '\nartificial detuning = {:.2f} MHz'.format(art_det)
-                textstr += '\n$T_2$ echo = {:.2f} $\mu$s'.format(
+                textstr += '\n$T_2$ echo = {:.2f} $\\mu$s'.format(
                     T2_dict[qbn_idx]['T2_echo']*1e6) \
-                          + ' $\pm$ {:.2f} $\mu$s'.format(
+                          + r' $\pm$ {:.2f} $\mu$s'.format(
                     T2_dict[qbn_idx]['T2_echo_stderr']*1e6) \
-                          + '\nold $T_2$ echo = {:.2f} $\mu$s'.format(
+                          + '\nold $T_2$ echo = {:.2f} $\\mu$s'.format(
                     old_T2e_val*1e6)
 
                 self.echo_analysis.plot_dicts['text_msg_' + qbn_idx][
@@ -7092,11 +7092,11 @@ class InPhaseAmpCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                     old_amp180 = 0  # FIXME: explain why
                 correction_dict = self.proc_data_dict['analysis_params_dict']
                 fit_res = self.fit_dicts['fit_' + qbn]['fit_res']
-                textstr = '$\pi$-Amp = {:.4f} mV'.format(
+                textstr = r'$\pi$-Amp = {:.4f} mV'.format(
                     correction_dict[qbn]['corrected_amp']*1e3) \
-                          + ' $\pm$ {:.1e} mV'.format(
+                          + r' $\pm$ {:.1e} mV'.format(
                     correction_dict[qbn]['corrected_amp_stderr']*1e3) \
-                          + '\nold $\pi$-Amp = {:.4f} mV'.format(
+                          + '\nold $\\pi$-Amp = {:.4f} mV'.format(
                     old_amp180*1e3) \
                           + '\namp. correction = {:.4f} mV'.format(
                               fit_res.best_values['slope']*old_amp180*1e3) \
@@ -9994,11 +9994,11 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                 superscript = "{NR}" if seq_nr == 0 \
                                     else f"{{c {seq_nr}}}" if "corrected" \
                                                 in fit_key else f"{{{seq_nr}}}"
-                                label = f'fit: $\Gamma_{prep_state[-1]}^{superscript}' \
+                                label = rf'fit: $\Gamma_{prep_state[-1]}^{superscript}' \
                                         f' = {rate:.3f}$ MHz'
                                 if seq_nr != 0:
                                     # add residual population if not no reset
-                                    label += f", $P_\mathrm{{exc}}^\mathrm{{res}}$" \
+                                    label += rf", $P_\mathrm{{exc}}^\mathrm{{res}}$" \
                                              f" = {residual_pop*100:.2f} %"
                                 self.plot_dicts[fit_key] = {
                                     'plotfn': self.plot_fit,
@@ -10031,7 +10031,7 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'yvals': res.data,
                                     'yerr': self._std_error(
                                         res.data, self.get_param_value('n_shots')),
-                                    'ylabel': 'Excited Pop., $P_\mathrm{exc}$',
+                                    'ylabel': r'Excited Pop., $P_\mathrm{exc}$',
                                     'yunit': '',
                                     'setlabel':
                                         "data" if
@@ -10112,17 +10112,17 @@ class MultiQutritActiveResetAnalysis(MultiQubit_TimeDomain_Analysis):
     def _get_feedback_params_text_str(self, qbn):
         str = "Reset cycle time: "
         ro_sep = self.prep_params.get("ro_separation", None)
-        str += f"{1e6 * ro_sep:.2f} $\mu s$" if ro_sep is not None else \
+        str += rf"{1e6 * ro_sep:.2f} $\mu s$" if ro_sep is not None else \
             "Unknown"
         str += "\n"
 
         str += "RO to feedback time: "
         prow = self.prep_params.get("post_ro_wait", None)
-        str += f"{1e6 * prow:.2f} $\mu s$" if ro_sep is not None else "Unknown"
+        str += rf"{1e6 * prow:.2f} $\mu s$" if ro_sep is not None else "Unknown"
         str += "\n"
         str += "Trigger rate: "
         pp = self.raw_data_dict['pulse_period']
-        str += f"{1e6 * pp:.2f} $\mu s$" if pp is not None else "Unknown"
+        str += rf"{1e6 * pp:.2f} $\mu s$" if pp is not None else "Unknown"
         str += "\n"
         thresholds = self.get_param_value('thresholds', {})
         str += "Threshold(s):\n{}".format(
@@ -10248,12 +10248,12 @@ class FluxPulseTimingAnalysis(MultiQubit_TimeDomain_Analysis):
 
                 apd = self.proc_data_dict['analysis_params_dict']
                 textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay']*1e9) + \
-                          ' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
+                          r' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
                                                       * 1e9)
                 textstr += '\n\nflux_pulse_length:\n  ' \
                            'fitted = {:.2f} ns'.format(
                     apd[qbn]['fp_length'] * 1e9) + \
-                           ' $\pm$ {:.2f} ns'.format(
+                           r' $\pm$ {:.2f} ns'.format(
                     apd[qbn]['fp_length_stderr'] * 1e9)
                 textstr += '\n  set = {:.2f} ns'.format(
                     1e9 * self.raw_data_dict[f'fp_length_{qbn}'])
@@ -10374,7 +10374,7 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
                     'legend_pos': 'upper right'}
 
                 textstr = 'delay = {:.2f} ns'.format(
-                    apd[qbn]['delay_fit'] * 1e9) + ' $\pm$ {:.2f} ns'.format(
+                    apd[qbn]['delay_fit'] * 1e9) + r' $\pm$ {:.2f} ns'.format(
                     apd[qbn]['delay_fit_stderr'] * 1e9)
                 self.plot_dicts['text_msg_fit' + qbn] = {
                     'fig_id': base_plot_name,
@@ -10423,7 +10423,7 @@ class FluxPulseTimingBetweenQubitsAnalysis(MultiQubit_TimeDomain_Analysis):
                 'colors': 'gray'}
 
             textstr = 'delay = {:.2f} ns'.format(apd[qbn]['delay'] * 1e9) + \
-                      ' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
+                      r' $\pm$ {:.2f} ns'.format(apd[qbn]['delay_stderr']
                                                   * 1e9)
             self.plot_dicts['text_msg_' + qbn] = {
                 'fig_id': f'Autoconvolution_{qbn}',
@@ -11264,8 +11264,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'plotfn': self.plot_line,
                 'xvals': np.array([V_I_opt]),
                 'yvals': np.array([V_Q_opt]),
-                'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\,$mV\n'
-                            '$V_\\mathrm{Q}$' + f' ={V_Q_opt*1e3:.1f}$\,$mV',
+                'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\\,$mV\n'
+                            '$V_\\mathrm{Q}$' + rf' ={V_Q_opt*1e3:.1f}$\,$mV',
                 'color': 'red',
                 'marker': 'o',
                 'linestyle': 'None',
@@ -11350,8 +11350,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'plotfn': self.plot_line,
                 'xvals': np.array([V_I_opt]),
                 'yvals': np.array([V_Q_opt]),
-                'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\,$mV\n'
-                            '$V_\\mathrm{Q}$' + f' ={V_Q_opt*1e3:.1f}$\,$mV',
+                'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\\,$mV\n'
+                            '$V_\\mathrm{Q}$' + rf' ={V_Q_opt*1e3:.1f}$\,$mV',
                 'color': 'red',
                 'marker': 'o',
                 'linestyle': 'None',
@@ -11369,7 +11369,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'color': 'red',
                 'marker': 'None',
                 'linestyle': '--',
-                'setlabel': '$V_\\mathrm{I}$' + f' ={V_I_opt*1e3:.1f}$\,$mV',
+                'setlabel': '$V_\\mathrm{I}$' + rf' ={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
        
@@ -11384,7 +11384,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'linestyle': '-',
                 'setlabel': '\nfitted model\n'
                             '@ $V_\\mathrm{Q}$'
-                            f'={V_Q_opt*1e3:.1f}$\,$mV',
+                            rf'={V_Q_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
 
@@ -11396,7 +11396,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'color': 'red',
                 'marker': 'None',
                 'linestyle': '--',
-                'setlabel': '$V_\\mathrm{Q}$' + f' ={V_Q_opt*1e3:.1f}$\,$mV',
+                'setlabel': '$V_\\mathrm{Q}$' + rf' ={V_Q_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
 
@@ -11411,7 +11411,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'linestyle': '-',
                 'setlabel': '\nfitted model\n'
                             '@ $V_\\mathrm{I}$'
-                            f'={V_I_opt*1e3:.1f}$\,$mV',
+                            rf'={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
             
@@ -11570,7 +11570,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                     'xvals': np.array([alpha_min]),
                     'yvals': np.array([phase_min]),
                     'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
-                                f'$\phi$ ={phase_min:.2f}$^\\circ$',
+                                rf'$\phi$ ={phase_min:.2f}$^\\circ$',
                     'color': 'red',
                     'marker': 'o',
                     'linestyle': 'None',
@@ -11674,7 +11674,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'xvals': np.array([alpha_min]),
                 'yvals': np.array([phase_min]),
                 'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
-                            f'$\phi$ ={phase_min:.2f}$^\\circ$',
+                            rf'$\phi$ ={phase_min:.2f}$^\\circ$',
                 'color': 'red',
                 'marker': 'o',
                 'linestyle': 'None',
@@ -11706,7 +11706,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'marker': 'None',
                 'linestyle': '-',
                 'setlabel': f'\nfitted model\n'
-                            f'@ $\phi$ ={phase_min:.2f}$^\\circ$',
+                            rf'@ $\phi$ ={phase_min:.2f}$^\\circ$',
                 'do_legend': True,
             }
 
@@ -11718,7 +11718,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'color': 'red',
                 'marker': 'None',
                 'linestyle': '--',
-                'setlabel': f'$\phi$ ={phase_min:.2f}$^\\circ$',
+                'setlabel': rf'$\phi$ ={phase_min:.2f}$^\\circ$',
                 'do_legend': True,
             }
 
@@ -11963,7 +11963,7 @@ class f0g1AcStarkAnalysis(MultiQubit_TimeDomain_Analysis):
                 text = f"$\\nu = $"
                 for k, (coef, coef_error) in enumerate(zip(coefs, coefs_error)):
                     if not coef == 0:
-                        text += f"$({coef*1e-6:.3f} \pm {coef_error*1e-6 :.3f}) \cdot 10^6 x^{k}$ + "
+                        text += rf"$({coef*1e-6:.3f} \pm {coef_error*1e-6 :.3f}) \cdot 10^6 x^{k}$ + "
 
                 label = f'fitting_{qb}'
                 self.plot_dicts[label] = {
@@ -12192,14 +12192,14 @@ class f0g1RabiRateAnalysis(MultiQubit_TimeDomain_Analysis):
                 label = f'oddPoly_fit_linear_{qb}'
                 self.plot_dicts[label] = {
                     'fig_id': fig_id,
-                    'title': f'$\~g/2\pi$ vs Ampl ({qb})',
+                    'title': rf'$\~g/2\pi$ vs Ampl ({qb})',
                     'plotfn': self.plot_line,
                     'xvals': np.linspace(np.min(self.amps[qb]), np.max(self.amps[qb]), 100),
                     'yvals': np.polyval(np.flip(pdd['Coefs'][qb][0:2]),
                                         np.linspace(np.min(self.amps[qb]), np.max(self.amps[qb]), 100)) / (2 * np.pi),
                     'xlabel': 'amplitude',
                     'xunit': 'V',
-                    'ylabel': '$\~g/2\pi$',
+                    'ylabel': r'$\~g/2\pi$',
                     'yunit': 'Hz',
                     'marker': 'None',
                     'linestyle': 'dashed',
@@ -12240,9 +12240,9 @@ class f0g1RabiRateAnalysis(MultiQubit_TimeDomain_Analysis):
                 coefs_error = [parmams[f'c{k}'].stderr for k in range(fit_degree + 1) if
                                k % 2]  # we put the error in the array
 
-                text = f"$\~g/2\pi = $"
+                text = rf"$\~g/2\pi = $"
                 for k, (coef, coef_error) in enumerate(zip(coefs, coefs_error)):
-                    text += f"$({coef / (2 * np.pi):.3f} \pm {coef_error / (2 * np.pi):.3f}) \cdot 10^6 x^{k * 2 + 1}$ + "
+                    text += rf"$({coef / (2 * np.pi):.3f} \pm {coef_error / (2 * np.pi):.3f}) \cdot 10^6 x^{k * 2 + 1}$ + "
 
                 label = f'Rabi_rate_fitting_{qb}'
                 self.plot_dicts[label] = {
@@ -12409,7 +12409,7 @@ class f0g1PitchAnalysis(MultiQubit_TimeDomain_Analysis):
                 label = f'gammas_{gamma1:.5f}_{gamma2:.5f}_pg_{qb}'
                 self.plot_dicts[label] = {
                     'fig_id': fig_id,
-                    'title': f'{qb} \n $\Gamma_1/2\pi$={gamma1 / (2*np.pi*1e6):.2f}MHz \n $\Gamma_2/2\pi$={gamma2 / (2*np.pi*1e6):.2f}MHz',
+                    'title': f'{qb} \n $\\Gamma_1/2\\pi$={gamma1 / (2*np.pi*1e6):.2f}MHz \n $\\Gamma_2/2\\pi$={gamma2 / (2*np.pi*1e6):.2f}MHz',
                     'plotfn': self.plot_line, #which type of plot -> points
                     'xvals': times,
                     'yvals': populations['pg'][i][:-nr_cp], # plot g state populations
@@ -12940,7 +12940,7 @@ class efWithf0g1AcStarkAnalysis(MultiQubit_TimeDomain_Analysis):
                 text = f"$\\nu = $"
                 for k, (coef, coef_error) in enumerate(zip(coefs, coefs_error)):
                     if not coef == 0:
-                        text += f"$({coef*1e-6:.3f} \pm {coef_error*1e-6 :.3f}) \cdot 10^6 x^{k}$ + "
+                        text += rf"$({coef*1e-6:.3f} \pm {coef_error*1e-6 :.3f}) \cdot 10^6 x^{k}$ + "
 
                 label = f'fitting_{qb}'
                 self.plot_dicts[label] = {
@@ -13745,9 +13745,9 @@ class LeakageReductionUnitAnalysis(MultiQubit_TimeDomain_Analysis):
                     pulse_lengths_OP = [pulse_lengths_OP]
                     frequencies_OP = [frequencies_OP]
                 for k in range(len(pulse_lengths_OP)):
-                    textstr += ('  $t_\mathrm{LRU}$ = '+'{:.1f} ns'.format(
-                        pulse_lengths_OP[k]*1e9)  + '$\quad$' +
-                                '$f_\mathrm{LRU}$ = '+'{:.1f} MHz'.format(
+                    textstr += (r'  $t_\mathrm{LRU}$ = '+'{:.1f} ns'.format(
+                        pulse_lengths_OP[k]*1e9)  + r'$\quad$' +
+                                r'$f_\mathrm{LRU}$ = '+'{:.1f} MHz'.format(
                         frequencies_OP[k]/1e6))
                     textstr += '\n' if k < len(pulse_lengths_OP)-1 else ''
 
@@ -14330,8 +14330,8 @@ class NPulseAmplitudeCalibAnalysis(MultiQubit_TimeDomain_Analysis):
                         t2f = self.fitted_coh_times[qbn][i]['T2 fit']
                         t2s = self.get_param_value(
                             'T2', default_value=self.raw_data_dict[f'T2_{qbn}'])
-                        textstr += f'\nT2 fit: {t2f*1e6:.1f} $\mu$s; ' \
-                                   f'T2 meas: {t2s*1e6:.1f} $\mu$s'
+                        textstr += rf'\nT2 fit: {t2f*1e6:.1f} $\mu$s; ' \
+                                   rf'T2 meas: {t2s*1e6:.1f} $\mu$s'
                     self.plot_dicts[f'text_msg_{qbn}_{i}'] = {
                         'fig_id': base_plot_name,
                         'plotfn': self.plot_text,
