@@ -2117,6 +2117,7 @@ class MeasurementControl(Instrument):
                 'sweep_points': result['sweep_points']})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
+    @Timer()
     def save_instrument_settings(self, data_object=None, mode='xb', *args):
         '''
         uses QCodes station snapshot to save the last known value of any
