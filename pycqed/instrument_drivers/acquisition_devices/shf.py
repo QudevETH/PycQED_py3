@@ -105,11 +105,11 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
 
         self.add_parameter(
             'allowed_lo_freqs',
-            initial_value=np.arange(1e9, 8.1e9, 100e6),
+            initial_value=np.arange(1e9, 8.0e9, 200e6),
             parameter_class=ManualParameter,
             docstring='List of values that the center frequency (LO) is '
-                      'allowed to take. As of now this is limited to steps '
-                      'of 100 MHz.',
+                      'allowed to take. As of LabOne 24.10 this is '
+                      'limited to steps of 200 MHz.',
             set_parser=lambda x: list(np.atleast_1d(x).flatten()),
             vals=validators.MultiType(validators.Lists(), validators.Arrays(),
                                       validators.Numbers()))
