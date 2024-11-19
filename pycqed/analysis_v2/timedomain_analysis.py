@@ -14806,9 +14806,9 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
             param_names = self.proc_data_dict['sweep_points_dict'][
                 qbH_name]['param_names']
             # Find which amp_name was swept
-            if prefix + 'amplitude' in param_names:
-                amp_swept_name = 'amplitude'
-                amp_fixed_name = 'amplitude2'
+            if prefix + 'amplitude2' in param_names:
+                amp_swept_name = 'amplitude2'
+                amp_fixed_name = 'amplitude'
             else:
                 amp_swept_name = 'amplitude'
                 amp_fixed_name = 'amplitude2'
