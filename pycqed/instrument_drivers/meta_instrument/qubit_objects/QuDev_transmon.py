@@ -2208,8 +2208,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             analyze_ef:               whether or not to also look for the gf/2
 
         Keyword Args:
-            interactive_plot:        (default=False)
-                whether to plot with plotly or not
             analyze_ef:              (default=False)
                 whether to look for another f_ge/2 peak/dip
             percentile:              (default=20)

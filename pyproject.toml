@@ -76,8 +76,6 @@ user = [
     "jupyter",
     "jupyter-contrib-nbextensions",
     "notebook < 7.0.0",
-    "psutil",
-    "plotly",
     "pyyaml",
 ]
 
