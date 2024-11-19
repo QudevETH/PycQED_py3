@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     _blosc2_missing = True
 else:
-    _blosc2_mising = False
+    _blosc2_missing = False
 
 from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
 
