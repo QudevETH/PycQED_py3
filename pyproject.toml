@@ -21,7 +21,6 @@ classifiers = [
 # FIXME: Pin versions
 dependencies = [
     "blosc2",
-    "func-timeout",
     "h5py",
     "lmfit",
     "matplotlib",
