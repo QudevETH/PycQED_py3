@@ -20,7 +20,6 @@ classifiers = [
 
 # FIXME: Pin versions
 dependencies = [
-    "blosc2",
     "func-timeout",
     "h5py",
     "lmfit",
@@ -80,6 +79,9 @@ user = [
     "psutil",
     "plotly",
     "pyyaml",
+]
+compression = [
+    "blosc2"
 ]
 
 [tool.setuptools.packages.find]

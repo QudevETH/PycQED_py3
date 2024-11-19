@@ -9,6 +9,13 @@ from pathlib import Path
 import logging
 from collections import OrderedDict
 
+try:
+    import blosc2
+except ModuleNotFoundError:
+    _blosc2_missing = True
+else:
+    _blosc2_mising = False
+
 from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
 
 logger = logging.getLogger(__name__)
@@ -67,8 +74,16 @@ class Dumper:
 
     @staticmethod
     def compress_file(file):
-        import blosc2
-        return blosc2.compress(file)
+        if _blosc2_missing:
+            logger.warning(
+                "blosc2 could not be imported so compression cannot "
+                "be used. Please install the compression optional "
+                "dependency group if you want to use compression. "
+                "Returning the uncompressed file."
+            )
+            return file
+        else:
+            return blosc2.compress(file)
 
 
 class Loader:
@@ -245,8 +260,16 @@ class Loader:
 
     @staticmethod
     def decompress_file(file):
-        import blosc2
-        return blosc2.decompress(file)
+        if _blosc2_missing:
+            logger.warning(
+                "blosc2 could not be imported so decompression cannot "
+                "be used. Please install the compression optional "
+                "dependency group if you want to use decompression. "
+                "Returning the compressed file."
+            )
+            return file
+        else:
+            return blosc2.decompress(file)
 
     def get_station(self, param_path=None):
         """
