@@ -1035,9 +1035,9 @@ def save_zibugreport(
 
     # get the pulsar instance
     from pycqed.measurement.waveform_control import pulsar as ps
-    import zhinst.toolkit as tk
+    import zhinst.toolkit as ztk
 
-    session = tk.Session("localhost")
+    session = ztk.Session("localhost")
     pulsar = ps.Pulsar.get_instance()
 
     # create the save folder
@@ -1046,7 +1046,7 @@ def save_zibugreport(
     brdir = os.path.join(
         save_folder,
         f"bugreport_{time.strftime('%Y%m%d_%H%M%S', time.localtime())}")
-    os.mkdir(brdir)
+    os.makedirs(brdir, exist_ok=True)
 
     # get all connected ZI instruments
     instruments = get_all_connected_zi_instruments()
@@ -1085,176 +1085,152 @@ def save_zibugreport(
             exceptions['stdout'] = e
 
     # export the waveform and sequencer code of the SHFQCs
-    for SHF in station.SHFQCs:
-        # crate the top-level folder for this SHF
-        shf_data_dir = os.path.join(brdir, SHF.name)
-        os.mkdir(shf_data_dir)
-        os.mkdir(os.path.join(shf_data_dir, 'sg'))
-        os.mkdir(os.path.join(shf_data_dir, 'qa'))
+    if hasattr(station, "SHFQCs"):
+        for SHF in station.SHFQCs:
+            # crate the top-level folder for this SHF
+            shf_data_dir = os.path.join(brdir, SHF.name)
+            os.makedirs(shf_data_dir, exist_ok=True)
+            os.makedirs(os.path.join(shf_data_dir, 'sg'), exist_ok=True)
+            os.makedirs(os.path.join(shf_data_dir, 'qa'), exist_ok=True)
 
-        n_sg_channels = len(SHF.sgchannels)
+            n_sg_channels = len(SHF.sgchannels)
 
-        # use zhinst toolkit to connect to the device to pull the waveforms
-        shf_tk = session.connect_device(SHF.serial)
+            # use zhinst toolkit to connect to the device to pull the waveforms
+            shf_tk = session.connect_device(SHF.serial)
 
-        # save SHFQC settings
-        dev_settings = SHF.daq.get(f'/{SHF.devname}/*', settingsonly=True,
-                                   flat=True)
-        np.save(os.path.join(shf_data_dir, f'shfqc_settings'), dev_settings)
+            # save SHFQC settings
+            dev_settings = SHF.daq.get(
+                f'/{SHF.devname}/*',
+                settingsonly=True,
+                flat=True
+            )
+            np.save(os.path.join(shf_data_dir, f'shfqc_settings'), dev_settings)
 
-        if involved_channels and SHF.name not in involved_channels.keys():
-            continue
-
-        wfm_dir = os.path.join(shf_data_dir, "sg\sg_waveforms")
-        os.mkdir(wfm_dir)
-        cmt_dir = os.path.join(shf_data_dir, "sg\sg_commandtables")
-        os.mkdir(cmt_dir)
-        seq_dir = os.path.join(shf_data_dir, "sg\sg_sequencer")
-        os.mkdir(seq_dir)
-
-        for sg_channel in range(n_sg_channels):
-
-            # save sg channel waveforms
-            if involved_channels and f"sg{sg_channel + 1}" not in \
-                    involved_channels[SHF.name]:
+            if involved_channels and SHF.name not in involved_channels.keys():
                 continue
-            channel_dir = os.path.join(wfm_dir, f"sg{sg_channel}")
-            os.mkdir(channel_dir)
-            wave_idx = 0
-            while (
-            len(shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]())):
-                w = shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]()
-                np.save(os.path.join(channel_dir, f'wave_{wave_idx}'), w)
-                wave_idx += 1
 
-            # save sg channel commandtable
-            w = eval(SHF.sgchannels[sg_channel].awg.commandtable.data().replace(
-                "false", "False"))
-            np.save(os.path.join(cmt_dir, f'commandtable_sg{sg_channel}'), w)
+            wfm_dir = os.path.join(shf_data_dir, "sg", "sg_waveforms")
+            os.makedirs(wfm_dir, exist_ok=True)
+            cmt_dir = os.path.join(shf_data_dir, "sg", "sg_commandtables")
+            os.makedirs(cmt_dir, exist_ok=True)
+            seq_dir = os.path.join(shf_data_dir, "sg", "sg_sequencer")
+            os.makedirs(seq_dir, exist_ok=True)
 
-            # save sg sequence code
-            w = SHF.sgchannels[sg_channel].awg.sequencer.program()
-            np.save(os.path.join(seq_dir, f'sequencer_sg{sg_channel}'), w)
+            # saves settings for SG channels
+            for sg_channel in range(n_sg_channels):
+                # save sg channel waveforms
+                if involved_channels and f"sg{sg_channel + 1}" not in \
+                        involved_channels[SHF.name]:
+                    continue
+                save_shfsg_channel_data(
+                    shf=SHF,
+                    shf_tk=shf_tk,
+                    shf_data_dir=shf_data_dir,
+                    sg_channel=sg_channel,
+                )
 
-        if involved_channels and f"qa1" not in involved_channels[SHF.name]:
-            continue
+            # saves settings for the QA channel
+            if involved_channels and f"qa1" not in involved_channels[SHF.name]:
+                continue
 
-        # save qa channel waveforms
-        wfm_dir = os.path.join(shf_data_dir, "qa\qa_waveforms")
-        os.mkdir(wfm_dir)
-        for i, wave in enumerate(SHF.qachannels[0].generator.waveforms):
-            w = wave.wave()
-            np.save(os.path.join(wfm_dir, f'wave_{i}'), w)
-
-        # save qa integration weights
-        wfm_dir = os.path.join(shf_data_dir, "qa\qa_int_weights")
-        os.mkdir(wfm_dir)
-        for i, wave in enumerate(
-                SHF.qachannels[0].readout.integration.weights):
-            w = wave.wave()
-            np.save(os.path.join(wfm_dir, f'weight_{i}'), w)
-
-        # save qa sequencer code
-        wfm_dir = os.path.join(shf_data_dir, "qa\qa_sequencer")
-        os.mkdir(wfm_dir)
-        w = SHF.qachannels[0].generator.sequencer.program()
-        np.save(os.path.join(wfm_dir, f'sequencer_qa{0}'), w)
+            save_shfqa_channel_data(
+                shf=SHF,
+                shf_data_dir=shf_data_dir,
+                qa_channel=0,
+            )
+    else:
+        log.warning("station.SHFQCs not specified. If you want to log the"
+                    "status of the SHFQCs in your system, please create this "
+                    "attribute and add assign station.SHFQCs = [SHFQC1, "
+                    "SHFQC2, ...]")
 
     # export the waveform and sequencer code of the SHFQAs
-    for SHF in station.SHFQAs:
-        # crate the top-level folder for this SHF
-        shf_data_dir = os.path.join(brdir, SHF.name)
-        os.mkdir(shf_data_dir)
-        os.mkdir(os.path.join(shf_data_dir, 'qa'))
+    if hasattr(station, "SHFQAs"):
+        for SHF in station.SHFQAs:
+            # crate the top-level folder for this SHF
+            shf_data_dir = os.path.join(brdir, SHF.name)
+            os.makedirs(shf_data_dir, exist_ok=True)
+            os.makedirs(os.path.join(shf_data_dir, 'qa'), exist_ok=True)
 
-        # save SHFQC settings
-        dev_settings = SHF.daq.get(f'/{SHF.devname}/*', settingsonly=True,
-                                   flat=True)
-        np.save(os.path.join(shf_data_dir, f'shfqa_settings'), dev_settings)
+            # save SHFQC settings
+            dev_settings = SHF.daq.get(
+                f'/{SHF.devname}/*',
+                settingsonly=True,
+                flat=True,
+            )
+            np.save(os.path.join(shf_data_dir, f'shfqa_settings'), dev_settings)
 
-        if involved_channels and SHF.name not in involved_channels.keys():
-            continue
-
-        n_qa_channels = len(SHF.qachannels)
-
-        for qa_channel in range(n_qa_channels):
-
-            if involved_channels and f"qa{qa_channel + 1}" not in \
-                    involved_channels[SHF.name]:
+            if involved_channels and SHF.name not in involved_channels.keys():
                 continue
 
-            # save qa channel waveforms
-            wfm_dir = os.path.join(shf_data_dir, "qa\qa_waveforms")
-            os.mkdir(wfm_dir)
-            for i, wave in enumerate(
-                    SHF.qachannels[qa_channel].generator.waveforms):
-                w = wave.wave()
-                np.save(os.path.join(wfm_dir, f'wave_{i}'), w)
-
-            # save qa integration weights
-            wfm_dir = os.path.join(shf_data_dir, "qa\qa_int_weights")
-            os.mkdir(wfm_dir)
-            for i, wave in enumerate(
-                    SHF.qachannels[qa_channel].readout.integration.weights):
-                w = wave.wave()
-                np.save(os.path.join(wfm_dir, f'weight_{i}'), w)
-
-            # save qa sequencer code
-            wfm_dir = os.path.join(shf_data_dir, "qa\qa_sequencer")
-            os.mkdir(wfm_dir)
-            w = SHF.qachannels[qa_channel].generator.sequencer.program()
-            np.save(os.path.join(wfm_dir, f'sequencer_qa{qa_channel}'), w)
+            n_qa_channels = len(SHF.qachannels)
+            for qa_channel in range(n_qa_channels):
+                if involved_channels and f"qa{qa_channel + 1}" not in \
+                        involved_channels[SHF.name]:
+                    continue
+                save_shfqa_channel_data(
+                    shf=SHF,
+                    shf_data_dir=shf_data_dir,
+                    qa_channel=qa_channel,
+                )
+    else:
+        log.warning("station.SHFQAs not specified. If you want to log the"
+                    "status of the SHFQAs in your system, please create this "
+                    "attribute and add assign station.SHFQAs = [SHFQA1, "
+                    "SHFQA2, ...]")
 
     # export the waveform and sequencer code of the HDAWGs
-    for AWG in station.AWGs:
-        if involved_channels and AWG.name not in involved_channels.keys():
-            continue
+    if hasattr(station, "AWGs"):
+        for AWG in station.AWGs:
+            if involved_channels and AWG.name not in involved_channels.keys():
+                continue
 
-        # create the data directory of the AWG
-        awg_data_dir = os.path.join(brdir, AWG.name)
-        os.mkdir(awg_data_dir)
+            # create the data directory of the AWG
+            awg_data_dir = os.path.join(brdir, AWG.name)
+            os.makedirs(awg_data_dir, exist_ok=True)
 
-        # save HDAWG waveforms
-        for i in range(4):
-            sn = AWG.daq.get(f'/{AWG.devname}/awgs/{i}/waveform/waves/*',
-                             settingsonly=False, flat=True,
-                             excludevectors=False)
-            np.save(os.path.join(awg_data_dir, f'waves_{i}'), sn)
+            # save channel waveforms and sequencer codes
+            for i in range(4):
+                save_hdawg_channel_data(
+                    awg=AWG,
+                    awg_data_dir=awg_data_dir,
+                    awg_module_nr=i,
+                )
 
-        # save HDAWG sequencer code
-        for i in range(4):
-            sn = pulsar.awg_interfaces[AWG.name].awg_mcc.awgs[
-                i].sequencer.program()
-            np.save(os.path.join(awg_data_dir, f'seqc_{i}'), sn)
-
-        # save HDAWG settings
-        sn = AWG.daq.get(f'/{AWG.devname}/*', settingsonly=True)
-        np.save(os.path.join(awg_data_dir, f'awg_settings'), sn)
+            # save HDAWG settings
+            sn = AWG.daq.get(f'/{AWG.devname}/*', settingsonly=True)
+            np.save(os.path.join(awg_data_dir, f'awg_settings'), sn)
+    else:
+        log.warning("station.AWGs not specified. If you want to log the"
+                    "status of the AWGs in your system, please create this "
+                    "attribute and add assign station.AWGs = [AWG1, "
+                    "AWG2, ...]")
 
     # export the waveform and sequencer code of the UHFQAs
-    for UHF in station.UHFs:
-        if involved_channels and UHF.name not in involved_channels.keys():
-            continue
+    if hasattr(station, "UHFs"):
+        for UHF in station.UHFs:
+            if involved_channels and UHF.name not in involved_channels.keys():
+                continue
 
-        # create the data directory of the AWG
-        awg_data_dir = os.path.join(brdir, UHF.name)
-        os.mkdir(awg_data_dir)
+            # create the data directory of the AWG
+            uhf_data_dir = os.path.join(brdir, UHF.name)
+            os.makedirs(uhf_data_dir, exist_ok=True)
 
-        # save HDAWG waveforms
-        for i in range(2):
-            sn = UHF.daq.get(f'/{UHF.devname}/awgs/{i}/waveform/waves/*',
-                             settingsonly=False, flat=True,
-                             excludevectors=False)
-            np.save(os.path.join(awg_data_dir, f'waves_{i}'), sn)
+            # save UHFQA waveforms
+            for i in range(2):
+                save_uhfqa_channel_data(
+                    uhf=UHF,
+                    uhf_data_dir=uhf_data_dir,
+                    uhf_module_nr=i,
+                )
 
-        # save UHF sequencer code
-        for i in range(2):
-            sn = pulsar.awg_interfaces[UHF.name].awg_mcc.awgs[
-                i].sequencer.program()
-            np.save(os.path.join(awg_data_dir, f'seqc_{i}'), sn)
-
-        sn = UHF.daq.get(f'/{UHF.devname}/*', settingsonly=True)
-        np.save(os.path.join(awg_data_dir, f'uhf_settings'), sn)
+            sn = UHF.daq.get(f'/{UHF.devname}/*', settingsonly=True)
+            np.save(os.path.join(uhf_data_dir, f'uhf_settings'), sn)
+    else:
+        log.warning("station.UHFs not specified. If you want to log the"
+                    "status of the UHFs in your system, please create this "
+                    "attribute and add assign station.UHFs = [UHF1, "
+                    "UHF2, ...]")
 
     # save the firmware git revision
     for dev in instruments:
@@ -1299,6 +1275,152 @@ def save_zibugreport(
               f'Not all elements of the bugreport could be saved. '
               f'Exceptions occurred during: {list(exceptions.keys())}')
     return exceptions
+
+
+def save_shfsg_channel_data(
+        shf,
+        shf_tk,
+        shf_data_dir,
+        sg_channel,
+):
+    """
+    Helper function for exporting the programs on an (SHF)SG channel.
+
+    Args:
+        shf (zhinst.qcodes): zhinst-qcodes instance of the SHF device
+        shf_tk (zhinst-toolkit): zhinst-toolkit instance of the SHF device.
+            This is called to help saving the waveform.
+        shf_data_dir (str): directory for exporting the program
+        sg_channel (int): index (0-based) of the channel to export
+    """
+    wfm_dir = os.path.join(shf_data_dir, "sg", "sg_waveforms")
+    cmt_dir = os.path.join(shf_data_dir, "sg", "sg_commandtables")
+    seq_dir = os.path.join(shf_data_dir, "sg", "sg_sequencer")
+
+    channel_dir = os.path.join(wfm_dir, f"sg{sg_channel}")
+    os.mkdir(channel_dir)
+    wave_idx = 0
+    while (
+            len(shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]())):
+        w = shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]()
+        np.save(os.path.join(channel_dir, f'wave_{wave_idx}'), w)
+        wave_idx += 1
+
+    # save sg channel commandtable
+    w = eval(shf.sgchannels[sg_channel].awg.commandtable.data().replace(
+        "false", "False"))
+    np.save(os.path.join(cmt_dir, f'commandtable_sg{sg_channel}'), w)
+
+    # save sg sequence code
+    w = shf.sgchannels[sg_channel].awg.sequencer.program()
+    f = open(os.path.join(seq_dir, f'sequencer_sg{sg_channel}.txt'), 'w')
+    f.write(w)
+    f.close()
+
+
+def save_shfqa_channel_data(
+        shf,
+        shf_data_dir,
+        qa_channel,
+):
+    """
+    Helper function for exporting the programs on an (SHF)QA channel.
+
+    Args:
+        shf (zhinst.qcodes): zhinst-qcodes instance of the SHF device
+        shf_data_dir (str): directory for exporting the program
+        qa_channel (int): index (0-based) of the channel to export
+    """
+    # save qa channel waveforms
+    wfm_dir = os.path.join(shf_data_dir, "qa", "qa_waveforms")
+    os.makedirs(wfm_dir, exist_ok=True)
+    for i, wave in enumerate(shf.qachannels[qa_channel].generator.waveforms):
+        w = wave.wave()
+        np.save(os.path.join(wfm_dir, f'wave_{i}'), w)
+
+    # save qa integration weights
+    wfm_dir = os.path.join(shf_data_dir, "qa", "qa_int_weights")
+    os.makedirs(wfm_dir, exist_ok=True)
+    for i, wave in enumerate(
+            shf.qachannels[qa_channel].readout.integration.weights):
+        w = wave.wave()
+        np.save(os.path.join(wfm_dir, f'weight_{i}'), w)
+
+    # save qa sequencer code
+    seq_dir = os.path.join(shf_data_dir, "qa", "qa_sequencer")
+    os.makedirs(seq_dir, exist_ok=True)
+    w = shf.qachannels[qa_channel].generator.sequencer.program()
+    f = open(os.path.join(seq_dir, f'sequencer_qa{qa_channel}.txt'), 'w')
+    f.write(w)
+    f.close()
+
+
+def save_hdawg_channel_data(
+        awg,
+        awg_data_dir,
+        awg_module_nr,
+):
+    """
+    Helper function for exporting the programs on an HDAWG channel.
+
+    Args:
+        awg (zhinst.qcodes): zhinst-qcodes instance of the HDAWG device
+        awg_data_dir (str): directory for exporting the program
+        awg_module_nr (int): index (0-based) of the channel to export
+    """
+
+    from pycqed.measurement.waveform_control import pulsar as ps
+    pulsar = ps.Pulsar.get_instance()
+
+    # save AWG waveform
+    w = awg.daq.get(
+        f'/{awg.devname}/awgs/{awg_module_nr}/waveform/waves/*',
+        settingsonly=False,
+        flat=True,
+        excludevectors=False
+    )
+    np.save(os.path.join(awg_data_dir, f'waves_{awg_module_nr}'), w)
+
+    # save AWG sequencer code
+    w = pulsar.awg_interfaces[awg.name].awg_mcc.awgs[
+        awg_module_nr].sequencer.program()
+    f = open(os.path.join(awg_data_dir, f'seqc_{awg_module_nr}.txt'), 'w')
+    f.write(w)
+    f.close()
+
+
+def save_uhfqa_channel_data(
+        uhf,
+        uhf_data_dir,
+        uhf_module_nr,
+):
+    """
+    Helper function for exporting the programs on an UHFQA channel.
+
+    Args:
+        uhf (zhinst.qcodes): zhinst-qcodes instance of the HDAWG device
+        uhf_data_dir (str): directory for exporting the program
+        uhf_module_nr (int): index (0-based) of the channel to export
+    """
+
+    from pycqed.measurement.waveform_control import pulsar as ps
+    pulsar = ps.Pulsar.get_instance()
+
+    # save UHF waveform
+    w = uhf.daq.get(
+        f'/{uhf.devname}/awgs/{uhf_module_nr}/waveform/waves/*',
+        settingsonly=False,
+        flat=True,
+        excludevectors=False
+    )
+    np.save(os.path.join(uhf_data_dir, f'waves_{uhf_module_nr}'), w)
+
+    # save UHF sequencer code
+    w = pulsar.awg_interfaces[uhf.name].awg_mcc.awgs[
+        uhf_module_nr].sequencer.program()
+    f = open(os.path.join(uhf_data_dir, f'seqc_{uhf_module_nr}.txt'), 'w')
+    f.write(w)
+    f.close()
 
 
 def get_all_connected_zi_instruments():
