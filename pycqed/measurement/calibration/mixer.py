@@ -64,7 +64,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
         - TriggerDevice.prepend_zeros: set to 0 because no AWGs are
             programmed and therefore no zeros need to be prepended.
         - qb.ro_fixed_lo_freq: Set to
-            `{'step': 100e6, 'min': 1e9, 'max': 8e9}` such that RO LO
+            `{'step': 200e6, 'min': 1e9, 'max': 8e9}` such that RO LO
             can be shifted to the drive frequency regime even for SHF
             acquisition devices.
         - qb.acq_length: set to default_acq_length
@@ -116,7 +116,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
                     if isinstance(qb_obj.instr_acq.get_instr(), shfqa_class):
                         # Needed for the SHF since it cannot set its
                         # center frequency to arbitrary frequencies
-                        ro_fixed_lo_freq = {"step": 100e6, "min": 1e9, "max": 8e9}
+                        ro_fixed_lo_freq = {"step": 200e6, "min": 1e9, "max": 8e9}
                     else:
                         # UHF + UC board + LO can set the LO to
                         # arbitrary frequencies
@@ -349,7 +349,7 @@ class MixerCarrier(twoqbcal.CalibBuilder):
         - TriggerDevice.prepend_zeros: set to 0 because no AWGs are
             programmed and therefore no zeros need to be prepended.
         - qb.ro_fixed_lo_freq: Set to
-            `{'step': 100e6, 'min': 1e9, 'max': 8e9}` such that RO LO
+            `{'step': 200e6, 'min': 1e9, 'max': 8e9}` such that RO LO
             can be shifted to the drive frequency regime even for SHF
             acquisition devices.
         - qb.acq_length: set to default_acq_length.
@@ -414,7 +414,7 @@ class MixerCarrier(twoqbcal.CalibBuilder):
                         # Change ro_fixed_lo_freq prior to other readout
                         # frequencies so that it is correctly applied
                         (qb_obj.ro_fixed_lo_freq,
-                         {"step": 100e6, "min": 1e9, "max": 8e9}),
+                         {"step": 200e6, "min": 1e9, "max": 8e9}),
                         (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         # read out at the drive leakage frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() -
