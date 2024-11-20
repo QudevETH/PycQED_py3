@@ -1,5 +1,5 @@
 import numpy as np
-from pycqed.simulations.pauli_transfer_matrices import I, X, Y, Z, S, S2, H, CZ
+from pycqed.simulations.pauli_transfer_matrices import I, X, Y, Z, S, S2, H
 '''
 Decomposition of the single qubit clifford group as per
 Eptstein et al. Phys. Rev. A 89, 062321 (2014)

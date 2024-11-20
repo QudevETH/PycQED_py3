@@ -495,7 +495,6 @@ def send_email(subject='PycQED needs your attention!',
     # Import smtplib for the actual sending function
     import smtplib
     # Here are the email package modules we'll need
-    from email.mime.image import MIMEImage
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
 

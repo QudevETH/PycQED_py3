@@ -1,5 +1,4 @@
 from pycqed.instrument_drivers.instrument import Instrument
-from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 import numpy as np
 import telnetlib

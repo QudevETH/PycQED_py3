@@ -9,8 +9,7 @@ from pycqed.measurement.calibration.automatic_calibration_routines.\
 from pycqed.measurement.calibration.automatic_calibration_routines.base import \
     update_nested_dictionary
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
-    base_automatic_calibration_routine import (_device_db_client_module_missing,
-                                               keyword_subset_for_function)
+    base_automatic_calibration_routine import (_device_db_client_module_missing)
 
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
@@ -23,14 +22,11 @@ from pycqed.utilities.general import (
     configure_qubit_mux_drive,
     configure_qubit_mux_readout
 )
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon import \
-    QuDev_transmon
 
 import numpy as np
 import copy
 import logging
 import time
-from typing import Tuple, Dict
 
 log = logging.getLogger(__name__)
 

@@ -4,7 +4,6 @@ import re
 
 log = logging.getLogger()
 
-from device_db_client import model
 
 
 def numbered_py_name_to_type_and_num(py_name_num):

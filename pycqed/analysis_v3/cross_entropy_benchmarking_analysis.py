@@ -17,7 +17,6 @@ from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis import fitting_models as fit_mods
 import pycqed.measurement.sweep_points as sp_mod
-import pycqed.measurement.benchmarking.randomized_benchmarking as rb_meas
 
 
 convert_to_mhz = lambda freq_angle, t: freq_angle/2/np.pi/t

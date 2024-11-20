@@ -1,4 +1,3 @@
-import types
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -29,7 +28,6 @@ from pycqed.measurement.calibration import calibration_points as cp_mod
 
 # Used for auto qcodes parameter wrapping
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement import awg_sweep_functions as awg_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_det
 from pycqed.analysis.tools.data_manipulation import get_generation_means

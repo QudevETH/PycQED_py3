@@ -19,7 +19,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import Bounds, LinearConstraint, minimize
 from pycqed.analysis.tools.plotting import *
 from matplotlib import cm
-from typing import Union
 
 latest_data_match_whole_words = False
 datadir = get_default_datadir()

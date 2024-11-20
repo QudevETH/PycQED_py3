@@ -3,7 +3,6 @@ log = logging.getLogger(__name__)
 
 import os
 import sys
-import h5py
 import lmfit
 import datetime
 import traceback

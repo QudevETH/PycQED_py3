@@ -7,7 +7,6 @@ the spectroscopy measurement analyses.
 
 from copy import deepcopy
 import logging
-import re
 from typing import Union
 import numpy as np
 import lmfit

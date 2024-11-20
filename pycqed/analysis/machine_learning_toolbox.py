@@ -1,8 +1,6 @@
-import copy
 import math
 import logging
 import numpy as np
-import matplotlib.pyplot as plt
 from abc import ABCMeta, abstractmethod
 
 from sklearn.neural_network import MLPRegressor as mlpr
