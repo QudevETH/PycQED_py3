@@ -20,10 +20,10 @@ def add_default_kw(kw=None):
 
 def test_Rabi():
     for t_start in [
-        '20241119_110543',  # avg
-        '20241120_080117',  # avg with reset
-        '20241118_141159',  # SSRO
-        '20241120_080101',  # SSRO with reset
+        '20241120_155114',  # avg
+        '20241120_163229',  # avg with reset
+        '20241120_155158',  # SSRO
+        '20241120_163256',  # SSRO with reset
     ]:
         tda.RabiAnalysis(
             t_start=t_start,
