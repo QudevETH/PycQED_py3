@@ -40,13 +40,10 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
         if len(args) > 1:
             raise ValueError(f'Pulsar.get accepts 1 or 2 arguments, but '
                              f'{len(args) + 1} were provided.')
+        if param_name not in self.parameters and len(args) == 1:
+            return args[0] # interpret second argument as default value
         else:
-            # interpret second argument as default value
-            default_value = args[0]
-            if param_name not in self.parameters:
-                return default_value
-            else:
-                return self.parameters[param_name].get(default_value)
+            return self.parameters[param_name].get(*args)
 
     def set(self, param_name, value):
         """Shortcut for setting a parameter from its name.
