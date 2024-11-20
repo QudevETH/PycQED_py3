@@ -7,7 +7,7 @@ import time
 import datetime
 import numpy as np
 # used by compare_instrument_settings_timestamp():
-from numpy import array  # DO not remove;
+from numpy import array  # noqa: F401  # DO not remove;
 from copy import deepcopy
 from matplotlib.colors import LogNorm
 from matplotlib.colors import LinearSegmentedColormap as lscmap

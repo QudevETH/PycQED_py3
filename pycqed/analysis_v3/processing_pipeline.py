@@ -6,7 +6,7 @@ import os
 from copy import deepcopy
 from pycqed.analysis_v3 import saving as save_mod
 from pycqed.analysis_v3 import helper_functions as hlp_mod
-from numpy import array  # Needed for eval. Do not remove.
+from numpy import array  # noqa: F401 # Needed for eval. Do not remove.
 
 search_modules = set()
 search_modules.add(hlp_mod)

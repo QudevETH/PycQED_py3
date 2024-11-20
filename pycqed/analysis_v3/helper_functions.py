@@ -8,7 +8,7 @@ import h5py
 import traceback
 import itertools
 import numpy as np
-from numpy import array  # Needed for eval. Do not remove.
+from numpy import array  # noqa: F401  # Needed for eval. Do not remove.
 from copy import deepcopy
 from collections import OrderedDict
 from more_itertools import unique_everseen
