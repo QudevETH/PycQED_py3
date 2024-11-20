@@ -87,3 +87,15 @@ def test_Chevron():
             #     'rotate': True,
             # },
         )
+
+def test_CPhase():
+    for t_start, kw in [
+        ('20241116_160921', {}),  # 1D
+        ('20241116_155729', {}),  # 2D
+    ]:
+        add_default_kw(kw)
+        tda.CPhaseLeakageAnalysis(
+            qb_names=['qb5', 'qb10'],
+            t_start=t_start,
+            **kw,
+        )
