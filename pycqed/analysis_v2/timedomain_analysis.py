@@ -11570,7 +11570,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                     'xvals': np.array([alpha_min]),
                     'yvals': np.array([phase_min]),
                     'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
-                                rf'$\phi$ ={phase_min:.2f}$^\\circ$',
+                                f'$\\phi$ ={phase_min:.2f}$^\\circ$',
                     'color': 'red',
                     'marker': 'o',
                     'linestyle': 'None',
@@ -11674,7 +11674,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'xvals': np.array([alpha_min]),
                 'yvals': np.array([phase_min]),
                 'setlabel': f'$\\alpha$ ={alpha_min:.2f}\n'
-                            rf'$\phi$ ={phase_min:.2f}$^\\circ$',
+                            f'$\\phi$ ={phase_min:.2f}$^\\circ$',
                 'color': 'red',
                 'marker': 'o',
                 'linestyle': 'None',
@@ -11706,7 +11706,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'marker': 'None',
                 'linestyle': '-',
                 'setlabel': f'\nfitted model\n'
-                            rf'@ $\phi$ ={phase_min:.2f}$^\\circ$',
+                            f'@ $\\phi$ ={phase_min:.2f}$^\\circ$',
                 'do_legend': True,
             }
 
@@ -11718,7 +11718,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
                 'color': 'red',
                 'marker': 'None',
                 'linestyle': '--',
-                'setlabel': rf'$\phi$ ={phase_min:.2f}$^\\circ$',
+                'setlabel': f'$\\phi$ ={phase_min:.2f}$^\\circ$',
                 'do_legend': True,
             }
 
