@@ -7,6 +7,7 @@ from pycqed.analysis_v2 import timedomain_analysis as tda
 def set_module_data_dir(test_data_base_dir):
     sub_directory = test_data_base_dir / 'setups/xld'
     a_tools.datadir = str(sub_directory)
+    a_tools.fetch_data_dir = None
     return sub_directory
 
 def add_default_kw(kw=None):
@@ -223,7 +224,8 @@ def test_ReparkingRamseyAnalysis():
 
 def test_T1FrequencySweepAnalysis():
     for t_start, kw in [
-        # ('20210825_225159', {}),  # TODO r'Q:\Archive\Qudev86 - QComp PycQED data from BF1\pydata'
+        ('20241103_144429', {}),  # 2D
+        ('20241115_074719', {}),  # 1D
     ]:
         add_default_kw(kw)
         tda.T1FrequencySweepAnalysis(
@@ -232,25 +234,8 @@ def test_T1FrequencySweepAnalysis():
         )
 
 def test_MixerCarrierAnalysis():
-    for t_start, kw in [  # TODO
-        # (
-        #     '20211116_113037',
-        #     {
-        #         'options_dict': {
-        #             'qb_names': ['qb4'],
-        #             'rotate': False,
-        #         },
-        #     }
-        # ),  # LO with random grid
-        # (
-        #     '20211127_152630',
-        #     {
-        #         'options_dict': {
-        #             'qb_names': ['qb4'],
-        #             'rotate': False,
-        #         },
-        #     }
-        # ),  # LO with rectangular grid
+    for t_start, kw in [
+        ('20241115_000737', {}),
     ]:
         add_default_kw(kw)
         tda.MixerCarrierAnalysis(
@@ -294,7 +279,6 @@ def test_FluxPulseTimingBetweenQubitsAnalysis():
                 },
             }
         ),
-        # ('', {}),
     ]:
         add_default_kw(kw)
         tda.FluxPulseTimingBetweenQubitsAnalysis(
