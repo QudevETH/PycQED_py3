@@ -4323,8 +4323,12 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
         pdd = self.proc_data_dict
 
         try: # Extract data
+            amp_keys = {
+                qbn: [k for k in self.mospm[qbn] if 'amp' in k][0]
+                for qbn in self.qb_names
+            }
             pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
-                'amplitude'] for qbn in self.qb_names}
+                amp_keys[qbn]] for qbn in self.qb_names}
             pdd['phases_reshaped'] = [pdd['sweep_points_dict'][
                 self.qb_names[0]]['msmt_sweep_points']] * len(pdd[
                     'amps_reshaped'][self.qb_names[0]])
