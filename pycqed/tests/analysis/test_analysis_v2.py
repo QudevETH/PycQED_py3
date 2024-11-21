@@ -99,3 +99,14 @@ def test_CPhase():
             t_start=t_start,
             **kw,
         )
+
+def test_QScale():
+    for t_start, kw in [
+        ('20241115_002806', {}),
+    ]:
+        add_default_kw(kw)
+        tda.QScaleAnalysis(
+            qb_names=['qb5', 'qb10'],
+            t_start=t_start,
+            **kw,
+        )
