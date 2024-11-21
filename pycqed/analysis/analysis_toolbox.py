@@ -509,7 +509,7 @@ def _compare_instrument_settings_groups(sets_a, sets_b, name_a, name_b,
     return '\n'.join(all_msg), all_diff
 
 
-def compare_instrument_settings(a, b, folder=None, instruments='all',
+def compare_instrument_settings(a, b, *c, folder=None, instruments='all',
                                 output='print'):
     """Compare instrument settings from two hdf files.
 
@@ -518,6 +518,7 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
             analysis object containing an open hdf file as property data_file
         b (str, obj): second hdf file identified by a timestamp or by giving an
             analysis object containing an open hdf file as property data_file
+        c (str): one or multiple timestamps. Only considered when output='gui'.
         folder (str): data directory, only used if a or b is a timestamp
             (default: the stored datadir)
         instruments (str, list of str): either 'all' (default) or a list of
@@ -527,17 +528,36 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
             'str': return comparison report as str
             'dict': return comparison results as a dict
             'html': return results as a table in an IPython HTML object
+            'gui': spawns the comparison gui from the settings manager
+                framework and returns the settings manager object.
 
     Returns:
         None or the results as str or dict, see parameter of arg output
     """
-    log.warning('This function is no longer maintained and works only for hdf'
-                'files. '
-                'Please instantiate a settings manager object '
-                '(pycqed.utilitities.settings_manager.SettingsManager) and '
-                'use the function '
-                'SettingsManager.compare_stations([%ts1%, %ts2%, %ts3%, ...]) '
+    if output == 'gui':
+        from pycqed.utilities.settings_manager import SettingsManager
+        sm = SettingsManager()
+        for string in [a, b, *c]:
+            if not isinstance(string, str):
+                raise TypeError(f'Comparison with output format gui is only '
+                                f'compatible with timestamp strings as input. '
+                                f'({string} is not a timestamp string.')
+            sm.load_from_file(string, folder=folder)
+        sm.compare_stations([a, b, *c], reduced_compare=True)
+        return sm
+    log.warning('This output format is no longer maintained and works only '
+                'for hdf files. '
+                'Please use output="gui" or instantiate a settings '
+                'manager object '
+                'sm = pycqed.utilitities.settings_manager.SettingsManager() '
+                'and use the method '
+                'sm.compare_stations([%ts1%, %ts2%, %ts3%, ...]) '
                 'instead.')
+    if c:
+        log.warning(f'Comparison with output format {output} only supports '
+                    f'two different files/timestamps. Please use '
+                    f'output="gui" for the comparison of more than two '
+                    f'timestamps.')
     h5mode = 'r'
     files_to_close = []
     try:
