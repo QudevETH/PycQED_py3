@@ -214,14 +214,11 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
     assert return_timestamp or return_path, \
         'No return value chosen (return_timestamp=return_path=False).'
 
-    if folder is None:
-        if datadir is None:
-            log.error('datadir is not set. Please set it.')
-            return None
-        else:
-            search_dir = datadir
-    else:
-        search_dir = folder
+    search_dir = folder or datadir
+
+    if search_dir is None:
+        log.error('Both folder and datadir are not set. Please set at least one.')
+        return None
 
     daydirs = os.listdir(search_dir)
     if len(daydirs) == 0:
