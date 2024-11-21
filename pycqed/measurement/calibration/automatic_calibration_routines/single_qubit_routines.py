@@ -644,11 +644,7 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
         """Creates routine template.
         """
         super().create_routine_template()
-        # Loop in reverse order so that the correspondence between the index
-        # of the loop and the index of the routine_template steps is preserved
-        # when new steps are added
-        for i, step in reversed(list(enumerate(self.routine_template))):
-            self.split_step_for_parallel_groups(index=i)
+        self.split_routine_template_for_parallel_groups()
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [RabiStep, 'rabi', {}],
@@ -1126,12 +1122,8 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                                                    step_tmp_settings)
 
         self.routine_template = detailed_routine_template
+        self.split_routine_template_for_parallel_groups()
 
-        # Loop in reverse order so that the correspondence between the index
-        # of the loop and the index of the routine_template steps is preserved
-        # when new steps are added
-        for i, step in reversed(list(enumerate(self.routine_template))):
-            self.split_step_for_parallel_groups(index=i)
 
     class SQCPreparation(IntermediateStep):
         """

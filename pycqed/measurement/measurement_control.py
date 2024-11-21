@@ -323,7 +323,7 @@ class MeasurementControl(Instrument):
                     the calling function, but only used by run() when it
                     calls itself recursively.
             store_sweep_indices (bool): If True, when storing the data the
-                iteration indices are prepended instead of the sweep points.
+                sweep indices are prepended instead of the sweep points.
         '''
 
         def try_finish():
@@ -871,7 +871,11 @@ class MeasurementControl(Instrument):
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
         if self.store_sweep_indices:
-            x = self.iteration
+            # First colum: hard indices = range(len(x)), second: self.iteration
+            x = np.concatenate((
+                np.array(range(len(x))).reshape(-1,1),
+                np.ones((len(x), 1)) * self.iteration,
+            ), axis=1)
         # Because x is allowed to be a list of tuples (batch sampling),
         # and the detector function may return 1D values, we unify their
         # format before we can save them to the dset.
@@ -1936,7 +1940,7 @@ class MeasurementControl(Instrument):
 
     def _get_nr_sweep_point_columns(self):
         if self.store_sweep_indices:
-            return 1
+            return 2
         else:
             return np.sum([sweep_function.get_nr_parameters() \
                 for sweep_function in self.sweep_functions])
@@ -2113,6 +2117,7 @@ class MeasurementControl(Instrument):
                 'sweep_points': result['sweep_points']})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
+    @Timer()
     def save_instrument_settings(self, data_object=None, mode='xb', *args):
         '''
         uses QCodes station snapshot to save the last known value of any
@@ -2135,9 +2140,9 @@ class MeasurementControl(Instrument):
             # a context manager, such that it is closed after save method.
             if not data_object.__bool__():
                 with h5d.Data(name=self.get_measurement_name(),
-                  datadir=self.datadir(),
-                  timestamp=self.last_timestamp(),
-                                       auto_increase=False) as data_object:
+                              datadir=self.datadir(),
+                              timestamp=self.last_timestamp(),
+                              auto_increase=False) as data_object:
                     MeasurementControl.save_station_in_hdf(data_object,
                                                             self.station)
             else:

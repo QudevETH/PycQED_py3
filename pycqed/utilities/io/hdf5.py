@@ -15,6 +15,7 @@ import time
 import h5py
 import numpy as np
 import logging
+from typing import IO, Optional
 
 # Do not remove, used inside eval()
 from numpy import array
@@ -415,7 +416,7 @@ class HDF5Loader(Loader):
             Parameters must be of the form %inst_name%.%param_name%.
 
         """
-        with h5py.File(self.filepath, 'r') as file:
+        with safe_file_open(self.filepath, mode='r') as file:
             config_file = file['Instrument settings']
             station = Station(timestamp=self.timestamp)
             if param_path is None:
@@ -507,3 +508,62 @@ def get_hdf_group_by_name(parent_group: h5py.Group, group_name: str) -> \
         # If the group already exists.
         group = parent_group[group_name]
     return group
+
+
+def safe_file_open(
+        file_path: str,
+        mode: str = 'a',
+        max_open_attempts: int = 12,
+        sleep_duration: int = 10,
+) -> Optional[IO]:
+    # FIXME replace Optional[IO] with IO | None once we use python > 3.10
+    """Open an HDF5 file safely.
+
+    Opens the file while catching instances where the file has been
+    temporarily locked due to being opened by another program (*e.g.*
+    in an HDF viewer or by a file backup utility).
+
+    Arguments:
+        file_path (str): The path to the file to open.
+        mode (str): The mode to open the file in. See the options for
+            ``h5py.File()``. Optional, defaults to ``'a'``.
+        max_open_attempts (int): The maximum number of times to try
+            opening the file. Optional, defaults to 12.
+        sleep_duration (int): The duration (in seconds) to wait in
+            between each attempt at opening the file. Optional, defaults
+            to 10 seconds.
+
+    Returns:
+        (IO|None): The opened HDF5 file (if opening succeeds) or
+            ``None`` (if it fails). Use like normal in context managers.
+    """
+    cur_open_attempt = 0
+    file_opened = False
+    while not file_opened and cur_open_attempt <= max_open_attempts:
+        try:
+            cur_open_attempt += 1
+            file_object = h5py.File(file_path, mode=mode)
+        except (BlockingIOError, OSError) as e:
+            log.warning(
+                f"Unable to open the file {file_path} due to an I/O error {e}."
+            )
+        else:
+            file_opened = True
+            log.info(f"File {file_path} opened successfully.")
+            return file_object
+        finally:
+            if not file_opened:
+                log.warning(
+                    f"Unable to open the HDF5 file {file_path}.\n"
+                    "Make sure to close the HDF Viewer if it is open.\n"
+                    f"Trying again in {sleep_duration} seconds. \n"
+                    f"Attempt: {cur_open_attempt} / {max_open_attempts}"
+                )
+                # Break sleep into smaller chunks to better respond
+                # to user keyboard interrupts
+                for _ in range(10 * sleep_duration):
+                    time.sleep(0.1)
+                if cur_open_attempt == max_open_attempts:
+                    log.warning(
+                        "Reached the maximum number of opening attempts."
+                    )

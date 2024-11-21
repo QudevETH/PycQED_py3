@@ -9,6 +9,7 @@ from pycqed.utilities.reload_settings import reload_settings
 
 import pycqed.analysis.analysis_toolbox as a_tools
 from typing import List, Any, Tuple, Dict, Type, Optional
+from collections.abc import Iterable
 from warnings import warn
 import numpy as np
 import copy
@@ -555,7 +556,7 @@ class AutomaticCalibrationRoutine(Step):
             self.kw.get("global_settings", {}),
         )
 
-    def split_step_for_parallel_groups(self, index):
+    def _split_step_for_parallel_groups(self, index):
         """Replace the step at the given index with multiple steps according
         to the parallel groups defined in the configuration parameter
         dictionary.
@@ -597,8 +598,8 @@ class AutomaticCalibrationRoutine(Step):
                     (qb.name == parallel_group or
                      parallel_group in self.get_qubit_groups(qb.name))
                 ]
-                # Create a new step for qubits_filtered only and add it to the
-                # routine template
+                # Create a new step for qubits_filtered only and add it
+                # to the routine template
                 if len(qubits_filtered) != 0:
                     new_settings = copy.deepcopy(step_settings)
                     new_settings['qubits'] = qubits_filtered
@@ -608,6 +609,70 @@ class AutomaticCalibrationRoutine(Step):
                                   step_tmp_settings,
                                   index=new_step_index)
                     new_step_index += 1
+
+    def _check_for_dropped_qubits(
+            self,
+            step_labels: Iterable[str]
+    ) -> None:
+        """Check for missing qubits in the routine steps.
+
+        Iterates over each routine (which may be split into many steps
+        over different parallel groups of qubits) collecting all
+        qubits to which those routines are applied. If any qubits are
+        missing from some of the routine steps, this emits a warning
+        to the user.
+
+        Args:
+            step_labels (Iterable(str)): An iterable collection of step
+            names from prior to calling
+            ``_split_step_for_parallel_groups()``
+        """
+        # Start by assuming all qubits present in all steps
+        qubits_per_step = {
+            step_label: {qb.name for qb in self.qubits}
+            for step_label in step_labels
+        }
+        # Subtract the qubits actually involved in each step
+        for step in self.routine_template:
+            qubits_per_step[step[1]] -= {qb.name for qb in step[2]['qubits']}
+        # Each step in qubits_per_step should now be an empty set
+        error_states = ()
+        for step_label in step_labels:
+            qb_set = qubits_per_step[step_label]
+            if len(qb_set) > 0:
+                error_states += (f"in {step_label}, {qb_set}",)
+        if len(error_states) > 0:
+            log.warning(
+                f"Qubits have been dropped from some routine steps: "
+                f"{'; '.join(error_states)}. "
+                "Please check that the qubits are present in the relevant "
+                "parallel groups (e.g. in Groups.json)."
+            )
+
+    def split_routine_template_for_parallel_groups(self):
+        """Split the routine template into separate steps if necessary.
+
+        Not all measurements can be performed on all the provided
+        qubits simultaneously due to various constraints.
+        We handle said constraints by defining different groups of
+        qubits which can be measured simultaneously, the so called
+        ``parallel_groups``.
+
+        This function iterates through the steps of the routine template
+        and breaks them out into multiple based on the qubit parallel
+        groups defined in the configuration parameter dictionary.
+        """
+        # Store the step names prior to splitting for later verification
+        step_labels = [step[1] for step in self.routine_template]
+        # Loop in reverse order so that the correspondence between the
+        # index of the loop and the index of the routine_template steps
+        # is preserved when new steps are added
+        for idx in reversed(range(len(self.routine_template))):
+            self._split_step_for_parallel_groups(index=idx)
+        # Check if any of the qubits initially present in the routine
+        # template were dropped by splitting out over parallel groups
+        # (e.g. when they are not present in a parallel_group)
+        self._check_for_dropped_qubits(step_labels)
 
     def prepare_step(self, i=None):
         """Prepares the next step in the routine. That is, it initializes the

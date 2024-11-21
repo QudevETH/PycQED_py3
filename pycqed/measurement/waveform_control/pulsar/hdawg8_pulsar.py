@@ -46,8 +46,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
         "\n"
-        "{codeword_table_defs}\n"
-        "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
         "}}\n"
@@ -684,6 +682,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     https://docs.zhinst.com/hdawg_user_manual/overview.html
     for more details."""
 
+    COMMAND_TABLE_MAX_SIZE = 1024
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -735,7 +735,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     ):
         awg_nr = self._awg_nr
 
-        if not mod_config:
+        if not mod_config or not mod_config.get('internal_mod', True):
             # Modulation configuration is empty
             self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 0)
             self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 0)
@@ -925,8 +925,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
     def _configure_awg_str(
             self,
-            awg_str
+            awg_str,
+            **kw,
     ):
+        # Ignore kws because they are not needed for legacy compiler
         self._awg.configure_awg_from_string(
             self._awg_nr,
             program_string=awg_str,
