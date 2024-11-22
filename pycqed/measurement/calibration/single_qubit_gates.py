@@ -4222,7 +4222,7 @@ class f0g1AcStark(SingleQubitGateCalibExperiment):
 
     This calibration is based on and explained in the section 5.3
     of Dr. Philipp Kurpiers PhD Thesis, 2019
-    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+    (see Q:\\PaperArchive\\_Theses and Papers\\QuDev\\PhD\2019)
 
     Args:
         qubits (list): array of qubits for which the calibration is done
@@ -4460,7 +4460,7 @@ class f0g1RabiRate(SingleQubitGateCalibExperiment):
 
     This calibration is based on and explained in the section 5.3
     of Dr. Philipp Kurpiers PhD Thesis, 2019
-    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+    (see Q:\\PaperArchive\\_Theses and Papers\\QuDev\\PhD\2019)
 
     args:
         qubits (list): array of qubits for which the calibration is done
@@ -4666,7 +4666,7 @@ class efWithf0g1AcStark(SingleQubitGateCalibExperiment):
 
     This calibration is based on and explained in the section 5.3
     of Dr. Philipp Kurpiers PhD Thesis, 2019
-    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+    (see Q:\\PaperArchive\\_Theses and Papers\\QuDev\\PhD\2019)
 
     Args:
         :param qubits: (list) array of qubits for which the calibration is done

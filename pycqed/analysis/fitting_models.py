@@ -1745,7 +1745,7 @@ def TwoErrorFunc_guess(model, delays, data):
 
 
 def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
-    """Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
+    r"""Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
 
     Args:
         alpha (float): Correction factor that is applied to the amplitude of 
@@ -1802,7 +1802,7 @@ def mixer_imbalance_sideband_guess(model, **kwargs):
 
 
 def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
-    """Analytical model for maximum amplitude of LO leakage of an IQ mixer.
+    r"""Analytical model for maximum amplitude of LO leakage of an IQ mixer.
 
     Args:
         vi (:obj:'float'): DC bias voltage applied on the I input of the mixer.
