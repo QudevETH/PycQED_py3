@@ -85,7 +85,7 @@ integration_tests:
     - which python
     - python --version
     - pip list
-    - python tests/integration/run_notebooks.py
+    - python pycqed/tests/integration/run_notebooks.py
   artifacts:
     paths:
       - tests/integration/notebooks/*.ipynb
