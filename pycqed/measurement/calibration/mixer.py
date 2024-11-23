@@ -8,14 +8,12 @@ import pycqed.analysis_v2.timedomain_analysis as tda
 from pycqed.utilities.general import temporary_value
 from pycqed.measurement.sweep_points import SweepPoints
 
-from pycqed.instrument_drivers.acquisition_devices.shf import SHFQA\
-    as shfqa_class
-
 import logging
 log = logging.getLogger(__name__)
 
 default_trigger_sep = 5e-6
 default_acq_length = 1e-6
+# FIXME: may need to be increased due to SHF center frequency granularity
 default_ro_mod_freq = 50e6
 
 
@@ -64,8 +62,7 @@ class MixerSkewness(twoqbcal.CalibBuilder):
         - TriggerDevice.prepend_zeros: set to 0 because no AWGs are
             programmed and therefore no zeros need to be prepended.
         - qb.ro_fixed_lo_freq: Set to an instrument dependent default,
-            `None` for UHF, or `{'step': 200e6, 'min': 1e9, 'max': 8e9}`
-            for an SHF.
+            see acq_fixed_lo_freq for each acquisition device.
         - qb.acq_length: set to default_acq_length
         - further parameters defined in qb.drive_mixer_calib_settings. These
             settings overwrite the previously mentioned parameters.
@@ -112,18 +109,11 @@ class MixerSkewness(twoqbcal.CalibBuilder):
             tmp_vals = []
             try:
                 for qb_obj in self.get_qubits()[0]:
-                    if isinstance(qb_obj.instr_acq.get_instr(), shfqa_class):
-                        # Needed for the SHF since it cannot set its
-                        # center frequency to arbitrary frequencies
-                        ro_fixed_lo_freq = {"step": 200e6, "min": 1e9, "max": 8e9}
-                    else:
-                        # UHF + UC board + LO can set the LO to
-                        # arbitrary frequencies
-                        ro_fixed_lo_freq = None
                     tmp_vals += [
                         # Change ro_fixed_lo_freq prior to other readout
                         # frequencies so that it is correctly applied
-                        (qb_obj.ro_fixed_lo_freq, ro_fixed_lo_freq),
+                        (qb_obj.ro_fixed_lo_freq,
+                         qb_obj.instr_acq.get_instr().acq_fixed_lo_freq),
                         # read out at the drive sideband frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() - 2 *
                          qb_obj.ge_mod_freq()),
@@ -348,8 +338,7 @@ class MixerCarrier(twoqbcal.CalibBuilder):
         - TriggerDevice.prepend_zeros: set to 0 because no AWGs are
             programmed and therefore no zeros need to be prepended.
         - qb.ro_fixed_lo_freq: Set to an instrument dependent default,
-            `None` for UHF, or `{'step': 200e6, 'min': 1e9, 'max': 8e9}`
-            for an SHF.
+            see acq_fixed_lo_freq for each acquisition device.
         - qb.acq_length: set to default_acq_length.
         - further parameters defined in qb.drive_mixer_calib_settings. These
             settings overwrite the previously mentioned parameters.
@@ -408,18 +397,11 @@ class MixerCarrier(twoqbcal.CalibBuilder):
             tmp_vals = []
             try:
                 for qb_obj in self.get_qubits()[0]:
-                    if isinstance(qb_obj.instr_acq.get_instr(), shfqa_class):
-                        # Needed for the SHF since it cannot set its
-                        # center frequency to arbitrary frequencies
-                        ro_fixed_lo_freq = {"step": 200e6, "min": 1e9, "max": 8e9}
-                    else:
-                        # UHF + UC board + LO can set the LO to
-                        # arbitrary frequencies
-                        ro_fixed_lo_freq = None
                     tmp_vals += [
                         # Change ro_fixed_lo_freq prior to other readout
                         # frequencies so that it is correctly applied
-                        (qb_obj.ro_fixed_lo_freq, ro_fixed_lo_freq),
+                        (qb_obj.ro_fixed_lo_freq,
+                         qb_obj.instr_acq.get_instr().acq_fixed_lo_freq),
                         (qb_obj.ro_mod_freq, default_ro_mod_freq),
                         # read out at the drive leakage frequency
                         (qb_obj.ro_freq, qb_obj.ge_freq() -
