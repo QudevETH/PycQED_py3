@@ -1116,7 +1116,7 @@ class Device(Instrument):
         ax.set_ylabel('Coupled qubit')
         ax.tick_params(direction='out')
         cbar.set_label(
-            f'Flux coupling, $\\mathrm{{d}}\Phi/\\mathrm{{d}}V$ '
+            f'Flux coupling, $\\mathrm{{d}}\\Phi/\\mathrm{{d}}V$ '
             f'($\\mathrm{{{phi_unit}}}$/V)')
 
         for i in range(len(qubits)):

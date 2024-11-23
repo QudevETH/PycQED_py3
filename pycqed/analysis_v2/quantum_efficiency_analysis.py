@@ -481,7 +481,7 @@ class RamseyAnalysis(ba.BaseDataAnalysis):
 
     def prepare_plots(self):
         name = ''
-        fit_text = "$\sigma = %.3f \pm %.3f$"%(self.fit_dicts['coherence_fit']['sigma'],
+        fit_text = r"$\sigma = %.3f \pm %.3f$"%(self.fit_dicts['coherence_fit']['sigma'],
                                     self.fit_dicts['coherence_fit']['sigma_std'])
         self.plot_dicts['text_msg_' + name + 'amp_vs_Ramsey'] = {
                     'ax_id':name + 'amp_vs_Ramsey',

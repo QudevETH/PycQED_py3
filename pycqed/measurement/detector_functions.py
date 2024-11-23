@@ -1891,7 +1891,7 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
         return [[data['data'][b] for data in data_raw[0]] for b in self.bins]
 
 class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
-    """
+    r"""
     Hybrid detector function:
      - the acq_dev is configured to return single shots, but this function can
      then return either single shots, or averaged sweep points (can average

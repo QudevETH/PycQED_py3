@@ -809,7 +809,7 @@ class HamiltonianFittingAnalysis:
                 ax1.callbacks.connect("xlim_changed", V_to_Phi2)
 
                 ax1.set_xlabel(r"DC bias voltage $U$ (V)")
-                ax_twin.set_xlabel("Flux $\Phi$ ($\Phi_0$)")
+                ax_twin.set_xlabel(r"Flux $\Phi$ ($\Phi_0$)")
 
                 plt.axhline(y=0, color="grey", linestyle="dotted", linewidth=1)
                 ax1.plot(
