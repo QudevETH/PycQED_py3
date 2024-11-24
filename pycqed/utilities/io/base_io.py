@@ -181,7 +181,7 @@ class Loader:
             # https://stackoverflow.com/questions/2595119/glob-and-bracket-characters
 
             # Substitution [ -> [[] and ] -> []] done via regular expression:
-            dirname = re.sub('([\[\]])', '[\\1]', dirname)
+            dirname = re.sub(r'([\[\]])', '[\\1]', dirname)
 
             filepath = sorted(path.glob(dirname + ".*"))
 

@@ -20,7 +20,6 @@ classifiers = [
 
 # FIXME: Pin versions
 dependencies = [
-    "func-timeout",
     "h5py",
     "lmfit",
     "matplotlib",
@@ -76,8 +75,6 @@ user = [
     "jupyter",
     "jupyter-contrib-nbextensions",
     "notebook < 7.0.0",
-    "psutil",
-    "plotly",
     "pyyaml",
 ]
 compression = [

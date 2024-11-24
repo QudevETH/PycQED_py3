@@ -1114,7 +1114,7 @@ def get_rb_leakage_ibm_textstr(data_dict, fit_res=None, **params):
         f'{keys_out_container}.depolarization parameter stderr', data_dict)
     textstr += f'\np = {100*p_value:.4f}%'
     if p_stderr is not None:
-        textstr += f'$\pm$ {100*p_stderr:.3f}%'
+        textstr += rf'$\pm$ {100*p_stderr:.3f}%'
 
     L_value = hlp_mod.get_param(
         f'{keys_out_container}.IBM-style leakage value', data_dict,
@@ -1123,7 +1123,7 @@ def get_rb_leakage_ibm_textstr(data_dict, fit_res=None, **params):
     L_stderr = hlp_mod.get_param(
         f'{keys_out_container}.IBM-style leakage stderr', data_dict)
     if L_stderr is not None:
-        textstr += f'$\pm$ {100*L_stderr:.3f}%'
+        textstr += rf'$\pm$ {100*L_stderr:.3f}%'
 
     S_value = hlp_mod.get_param(
         f'{keys_out_container}.IBM-style seepage value', data_dict,
@@ -1132,37 +1132,37 @@ def get_rb_leakage_ibm_textstr(data_dict, fit_res=None, **params):
     S_stderr = hlp_mod.get_param(
         f'{keys_out_container}.IBM-style seepage stderr', data_dict)
     if S_stderr is not None:
-        textstr += f'$\pm$ {100*S_stderr:.3f}%'
+        textstr += rf'$\pm$ {100*S_stderr:.3f}%'
     return textstr
 
 
 def get_rb_leakage_google_textstr(fit_res, **params):
     textstr = 'Google style:'
     textstr += ('\n$p_{\\uparrow}$' +
-                ' = {:.4f}% $\pm$ {:.3f}%'.format(
+                r' = {:.4f}% $\pm$ {:.3f}%'.format(
                     fit_res.params['pu'].value*100,
                     fit_res.params['pu'].stderr*100) +
                 '\n$p_{\\downarrow}$' +
-                ' = {:.4f}% $\pm$ {:.3f}%'.format(
+                r' = {:.4f}% $\pm$ {:.3f}%'.format(
                     fit_res.params['pd'].value*100,
                     fit_res.params['pd'].stderr*100) +
-                '\n$p_0$' + ' = {:.2f}% $\pm$ {:.2f}%\n'.format(
+                '\n$p_0$' + ' = {:.2f}% $\\pm$ {:.2f}%\n'.format(
                 fit_res.params['p0'].value,
                 fit_res.params['p0'].stderr))
     return textstr
 
 
 def get_rb_regular_textstr(fit_res, epc_T1=None, **params):
-    textstr = ('$r_{\mathrm{Cl}}$' + ' = {:.4f}% $\pm$ {:.3f}%'.format(
+    textstr = (r'$r_{\mathrm{Cl}}$' + r' = {:.4f}% $\pm$ {:.3f}%'.format(
         (1-fit_res.params['fidelity_per_Clifford'].value)*100,
         fit_res.params['fidelity_per_Clifford'].stderr*100))
     if epc_T1 is not None:
-        textstr += ('\n$r_{\mathrm{coh-lim}}$  = ' +
+        textstr += ('\n$r_{\\mathrm{coh-lim}}$  = ' +
                     '{:.3f}%'.format(epc_T1*100))
-    textstr += ('\n' + 'p = {:.4f}% $\pm$ {:.3f}%'.format(
+    textstr += ('\n' + r'p = {:.4f}% $\pm$ {:.3f}%'.format(
         fit_res.params['p'].value*100, fit_res.params['p'].stderr*100))
     textstr += ('\n' + r'$\langle \sigma_z \rangle _{m=0}$ = ' +
-                '{:.2f} $\pm$ {:.2f}'.format(
+                r'{:.2f} $\pm$ {:.2f}'.format(
                     fit_res.params['Amplitude'].value +
                     fit_res.params['offset'].value,
                     np.sqrt(fit_res.params['offset'].stderr**2 +
@@ -1172,19 +1172,19 @@ def get_rb_regular_textstr(fit_res, epc_T1=None, **params):
 
 def get_cz_irb_textstr(fit_res,  epc_T1=None, **params):
     suffix = params.get('suffix', 'RB')
-    textstr = (f'$r_{{\mathrm{{Cl}}, {{{suffix}}}}}$' +
-               ' = {:.4f}% $\pm$ {:.3f}%'.format(
+    textstr = (rf'$r_{{\mathrm{{Cl}}, {{{suffix}}}}}$' +
+               r' = {:.4f}% $\pm$ {:.3f}%'.format(
         (1-fit_res.params['fidelity_per_Clifford'].value)*100,
         fit_res.params['fidelity_per_Clifford'].stderr*100))
     if epc_T1 is not None:
-        textstr += ('\n$r_{\mathrm{coh-lim}}$  = ' +
+        textstr += ('\n$r_{\\mathrm{coh-lim}}$  = ' +
                     '{:.3f}%'.format(epc_T1*100))
     textstr += (f'\n$p_{{\\uparrow, {suffix}}}$' +
-                ' = {:.4f}% $\pm$ {:.3f}%'.format(
+                r' = {:.4f}% $\pm$ {:.3f}%'.format(
                     fit_res.params['pu'].value*100,
                     fit_res.params['pu'].stderr*100) +
                 f'\n$p_{{\\downarrow, {suffix}}}$' +
-                ' = {:.4f}% $\pm$ {:.3f}%'.format(
+                r' = {:.4f}% $\pm$ {:.3f}%'.format(
                     fit_res.params['pd'].value*100,
                     fit_res.params['pd'].stderr*100))
     return textstr
