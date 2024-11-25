@@ -9,7 +9,7 @@ from pathlib import Path
 import logging
 from collections import OrderedDict
 
-from pycqed.utilities.general import deprecated
+from pycqed.utilities.warnings import deprecated
 
 try:
     import blosc2
