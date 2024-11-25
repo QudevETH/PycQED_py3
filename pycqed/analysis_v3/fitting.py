@@ -87,8 +87,8 @@ def fit_one_dict(fit_dict, **params):
                 model.set_param_hint(gd_key, **val)
             guess_pars = model.make_params()
     try:
-        fit_dict['fit_res'] = model.fit(**fit_xvals, **fit_yvals,
-                                    params=guess_pars, **fit_kwargs)
+        fit_dict['fit_res'] = model.fit(
+            **fit_xvals, **fit_yvals, params=guess_pars, **fit_kwargs)
     except Exception as e:
         log.warning(e)
         pass

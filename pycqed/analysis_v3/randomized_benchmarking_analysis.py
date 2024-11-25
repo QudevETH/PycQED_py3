@@ -783,8 +783,8 @@ def analyze_rb_fit_results(data_dict, keys_in, **params):
             # https://journals.aps.org/prl/pdf/10.1103/PhysRevLett.116.020501
             fit_res = fit_dicts['rbleak_fit' + keyi].get('fit_res')
             if not fit_res:
-                log.warning('rbleak_fit' + keyi + " has not been fitted! "
-                                                  "Skipping storing results.")
+                log.warning(f"RB leakage fitting ({'rbleak_fit' + keyi}) "
+                            f"failed. Skipping storing results.")
                 continue
             hlp_mod.add_param(f'{keys_out_container}.Google-style leakage value',
                               fit_res.best_values['pu'],
@@ -921,8 +921,8 @@ def prepare_rb_plots(data_dict, keys_in, sweep_type, **params):
             textstr = ''
             if 'pf' in keyi:
                 if 'fit_res' not in fit_dicts['rbleak_fit' + keyi]:
-                    log.warning('rbleak_fit' + keyi + " has not been fitted! "
-                                                      "Skipping plotting.")
+                    log.warning(f"RB leakage fitting ({'rbleak_fit' + keyi}) "
+                                f"failed. Skipping plotting.")
                     continue
                 # plot Google-style leakage fit + textbox
                 plot_dicts.update(plot_mod.prepare_fit_plot_dicts(
@@ -952,8 +952,8 @@ def prepare_rb_plots(data_dict, keys_in, sweep_type, **params):
             # plot coherence-limit
             fit_res = fit_dicts['rb_fit' + keyi].get('fit_res')
             if not fit_res:
-                log.warning('rb_fit' + keyi + " has not been fitted! "
-                                              "Skipping plotting.")
+                log.warning(f"RB fitting ({'rbleak_fit' + keyi}) "
+                            f"failed. Skipping plotting.")
                 continue
             if hlp_mod.get_param('plot_T1_lim', data_dict,
                     default_value=False, **params) and 'pf' not in keyi:
