@@ -97,6 +97,7 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
                 self.convert_time_to_n_samples(acquisition_length))
 
         if self._acq_mode_uhf == 'rl':  # integrated
+            self.qas_0_result_mode(0)
             for c in channels:
                 path = self._get_full_path(f'qas/0/result/data/{c[1]}/wave')
                 self._acquisition_nodes.append(path)
@@ -108,6 +109,7 @@ class UHFQA(UHFQA_core, ZI_base_qudev.ZI_base_instrument_qudev,
             self.qas_0_result_averages(averages)
             ro_mode = 0
         else:  # input average = time traces
+            self.qas_0_result_mode(1)
             # Note: UHFQA in iavg mode returns data in Volts as expected for
             # the avg mode
             for c in channels:
