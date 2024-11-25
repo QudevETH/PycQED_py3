@@ -432,13 +432,12 @@ def cvx_mle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                        debug: Optional[bool] = False) -> qtp.Qobj:
     d = Fs[0].shape[0]
     nr_qubits = int(np.log2(d))
-    # print(Omega)
-    # print(Fs)
+
     if Omega is None:
         pauli_exp = meas_to_pauli(nr_qubits, mus)
-        print(pauli_exp)
+
         rho_exp = pauli_to_dm(pauli_exp)
-        print(np.trace(rho_exp))
+
         rho_cvx = fit_rho_cvx(rho_exp = rho_exp,
                               guess = rho_guess.full() if not rho_guess is
                                                               None else True,
