@@ -9,6 +9,8 @@ from pathlib import Path
 import logging
 from collections import OrderedDict
 
+from pycqed.utilities.general import deprecated
+
 try:
     import blosc2
 except ModuleNotFoundError:
@@ -72,7 +74,11 @@ class Dumper:
         if not os.path.isdir(self.folder):
             os.makedirs(self.folder)
 
+
     @staticmethod
+    @deprecated(
+        "Compression of settings files is deprecated since 2024-08-21."
+    )
     def compress_file(file):
         if _blosc2_missing:
             logger.warning(
@@ -259,6 +265,9 @@ class Loader:
         pass
 
     @staticmethod
+    @deprecated(
+        "Compression of settings files is deprecated since 2024-08-21."
+    )
     def decompress_file(file):
         if _blosc2_missing:
             logger.warning(
