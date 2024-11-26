@@ -110,7 +110,7 @@ class T1FrequencySweep(CalibBuilder):
             if kw.get('compression_seg_lim', None) is None:
                 # compress the 2nd sweep dimension completely onto the first
                 kw['compression_seg_lim'] = \
-                    np.product([len(s) for s in self.mc_points]) \
+                    np.prod([len(s) for s in self.mc_points]) \
                     + len(self.cal_points.states)
             self.autorun(**kw)
         except Exception as x:

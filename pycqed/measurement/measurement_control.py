@@ -1545,7 +1545,7 @@ class MeasurementControl(Instrument):
                 self.TwoD_array = np.empty(
                     [len(sv[1]), len(sv[0]),
                      len(self.detector_function.value_names)])
-                self.TwoD_array[:] = np.NAN
+                self.TwoD_array[:] = np.nan
                 self.secondary_QtPlot.clear()
                 for j, vn in enumerate(self.detector_function.value_names):
                     axes_info = self._plotmon_axes_info[vn]

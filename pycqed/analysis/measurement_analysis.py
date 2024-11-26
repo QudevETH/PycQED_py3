@@ -1175,7 +1175,7 @@ class OptimizationAnalysisNN(MeasurementAnalysis):
         self.round = kw.pop('round',1)
         self.estimator_name = kw.pop('estimator','GRNN_neupy')
 
-        self.accuracy= -np.infty
+        self.accuracy = -np.inf
         self.make_fig = kw.pop('make_fig',True)
 
         self.train_NN(**kw)
