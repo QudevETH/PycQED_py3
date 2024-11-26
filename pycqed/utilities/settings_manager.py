@@ -335,7 +335,7 @@ class SettingsManager:
 
     def compare_stations(self, timestamps, instruments='all',
                          reduced_compare=False, output='viewer',
-                         new_process=False):
+                         new_process=False, folder=None):
         """
         Compare instrument settings from n different station in the settings
         manager.
@@ -354,6 +354,8 @@ class SettingsManager:
             new_process (bool): True if new process should be started, which
                 does not block the IPython kernel. False by default because
                 it takes some time to start the new process.
+            folder (str): Optional, folder of the file if distinct from
+                a_tools.datadir
         """
         if timestamps == 'all':
             ts_list = list(self.stations.keys())
@@ -367,7 +369,7 @@ class SettingsManager:
         # settings manager. otherwise, it loads the station into the sm
         for tsp in set(ts_list).difference(self.stations.keys()):
             print(f"timestamp '{tsp}' will be loaded onto the station.")
-            self.load_from_file(tsp)
+            self.load_from_file(tsp, folder=folder)
 
         # for QCode station reduced comparison is not supported
         if reduced_compare:
