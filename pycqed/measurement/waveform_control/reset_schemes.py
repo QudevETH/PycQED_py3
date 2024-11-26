@@ -482,7 +482,7 @@ class FeedbackReset(ResetScheme):
                            get_parser=self._validate_ro_feedback_delay)
         self.add_parameter('log_feedback_acquisitions',
                            docstring='If True, requests that the acquisition '
-                                     'device return the reset data (defaut). '
+                                     'device returns the reset data (default). '
                                      'If False, the reset data will not be '
                                      'logged and returned by the device.',
                            initial_value=True, vals=validators.Bool(),
