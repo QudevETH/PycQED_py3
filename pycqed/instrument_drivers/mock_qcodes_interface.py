@@ -156,7 +156,11 @@ class Instrument(DelegateAttributes):
     """
 
     delegate_attr_dicts = ['parameters', 'submodules']
-    _not_initialized = True  # needed in __getattr__, see comment there
+    # We define station as a class variable to ensure that self.station
+    #  always exists even before running the __init__. This is needed for
+    #  an if statement in the custom __getattr__. Setting self.station in
+    #  an instance then hides this class variable.
+    station = None
 
     def __init__(self, name: str):
         """
@@ -164,7 +168,6 @@ class Instrument(DelegateAttributes):
         Args:
             name (str): name of the respective instrument
         """
-        self.station = None
         self.name = name
         self.parameters = {}
         self.functions = {}
@@ -173,43 +176,24 @@ class Instrument(DelegateAttributes):
         # instrument, e.g. pycqed.instrument_drivers.meta_instrument
         # .qubit_objects.QuDev_transmon.QuDev_transmon
         self.classname: str = None
-        self._not_initialized = False
 
     def __getattr__(self, key: str):
         try:
             return super().__getattr__(key)
         except AttributeError:
-            if self._not_initialized:
-                # if self.__init__() was not executed (e.g. when doing a
-                # deepcopy), self.station is not initialized. This would
-                # lead to an infinite loop of AttributeErrors in the
-                # following if-statement (if (station := self.station),
-                # since DelegateAttributes would look for the attribute
-                # station which would end up calling self.__getattr__() again.
-                # This raise has the implication that loading
-                # missing parameters from the instrument settings on-the-fly
-                # is not available if self._not_initialized is True.
-                raise
-            # Try to load the missing parameter or submodules if a settings
-            # manager is available
-            if (station := self.station) and (ts := station.timestamp) and \
-                    (set_man := station.settings_manager):
+            # If the attribute is not a dunder method (starting with __),
+            # it might be an unloaded parameter or submodule.
+            # If a settings manager is available, we try to load the parameter
+            # or submodule on the fly.
+            if (not key.startswith('__')) and (station := self.station) \
+                    and (ts := station.timestamp) \
+                    and (set_man := station.settings_manager):
                 path_to_param = self.name + '.' + key
+                # trying to load the missing parameter on the fly
                 set_man.get_parameter(path_to_param, ts)
                 return super().__getattr__(key)
             else:
                 raise
-
-    def __deepcopy__(self, memodict={}):
-        # __deepcopy__ must be defined explicitly such that self.__getattr__
-        # finds this attribute and does not interpret it as a missing
-        # parameter, see docstring of __getattr__.
-        cls = self.__class__
-        new_inst = cls.__new__(cls)
-        memodict[id(self)] = new_inst
-        for k, v in self.__dict__.items():
-            setattr(new_inst, k, deepcopy(v, memodict))
-        return new_inst
 
     def snapshot(self, reduced=False) -> dict[any, any]:
         """
