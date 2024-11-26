@@ -385,8 +385,8 @@ class SettingsManager:
         """
         if timestamps == 'all':
             ts_list = list(self.stations.keys())
-        elif isinstance(timestamps, list):
-            ts_list = timestamps
+        elif isinstance(timestamps, (list, tuple)):
+            ts_list = list(timestamps)
         else:
             raise NotImplementedError(f'Timestamp "{timestamps}" is not a '
                                       f'list of timestamps or "all"')
