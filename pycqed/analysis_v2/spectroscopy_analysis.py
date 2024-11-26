@@ -454,16 +454,16 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                     if fitting_model == 'hanger':
                         ax.plot(list(fit_dict['fit_xvals'].values())[0],
                                 fit_results.best_fit, 'r-', linewidth=1.5)
-                        textstr = 'f0 = %.5f $\pm$ %.1g GHz' % (
+                        textstr = r'f0 = %.5f $\pm$ %.1g GHz' % (
                               fit_results.params['f0'].value,
                               fit_results.params['f0'].stderr) + '\n' \
-                                           'Q = %.4g $\pm$ %.0g' % (
+                                           r'Q = %.4g $\pm$ %.0g' % (
                               fit_results.params['Q'].value,
                               fit_results.params['Q'].stderr) + '\n' \
-                                           'Qc = %.4g $\pm$ %.0g' % (
+                                           r'Qc = %.4g $\pm$ %.0g' % (
                               fit_results.params['Qc'].value,
                               fit_results.params['Qc'].stderr) + '\n' \
-                                           'Qi = %.4g $\pm$ %.0g' % (
+                                           r'Qi = %.4g $\pm$ %.0g' % (
                               fit_results.params['Qi'].value,
                               fit_results.params['Qi'].stderr)
                         box_props = dict(boxstyle='Square',

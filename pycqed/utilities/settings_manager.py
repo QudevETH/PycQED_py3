@@ -356,7 +356,7 @@ class SettingsManager:
         return all_diff, all_msg
 
     def compare_stations(self, timestamps, instruments='all',
-                         reduced_compare=False, output='viewer',
+                         reduced_compare=True, output='viewer',
                          new_process=False, folder=None):
         """
         Compare instrument settings from n different station in the settings
