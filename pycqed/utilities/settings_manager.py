@@ -219,12 +219,14 @@ class SettingsManager:
                 dictionaries (e.g. timestamp). Names are used as Timestamps
                  objects for unique keys for the combined dictionaries.
 
-        Returns (dict): combined dictionary of with values which do not coincide
-            between the different dictionaries
+        Returns (dict, list): combined dictionary of with values which do not
+        coincide between the different dictionaries and a list of print
+        statements for the comparison report.
 
         """
         all_keys = set()
         all_diff = {}
+        all_msg = []
         # set of all keys
         for dic in dict_list:
             all_keys.update(set(dic.keys()))
@@ -238,6 +240,8 @@ class SettingsManager:
                     # flags that at least one of the dictionaries does not have
                     # the particular key
                     key_not_in_dicts = True
+                    all_msg.append(f'Parameter "{key}" missing in'
+                                   f' {name_list[i]}.\n')
                 else:
                     dicts_with_key.append(i)
 
@@ -254,22 +258,30 @@ class SettingsManager:
                         np.testing.assert_equal(dict_list[0][key], dic[key])
                     except AssertionError:
                         # items do not coincide
-                        if all(isinstance(dic[key], dict) for dic in dict_list):
-                            diff[key] = self._compare_dict_instances(
+                        if all(isinstance(dic[key], dict) for dic in
+                               dict_list):
+                            diff[key], msg = self._compare_dict_instances(
                                 [dic[key] for dic in dict_list], name_list)
+                            all_msg += msg
                             break
                         else:
                             # this occurs when not all items are dictionaries
                             diff[key] = \
                                 {Timestamp(name_list[i]): dic[key]
                                  for i, dic in enumerate(dict_list)}
+                            msg = f'"{key}" has a different value: '
+                            msg += ', '.join(
+                                [f'{dic[key]} for {name_list[i]}' for i,
+                                dic in enumerate(dict_list)])
+                            msg += '\n'
+                            all_msg.append(msg)
                             break
             all_diff.update(diff)
 
-        return all_diff
+        return all_diff, all_msg
 
     def _compare_station_components(self, timestamps, instruments='all',
-                                    reduced_compare=False):
+                                    reduced_compare=False, verbose=False):
         """
         Helper function to compare multiple stations
         Args:
@@ -279,6 +291,8 @@ class SettingsManager:
                 instrument names to compare only a subset of instruments
             reduced_compare (bool): if True it compares only the reduced
                 snapshot of the stations (i.e. only values and no metadata)
+            verbose (bool): If true, it prints the parameters and values
+                which are different among the stations.
 
         Returns:
             dict and str of the compared dictionary and the messages of the
@@ -295,6 +309,7 @@ class SettingsManager:
 
         # check which components are in all stations
         for component in all_components:
+            msg_component = []
             if instruments != 'all' and component not in instruments:
                 continue
 
@@ -303,9 +318,9 @@ class SettingsManager:
             comp_dict = {}
             for tsp in timestamps:
                 if component not in self.stations[tsp].components.keys():
-                    all_msg.append(
-                        f'\nComponent/Instrument "{component}" missing in dict '
-                        f'{tsp}.\n')
+                    msg_component.append(
+                        f'\nComponent/Instrument "{component}" missing in '
+                        f'station {tsp}.\n')
                     component_not_in_all_stations = True
                 else:
                     comp_dict[Timestamp(tsp)] = 'exists'
@@ -327,9 +342,16 @@ class SettingsManager:
                          for tsp in timestamps]
 
                 # comparison of the snapshots
-                diff = self._compare_dict_instances(component_snaps, timestamps)
-                if diff != {}:
+                diff, msg = self._compare_dict_instances(
+                    component_snaps, timestamps)
+                if diff:
                     all_diff[component] = diff
+                    msg_component.append(
+                        f'Different values for instrument {component}.\n')
+                    msg_component += msg
+            all_msg += msg_component
+            if verbose and msg_component:
+                print(''.join(msg_component))
 
         return all_diff, all_msg
 
@@ -348,14 +370,18 @@ class SettingsManager:
             reduced_compare (bool): if True it compares only the reduced
                 snapshot of the stations (i.e. only values and no metadata)
             output (str): One of the following output formats:
-                'str': return comparison report as str
-                'dict': return comparison results as a dict
                 'viewer' (default): opens a gui with the compared dictionary
+                'print': print comparison report and returns None
+                'str': returns comparison report as a list of strings
+                'dict': return comparison results as a dict
             new_process (bool): True if new process should be started, which
                 does not block the IPython kernel. False by default because
                 it takes some time to start the new process.
             folder (str): Optional, folder of the file if distinct from
                 a_tools.datadir
+        Returns:
+            None, diff-dictionary or comparison report, see parameter of
+             arg 'output'
         """
         if timestamps == 'all':
             ts_list = list(self.stations.keys())
@@ -381,10 +407,13 @@ class SettingsManager:
                     reduced_compare = False
 
         diff, msg = self._compare_station_components(
-            ts_list, instruments=instruments, reduced_compare=reduced_compare)
+            ts_list, instruments=instruments, reduced_compare=reduced_compare,
+            verbose=(output == 'print'))
 
         if output == 'str':
             return msg
+        if output == 'print':
+            return
         elif output == 'dict':
             return diff
         elif output == 'viewer':
@@ -392,6 +421,9 @@ class SettingsManager:
                 snapshot=diff,
                 timestamp=ts_list)
             snapshot_viewer.spawn_viewer(new_process=new_process)
+        else:
+            raise NotImplementedError(
+                f'Output format "{output}" is not implemented.')
 
 
 class Timestamp(str):
