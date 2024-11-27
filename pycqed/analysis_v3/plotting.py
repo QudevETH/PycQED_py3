@@ -164,10 +164,13 @@ def get_axes_geometry_from_figure(fig):
         tuple: A tuple of (rows, columns) representing the subplot grid geometry.
             Returns (1,1) if the figure has no axes.
     """
-    if len(fig.axes) > 0:
-        return fig.axes[0].get_subplotspec().get_topmost_subplotspec().\
-            get_gridspec().get_geometry()
-    return (1,1)
+    if len(fig.axes) != 0:
+        outer_gs = fig.axes[0].get_subplotspec().get_gridspec()
+        geometry = outer_gs.get_topmost_subplotspec().get_geometry()
+        return geometry
+    else:
+        log.warning(f"Figure {fig} has no axes.")
+        return None
 
 def default_figure_title(data_dict, meas_obj_name, **params):
     timestamps = hlp_mod.get_param('timestamps', data_dict, raise_error=True,
@@ -995,6 +998,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
     """
     Fits based on the information in proc_dat_dict[pipe_name]['fit_dicts']
     for each pipe_name, if 'fit_dicts' exists.
+
     Goes over the plots defined in the plot_dicts in
     proc_dat_dict[pipe_name]['fit_dicts'] for each pipe_name,
     if 'fit_dicts' exists, and creates the desired figures.
@@ -1002,89 +1006,94 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
     axs = OrderedDict()
     figs = OrderedDict()
     plot_dicts = data_dict['plot_dicts']
+    plot_dicts_keys=keys_in # keeping the interface stable
     no_label = params.get('no_label', False)
     if axs_dict is not None:
         for key, val in list(axs_dict.items()):
             axs[key] = val
-    if keys_in == 'all':
-        keys_in = plot_dicts.keys()
-    if type(keys_in) is str:
-        keys_in = [keys_in]
+    if plot_dicts_keys == 'all':
+        plot_dicts_keys = plot_dicts.keys()
+    if type(plot_dicts_keys) is str:
+        plot_dicts_keys = [plot_dicts_keys]
 
-    for key in keys_in:
+    for key in plot_dicts_keys:
         # go over all the plot_dicts
-        pdict = plot_dicts[key]
-        pdict['no_label'] = no_label
+        axes_pdict = plot_dicts[key]
+        axes_pdict['no_label'] = no_label
+
         # Use the key of the plot_dict if no ax_id is specified
-        pdict['fig_id'] = pdict.get('fig_id', key)
-        pdict['ax_id'] = pdict.get('ax_id', None)
+        axes_pdict['fig_id'] = axes_pdict.get('fig_id', key)
+        axes_pdict['ax_id'] = axes_pdict.get('ax_id', None)
 
-        if isinstance(pdict['ax_id'], str):
-            pdict['fig_id'] = pdict['ax_id']
-            pdict['ax_id'] = None
+        # FIXME: fig_id and ax_ id are mixed here
+        if isinstance(axes_pdict['ax_id'], str):
+            axes_pdict['fig_id'] = axes_pdict['ax_id']
+            axes_pdict['ax_id'] = None
 
-        if pdict['fig_id'] not in axs:
+        if axes_pdict['fig_id'] not in axs:
             # This fig variable should perhaps be a different
             # variable for each plot!!
             # This might fix a bug.
-            figs[pdict['fig_id']], axs[pdict['fig_id']] = \
-                plt.subplots(pdict.get('numplotsy', 1),
-                             pdict.get('numplotsx', 1),
-                             sharex=pdict.get('sharex', False),
-                             sharey=pdict.get('sharey', False),
-                             figsize=pdict.get('plotsize', None))
-            if pdict.get('3d', False):
-                axs[pdict['fig_id']].remove()
-                axs[pdict['fig_id']] = Axes3D(
-                    figs[pdict['fig_id']],
-                    azim=pdict.get('3d_azim', -35),
-                    elev=pdict.get('3d_elev', 35))
-                axs[pdict['fig_id']].patch.set_alpha(0)
+            figs[axes_pdict['fig_id']], axs[axes_pdict['fig_id']] = \
+                plt.subplots(axes_pdict.get('numplotsy', 1),
+                             axes_pdict.get('numplotsx', 1),
+                             sharex=axes_pdict.get('sharex', False),
+                             sharey=axes_pdict.get('sharey', False),
+                             figsize=axes_pdict.get('plotsize', None))
+
+            if axes_pdict.get('3d', False):
+                axs[axes_pdict['fig_id']].remove()
+                ax = plt.axes(projection='3d')
+                ax.view_init(azim=axes_pdict.get('3d_azim', -35), elev=axes_pdict.get('3d_elev', 35))
+                axs[axes_pdict['fig_id']] = ax
 
             # transparent background around axes for presenting data
-            figs[pdict['fig_id']].patch.set_alpha(0)
+            # TODO: !692 will solve this with a flag, remove before un-drafting this MR
+            #figs[axes_pdict['fig_id']].patch.set_alpha(0)
 
     for fig_name in figs:
         figs[fig_name].tight_layout()
 
-    for key in keys_in:
-        pdict = plot_dicts[key]
-        plot_touching = pdict.get('touching', False)
+    for key in plot_dicts_keys:
+        axes_pdict = plot_dicts[key]
+        plot_touching = axes_pdict.get('touching', False)
 
-        if type(pdict['plotfn']) is str:
-            plotfn = getattr(this_module, pdict['plotfn'])
+        if type(axes_pdict['plotfn']) is str:
+            plotfn = getattr(this_module, axes_pdict['plotfn'])
         else:
-            plotfn = pdict['plotfn']
+            plotfn = axes_pdict['plotfn']
 
         # used to ensure axes are touching
         if plot_touching:
-            axs[pdict['fig_id']].figure.subplots_adjust(
+            axs[axes_pdict['fig_id']].figure.subplots_adjust(
                 wspace=0, hspace=0)
 
         try:
-            # FIXME: This can result in a None in case the figure sucks
-            #        because garbage in -> ~~garbage out~~None out
-            pdict['ax_geom'] = get_axes_geometry_from_figure(
-                figs[pdict['fig_id']])
+            axes_pdict['ax_geom'] = get_axes_geometry_from_figure(
+                figs[axes_pdict['fig_id']])
         except AttributeError:
             pass
 
         # Check if pdict is one of the accepted arguments,
         # these are the plotting functions in this module.
+        # 
+        # This thing makes sure that the plotfn is called with
+        # the correct arguments and pdict
+        # This is a hack but works for matplotlib < 3.7.2
         if 'pdict' in signature(plotfn).parameters:
-            if pdict['ax_id'] is None:
-                plotfn(pdict=pdict, axs=axs[pdict['fig_id']])
+            if axes_pdict['ax_id'] is None:
+                plotfn(pdict=axes_pdict, axs=axs[axes_pdict['fig_id']])
             else:
-                plotfn(pdict=pdict,
-                       axs=axs[pdict['fig_id']].flatten()[
-                           pdict['ax_id']])
+                plotfn(pdict=axes_pdict,
+                       axs=axs[axes_pdict['fig_id']].flatten()[
+                           axes_pdict['ax_id']])
                 # FIXME forcing subplots_adjust after the plotting in
                 #  plotfn (which possibly calls tight_layout()) is bad
                 #  design, but many analyses currently rely on this (e.g.
                 #  raw data plots) and should be cleaned if removing it
-                if pdict.get('force_subplots_adjust', True):
-                    axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
+                if axes_pdict.get('force_subplots_adjust', True):
+                    axs[axes_pdict['fig_id']].flatten()[
+                        axes_pdict['ax_id']].figure.subplots_adjust(
                         hspace=0.4, wspace=0.25)
 
         # most normal plot functions also work, it is required
@@ -1094,25 +1103,25 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
         elif 'ax' in signature(plotfn).parameters:
             # Calling the function passing along anything
             # defined in the specific plot dict as kwargs
-            if pdict['ax_id'] is None:
-                plotfn(ax=axs[pdict['fig_id']], **pdict)
+            if axes_pdict['ax_id'] is None:
+                plotfn(ax=axs[axes_pdict['fig_id']], **axes_pdict)
             else:
-                plotfn(pdict=pdict,
-                       axs=axs[pdict['fig_id']].flatten()[
-                           pdict['ax_id']])
+                plotfn(pdict=axes_pdict,
+                       axs=axs[axes_pdict['fig_id']].flatten()[
+                           axes_pdict['ax_id']])
                 # FIXME forcing subplots_adjust after the plotting in
                 #  plotfn (which possibly calls tight_layout()) is bad
                 #  design, but many analyses currently rely on this (e.g.
                 #  raw data plots) and should be cleaned if removing it
-                if pdict.get('force_subplots_adjust', True):
-                    axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
+                if axes_pdict.get('force_subplots_adjust', True):
+                    axs[axes_pdict['fig_id']].flatten()[
+                        axes_pdict['ax_id']].figure.subplots_adjust(
                         hspace=0.4, wspace=0.25)
         else:
             raise ValueError(
                 f'"{plotfn}" is not a valid plot function')
 
-    format_datetime_xaxes(data_dict, keys_in, axs)
+    format_datetime_xaxes(data_dict, plot_dicts_keys, axs)
 
     # add_letter_to_subplots
     for plot_name, axes in axs.items():
@@ -1860,22 +1869,46 @@ def label_color2D(pdict, axs):
         # axs.set_title(plot_title)
 
 
-def plot_colorbar(pdict=None, axs=None, cax=None,
-                  orientation='vertical', tight_fig=True):
+def plot_colorbar(
+    pdict=None, axs=None, cax=None, orientation="vertical", tight_fig=True
+):
+    """Plots a colorbar for a matplotlib plot.
+
+    Args:
+        pdict (dict, optional): Dictionary containing plot parameters. Must include:
+            - no_label (bool): Whether to hide labels
+            - clabel (str): Label for the colorbar
+            - cbarwidth (str): Width of colorbar as percentage e.g. '10%'
+            - cbarpad (str): Padding of colorbar as percentage e.g. '5%'
+            - ctick_loc (array-like, optional): Locations of colorbar ticks
+            - ctick_labels (array-like, optional): Labels for colorbar ticks
+            - colormap (matplotlib colormap, optional): For 3D axes only
+        axs (matplotlib.axes.Axes): The axes object to add colorbar to
+        cax (matplotlib.axes.Axes, optional): Pre-existing colorbar axes
+        orientation (str, optional): Orientation of colorbar. Defaults to 'vertical'
+        tight_fig (bool, optional): Whether to apply tight_layout. Defaults to True
+
+    Raises:
+        ValueError: If pdict or axs are not specified
+
+    Returns:
+        None
+    """
     if pdict is None or axs is None:
         raise ValueError('pdict and axs must be specified'
                          ' when no key is specified.')
     plot_nolabel = pdict.get('no_label', False)
     plot_clabel = pdict.get('clabel', None)
-    plot_cbarwidth = pdict.get('cbarwidth', '10%')
-    plot_cbarpad = pdict.get('cbarpad', '5%')
+    plot_cbarwidth = pdict.get('cbarwidth', '8%')
+    plot_cbarpad = pdict.get('cbarpad', '10%')
     plot_ctick_loc = pdict.get('ctick_loc', None)
     plot_ctick_labels = pdict.get('ctick_labels', None)
+
     if cax is None:
         if not isinstance(axs, Axes3D):
             axs.ax_divider = make_axes_locatable(axs)
             axs.cax = axs.ax_divider.append_axes(
-                'right', size=plot_cbarwidth, pad=plot_cbarpad)
+                'left', size=plot_cbarwidth, pad=plot_cbarpad)
             cmap = axs.cmap
         else:
             plot_cbarwidth = str_to_float(plot_cbarwidth)
@@ -1886,6 +1919,7 @@ def plot_colorbar(pdict=None, axs=None, cax=None,
             cmap = pdict.get('colormap')
     else:
         axs.cax = cax
+
     if hasattr(cmap, 'autoscale_None'):
         axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
     else:
