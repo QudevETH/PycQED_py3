@@ -9,6 +9,15 @@ from pathlib import Path
 import logging
 from collections import OrderedDict
 
+from pycqed.utilities.warnings import deprecated
+
+try:
+    import blosc2
+except ModuleNotFoundError:
+    _blosc2_missing = True
+else:
+    _blosc2_missing = False
+
 from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
 
 logger = logging.getLogger(__name__)
@@ -65,10 +74,22 @@ class Dumper:
         if not os.path.isdir(self.folder):
             os.makedirs(self.folder)
 
+
     @staticmethod
+    @deprecated(
+        "Compression of settings files is deprecated since 2024-08-21."
+    )
     def compress_file(file):
-        import blosc2
-        return blosc2.compress(file)
+        if _blosc2_missing:
+            logger.warning(
+                "blosc2 could not be imported so compression cannot "
+                "be used. Please install the compression optional "
+                "dependency group if you want to use compression. "
+                "Returning the uncompressed file."
+            )
+            return file
+        else:
+            return blosc2.compress(file)
 
 
 class Loader:
@@ -244,9 +265,20 @@ class Loader:
         pass
 
     @staticmethod
+    @deprecated(
+        "Compression of settings files is deprecated since 2024-08-21."
+    )
     def decompress_file(file):
-        import blosc2
-        return blosc2.decompress(file)
+        if _blosc2_missing:
+            logger.warning(
+                "blosc2 could not be imported so decompression cannot "
+                "be used. Please install the compression optional "
+                "dependency group if you want to use decompression. "
+                "Returning the compressed file."
+            )
+            return file
+        else:
+            return blosc2.decompress(file)
 
     def get_station(self, param_path=None):
         """

@@ -20,7 +20,6 @@ classifiers = [
 
 # FIXME: Pin versions
 dependencies = [
-    "blosc2",
     "h5py",
     "lmfit",
     "matplotlib",
@@ -77,6 +76,9 @@ user = [
     "jupyter-contrib-nbextensions",
     "notebook < 7.0.0",
     "pyyaml",
+]
+compression = [
+    "blosc2"
 ]
 
 [tool.setuptools.packages.find]
