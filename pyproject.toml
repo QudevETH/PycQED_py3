@@ -20,8 +20,6 @@ classifiers = [
 
 # FIXME: Pin versions
 dependencies = [
-    "blosc2",
-    "func-timeout",
     "h5py",
     "lmfit",
     "matplotlib",
@@ -29,7 +27,7 @@ dependencies = [
     "msgpack",
     "msgpack_numpy",
     "nlopt",
-    "numpy < 2.0.0",               # until compatibility issues are resolved
+    "numpy",
     "pandas",
     "pyqtgraph",
     "pyside6",
@@ -77,9 +75,10 @@ user = [
     "jupyter",
     "jupyter-contrib-nbextensions",
     "notebook < 7.0.0",
-    "psutil",
-    "plotly",
     "pyyaml",
+]
+compression = [
+    "blosc2"
 ]
 
 [tool.setuptools.packages.find]
