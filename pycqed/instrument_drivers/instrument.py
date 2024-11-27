@@ -43,6 +43,8 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
         if param_name not in self.parameters and len(args) == 1:
             return args[0] # interpret second argument as default value
         else:
+            # qcodes 0.49 deprecated self.get()/self.set() for params;
+            # use the form below instead
             return self.parameters[param_name].get(*args)
 
     def set(self, param_name, value):
@@ -53,6 +55,8 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
             param_name: The name of a parameter of this instrument.
             value: The value to set.
         """
+        # qcodes 0.49 deprecated self.get()/self.set() for params;
+        # use the form below instead
         self.parameters[param_name].set(value)
 
     @classmethod
