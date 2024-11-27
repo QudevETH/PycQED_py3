@@ -1,3 +1,5 @@
+# FIXME: Please remove the @deprecated implementation from general.py
+#.       once we are 100% on py3.13
 from functools import wraps
 import sys
 import warnings
@@ -27,6 +29,5 @@ if sys.version_info < (3, 13):
 
         return decorator
 
-else:  # Python 3.13+, use a "pass-through" decorator and shout
-    warnings.warn("Please remove the @deprecated implementation from general.py")
-    from warnings import deprecated
+else: # Python 3.13+, use a "pass-through" decorator and shout
+    from warnings import deprecated # noqa: F401
