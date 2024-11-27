@@ -9,11 +9,12 @@ import copy
 from datetime import datetime
 from functools import partial
 
-from qcodes.instrument.base import Instrument
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
 
 import zhinst.ziPython as zi
+
+from pycqed.instrument_drivers.instrument import Instrument
 
 log = logging.getLogger(__name__)
 
