@@ -29,6 +29,4 @@ if sys.version_info < (3, 13):
 
 else:  # Python 3.13+, use a "pass-through" decorator and shout
     warnings.warn("Please remove the @deprecated implementation from general.py")
-
-    def deprecated(func):
-        return func
+    from warnings import deprecated
