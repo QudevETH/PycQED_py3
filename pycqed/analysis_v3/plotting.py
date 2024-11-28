@@ -1803,10 +1803,10 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     block['zvals'] = [trace['zvals']]
 
     # Draw the content in the 2D plot
-    for ii in range(len(block['zvals'])):
+    for zval in range(len(block['zvals'])):
         traces = {}
         for key, vals in block.items():
-            traces[key] = vals[ii]
+            traces[key] = vals[zval]
         for tt in range(len(traces['zvals'])):
             if verbose:
                 (print(t_vals[tt].shape) for key, t_vals in traces.items())
