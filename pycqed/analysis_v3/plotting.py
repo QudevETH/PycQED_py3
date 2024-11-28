@@ -1065,9 +1065,14 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
             # TODO: !692 will solve this with a flag, remove before un-drafting this MR
             #figs[axes_pdict['fig_id']].patch.set_alpha(0)
 
-    for fig_name in figs:
-        figs[fig_name].tight_layout()
+            if axes_pdict.get('tight_layout', True):
+                figs[axes_pdict['fig_id']].tight_layout()
 
+            # Generally all figures are also cutting the bottom off
+            # making x-labels invisible at times. This compensates this.
+            figs[axes_pdict['fig_id']].subplots_adjust(bottom=0.2)
+
+    # After figs and axes exist, fill them with data
     for key in plot_dicts_keys:
         axes_pdict = plot_dicts[key]
         plot_touching = axes_pdict.get('touching', False)
