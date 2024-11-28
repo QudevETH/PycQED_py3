@@ -713,6 +713,7 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
                 'clabel': 'Phase (rad)',
                 'title': title,
                 'bar_kws': dict(zorder=1),
+                'set_edgecolor': True
             }
 
     keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
