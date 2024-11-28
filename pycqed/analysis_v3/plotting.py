@@ -1716,8 +1716,36 @@ def plot_color2D_grid(pdict, axs):
 
 
 def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
-    """
+    """Plots a 2D color plot using the specified plotting function.
 
+    Args:
+        pfunc (callable): Function used to create the 2D color plot
+        pdict (dict): Dictionary containing plot parameters including:
+            - xvals (array-like): X-axis values
+            - yvals (array-like): Y-axis values
+            - zvals (array-like): Z-axis values (colors)
+            - plotcbar (bool, optional): Whether to show colorbar. Defaults to True
+            - cmap (str, optional): Colormap name. Defaults to 'viridis'
+            - aspect (float, optional): Aspect ratio of plot
+            - zrange (tuple, optional): Range for z-axis values
+            - yrange (tuple, optional): Range for y-axis values
+            - xrange (tuple, optional): Range for x-axis values
+            - xwidth (array-like, optional): Width of x bins
+            - xtick_labels (array-like, optional): Labels for x-axis ticks
+            - ytick_labels (array-like, optional): Labels for y-axis ticks
+            - xtick_loc (array-like, optional): Locations of x-axis ticks
+            - ytick_loc (array-like, optional): Locations of y-axis ticks
+            - transpose (bool, optional): Whether to transpose plot. Defaults to False
+            - no_label (bool, optional): Whether to hide labels. Defaults to False
+            - normalize (bool, optional): Whether to normalize values. Defaults to False
+            - logzscale (bool/float, optional): Log scale factor for z values. Defaults to False
+            - origin (str, optional): Plot origin location. Defaults to 'lower'
+        axs (matplotlib.axes.Axes): The axes object to plot on
+        verbose (bool, optional): Whether to print debug info. Defaults to False
+        do_individual_traces (bool, optional): Whether to plot traces individually. Defaults to False
+
+    Returns:
+        None
     """
     plot_xvals = pdict['xvals']
     plot_yvals = pdict['yvals']
