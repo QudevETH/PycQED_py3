@@ -858,7 +858,7 @@ def prepare_pauli_basis_plot(
                   f'pauli_basis_{estimation_type}_{"".join(meas_obj_names)}'
     plot_dicts[figure_name] = {
         'plotfn': 'plot_bar',
-        'plotsize': (4.5, 3),
+        'plotsize': (6.5, 3),
         'xcenters': np.arange(len(order)),
         'xwidth': 0.4,
         'xrange': (-1, len(order)),
