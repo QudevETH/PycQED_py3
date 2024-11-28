@@ -1053,6 +1053,12 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 axs[axes_pdict['fig_id']].remove()
                 ax = plt.axes(projection='3d')
                 ax.view_init(azim=axes_pdict.get('3d_azim', -35), elev=axes_pdict.get('3d_elev', 35))
+
+                # Get labels closer to ticks
+                ax.tick_params(axis='x', pad=-3)
+                ax.tick_params(axis='y', pad=-3)
+                ax.tick_params(axis='z', pad=-2)
+
                 axs[axes_pdict['fig_id']] = ax
 
             # transparent background around axes for presenting data
