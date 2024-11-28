@@ -1901,7 +1901,6 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     if plot_cbar:
         plot_colorbar(axs=axs, pdict=pdict)
 
-
 def label_color2D(pdict, axs):
     plot_transpose = pdict.get('transpose', False)
     plot_xlabel = pdict['xlabel']
@@ -1955,7 +1954,7 @@ def plot_colorbar(
                          ' when no key is specified.')
     plot_nolabel = pdict.get('no_label', False)
     plot_clabel = pdict.get('clabel', None)
-    plot_cbarwidth = pdict.get('cbarwidth', '8%')
+    plot_cbarwidth = pdict.get('cbarwidth', '10%')
     plot_cbarpad = pdict.get('cbarpad', '10%')
     plot_ctick_loc = pdict.get('ctick_loc', None)
     plot_ctick_labels = pdict.get('ctick_labels', None)
@@ -1964,35 +1963,51 @@ def plot_colorbar(
         if not isinstance(axs, Axes3D):
             axs.ax_divider = make_axes_locatable(axs)
             axs.cax = axs.ax_divider.append_axes(
-                'left', size=plot_cbarwidth, pad=plot_cbarpad)
+                "right", size=plot_cbarwidth, pad=plot_cbarpad
+            )
             cmap = axs.cmap
         else:
             plot_cbarwidth = str_to_float(plot_cbarwidth)
             plot_cbarpad = str_to_float(plot_cbarpad)
             axs.cax, _ = mpl.colorbar.make_axes(
-                axs, shrink=1-plot_cbarwidth-plot_cbarpad, pad=plot_cbarpad,
-                orientation=orientation)
-            cmap = pdict.get('colormap')
+                axs,
+                shrink=1 - plot_cbarwidth - plot_cbarpad,
+                pad=plot_cbarpad,
+                orientation=orientation,
+            )
+            cmap = pdict.get("colormap")
     else:
         axs.cax = cax
 
-    if hasattr(cmap, 'autoscale_None'):
+    # Create or adapt colorbar
+    if hasattr(cmap, "autoscale_None"):
+        # Componsate position for tick flip
+        # TODO: if plot_ctick_loc / labels
+        #axs.cax.set_position(
+        #    [
+        #        axs.cax.get_position().x0 - 0.5,  # Shift left by 0.05
+        #        axs.cax.get_position().y0,
+        #        axs.cax.get_position().width / 2,
+        #        axs.cax.get_position().height,
+        #    ]
+        #)
         axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
     else:
-        norm = mpl.colors.Normalize(0, 1)
-        axs.cbar = mpl.colorbar.ColorbarBase(axs.cax, cmap=cmap, norm=norm)
+        axs.cbar = mpl.colorbar.ColorbarBase(
+            axs.cax, cmap=cmap, norm=mpl.colors.Normalize(0, 1)
+        )
+
     if plot_ctick_loc is not None:
         axs.cbar.set_ticks(plot_ctick_loc)
     if plot_ctick_labels is not None:
         axs.cbar.set_ticklabels(plot_ctick_labels)
-    if not plot_nolabel and plot_clabel is not None:
-        axs.cbar.set_label(plot_clabel)
+    if plot_clabel is not None and not plot_nolabel:
+        axs.cbar.set_label(plot_clabel)    
 
+    # TODO: adjust tight layout at the end of creation
+    # .     else we draw outside of the viewport which sucks
     if tight_fig:
-        # This figure might include axes that are not compatible with
-        # tight_layout, don't apply it then.
-        if hasattr(axs, 'get_geometry') and axs.get_geometry() is not None:
-            axs.figure.tight_layout()
+        axs.figure.tight_layout()
 
 
 def plot_fit(pdict, axs):
