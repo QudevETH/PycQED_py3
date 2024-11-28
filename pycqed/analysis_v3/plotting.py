@@ -1012,6 +1012,8 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
     if axs_dict is not None:
         for key, val in list(axs_dict.items()):
             axs[key] = val
+
+    # FIXME: plot_dicts_keys / key_in absorbs multiple types
     if plot_dicts_keys == 'all':
         plot_dicts_keys = plot_dicts.keys()
     if type(plot_dicts_keys) is str:
@@ -1035,6 +1037,10 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
             # This fig variable should perhaps be a different
             # variable for each plot!!
             # This might fix a bug.
+
+            # HINT: This line actually draws the figure.
+            # Turn on the `Qt5Agg` backend to see the
+            # figure when debugging.
             figs[axes_pdict['fig_id']], axs[axes_pdict['fig_id']] = \
                 plt.subplots(axes_pdict.get('numplotsy', 1),
                              axes_pdict.get('numplotsx', 1),
@@ -1137,6 +1143,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
             figs[fig_name].align_ylabels()
         except AttributeError:
             pass
+        # TODO: Don't close figures?
         plt.close(figs[fig_name])
 
     # add figures and axes to data_dict
@@ -1178,6 +1185,8 @@ def format_datetime_xaxes(data_dict, key_list, axs):
         
 def plot_bar(pdict, axs, tight_fig=True):
     pfunc = getattr(axs, pdict.get('func', 'bar'))
+
+    # Configure how bars are plotted
     # xvals interpreted as edges for a bar plot
     plot_xedges = pdict.get('xvals', None)
     if plot_xedges is None:
@@ -1753,6 +1762,7 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     block['yvals'] = [trace['yvals']]
     block['zvals'] = [trace['zvals']]
 
+    # Draw the content in the 2D plot
     for ii in range(len(block['zvals'])):
         traces = {}
         for key, vals in block.items():
@@ -1773,6 +1783,7 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
                         transpose=plot_transpose,
                         normalize=plot_normalize)
 
+    # Set limits for figure
     if plot_xrange is None:
         if plot_xwidth is not None:
             xmin, xmax = min([min(xvals) - plot_xwidth[tt] / 2
@@ -1811,6 +1822,7 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     else:
         axs.set_ylim(ymin, ymax)
 
+    # Add ticks to figure
     # FIXME Ignores thranspose option. Is it ok?
     if plot_xtick_labels is not None:
         if plot_xtick_loc is None:
@@ -1935,7 +1947,8 @@ def plot_colorbar(
         axs.cbar.set_label(plot_clabel)
 
     if tight_fig:
-        # Check for warning: This figure includes Axes that are not compatible with tight_layout, so results might be incorrect.
+        # This figure might include axes that are not compatible with
+        # tight_layout, don't apply it then.
         if hasattr(axs, 'get_geometry') and axs.get_geometry() is not None:
             axs.figure.tight_layout()
 
