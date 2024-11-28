@@ -170,7 +170,8 @@ def get_axes_geometry_from_figure(fig):
         return geometry
     else:
         log.warning(f"Figure {fig} has no axes.")
-        return None
+        print(f"Figure {fig} has no axes.")
+        return (1, 1)
 
 def default_figure_title(data_dict, meas_obj_name, **params):
     timestamps = hlp_mod.get_param('timestamps', data_dict, raise_error=True,
