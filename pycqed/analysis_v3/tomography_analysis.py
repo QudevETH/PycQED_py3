@@ -606,7 +606,7 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
     plot_dicts[f'{figures_prefix}counts_table_{"".join(meas_obj_names)}'] = {
         'axid': "ptable",
         'plotfn': 'plot_colorx',
-        'plotsize': [6.4, 4.8],
+        'plotsize': [6.8, 5.0],
         'xvals': np.arange(len(observables))[obs_filter],
         'yvals': np.array(len(observables)*[ylist]),
         'zvals': plt_data,
@@ -621,7 +621,8 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
         'xtick_labels': list(np.array(list(observables.keys()))[obs_filter]),
         'origin': 'upper',
         'cmap': cm,
-        'aspect': 'equal'
+        'aspect': 'equal',
+        'tight_layout': False,
     }
 
     hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
