@@ -1207,6 +1207,7 @@ def plot_bar(pdict, axs, tight_fig=True):
     dataset_label = pdict.get('setlabel', list(range(len(plot_yvals))))
     do_legend = pdict.get('do_legend', False)
     plot_touching = pdict.get('touching', False)
+    axs.linewidth = 2
 
     if plot_multiple:
         p_out = []
