@@ -1046,7 +1046,8 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                              axes_pdict.get('numplotsx', 1),
                              sharex=axes_pdict.get('sharex', False),
                              sharey=axes_pdict.get('sharey', False),
-                             figsize=axes_pdict.get('plotsize', None))
+                             figsize=axes_pdict.get('plotsize', None),
+                             num=axes_pdict['fig_id']) # window title
 
             if axes_pdict.get('3d', False):
                 axs[axes_pdict['fig_id']].remove()
