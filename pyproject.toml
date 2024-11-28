@@ -106,6 +106,7 @@ ignore = [
     "D400",  # First line should end with a period (Google style)
     "D415",  # First line should end with a period, question mark, or exclamation point (Google style)
     "E731",  # Do not assign a lambda expression, use a def
+    "E402",  # Import not at the top of file
 ]
 exclude = [
     ".git",
