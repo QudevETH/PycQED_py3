@@ -54,9 +54,11 @@ def standard_qubit_pulses_to_rotations(pulse_list):
     return rotations
 
 
-def state_tomography_analysis(data_dict, keys_in,
-                              estimation_types=('least_squares',
-                                                'max_likelihood'), **params):
+def state_tomography_analysis(
+    data_dict, keys_in, 
+    estimation_types=("least_squares", "max_likelihood"),
+    **params
+):
     """
     State tomography analysis. Extracts density matrices based on
         estimation_types, calculates purity, concurrence, and fidelity to
@@ -126,6 +128,8 @@ def state_tomography_analysis(data_dict, keys_in,
 
     cp = hlp_mod.get_measurement_properties(data_dict, props_to_extract=['cp'],
                                             raise_error=False, **params)
+
+    # TODO: What does this do?
     basis_rots = hlp_mod.get_param('basis_rots', data_dict,
                                    raise_error=True, **params)
     if hlp_mod.get_param('basis_rots', data_dict) is None:
@@ -133,6 +137,9 @@ def state_tomography_analysis(data_dict, keys_in,
         hlp_mod.add_param(f'{keys_out_container}.basis_rots',
                           basis_rots, data_dict, **params)
 
+
+    # Take active reset into account
+    # TODO: is this compatible with the 2024 way of doing active reset?
     do_preselection = hlp_mod.get_param('do_preselection', data_dict,
                                         **params)
     if do_preselection is None:
@@ -142,7 +149,7 @@ def state_tomography_analysis(data_dict, keys_in,
         hlp_mod.add_param(f'{keys_out_container}.do_preselection',
                           do_preselection, data_dict, **params)
 
-    # get number of readouts
+    # Get number of readouts
     n_readouts = hlp_mod.get_param('n_readouts', data_dict, **params)
     if n_readouts is None:
         n_readouts = (do_preselection + 1) * (
@@ -151,7 +158,7 @@ def state_tomography_analysis(data_dict, keys_in,
         hlp_mod.add_param(f'{keys_out_container}.n_readouts',
                           n_readouts, data_dict, **params)
 
-    # get observables
+    # Get observables
     observables = hlp_mod.get_param('observables', data_dict, **params)
     if observables is None:
         hlp_mod.get_observables(data_dict,
@@ -160,7 +167,7 @@ def state_tomography_analysis(data_dict, keys_in,
         observables = hlp_mod.get_param(f'{keys_out_container}.observables',
                                         data_dict)
 
-    # get probability table
+    # Get probability table
     keys_in_extra = hlp_mod.get_param('keys_in_extra', data_dict,
                                       default_value=[], **params)
     dat_proc_mod.calculate_probability_table(
@@ -170,11 +177,12 @@ def state_tomography_analysis(data_dict, keys_in,
     probability_table = hlp_mod.get_param(
         f'{keys_out_container}.probability_table', data_dict)
 
-    # get measurement_ops and cov_matrix_meas_obs
+    # Get measurement_ops and cov_matrix_meas_obs
     measurement_ops = hlp_mod.get_param('measurement_ops', data_dict, **params)
     correct_readout = hlp_mod.get_param('correct_readout', data_dict, **params)
     add_param_method = hlp_mod.get_param('add_param_method', data_dict,
                                          default_value='replace', **params)
+
     if measurement_ops is None or add_param_method == 'replace':
         # if add_param_method == 'replace', we want to overwrite the found
         # measurement_ops
@@ -209,23 +217,30 @@ def state_tomography_analysis(data_dict, keys_in,
                 hlp_mod.add_param(f'{keys_out_container}.cov_matrix_meas_obs',
                                   measurement_ops, data_dict, **params)
 
-    # get all measurement ops, measurement results, and covariance matrices
+    # Get all measurement ops, measurement results, and covariance matrices
     all_msmt_ops_results_omegas(data_dict, observables, **params)
 
-    # get density matrices, purity, fidelity, concurrence
+    # Get density matrices, purity, fidelity, concurrence
     density_matrices(data_dict, estimation_types, **params)
 
-    # plotting
+    # Get parameters for plotting
     prepare_plotting = hlp_mod.pop_param('prepare_plotting', data_dict,
                                         default_value=True, node_params=params)
     do_plotting = hlp_mod.pop_param('do_plotting', data_dict,
                                     default_value=True, node_params=params)
+
+    # Probability table
     plot_prob_table = hlp_mod.pop_param('plot_prob_table', data_dict,
                                         default_value=True, node_params=params)
+                                      
+    # Target density matrix
     plot_rho_target = hlp_mod.pop_param('plot_rho_target', data_dict,
                                         default_value=True, node_params=params)
+
+    # Pauli basis density matrix
     plot_pauli = hlp_mod.pop_param('plot_pauli', data_dict,
                                    default_value=True, node_params=params)
+
     if prepare_plotting:
         if plot_prob_table:
             prepare_prob_table_plot(data_dict, do_preselection, **params)
@@ -235,11 +250,12 @@ def state_tomography_analysis(data_dict, keys_in,
                 plot_rho_target=(i == 0) and plot_rho_target, **params)
             if plot_pauli:
                 prepare_pauli_basis_plot(data_dict, estimation_type, **params)
+
     if do_plotting:
         getattr(plot_mod, 'plot')(data_dict, keys_in=list(
             data_dict['plot_dicts']), **params)
 
-    # error estimation with boostrapping
+    # Error estimation with boostrapping
     if hlp_mod.get_param('do_bootstrapping', data_dict, default_value=False,
                          **params):
         hlp_mod.pop_param('do_bootstrapping', data_dict, default_value=False,
@@ -273,7 +289,7 @@ def all_msmt_ops_results_omegas(data_dict, observables, probability_table=None,
                 provided, it will try to take it from preparation_params.
                 If preparation_params are not found, it will default to False.
                 Specifies whether to do preselection on the data.
-            - prob_table_filter: filter for the probability table. If not given
+        - prob_table_filter: filter for the probability table. If not given
                 it will calculate it from meas_obj_names + basis_rots +
                 preselection condition
     :return: adds to data_dict:
@@ -662,6 +678,7 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
                              default_value=plot_mod.default_phase_cmap(),
                              **params)
 
+    # Target Density Matrix plot preparation
     rho_target = hlp_mod.get_param('rho_target', data_dict, **params)
     if rho_target is not None:
         rho_target = qtp.Qobj(rho_target)
@@ -724,6 +741,10 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
     color_tar = (0.5 * np.angle(rho_target.full()) / np.pi) % 1.
     color_meas = (0.5 * np.angle(rho_meas.full()) / np.pi) % 1.
     color = np.concatenate((1.1*np.ones_like(color_tar), color_meas))
+
+
+    # TODO: Why are the plot settings reimplemented when they are set already above
+    #       but for the target density matrix only?
     plot_dicts[f'{figures_prefix}density_matrix_' \
                f'{estimation_type}_{"".join(meas_obj_names)}'] = {
         'plotfn': 'plot_bar3D',
@@ -758,8 +779,12 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
                       add_param_method='update')
 
 
-def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
-                             leakage=None, **params):
+def prepare_pauli_basis_plot(
+    data_dict,
+    estimation_type="least_squares",
+    leakage=None,
+    **params
+):
     """
     Prepares plot of the density matrix estimated with method estimation_type.
     :param data_dict: OrderedDict containing data to be plotted and where
