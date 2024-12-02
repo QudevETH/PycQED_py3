@@ -2169,17 +2169,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' than in the current measurement): {e}')
                     raise e
 
-            if self.get_param_value('correlate_proba', False):
-                # Note that this could be used as well if predict_proba = False
-                # if that is meaningful
-                shots_correlated, states_map = self._correlate_single_shots(
-                    shots_per_qb, states_map)
-                # FIXME this duplication is a hack, so that all the processing
-                #  and plotting based on qubit names still works
-                shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
-                # TODO This could be used to plot readout-corrected correlated
-                #  data, see the case self.rotate = False in self.process_data.
-                self.default_options['plot_proj_data'] = False
+        if self.get_param_value('correlate_proba', False):
+            # Note that this assumes that shots contain probabilities,
+            # e.g. if predict_proba or measured with a classifying detector
+            shots_correlated, states_map = self._correlate_single_shots(
+                shots_per_qb, states_map)
+            # FIXME this duplication is a hack, so that all the processing
+            #  and plotting based on qubit names still works
+            shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
+            # TODO This could be used to plot readout-corrected correlated
+            #  data, see the case self.rotate = False in self.process_data.
+            self.default_options['plot_proj_data'] = False
 
         for qbn, shots in shots_per_qb.items():
             if thresholding:
