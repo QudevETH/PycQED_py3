@@ -2282,6 +2282,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # We get the probability of a given correlated state by multiplying
         # the marginal probabilities for each qubit
         shots = np.prod(shots, axis=-1)
+        # Reshape according to original shape.
+        # Final shape: (other dims..., n_corr_states)
+        shots = shots.reshape([*shape, n_corr_states])
 
         # Create new state map for each possible correlated state corr_state
         # e.g. basis[corr_state] = [0,2,0] yields 'gfg'
