@@ -2232,6 +2232,22 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     @staticmethod
     def _correlate_single_shots(shots_per_qb, states_map):
+        """
+        Correlates single-shot measurement results
+
+        Args:
+            shots_per_qb: dict of the form {
+                'qb_name': np.array(other dims..., n_states)}
+                where n_states is the number of states measured and
+                classified, e.g. 3 for the g, e and f states.
+            states_map: dict of the form {i: 'state_name'} to order states,
+                e.g. {0: "g", 1: "e", 2: "f"} for g, e, f states
+        Returns:
+            shots: correlated shots, of the form
+                np.array(other dims..., n_corr_states)
+            new_states_map: corresponding map, e.g. {0: 'ggg', 1: 'gge', ...}
+        """
+
         # Convert dict to array, with shape = (n_qb, other dims..., n_states):
         shots = np.array([
             shots_per_qb[key] for key in shots_per_qb.keys()
