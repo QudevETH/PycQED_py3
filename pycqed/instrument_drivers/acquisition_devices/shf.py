@@ -43,9 +43,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     # (this is not a symmetrical signal in f, hence I/Q)
     acq_sampling_rate = 2.0e9
     _acq_scope_memory = 2 ** 18
-    # Maximum acquisition shots according to YS
+    # Maximum acquisition results according to LabOne 24.10
+    # /dev..../qachannels/n/readout/result/length
     # (Can check in the LabOne GUI by typing larger numbers in)
-    ACQ_N_RESULTS_MAX = 2 ** 17  # 131072
+    ACQ_N_RESULTS_MAX = 2 ** 19  # 524288
     acq_weights_n_samples = 4096
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V

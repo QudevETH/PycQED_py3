@@ -20,8 +20,6 @@ classifiers = [
 
 # FIXME: Pin versions
 dependencies = [
-    "blosc2",
-    "func-timeout",
     "h5py",
     "lmfit",
     "matplotlib",
@@ -29,13 +27,14 @@ dependencies = [
     "msgpack",
     "msgpack_numpy",
     "nlopt",
-    "numpy < 2.0.0",               # until compatibility issues are resolved
+    "numpy",
     "pandas",
     "pyqtgraph",
     "pyside6",
     "qcodes",
     "qcodes-loop",
     "qutip",
+    "qutip-qip",
     "requests",
     "scikit-learn",
     "scipy",
@@ -74,12 +73,12 @@ measurement_setup = [
 ]
 user = [
     "cython",
-    "jupyter",
-    "jupyter-contrib-nbextensions",
+    "jupyterlab",
     "notebook < 7.0.0",
-    "psutil",
-    "plotly",
     "pyyaml",
+]
+compression = [
+    "blosc2"
 ]
 
 [tool.setuptools.packages.find]
@@ -107,6 +106,7 @@ ignore = [
     "D400",  # First line should end with a period (Google style)
     "D415",  # First line should end with a period, question mark, or exclamation point (Google style)
     "E731",  # Do not assign a lambda expression, use a def
+    "E402",  # Import not at the top of file
 ]
 exclude = [
     ".git",

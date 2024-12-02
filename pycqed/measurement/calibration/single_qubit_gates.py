@@ -110,7 +110,7 @@ class T1FrequencySweep(CalibBuilder):
             if kw.get('compression_seg_lim', None) is None:
                 # compress the 2nd sweep dimension completely onto the first
                 kw['compression_seg_lim'] = \
-                    np.product([len(s) for s in self.mc_points]) \
+                    np.prod([len(s) for s in self.mc_points]) \
                     + len(self.cal_points.states)
             self.autorun(**kw)
         except Exception as x:
@@ -4221,8 +4221,8 @@ class f0g1AcStark(SingleQubitGateCalibExperiment):
     gets the Ac Stark shift for all drive amplitudes.
 
     This calibration is based on and explained in the section 5.3
-    of Dr. Philipp Kurpiers PhD Thesis, 2019
-    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+    of Dr. Philipp Kurpiers' PhD Thesis, 2019
+    https://www.research-collection.ethz.ch/handle/20.500.11850/378338
 
     Args:
         qubits (list): array of qubits for which the calibration is done
@@ -4459,8 +4459,8 @@ class f0g1RabiRate(SingleQubitGateCalibExperiment):
     gets the f0g1 transition speed (gTilde) for all drive amplitudes.
 
     This calibration is based on and explained in the section 5.3
-    of Dr. Philipp Kurpiers PhD Thesis, 2019
-    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+    of Dr. Philipp Kurpiers' PhD Thesis, 2019
+    https://www.research-collection.ethz.ch/handle/20.500.11850/378338
 
     args:
         qubits (list): array of qubits for which the calibration is done
@@ -4665,8 +4665,8 @@ class efWithf0g1AcStark(SingleQubitGateCalibExperiment):
     gets the Ac Stark shift for all drive amplitudes.
 
     This calibration is based on and explained in the section 5.3
-    of Dr. Philipp Kurpiers PhD Thesis, 2019
-    (see Q:\PaperArchive\_Theses and Papers\QuDev\PhD\2019)
+    of Dr. Philipp Kurpiers' PhD Thesis, 2019
+    https://www.research-collection.ethz.ch/handle/20.500.11850/378338
 
     Args:
         :param qubits: (list) array of qubits for which the calibration is done

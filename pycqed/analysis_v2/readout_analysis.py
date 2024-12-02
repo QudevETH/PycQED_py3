@@ -1051,7 +1051,7 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                              color="white" if fm[i, j] > thresh else "black")
         plt.tight_layout()
         ax.set_ylabel('Prepared State')
-        ax.set_xlabel('Assigned State\n$\mathcal{{F}}_{{avg}}$={:0.2f} %'
+        ax.set_xlabel('Assigned State\n$\\mathcal{{F}}_{{avg}}$={:0.2f} %'
                       .format(fidelity_avg * 100))
         if show:
             plt.show()
@@ -1727,7 +1727,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
             # add all combinations
             for i, states in enumerate(combination_list):
                 name = ''.join(['e' if s else 'g' for s in states])
-                obs_name = '$\| ' + name + '\\rangle$'
+                obs_name = r'$\| ' + name + '\\rangle$'
                 self.observables[obs_name] = dict(zip(qubits, states))
                 # add preselection condition
                 if self.use_preselection:
@@ -2195,7 +2195,7 @@ class Multiplexed_Readout_Analysis(MultiQubit_SingleShot_Analysis):
         qubits = list(self.channel_map.keys())
 
         def_seg_names_prep = ["".join(l) for l in list(
-            itertools.product(["$0$", "$\pi$"],
+            itertools.product(["$0$", r"$\pi$"],
                               repeat=len(self.channel_map)))]
         self.preselection_available = False
         if self.n_readouts == len(def_seg_names_prep):
@@ -2232,7 +2232,7 @@ class Multiplexed_Readout_Analysis(MultiQubit_SingleShot_Analysis):
                 self.observables["pre"] = preselection_condition
             # add all combinations
             for i, states in enumerate(combination_list):
-                obs_name = '$\| ' + \
+                obs_name = r'$\| ' + \
                            ''.join(['e' if s else 'g' for s in states]) + \
                            '\\rangle$'
                 self.observables[obs_name] = dict(zip(qubits, states))
