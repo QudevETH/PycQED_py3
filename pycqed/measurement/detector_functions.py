@@ -246,17 +246,6 @@ class Multi_Detector(Detector_Function):
         values = np.concatenate(values_list)
         return values
 
-    def acquire_data_point(self):
-        # N.B. get_values and acquire_data point are virtually identical.
-        # the only reason for their existence is a historical distinction
-        # between hard and soft detectors that leads to some confusing data
-        # shape related problems, hence the append vs concatenate
-        values = []
-        for detector in self.detectors:
-            new_values = detector.acquire_data_point()
-            values = np.append(values, new_values)
-        return values
-
     def finish(self):
         for detector in self.detectors:
             detector.finish()
@@ -320,13 +309,6 @@ class IndexDetector(Detector_Function):
             v = v[i]
         return v
 
-    def acquire_data_point(self):
-        v = self.detector.get_values()
-        # equivalent to v[self.index[0]][self.index[1]]...[self.index[-1]]
-        for i in self.index:
-            v = v[i]
-        return v
-
     def finish(self):
         self.detector.finish()
 
@@ -357,10 +339,6 @@ class SumDetector(Detector_Function):
         return [np.array(self.detector.get_values())[self.indices]
                 .sum(axis=0)]
 
-    def acquire_data_point(self):
-        return [np.array(self.detector.acquire_data_point())[self.indices]
-                .sum(axis=0)]
-
     def finish(self):
         self.detector.finish()
 
@@ -381,12 +359,6 @@ class None_Detector(Detector_Function):
         self.value_names = ['None']
         self.value_units = ['None']
 
-    def acquire_data_point(self, **kw):
-        '''
-        Returns something random for testing
-        '''
-        return np.random.random()
-
 
 class Hard_Detector(Detector_Function):
 
@@ -406,9 +378,6 @@ class Soft_Detector(Detector_Function):
     def __init__(self, **kw):
         super().__init__(**kw)
         self.detector_control = 'soft'
-
-    def acquire_data_point(self, **kw):
-        return np.random.random()
 
     def prepare(self, sweep_points=None):
         pass
@@ -495,9 +464,6 @@ class Sweep_pts_detector(Detector_Function):
     def get_values(self):
         return self.get()
 
-    def acquire_data_point(self):
-        return self.get()
-
     def get(self):
         print('passing chunk {}'.format(self.i))
         start_idx = self.i*self.chunk_size
@@ -529,13 +495,6 @@ class Dummy_Detector_Soft(Soft_Detector):
         # self.x can be used to set x value externally
         self.x = None
 
-    def acquire_data_point(self, **kw):
-        if self.x is None:
-            x = self.i/15.
-        self.i += 1
-        time.sleep(self.delay)
-        return np.array([np.sin(x/np.pi), np.cos(x/np.pi)])
-
 
 class Dummy_Detector_Soft_diff_shape(Soft_Detector):
     # For testing purpose, returns data in a slightly different shape
@@ -550,14 +509,6 @@ class Dummy_Detector_Soft_diff_shape(Soft_Detector):
         self.i = 0
         # self.x can be used to set x value externally
         self.x = None
-
-    def acquire_data_point(self, **kw):
-        if self.x is None:
-            x = self.i/15.
-        self.i += 1
-        time.sleep(self.delay)
-        # This is the format an N-D detector returns data in.
-        return np.array([[np.sin(x/np.pi), np.cos(x/np.pi)]]).reshape(2, -1)
 
 
 class Function_Detector(Soft_Detector):
@@ -609,7 +560,7 @@ class Function_Detector(Soft_Detector):
         if self.prepare_function is not None:
             self.prepare_function(**self.prepare_function_kwargs)
 
-    def acquire_data_point(self, **kw):
+    def get_values(self):
         measurement_kwargs = {}
         # If an entry has a get method that will be used to set the value.
         # This makes parameters work in this context.
@@ -629,9 +580,6 @@ class Function_Detector(Soft_Detector):
             if len(results) == 1:
                 return results[0]  # for a single entry we don't want a list
             return results
-
-    def get_values(self):
-        return self.acquire_data_point()
 
 
 
@@ -1069,9 +1017,6 @@ class MultiPollDetector(PollDetector):
 
         return data_processed
 
-    def acquire_data_point(self):
-        return self.get_values()
-
     def get_correlations_classif_det(self, data):
         """
         Correlate the single shot data obtained with the ClassifyingPollDetector
@@ -1471,12 +1416,6 @@ class IntegratingAveragingPollDetector(PollDetector):
         data[0] = np.abs(S21)
         data[1] = np.angle(S21) * 180 / np.pi
         return data
-
-    def acquire_data_point(self):
-        """
-        Calls self.get_values().
-        """
-        return self.get_values()
 
     @Timer()
     def prepare(self, sweep_points=None):

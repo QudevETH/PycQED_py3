@@ -88,8 +88,7 @@ def wrap_par_to_det(parameter, control='soft'):
         par.name    -> detector.name
         par.label   -> detector.value_names (either string or list of strings)
         par.unit    ->  detector.value_units
-        par.get     -> detector.acquire_data_point
-                    -> detector.get_values
+        par.get     -> detector.get_values
 
     The following attributes are not taken from the parameter
         det.prepare             <- pass_function
@@ -109,7 +108,6 @@ def wrap_par_to_det(parameter, control='soft'):
 
     detector_function.prepare = pass_function
     detector_function.finish = pass_function
-    detector_function.acquire_data_point = parameter.get
     detector_function.get_values = parameter.get
     return detector_function
 
@@ -131,7 +129,6 @@ def wrap_func_to_det(func, name, value_names, units, control='soft',  **kw):
     def wrapped_func():
         return func(**kw)
 
-    detector_function.acquire_data_point = wrapped_func
     detector_function.get_values = wrapped_func
     return detector_function
 
