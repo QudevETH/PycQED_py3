@@ -1160,8 +1160,15 @@ class Segment:
             return
 
         for group in self.elements_on_awg.keys():
+            def get_element_start(element, group):
+                try:
+                    return self.get_element_start(element, group)
+                except KeyError:
+                    # self.element_start_length hasn't been called yet
+                    self.element_start_length(element, group)
+                return self.get_element_start(element, group)
             self.elements_on_awg[group] = sorted(self.elements_on_awg[group],
-                                                 key=lambda element: self.get_element_start(element, group))
+                        key=lambda element: get_element_start(element, group))
 
     def find_trigger_group_hierarchy(self):
         masters = {group for group in self.pulsar.trigger_groups
