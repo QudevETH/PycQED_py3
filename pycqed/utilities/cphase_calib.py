@@ -141,7 +141,8 @@ unit_dict = dict(amplitude='V', amplitude2='V', pulse_length='s',
                  gaussian_filter_sigma='s', trans_length='s')
 
 
-def get_spectators(dev, anc_data_qb_map, gate_list, include_spec_of_data_qubits=False):
+def get_spectators(dev, anc_data_qb_map, gate_list,
+                   include_spectators_which_are_uss = True, include_spectators_which_are_lss = True):
     if isinstance(anc_data_qb_map, list):
         return dev.get_qubits(anc_data_qb_map, 'obj')
     gate_list_ancqb = [qb[0].name for qb in gate_list]
@@ -155,8 +156,15 @@ def get_spectators(dev, anc_data_qb_map, gate_list, include_spec_of_data_qubits=
                            if data_qb in data_qb_list]
     anc_qubit_list = list(set([qb for qb in anc_qubit_list if qb not in
                                gate_list_ancqb]))
-    qubit_list = dd_qubit_list + anc_qubit_list if include_spec_of_data_qubits\
-        else dd_qubit_list
+
+    qubit_list = []
+    if include_spectators_which_are_lss:
+        qubit_list += dd_qubit_list
+    if include_spectators_which_are_uss:
+        qubit_list += anc_qubit_list
+
+    # qubit_list = dd_qubit_list + anc_qubit_list if include_spec_of_data_qubits
+    #     else dd_qubit_list
     return dev.get_qubits(qubit_list,'obj')
 
 
