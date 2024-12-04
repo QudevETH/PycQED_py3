@@ -463,8 +463,6 @@ def density_matrices(data_dict,
                                            default_value = {'':None}, **params),
                 cov_threshold = hlp_mod.get_param('cov_threshold', data_dict,
                                            default_value = 1e-12, **params),
-                debug = hlp_mod.get_param('debug', data_dict,
-                                           default_value = False, **params),
             )
             hlp_mod.add_param(f'{keys_out_container}.convex_mle.rho',
                               rho_cvx, data_dict, **params)
