@@ -141,28 +141,28 @@ unit_dict = dict(amplitude='V', amplitude2='V', pulse_length='s',
                  gaussian_filter_sigma='s', trans_length='s')
 
 
-def get_spectators(dev, anc_data_qb_map, gate_list,
+def get_spectators(dev, uss_lss_qb_map, gate_list,
                    include_spectators_which_are_uss = True, include_spectators_which_are_lss = True):
-    
-    if isinstance(anc_data_qb_map, list):
-        return dev.get_qubits(anc_data_qb_map, 'obj')
-    gate_list_ancqb = [qb[0].name for qb in gate_list]
-    gate_list_dataqb = [qb[1].name for qb in gate_list]
-    dd_qubit_list = list(
-        np.unique([d for qb in gate_list_ancqb for d in anc_data_qb_map[qb] if
-                   d not in gate_list_dataqb]))
-    anc_qubit_list = []
-    for data_qb in gate_list_dataqb:
-        anc_qubit_list += [qb for qb, data_qb_list in anc_data_qb_map.items()
-                           if data_qb in data_qb_list]
-    anc_qubit_list = list(set([qb for qb in anc_qubit_list if qb not in
-                               gate_list_ancqb]))
+ 
+    if isinstance(uss_lss_qb_map, list):
+        return dev.get_qubits(uss_lss_qb_map, 'obj')
+    gate_list_uss_qb = [qb[0].name for qb in gate_list]
+    gate_list_lss_qb = [qb[1].name for qb in gate_list]
+    spectators_of_uss_qb_list = list(
+        np.unique([d for qb in gate_list_uss_qb for d in uss_lss_qb_map[qb] if
+                   d not in gate_list_lss_qb]))
+    spectators_of_lss_qb_list = []
+    for lss_qb in gate_list_lss_qb:
+        spectators_of_lss_qb_list += [qb for qb, lss_qb_list in uss_lss_qb_map.items()
+                           if lss_qb in spectators_of_uss_qb_list]
+    spectators_of_lss_qb_list = list(set([qb for qb in spectators_of_lss_qb_list if qb not in
+                               gate_list_uss_qb]))
 
     qubit_list = []
     if include_spectators_which_are_lss:
-        qubit_list += dd_qubit_list
+        qubit_list += spectators_of_uss_qb_list
     if include_spectators_which_are_uss:
-        qubit_list += anc_qubit_list
+        qubit_list += spectators_of_lss_qb_list
 
     return dev.get_qubits(qubit_list,'obj')
 
