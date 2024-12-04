@@ -1250,9 +1250,9 @@ class GaussFilteredCosIQPulse(pulse.Pulse):
         This is considered an expert feature since not all functions
         support polychromatic readout. Some will choose the first
         modulation frequency (SSB weights), while others will simply
-        error out (resonator spectroscopy). Use temporary values to
-        disable polychromatic readout for incompatible measurements
-        and 'optimal_qutrit' integration weights.
+        error out (resonator spectroscopy). Use 'optimal_qutrit'
+        integration weights and disable polychromatic readout
+        during incompatible measurements using temporary values.
         """
         super().__init__(name, element_name, **kw)
 
