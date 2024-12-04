@@ -347,35 +347,40 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
                solver = 'SCS', solveropt = {'': None},
                cov_threshold = 1e-12):
     """
-    	This function used the CVXPY package to estimate a physical density
-    	operator from the unphysical one inferred from moments or Pauli
-    	expectation values.
-    	One defines a residue array delta = rho_exp - rho, which is the
-    	difference between the experimental state and an arbitrary guess,
-    	and aims to minimize its modulus. We define a quadratic form Q =
-    	delta.H @ W @ delta, where W is a weighting matrix which corresponds
-    	to the inverse of the covariance matrix. In  the practice, we use the
-    	diagonal form of W, D, which has lower dimensionality because some of
-    	the covariances in the diagonal form are zero. To transform between
-    	these two bases, we use the eigenbasis conversion matrix V, yielding
-    	a final quadratic form with the	shape
-    	Q = (delta.H @ V.H) @ D @ (V @ delta).
+    Executes a maximum likelihood fit to the measured observables, respecting
+    the physicality constraints of the density matrix, using convex programming.
 
-    	The package cvxpy is used to define a convex optimization problem that
-    	fits a complex,	hermitian matrix rho_model to the input data, with the
-    	physicality constraints of
-    	(i) being positive semi-definite (PSD)
-    	(ii) having unit trace
-    	"""
+    Args:
+        mus: 1-dimensional numpy ndarray containing the measured expectation
+             values for the measurement operators Fs.
+        Fs: A list of the measurement operators (as qutip operators) that
+            correspond to the expectation values in mus.
+        Omega: The covariance matrix of the expectation values mu.
+               If a 1-dimensional array is passed, the values are interpreted
+               as the variations of the mus and the correlations are assumed to
+               be zero.
+               If `None` is passed, then all measurements are assumed to have
+               equal variances.
+               If a rectangular matrix is passed, it is assumed to be a
+               sparse representation of a block-diagonal covariance matrix.
+               This last option is not currently working, but it is at least
+               handled in some way.
+        rho_guess: The initial value of the density matrix for the iterative
+                optimization algorithm.
+        solver: The algorithm used by cvxpy to do the optimization
+        solveropt: options for the solver, like max number of iterations or
+                step size.
+        cov_threshold: Covariance threshold. The target function is weighted
+                by the inverse of the covariance matrix, so tiny covariances
+                make this function diverge. This parameter diregards degrees of
+                freedom whose covariance is too small.
+    Returns: The found density matrix as a qutip operator.
     
-    """
-    Further sanity check: after coding this I have found a paper doing something
-    very similar, see https://arxiv.org/pdf/2202.11584.pdf
-
+    Documentation:
+    See https://arxiv.org/pdf/2202.11584.pdf for a very similar method.
     Also, the author put the code on github, in the following notebook,
-    in section
-    'Convex optimization', they use the exact same methodology as shown here,
-    see
+    in section 'Convex optimization', they use the exact same methodology as
+    shown here, see
     https://github.com/ingstra/cvx-tomography/blob/main/cvx_noisy_heterodyne
     .ipynb
     """
@@ -383,8 +388,6 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
     # Define dimensionality of the problem
     nqubits = int(np.log2(Fs[0].shape[0]))
     d = 2 ** nqubits
-    
-    # Build convex problem
     
     # Define variable as a hermitian matrix and reshape it into a vector
     rho = cp.Variable((d,) * 2, hermitian = True)
@@ -398,14 +401,13 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
     else:
         rho.value = rho_guess
     
-    # Flatten the input data and take the difference with the
-    # optimization variable
+    # Computes expectation values based on the model. Equivalent to Tr(F @ rho)
     Fs_flat = np.array([o.full().T.flatten() for o in Fs])
-    mus_guess = Fs_flat @ rho_
-    delta = mus - mus_guess  # The variable to minimize is the distance
+    mus_model = Fs_flat @ rho_
+    delta = mus - mus_model  # The variable to minimize is the distance
     # between experiment and model
     
-    # Diagonalization of covariance matrix
+    # Handling of various options for the covariance matrix input
     if Omega is None:
         Omega = np.identity(len(mus))
     elif Omega.ndim == 1 or 1 in Omega.shape:
@@ -433,7 +435,7 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
                 blocks.append(Omega[:, i*short:(i+1)*short])
             Omega = sp.linalg.block_diag(*blocks)
     
-    # We actually rewrite the problem in the eigenbasis of Omega
+    # We will rewrite the problem in the eigenbasis of Omega
     eigvals, eigvects = np.linalg.eigh(Omega)
     
     # Removal of covariances below a certain threshold value
@@ -441,18 +443,20 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
         np.abs(eigvals.real) > np.abs(eigvals.real.max()) * cov_threshold)[0]
     good_eigvals = eigvals.real[above_threshold]
     
-    # Definition of diagonal weighting matrix and basis transformation
+    # Definition of diagonal weighting matrix and conversion matrix to the
+    # covariance eigenbasis
     D = np.diag(1 / good_eigvals)
     U = np.matrix(eigvects)
     V = np.array(U[:, above_threshold].H)
 
-    # The function to be optimized is the quadratic form Q = delta.H @ W
+    # The function to be optimized is the quadratic form
+    # Q = delta.H @ W @ delta, where W = V.H @ D @ V
     Q = cp.quad_form(V @ delta, D)
     objective = cp.Minimize(Q)
     
     # Physicality constraints
     constraints = [
-        rho >> 0,  # PSD
+        rho >> 0,           # PSD
         cp.trace(rho) == 1  # Unit trace
     ]
     
@@ -470,7 +474,7 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
     use_quad_obj = solveropt.get('use_quad_obj', True)
     
     # Solving the problem
-    problem.solve(warm_start = True,
+    problem.solve(warm_start = True, # Use of an initial guess
                   solver = solver,
                   max_iters = max_iters,
                   eps = eps,
@@ -483,7 +487,7 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
                   verbose = False, # Set to True for numerical debugging
                   )
     result = qtp.Qobj(np.array(rho.value))
-    
+
     return result
 
 def pauli_values_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
