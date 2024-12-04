@@ -1,6 +1,6 @@
 from copy import deepcopy
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Union
 import numpy as np
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
@@ -27,10 +27,10 @@ class AcquisitionDevice():
             acquisition unit (*)
         n_acq_inp_channels (int): number of input channels (quadratures)
             per acquisition unit (*)
-        acq_fixed_lo_freq (dict[str, int], optional): Restrictions on
-            the acquisition LO frequency. Optional, may be None
-            (default) or a dictionary mapping strings to floating point
-            values.
+        acq_default_fixed_lo_freq (dict[str, float], list[float], str, or float, optional):
+            Restrictions on the acquisition LO frequency. Optional, may be None
+            (default) or a value understood by
+            MeasurementObject.get_closest_lo_freq().
         acq_length_granularity (int): indicates that the number of samples
             in an acquired signal must be a multiple of this number (*)
         acq_sampling_rate (float): sampling rate of the acquisition units in
@@ -57,7 +57,9 @@ class AcquisitionDevice():
     n_acq_units = 1
     n_acq_int_channels = 1
     n_acq_inp_channels = 2  # I&Q by default, can be overridden by children
-    acq_fixed_lo_freq: Optional[Dict[str, float]] = None
+    acq_default_fixed_lo_freq: Optional[
+        Union[Dict[str, float], List[float], str, float]
+    ] = None
     acq_length_granularity = 1
     acq_sampling_rate = None
     acq_weights_n_samples = None
