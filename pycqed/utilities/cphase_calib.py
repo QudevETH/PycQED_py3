@@ -148,13 +148,17 @@ def get_spectators(dev, uss_lss_qb_map, gate_list,
         return dev.get_qubits(uss_lss_qb_map, 'obj')
     gate_list_uss_qb = [qb[0].name for qb in gate_list]
     gate_list_lss_qb = [qb[1].name for qb in gate_list]
+
+    # Find the list of spectators of the gate uss qubits (which will be lss qubits)
     spectators_of_uss_qb_list = list(
         np.unique([d for qb in gate_list_uss_qb for d in uss_lss_qb_map[qb] if
                    d not in gate_list_lss_qb]))
     spectators_of_lss_qb_list = []
+
+    # Find the list of spectators of the gate lss qubits (which will be uss qubits)
     for lss_qb in gate_list_lss_qb:
         spectators_of_lss_qb_list += [qb for qb, lss_qb_list in uss_lss_qb_map.items()
-                           if lss_qb in spectators_of_uss_qb_list]
+                           if lss_qb in lss_qb_list]
     spectators_of_lss_qb_list = list(set([qb for qb in spectators_of_lss_qb_list if qb not in
                                gate_list_uss_qb]))
 
