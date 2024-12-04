@@ -448,7 +448,6 @@ def density_matrices(data_dict,
         data_dict, raise_error=True, **params)
     all_cov_matrix_meas_obs = hlp_mod.get_param(
         f'{keys_out_container}.all_cov_matrix_meas_obs', data_dict)
-    print('Covariance matrix shape:', all_cov_matrix_meas_obs.shape)
     for estimation_type in estimation_types:
         if estimation_type == 'least_squares':
             rho_ls = tomo.least_squares_tomography(
@@ -492,38 +491,30 @@ def density_matrices(data_dict,
             hlp_mod.add_param(f'{keys_out_container}.pauli_values.rho',
                               rho_pauli, data_dict, **params)
         elif estimation_type == 'convex_mle':
-            rho_guess = hlp_mod.get_param('rho_guess', data_dict, **params)
+            rho_guess = hlp_mod.get_param('rho_guess', data_dict,
+                                          default_value = None, **params)
+            # least_squares is not used as a guess because it does not meet
+            # the physicality constraints, and cvxpy does not like problems
+            # in which the guess does not meet the constraints
             # if rho_guess is None:
             #     rho_guess = hlp_mod.get_param(
             #         f'{keys_out_container}.least_squares.rho',
-            #         data_dict, raise_error=True,
-            #         error_message='Maximum likelihood estimation needs a guess '
-            #                       'rho but neither a rho_guess nor a '
-            #                       'least_squares.rho was found.', **params)
-            
-            tgt = np.matrix(hlp_mod.get_param('rho_target', data_dict,
-                                        **params).full())
-            # print(tgt.proj().full().real)
-            ideal_projectors = meas_proj(2,
-                order = ['I', 'X180', '-Y90', 'Y90', '-X90', 'X90'])
-            # print(tgt)
-            # print(ideal_projectors[0])
-            target_meas = np.array([np.array(tgt.H @ o @ tgt)[0, 0] for o in
-                                    ideal_projectors])
-            # print(target_meas)
-            artificial_cov = np.identity(target_meas.shape[0])
-            # print(artificial_cov.shape)
-            # print('Norm: ', np.linalg.norm(target_meas-all_measurement_results))
-            rho_cvx = tomo.cvx_mle_tomography(
-                all_measurement_results,
-                # target_meas,
-                all_measurement_operators,
-                all_cov_matrix_meas_obs,
-                # artificial_cov,
-                # if hlp_mod.get_param(
-                #     'use_covariance_matrix', data_dict,
-                #     default_value=False, **params) else None,
-                # rho_guess=rho_guess
+            #         data_dict, default_value = None, **params)
+            rho_cvx = tomo.convex_mle(
+                mus = all_measurement_results,
+                Fs = all_measurement_operators,
+                Omega = all_cov_matrix_meas_obs if hlp_mod.get_param(
+                    'use_covariance_matrix', data_dict,
+                    default_value=True, **params) else None,
+                rho_guess = rho_guess,
+                solver = hlp_mod.get_param('solver', data_dict,
+                                           default_value = 'SCS', **params),
+                solveropt = hlp_mod.get_param('solveropt', data_dict,
+                                           default_value = {'':None}, **params),
+                cov_threshold = hlp_mod.get_param('cov_threshold', data_dict,
+                                           default_value = 1e-12, **params),
+                debug = hlp_mod.get_param('debug', data_dict,
+                                           default_value = False, **params),
             )
             hlp_mod.add_param(f'{keys_out_container}.convex_mle.rho',
                               rho_cvx, data_dict, **params)

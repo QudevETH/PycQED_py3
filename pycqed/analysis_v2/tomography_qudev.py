@@ -341,6 +341,148 @@ def fit_rho_cvx(rho_exp, cov = None, guess = False,
     
     return result
 
+def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
+               Omega: Optional[np.ndarray] = None,
+               rho_guess: Optional[qtp.Qobj] = None,
+               solver = 'SCS', solveropt = {'': None},
+               cov_threshold = 1e-12, debug = False):
+    """
+    	This function used the CVXPY package to estimate a physical density
+    	operator from the unphysical one inferred from moments or Pauli
+    	expectation values.
+    	One defines a residue array delta = rho_exp - rho, which is the
+    	difference between the experimental state and an arbitrary guess,
+    	and aims to minimize its modulus. We define a quadratic form Q =
+    	delta.H @ W @ delta, where W is a weighting matrix which corresponds
+    	to the inverse of the covariance matrix. In  the practice, we use the
+    	diagonal form of W, D, which has lower dimensionality because some of
+    	the covariances in the diagonal form are zero. To transform between
+    	these two bases, we use the eigenbasis conversion matrix V, yielding
+    	a final quadratic form with the	shape
+    	Q = (delta.H @ V.H) @ D @ (V @ delta).
+
+    	The package cvxpy is used to define a convex optimization problem that
+    	fits a complex,	hermitian matrix rho_model to the input data, with the
+    	physicality constraints of
+    	(i) being positive semi-definite (PSD)
+    	(ii) having unit trace
+    	"""
+    
+    """
+    Further sanity check: after coding this I have found a paper doing something
+    very similar, see https://arxiv.org/pdf/2202.11584.pdf
+
+    Also, the author put the code on github, in the following notebook,
+    in section
+    'Convex optimization', they use the exact same methodology as shown here,
+    see
+    https://github.com/ingstra/cvx-tomography/blob/main/cvx_noisy_heterodyne
+    .ipynb
+    """
+    
+    # Define dimensionality of the problem
+    nqubits = int(np.log2(Fs[0].shape[0]))
+    d = 2 ** nqubits
+    
+    # Build convex problem
+    
+    # Define variable as a hermitian matrix and reshape it into a vector
+    rho = cp.Variable((d,) * 2, hermitian = True)
+    rho_ = cp.reshape(rho, (d ** 2,), 'C')  # Flattening
+    
+    # Initial guess
+    if rho_guess is None:
+        # If no guess is used as an input, we use a maximally-mixed state
+        # by default
+        rho.value = np.identity(d, dtype = complex) / d
+    else:
+        rho.value = rho_guess
+    
+    # Flatten the input data and take the difference with the
+    # optimization variable
+    Fs_flat = np.array([o.full().T.flatten() for o in Fs])
+    mus_guess = Fs_flat @ rho_
+    delta = mus - mus_guess  # The variable to minimize is the distance
+    # between experiment and model
+    
+    # Diagonalization of covariance matrix
+    if Omega is None:
+        Omega = np.identity(len(mus))
+    elif Omega.shape[0] != Omega.shape[1]:
+            """
+            This rectangular covariance matrix is something that appears
+            when readout_correction is disabled, and I still do not fully
+            understand. The covariance matrix has one dimension of the
+            expected length and one with 1/2**nqubits less entries. Here I
+            assume that this is an efficient way of expressing a
+            block-diagonal covariance matrix, and I expand the matrix for it
+            to be properly block-diagonal and square. But the convex
+            optimization problem then complains about it, about the problem
+            not being DCP.
+            """
+            assert Omega.shape[1] == Omega.shape[0] * 2**nqubits, \
+            f'shape = {Omega.shape}'
+            short = Omega.shape[0]
+            blocks = []
+            for i in range(2**nqubits):
+                blocks.append(Omega[:, i*short:(i+1)*short])
+            Omega = sp.linalg.block_diag(*blocks)
+    
+    # We actually rewrite the problem in the eigenbasis of Omega
+    eigvals, eigvects = np.linalg.eigh(Omega)
+    
+    # Removal of covariances below a certain threshold value
+    above_threshold = np.where(
+        np.abs(eigvals.real) > np.abs(eigvals.real.max()) * cov_threshold)[0]
+    good_eigvals = eigvals.real[above_threshold]
+    if debug: print('%i/%i eigenvalues above threshold' % (
+        len(good_eigvals), 2 ** (2 * nqubits)))
+    
+    # Definition of diagonal weighting matrix and basis transformation
+    D = np.diag(1 / good_eigvals)
+    U = np.matrix(eigvects)
+    V = np.array(U[:, above_threshold].H)
+
+    # The function to be optimized is the quadratic form Q = delta.H @ W
+    Q = cp.quad_form(V @ delta, D)
+    objective = cp.Minimize(Q)
+    
+    # Physicality constraints
+    constraints = [
+        rho >> 0,  # PSD
+        cp.trace(rho) == 1  # Unit trace
+    ]
+    
+    # Definition of the problem
+    problem = cp.Problem(objective, constraints)
+    
+    # Solver options for the optimization
+    max_iters = solveropt.get('max_iters', 2500)
+    eps = solveropt.get('eps', 1e-4)
+    alpha = solveropt.get('alpha', 1.8)
+    acceleration_lookback = solveropt.get('acceleration_lookback', 10)
+    scale = solveropt.get('scale', 5.0)
+    normalize = solveropt.get('normalize', True)
+    use_indirect = solveropt.get('use_indirect', True)
+    use_quad_obj = solveropt.get('use_quad_obj', True)
+    
+    # Solving the problem
+    problem.solve(warm_start = True,
+                  solver = solver,
+                  max_iters = max_iters,
+                  eps = eps,
+                  alpha = alpha,
+                  acceleration_lookback = acceleration_lookback,
+                  scale = scale,
+                  normalize = normalize,
+                  use_indirect = use_indirect,
+                  use_quad_obj = use_quad_obj,
+                  verbose = debug)
+    
+    result = qtp.Qobj(np.array(rho.value))
+    
+    return result
+
 def pauli_values_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                             basis_rots: List[str]) -> qtp.Qobj:
     """
@@ -423,43 +565,6 @@ def pauli_to_dm(pauli, cov = None):
     else:
         return dm
 
-def cvx_mle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
-                       Omega: Optional[np.ndarray] = None,
-                       rho_guess: Optional[qtp.Qobj] = None,
-                       solver: Optional[str] = 'SCS',
-                       solveropt: Optional[dict] = {'': None},
-                       cov_threshold: Optional[float] = 1e-12,
-                       debug: Optional[bool] = False) -> qtp.Qobj:
-    d = Fs[0].shape[0]
-    nr_qubits = int(np.log2(d))
-
-    if Omega is None:
-        pauli_exp = meas_to_pauli(nr_qubits, mus)
-
-        rho_exp = pauli_to_dm(pauli_exp)
-
-        rho_cvx = fit_rho_cvx(rho_exp = rho_exp,
-                              guess = rho_guess.full() if not rho_guess is
-                                                              None else True,
-                              solver = solver,
-                              solveropt = solveropt,
-                              cov_threshold = cov_threshold,
-                              debug = debug)
-    else:
-        pauli_exp, pauli_cov = meas_to_pauli(nr_qubits, mus, Omega)
-        rho_exp, rho_cov = pauli_to_dm(pauli_exp, pauli_cov)
-        rho_cvx = fit_rho_cvx(rho_exp = rho_exp,
-                              cov = rho_cov,
-                              guess = rho_guess.full() if not rho_guess is
-                                  None else True,
-                              solver = solver,
-                              solveropt = solveropt,
-                              cov_threshold = cov_threshold,
-                              debug = debug)
-    rho_qobj = convert_to_density_matrix(rho_cvx)
-    return rho_qobj
-    
-    
 def ltriag_matrix(params: np.ndarray, d: int):
     """
     Creates a lower-triangular matrix of dimension d from an array of d**2
