@@ -345,7 +345,7 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
                Omega: Optional[np.ndarray] = None,
                rho_guess: Optional[qtp.Qobj] = None,
                solver = 'SCS', solveropt = {'': None},
-               cov_threshold = 1e-12, debug = False):
+               cov_threshold = 1e-12):
     """
     	This function used the CVXPY package to estimate a physical density
     	operator from the unphysical one inferred from moments or Pauli
@@ -435,8 +435,6 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
     above_threshold = np.where(
         np.abs(eigvals.real) > np.abs(eigvals.real.max()) * cov_threshold)[0]
     good_eigvals = eigvals.real[above_threshold]
-    if debug: print('%i/%i eigenvalues above threshold' % (
-        len(good_eigvals), 2 ** (2 * nqubits)))
     
     # Definition of diagonal weighting matrix and basis transformation
     D = np.diag(1 / good_eigvals)
@@ -477,8 +475,8 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
                   normalize = normalize,
                   use_indirect = use_indirect,
                   use_quad_obj = use_quad_obj,
-                  verbose = debug)
-    
+                  verbose = False, # Set to True for numerical debugging
+                  )
     result = qtp.Qobj(np.array(rho.value))
     
     return result
