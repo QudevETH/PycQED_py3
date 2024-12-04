@@ -408,6 +408,11 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
     # Diagonalization of covariance matrix
     if Omega is None:
         Omega = np.identity(len(mus))
+    elif Omega.ndim == 1 or 1 in Omega.shape:
+        # If Omega is a 1D array, we assume it is the diagonal of the
+        # covariance matrix, and no correlation terms are to be considered
+        Omega = np.squeeze(np.array(Omega))
+        Omega = np.diag(Omega)
     elif Omega.shape[0] != Omega.shape[1]:
             """
             This rectangular covariance matrix is something that appears
