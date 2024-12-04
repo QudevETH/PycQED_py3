@@ -14,59 +14,9 @@ from pycqed.analysis_v3 import processing_pipeline as pp_mod
 from pycqed.analysis_v3 import data_extraction as dat_extr_mod
 from pycqed.analysis_v3 import data_processing as dat_proc_mod
 from copy import deepcopy
-from pycqed.utilities.math import kron
 
 import sys
 pp_mod.search_modules.add(sys.modules[__name__])
-
-zero = np.matrix([[1], [0j]])
-one = np.matrix([[0j], [1]])
-plus = (zero + one)/2**0.5
-minus = (zero - one)/2**0.5
-plusi = (zero + 1j*one)/2**0.5
-minusi = (zero - 1j*one)/2**0.5
-
-zerozero = np.kron(zero, zero)
-oneone = np.kron(one, one)
-plusplus = np.kron(plus, plus)
-minusminus = np.kron(minus, minus)
-plusiplusi = np.kron(plusi, plusi)
-minusiminusi = np.kron(minusi, minusi)
-zeroplus = np.kron(zero, plus)
-oneminus = np.kron(one, minus)
-bell00 = (zerozero + oneone) / 2**0.5
-bell00j = (zerozero + 1j*oneone) / 2**0.5
-cluster2 = (zeroplus + oneminus) / 2**0.5
-
-P_zero = zero @ zero.H
-P_one = one @ one.H
-P_plus = plus @ plus.H
-P_minus = minus @ minus.H
-P_plusi = plusi @ plusi.H
-P_minusi = minusi @ minusi.H
-
-rotation_projectors = {
-    'I': [P_zero, P_one],
-    'X180': [P_one, P_zero],
-    'Y90': [P_plus, P_minus],
-    '-Y90': [P_minus, P_plus],
-    'X90': [P_minusi, P_plusi],
-    '-X90': [P_plusi, P_minusi],
-}
-
-def meas_proj(n, order = ['I', 'X180', 'Y90', '-Y90', 'X90', '-X90']):
-    assert n < 3 and n > 0, 'Unsupported'
-
-    meas_proj_1 = []
-    for rot in order: meas_proj_1 += rotation_projectors[rot]
-
-    if n == 1: return np.array(meas_proj_1)
-    elif n == 2:
-        meas_proj_2 = []
-        for p in meas_proj_1:
-            for q in meas_proj_1:
-                meas_proj_2.append(kron(p, q))
-    return np.array(meas_proj_2)
 
 
 def standard_qubit_pulses_to_rotations(pulse_list):
