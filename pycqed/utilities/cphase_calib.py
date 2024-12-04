@@ -143,6 +143,7 @@ unit_dict = dict(amplitude='V', amplitude2='V', pulse_length='s',
 
 def get_spectators(dev, anc_data_qb_map, gate_list,
                    include_spectators_which_are_uss = True, include_spectators_which_are_lss = True):
+    
     if isinstance(anc_data_qb_map, list):
         return dev.get_qubits(anc_data_qb_map, 'obj')
     gate_list_ancqb = [qb[0].name for qb in gate_list]
