@@ -164,8 +164,6 @@ def get_spectators(dev, anc_data_qb_map, gate_list,
     if include_spectators_which_are_uss:
         qubit_list += anc_qubit_list
 
-    # qubit_list = dd_qubit_list + anc_qubit_list if include_spec_of_data_qubits
-    #     else dd_qubit_list
     return dev.get_qubits(qubit_list,'obj')
 
 
