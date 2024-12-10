@@ -14,6 +14,7 @@ if sys.version_info < (3, 10):
     from more_itertools import pairwise
 
 from pycqed.measurement.waveform_control import pulse
+from pycqed.utilities.warnings import deprecated
 
 log = logging.getLogger(__name__)
 
@@ -1565,6 +1566,14 @@ class GaussFilteredCosIQPulseWithFlux(GaussFilteredCosIQPulse):
         return self.fp.get_mirror_pulse_obj_and_pattern()
 
 
+@deprecated(
+    """
+    The GaussFilteredCosIQPulseMultiChromatic pulse is deprecated and
+    will be removed in a future MR. To use polychromatic readout, use
+    the regular GaussFilteredCosIQPulse with a list of readout
+    frequencies.
+    """
+)
 class GaussFilteredCosIQPulseMultiChromatic(GaussFilteredCosIQPulse):
     def __init__(self,
                  *args,
@@ -1575,11 +1584,6 @@ class GaussFilteredCosIQPulseMultiChromatic(GaussFilteredCosIQPulse):
         super().__init__(
             *args,
             **kw
-        )
-        raise FutureWarning(
-            "The GaussFilteredCosIQPulseMultiChromatic pulse is "
-            "deprecated; use GaussFilteredCosIQPulse instead (which "
-            "now supports all the same options)."
         )
 
 
