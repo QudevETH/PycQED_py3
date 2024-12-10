@@ -195,17 +195,6 @@ class SpectroscopyOld(ba.BaseDataAnalysis):
                                       'zvals': proc_data_dict['plot_amp'],
                                       }
 
-    def plot_for_presentation(self, key_list=None, no_label=False):
-        super().plot_for_presentation(
-            key_list=key_list, no_label=no_label)
-        for key in key_list:
-            pdict = self.plot_dicts[key]
-            if key == 'amp':
-                if pdict['plotfn'] == self.plot_line:
-                    ymin, ymax = 0, 1.2 * np.max(np.ravel(pdict['yvals']))
-                    self.axs[key].set_ylim(ymin, ymax)
-                    self.axs[key].set_ylabel('Transmission amplitude (V rms)')
-
 
 class ResonatorSpectroscopy(SpectroscopyOld):
     def __init__(self, t_start,
@@ -465,16 +454,16 @@ class ResonatorSpectroscopy(SpectroscopyOld):
                     if fitting_model == 'hanger':
                         ax.plot(list(fit_dict['fit_xvals'].values())[0],
                                 fit_results.best_fit, 'r-', linewidth=1.5)
-                        textstr = 'f0 = %.5f $\pm$ %.1g GHz' % (
+                        textstr = r'f0 = %.5f $\pm$ %.1g GHz' % (
                               fit_results.params['f0'].value,
                               fit_results.params['f0'].stderr) + '\n' \
-                                           'Q = %.4g $\pm$ %.0g' % (
+                                           r'Q = %.4g $\pm$ %.0g' % (
                               fit_results.params['Q'].value,
                               fit_results.params['Q'].stderr) + '\n' \
-                                           'Qc = %.4g $\pm$ %.0g' % (
+                                           r'Qc = %.4g $\pm$ %.0g' % (
                               fit_results.params['Qc'].value,
                               fit_results.params['Qc'].stderr) + '\n' \
-                                           'Qi = %.4g $\pm$ %.0g' % (
+                                           r'Qi = %.4g $\pm$ %.0g' % (
                               fit_results.params['Qi'].value,
                               fit_results.params['Qi'].stderr)
                         box_props = dict(boxstyle='Square',
@@ -2120,24 +2109,24 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
             self.plot_dicts[fig_id_analyzed]['fig_id'] = fig_id_analyzed
             self.plot_dicts[fig_id_analyzed]['linestyle'] = 'solid'
 
+            lmfit_model = self.fit_res[qb_name]
             # Plot Lorentzian fit
             self.plot_dicts[f"{fig_id_analyzed}_lorentzian"] = {
                 'fig_id': fig_id_analyzed,
-                'plotfn': self.plot_line,
-                'xvals': sweep_points,
-                'yvals': self.fit_res[qb_name].best_fit,
-                'ylabel': 'S21 distance (arb.units)',
-                'marker': None,
-                'linestyle': 'solid',
-                'color': 'C3',
+                'plotfn': self.plot_fit,
+                'fit_res': lmfit_model,
                 'setlabel': 'Fit',
                 'do_legend': True,
+                'color': 'C3',
+                'ylabel': 'S21 distance (arb.units)',
+                'legend_bbox_to_anchor': (1, -0.15),
+                'legend_pos': 'upper right'
             }
 
             # Plot peak
-            f0 = self.fit_res[qb_name].params['f0'].value
-            f0_idx = a_tools.nearest_idx(sweep_points, f0)
-            f0_dist = self.fit_res[qb_name].best_fit[f0_idx]
+            f0 = lmfit_model.params['f0'].value
+            f0_dist = lmfit_model.eval(lmfit_model.params, **{
+                lmfit_model.model.independent_vars[0]: [f0]})
             self.plot_dicts[f"{fig_id_analyzed}_lorentzian_peak"] = {
                 'fig_id': fig_id_analyzed,
                 'plotfn': self.plot_line,
@@ -2154,12 +2143,10 @@ class QubitSpectroscopy1DAnalysis(MultiQubit_Spectroscopy_Analysis):
 
             if self.analyze_ef:
                 # Plot the gf/2 point as well
-                f0_gf_over_2 = self.fit_res[qb_name].params[
+                f0_gf_over_2 = lmfit_model.params[
                     'f0_gf_over_2'].value
-                f0_gf_over_2_idx = a_tools.nearest_idx(sweep_points,
-                                                       f0_gf_over_2)
-                f0_gf_over_2_dist = self.fit_res[qb_name].best_fit[
-                    f0_gf_over_2_idx]
+                f0_gf_over_2_dist = lmfit_model.eval(lmfit_model.params, **{
+                    lmfit_model.model.independent_vars[0]: [f0_gf_over_2]})
 
                 self.plot_dicts[
                     f"{fig_id_analyzed}_lorentzian_peak_gf_over_2"] = {

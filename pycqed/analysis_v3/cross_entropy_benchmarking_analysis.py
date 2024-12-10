@@ -1545,14 +1545,14 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
 
                     ax.plot([], [], 'o-', c=line_f.get_color(),  label='Fidelity')
                     ax.plot([], [], 'o-', c=line_p.get_color(),
-                            label='$\\sqrt{\mathrm{Purity}}$')
+                            label='$\\sqrt{\\mathrm{Purity}}$')
                     ax.legend(frameon=False, **legend_kw)
                     cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}" \
                         if 'cphase' in data_dict['exp_metadata'] else ''
                     ax.set_title(
                         f'{filename_prefix}XEB{cz_name} {mobjn} - {timestamp}')
 
-                    ax.set_ylabel('XEB fidelity, $\\sqrt{\mathrm{Purity}}$')
+                    ax.set_ylabel('XEB fidelity, $\\sqrt{\\mathrm{Purity}}$')
                     ax.set_xlabel('Number of cycles, $m$')
                     if log_scale:
                         ax.set_yscale('log')

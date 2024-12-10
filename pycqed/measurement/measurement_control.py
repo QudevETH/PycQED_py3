@@ -323,7 +323,7 @@ class MeasurementControl(Instrument):
                     the calling function, but only used by run() when it
                     calls itself recursively.
             store_sweep_indices (bool): If True, when storing the data the
-                iteration indices are prepended instead of the sweep points.
+                sweep indices are prepended instead of the sweep points.
         '''
 
         def try_finish():
@@ -861,8 +861,6 @@ class MeasurementControl(Instrument):
         else:
             # Transpose since detectors return [len(value_names), num_points],
             # to get shape [num_points, len(value_names)]
-            # TODO confirm that all det.acquire_data_point can be deleted,
-            #  see comment in Multi_Detector.acquire_data_point
             vals = np.array(self.detector_function.get_values()).T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
@@ -871,7 +869,11 @@ class MeasurementControl(Instrument):
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
         if self.store_sweep_indices:
-            x = self.iteration
+            # First colum: hard indices = range(len(x)), second: self.iteration
+            x = np.concatenate((
+                np.array(range(len(x))).reshape(-1,1),
+                np.ones((len(x), 1)) * self.iteration,
+            ), axis=1)
         # Because x is allowed to be a list of tuples (batch sampling),
         # and the detector function may return 1D values, we unify their
         # format before we can save them to the dset.
@@ -1541,7 +1543,7 @@ class MeasurementControl(Instrument):
                 self.TwoD_array = np.empty(
                     [len(sv[1]), len(sv[0]),
                      len(self.detector_function.value_names)])
-                self.TwoD_array[:] = np.NAN
+                self.TwoD_array[:] = np.nan
                 self.secondary_QtPlot.clear()
                 for j, vn in enumerate(self.detector_function.value_names):
                     axes_info = self._plotmon_axes_info[vn]
@@ -1936,7 +1938,7 @@ class MeasurementControl(Instrument):
 
     def _get_nr_sweep_point_columns(self):
         if self.store_sweep_indices:
-            return 1
+            return 2
         else:
             return np.sum([sweep_function.get_nr_parameters() \
                 for sweep_function in self.sweep_functions])
@@ -2113,6 +2115,7 @@ class MeasurementControl(Instrument):
                 'sweep_points': result['sweep_points']})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
+    @Timer()
     def save_instrument_settings(self, data_object=None, mode='xb', *args):
         '''
         uses QCodes station snapshot to save the last known value of any
@@ -2135,9 +2138,9 @@ class MeasurementControl(Instrument):
             # a context manager, such that it is closed after save method.
             if not data_object.__bool__():
                 with h5d.Data(name=self.get_measurement_name(),
-                  datadir=self.datadir(),
-                  timestamp=self.last_timestamp(),
-                                       auto_increase=False) as data_object:
+                              datadir=self.datadir(),
+                              timestamp=self.last_timestamp(),
+                              auto_increase=False) as data_object:
                     MeasurementControl.save_station_in_hdf(data_object,
                                                             self.station)
             else:

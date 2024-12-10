@@ -187,7 +187,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
                 to translate the Clifford elements into applicable pulses.
                 Possible choices are 'HZ' or 'XY'.
                 See HZ_gate_decomposition and XY_gate_decomposition in
-                measurement\randomized_benchmarking\clifford_decompositions.py
+                measurement/randomized_benchmarking/clifford_decompositions.py
 
         Keyword args:
             passed to parent class; see docstring there
