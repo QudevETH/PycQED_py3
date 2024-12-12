@@ -11,6 +11,7 @@ Key functions:
     savefig: Saves figures with timestamp
     safe_format_str_with_keys: Safely formats strings with variable substitution
 """
+
 import math
 import pathlib
 
@@ -18,7 +19,8 @@ import numpy as np
 
 import pycqed.analysis.analysis_toolbox as a_tools
 
-def assign_coordinates(labels, shape=None, order='row_first'):
+
+def assign_coordinates(labels, shape=None, order="row_first"):
     """
     Assigns 2D coordinates (xi, yi) to labels in either row-first or column-first order.
 
@@ -50,13 +52,13 @@ def assign_coordinates(labels, shape=None, order='row_first'):
     count = 0
 
     # Assign coordinates based on the chosen order
-    if order == 'row_first':
+    if order == "row_first":
         for row in range(rows):
             for col in range(cols):
                 if count < num_labels:
                     coordinates[labels[count]] = (row, col)
                     count += 1
-    elif order == 'column_first':
+    elif order == "column_first":
         for col in range(cols):
             for row in range(rows):
                 if count < num_labels:
@@ -99,8 +101,10 @@ def _get_gridshape_and_offsets(indices: list[tuple[int, int]]):
     """
     row_indices = [i[0] for i in indices]
     column_indices = [i[1] for i in indices]
-    grid_shape = (max(row_indices) - min(row_indices) + 1,
-                  max(column_indices) - min(column_indices) + 1)
+    grid_shape = (
+        max(row_indices) - min(row_indices) + 1,
+        max(column_indices) - min(column_indices) + 1,
+    )
     # calculate offset in case there are negative indices,
     # the index are padded by the offset
     # such that because all indices in the grid are positive
@@ -130,13 +134,22 @@ def add_text(ax, text, fontsize=35, alpha=0.2, **kwargs):
     y_center = (ax.get_ylim()[0] + ax.get_ylim()[1]) / 2
 
     # Add the text at the center
-    ax.text(x_center, y_center, text, fontsize=fontsize, alpha=alpha,
-            ha='center', va='center', **kwargs)
+    ax.text(
+        x_center,
+        y_center,
+        text,
+        fontsize=fontsize,
+        alpha=alpha,
+        ha="center",
+        va="center",
+        **kwargs,
+    )
 
 
-def savefig(fig, path, fig_name, bbox_inches='tight', extension='pdf', dpi=None):
-    figpath = (pathlib.Path(path) /
-               (fig_name + f'_{a_tools.current_timestamp()}.{extension}'))
+def savefig(fig, path, fig_name, bbox_inches="tight", extension="pdf", dpi=None):
+    figpath = pathlib.Path(path) / (
+        fig_name + f"_{a_tools.current_timestamp()}.{extension}"
+    )
     fig.savefig(str(figpath), bbox_inches=bbox_inches, dpi=dpi)
 
 

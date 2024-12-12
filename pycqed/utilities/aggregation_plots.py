@@ -21,7 +21,12 @@ Typical usage:
     aggregator = CalibrationPlotAggregator.from_timestamps(['20230615'])
     aggregator.plot_on_qubit_grid()
     ```
+
+Note:
+    This module follows analysis_v3 design by a high degree. I.e., we defer
+    execution, like plotting, as long as possible.
 """
+
 import matplotlib.pyplot as plt
 from io import BytesIO
 import matplotlib.image as mpimg
@@ -39,26 +44,27 @@ import pycqed.utilities.aggregation_plots_utils as aggr_u
 logger = logging.getLogger(__name__)
 
 # start with underscore to be 'first file shown in alphabetical order
-COMBINED_PLOT_PREFIX = '_combined'
+COMBINED_PLOT_PREFIX = "_combined"
 
 
-
-def plot_on_grid(data_by_index: Dict[Tuple[int, int], Any], plot_func: Callable,
-                 plot_func_kwargs: Optional[Dict] = None,
-                 fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
-                 fig_kwargs: Optional[Dict] = None,
-                 labels: Optional[Dict[Tuple[int, int], str]] = None,
-                 label_as_title: bool = True,
-                 remove_empty_axes: bool = False,
-                 ax_properties: Optional[Dict] = None,
-                 save: bool = False,
-                 save_kwargs: Optional[dict] = None
-                 ) -> Tuple[plt.Figure, np.ndarray]:
+def plot_on_grid(
+    data_by_index: Dict[Tuple[int, int], Any],
+    plot_func: Callable,
+    plot_func_kwargs: Optional[Dict] = None,
+    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
+    fig_kwargs: Optional[Dict] = None,
+    labels: Optional[Dict[Tuple[int, int], str]] = None,
+    label_as_title: bool = True,
+    remove_empty_axes: bool = False,
+    ax_properties: Optional[Dict] = None,
+    save: bool = False,
+    save_kwargs: Optional[dict] = None,
+) -> Tuple[plt.Figure, np.ndarray]:
     """Plots data on a grid using the specified plotting function.
 
     Args:
         data_by_index: Data mapped by grid coordinates.
-        plot_func: Function to plot the data on the given axis.
+        plot_func: Function to plot the experimental data on the given axis.
         plot_func_kwargs: Additional keyword arguments to pass to `plot_func`.
         fig_axes: Figure and axes to use. If None, new ones are created.
         fig_kwargs: Additional keyword arguments for figure creation.
@@ -73,17 +79,18 @@ def plot_on_grid(data_by_index: Dict[Tuple[int, int], Any], plot_func: Callable,
     Returns:
         Tuple[plt.Figure, np.ndarray]: The figure and axes.
     """
-    grid_shape, row_offset, column_offset = (
-        aggr_u._get_gridshape_and_offsets(list(data_by_index)))
+    grid_shape, row_offset, column_offset = aggr_u._get_gridshape_and_offsets(
+        list(data_by_index)
+    )
 
     if fig_axes:
         fig, axes = fig_axes
     else:
         fig_kwargs = fig_kwargs or {}
-        fig_kwargs['squeeze'] = False
-        fig_kwargs.setdefault('sharex', True)
-        fig_kwargs.setdefault('sharey', True)
-        fig_kwargs.setdefault('figsize', (grid_shape[0] * 2.5, grid_shape[1] * 2))
+        fig_kwargs["squeeze"] = False
+        fig_kwargs.setdefault("sharex", True)
+        fig_kwargs.setdefault("sharey", True)
+        fig_kwargs.setdefault("figsize", (grid_shape[0] * 2.5, grid_shape[1] * 2))
         fig, axes = plt.subplots(grid_shape[0], grid_shape[1], **fig_kwargs)
 
     ax_properties = ax_properties or {}
@@ -109,29 +116,31 @@ def plot_on_grid(data_by_index: Dict[Tuple[int, int], Any], plot_func: Callable,
 
     if save:
         sk = dict(save_kwargs) if save_kwargs else {}
-        sk.setdefault('path', '.')
-        sk.setdefault('fig_name', COMBINED_PLOT_PREFIX)
-        sk.setdefault('extension', 'png')
+        sk.setdefault("path", ".")
+        sk.setdefault("fig_name", COMBINED_PLOT_PREFIX)
+        sk.setdefault("extension", "png")
         aggr_u.savefig(fig, **sk)
     return fig, axes
 
 
-def plot_on_qubit_grid(data_by_qubit: Dict[str, Any], plot_func: Callable,
-                       plot_func_kwargs: Optional[Dict] = None,
-                       qubit_to_coord: Optional[Callable] = None,
-                       fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
-                       fig_kwargs: Optional[Dict] = None,
-                       qubit_labels: bool = True,
-                       remove_empty_axes: bool = False,
-                       ax_properties: Optional[Dict] = None,
-                       save: bool = False,
-                       save_kwargs: Optional[dict] = None
-                       ) -> Tuple[plt.Figure, np.ndarray]:
+def plot_on_qubit_grid(
+    data_by_qubit: Dict[str, Any],
+    plot_func: Callable,
+    plot_func_kwargs: Optional[Dict] = None,
+    qubit_to_coord: Optional[Callable] = None,
+    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
+    fig_kwargs: Optional[Dict] = None,
+    qubit_labels: bool = True,
+    remove_empty_axes: bool = False,
+    ax_properties: Optional[Dict] = None,
+    save: bool = False,
+    save_kwargs: Optional[dict] = None,
+) -> Tuple[plt.Figure, np.ndarray]:
     """Plots data on a grid based on qubit coordinates.
 
     Args:
         data_by_qubit: Data mapped by qubit identifiers.
-        plot_func: Function to plot the data on the given axis.
+        plot_func: Function to plot the experimental data on the given axis.
         plot_func_kwargs: Additional keyword arguments to pass to `plot_func`.
         qubit_to_coord: Function to map qubits to grid coordinates.
         fig_axes: Figure and axes to use. If None, new ones are created.
@@ -162,21 +171,23 @@ def plot_on_qubit_grid(data_by_qubit: Dict[str, Any], plot_func: Callable,
         ax_properties=ax_properties,
         remove_empty_axes=remove_empty_axes,
         save=save,
-        save_kwargs=save_kwargs
+        save_kwargs=save_kwargs,
     )
 
 
-def plot_on_pair_grid(data_by_pair: Dict[Tuple[str, str], Any], plot_func: Callable,
-                      plot_func_kwargs: Optional[Dict] = None,
-                      pair_to_coord: Optional[Callable] = None,
-                      fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
-                      fig_kwargs: Optional[Dict] = None,
-                      pair_labels: bool = True,
-                      qubit_labels: bool = True,
-                      ax_properties: Optional[Dict] = None,
-                      save: bool = False,
-                      save_kwargs: Optional[dict] = None
-                      ) -> Tuple[plt.Figure, np.ndarray]:
+def plot_on_pair_grid(
+    data_by_pair: Dict[Tuple[str, str], Any],
+    plot_func: Callable,
+    plot_func_kwargs: Optional[Dict] = None,
+    pair_to_coord: Optional[Callable] = None,
+    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
+    fig_kwargs: Optional[Dict] = None,
+    pair_labels: bool = True,
+    qubit_labels: bool = True,
+    ax_properties: Optional[Dict] = None,
+    save: bool = False,
+    save_kwargs: Optional[dict] = None,
+) -> Tuple[plt.Figure, np.ndarray]:
     """Plots data on a grid based on qubit pairs and their coordinates.
 
     Args:
@@ -198,19 +209,22 @@ def plot_on_pair_grid(data_by_pair: Dict[Tuple[str, str], Any], plot_func: Calla
         # in this case we just have the minimal case of coordinates for pairs,
         # not for qubits, so, deactivate qubit labels.
         qubit_labels = False
-    data_by_index_on_grid = {pair_to_coord(q1, q2): d for (q1, q2), d in
-                             data_by_pair.items()}
+    data_by_index_on_grid = {
+        pair_to_coord(q1, q2): d for (q1, q2), d in data_by_pair.items()
+    }
     plot_func_kwargs = plot_func_kwargs or {}
-    _, row_offset, col_offset = (
-        aggr_u._get_gridshape_and_offsets(list(data_by_index_on_grid)))
+    _, row_offset, col_offset = aggr_u._get_gridshape_and_offsets(
+        list(data_by_index_on_grid)
+    )
     if qubit_labels:
+
         def plot_function_wrapper(ax, data, **kwargs):
             subplot_spec = ax.get_subplotspec()
             row, col = subplot_spec.rowspan.start, subplot_spec.colspan.start
-            qubit_labels = kwargs.pop('qubit_labels', {})
+            qubit_labels = kwargs.pop("qubit_labels", {})
             if (row - row_offset, col - col_offset) in qubit_labels:
                 aggr_u.add_text(ax, qubit_labels[(row - row_offset, col - col_offset)])
-                ax.axis('off')
+                ax.axis("off")
             else:
                 plot_func(ax, data, **kwargs)
 
@@ -218,16 +232,18 @@ def plot_on_pair_grid(data_by_pair: Dict[Tuple[str, str], Any], plot_func: Calla
         for q1, q2 in data_by_pair:
             unique_qubits.add(q1)
             unique_qubits.add(q2)
-        data_by_index_on_grid.update(
-            {pair_to_coord(q, q): q for q in unique_qubits})
+        data_by_index_on_grid.update({pair_to_coord(q, q): q for q in unique_qubits})
         plot_func_kwargs.update(
-            dict(qubit_labels={pair_to_coord(q, q): q for q in unique_qubits}))
+            dict(qubit_labels={pair_to_coord(q, q): q for q in unique_qubits})
+        )
         _plot_func = plot_function_wrapper
     else:
         _plot_func = plot_func
     if pair_labels:
-        labels = {pair_to_coord(q1, q2): "_".join((q1, q2))
-                  for (q1, q2), d in data_by_pair.items()}
+        labels = {
+            pair_to_coord(q1, q2): "_".join((q1, q2))
+            for (q1, q2), d in data_by_pair.items()
+        }
     else:
         labels = None
     return plot_on_grid(
@@ -239,18 +255,19 @@ def plot_on_pair_grid(data_by_pair: Dict[Tuple[str, str], Any], plot_func: Calla
         labels=labels,
         ax_properties=ax_properties,
         save=save,
-        save_kwargs=save_kwargs
+        save_kwargs=save_kwargs,
     )
 
 
-def get_qubit_grid(qubits: list,
-                   qubit_to_coord: Optional[Callable] = None,
-                   fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
-                   fig_kwargs: Optional[Dict] = None,
-                   qubit_labels: bool = True,
-                   remove_empty_axes: bool = False,
-                   ax_properties: Optional[Dict] = None,
-                   ) -> Tuple[plt.Figure, np.ndarray]:
+def get_qubit_grid(
+    qubits: list,
+    qubit_to_coord: Optional[Callable] = None,
+    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
+    fig_kwargs: Optional[Dict] = None,
+    qubit_labels: bool = True,
+    remove_empty_axes: bool = False,
+    ax_properties: Optional[Dict] = None,
+) -> Tuple[plt.Figure, np.ndarray]:
     """Plots data on a grid based on qubit coordinates.
 
     Args:
@@ -298,16 +315,16 @@ def fig_plot_func(ax, fig, dpi=500):
 
     """
     buf = BytesIO()
-    fig.savefig(buf, format='png', dpi=dpi)
+    fig.savefig(buf, format="png", dpi=dpi)
     buf.seek(0)
     img = mpimg.imread(buf)
     ax.imshow(img)
-    ax.axis('off')
+    ax.axis("off")
 
 
-def fig_from_measurement_plot_func(ax, fig_info: dict, fig_name='',
-                                   extension='png',
-                                   ignore_missing: bool = True):
+def fig_from_measurement_plot_func(
+    ax, fig_info: dict, fig_name="", extension="png", ignore_missing: bool = True
+):
     """
     Searches for a figure file matching `fig_name` in the folder associated
     with `timestamp`, then plots it onto the provided `ax`.
@@ -329,48 +346,48 @@ def fig_from_measurement_plot_func(ax, fig_info: dict, fig_name='',
         FileNotFoundError: If no matching figure is found in the directory.
     """
     # Get the folder path associated with the timestamp
-    timestamp, fig_name = fig_info['timestamp'], fig_info.get('fig_name', fig_name)
+    timestamp, fig_name = fig_info["timestamp"], fig_info.get("fig_name", fig_name)
     folder = a_tools.get_folder(timestamp)
 
     # Search for all files in the folder with the specified extension
     pattern = f"*.{extension}"
-    matching_files = [f for f in os.listdir(folder) if
-                      fnmatch.fnmatch(f, pattern) and fig_name in f]
+    matching_files = [
+        f for f in os.listdir(folder) if fnmatch.fnmatch(f, pattern) and fig_name in f
+    ]
 
     if not matching_files:
         if not ignore_missing:
             raise FileNotFoundError(
                 f"No files found with the name containing '{fig_name}' and "
-                f"extension '{extension}' in {folder}.")
+                f"extension '{extension}' in {folder}."
+            )
         else:
             return
     # Select the first matching file (or you could implement a selection mechanism)
     file_path = os.path.join(folder, matching_files[0])
 
     # Load the image into a BytesIO object and display it on the provided axis
-    with open(file_path, 'rb') as img_file:
+    with open(file_path, "rb") as img_file:
         img_data = BytesIO(img_file.read())
         img = mpimg.imread(img_data)
         ax.imshow(img)
-        ax.axis('off')
+        ax.axis("off")
 
 
 class CalibrationPlotAggregator:
     DEFAULT_CALIBRATION_PLOT_NAMES = {
-        'Rabi': 'Rabi_{qbn}',
-        'Ramsey': 'Ramsey_{qbn}',
-        'ReparkingRamsey': 'reparking_{qbn}',
-        'T1': 'T1_{qbn}',
-        'SSRO': '{qbn}_gmm_classifier_data',
-        'MultiStateResonatorSpectroscopy': 's21_distance_{qbn}',
-        'continuous_spec': 'Source frequency distance'
+        "Rabi": "Rabi_{qbn}",
+        "Ramsey": "Ramsey_{qbn}",
+        "ReparkingRamsey": "reparking_{qbn}",
+        "T1": "T1_{qbn}",
+        "SSRO": "{qbn}_gmm_classifier_data",
+        "MultiStateResonatorSpectroscopy": "s21_distance_{qbn}",
+        "continuous_spec": "Source frequency distance",
     }
 
     @classmethod
     def from_timestamps(
-            cls,
-            timestamps: Optional[Sequence] = None,
-            qb_names: Optional[list] = None
+        cls, timestamps: Optional[Sequence] = None, qb_names: Optional[list] = None
     ):
         """
         Creates a CalibrationPlotAggregator instance from a list of timestamps.
@@ -402,11 +419,11 @@ class CalibrationPlotAggregator:
             for qbn in qb_names_timestamp:
                 if qbn in fig_dict:
                     logger.warning(
-                        f'{qbn} already in fig_dict with timestamp: '
-                        f'{fig_dict[qbn]}; will be overwritten by latest '
-                        f'figure with timestamp {t}'
+                        f"{qbn} already in fig_dict with timestamp: "
+                        f"{fig_dict[qbn]}; will be overwritten by latest "
+                        f"figure with timestamp {t}"
                     )
-                fig_dict[qbn] = dict(timestamp=t, fig_name='')
+                fig_dict[qbn] = dict(timestamp=t, fig_name="")
 
                 # Infer the calibration type and corresponding figure name.
                 for fn in os.listdir(a_tools.get_folder(t)):
@@ -414,11 +431,11 @@ class CalibrationPlotAggregator:
                         # find a figure that matched the calibration name which
                         # is not a combined plot (those might also have the
                         # cal name into their name)
-                        if cal_name in fn and not (COMBINED_PLOT_PREFIX in fn):
+                        if cal_name in fn and COMBINED_PLOT_PREFIX not in fn:
                             fig_dict[qbn].update(
                                 fig_name=aggr_u.safe_format_str_with_keys(
                                     cls.DEFAULT_CALIBRATION_PLOT_NAMES[cal_name],
-                                    qbn=qbn
+                                    qbn=qbn,
                                 )
                             )
                             break
@@ -427,9 +444,9 @@ class CalibrationPlotAggregator:
 
     @classmethod
     def from_quantum_experiments(
-            cls,
-            quantum_experiments: Union[Sequence, 'qe_mod.QuantumExperiment'],
-            qb_names: Optional[list] = None
+        cls,
+        quantum_experiments: Union[Sequence, "qe_mod.QuantumExperiment"],
+        qb_names: Optional[list] = None,
     ):
         """
         Creates a CalibrationPlotAggregator instance from quantum experiments.
@@ -448,8 +465,7 @@ class CalibrationPlotAggregator:
             quantum_experiments = [quantum_experiments]
 
         return cls.from_timestamps(
-            timestamps=[qe.timestamp for qe in quantum_experiments],
-            qb_names=qb_names
+            timestamps=[qe.timestamp for qe in quantum_experiments], qb_names=qb_names
         )
 
     @staticmethod
@@ -465,7 +481,7 @@ class CalibrationPlotAggregator:
         Returns:
             set: A set of qubit names found in the file names.
         """
-        qubit_pattern = r'qb\d+'  # Regex to match 'qb' followed by one or more digits
+        qubit_pattern = r"qb\d+"  # Regex to match 'qb' followed by one or more digits
         all_matches = set()
 
         for string in file_names:
@@ -485,12 +501,12 @@ class CalibrationPlotAggregator:
         self.fig_info = fig_info
 
     def plot_on_qubit_grid(
-            self,
-            fig_name: Optional[str] = None,
-            qb_names: Optional[list] = None,
-            save: bool = False,
-            save_kwargs: Optional[dict] = None,
-            **plot_kwargs
+        self,
+        fig_name: Optional[str] = None,
+        qb_names: Optional[list] = None,
+        save: bool = False,
+        save_kwargs: Optional[dict] = None,
+        **plot_kwargs,
     ):
         """
         Plots calibration figures on a grid based on the qubit names and
@@ -514,18 +530,21 @@ class CalibrationPlotAggregator:
             fig_info = dict(self.fig_info)
         if fig_name:
             for qbn in fig_info:
-                fig_info[qbn]['fig_name'] = (
-                    aggr_u.safe_format_str_with_keys(fig_name, qbn=qbn))
+                fig_info[qbn]["fig_name"] = aggr_u.safe_format_str_with_keys(
+                    fig_name, qbn=qbn
+                )
         last_entry = list(fig_info.values())[-1]
         save_kwargs = save_kwargs or {}
-        save_kwargs.setdefault('path',
-                               a_tools.get_folder(last_entry['timestamp']))
+        save_kwargs.setdefault("path", a_tools.get_folder(last_entry["timestamp"]))
         combined_fig_name = f'{COMBINED_PLOT_PREFIX}_{last_entry["fig_name"]}'
         # remove qubit names (figure-specific) from combined plot name
         for qbn in self.discover_qubit_names([combined_fig_name]):
             combined_fig_name = combined_fig_name.replace(qbn, "")
-        save_kwargs.setdefault('fig_name', combined_fig_name)
-        return plot_on_qubit_grid(fig_info, fig_from_measurement_plot_func, save=save,
-                                  save_kwargs=save_kwargs,
-                                  **plot_kwargs)
-
+        save_kwargs.setdefault("fig_name", combined_fig_name)
+        return plot_on_qubit_grid(
+            fig_info,
+            fig_from_measurement_plot_func,
+            save=save,
+            save_kwargs=save_kwargs,
+            **plot_kwargs,
+        )
