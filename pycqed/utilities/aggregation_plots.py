@@ -1,3 +1,27 @@
+"""Tools for creating combined plots from multiple measurements and experiments.
+
+This module provides functions and classes to create grid-based visualizations
+of measurement results, particularly useful for multi-qubit systems. It works
+in conjunction with aggregation_plots_utils.py, which provides the underlying
+utility functions for coordinate assignment, text handling, and figure saving.
+
+Key features:
+    - Plot data on customizable grids using arbitrary plotting functions
+    - Automatic qubit coordinate assignment for grid layouts
+    - Support for both single-qubit and two-qubit pair visualizations
+    - Aggregation of calibration plots from multiple timestamps
+    - Integration with QuantumExperiment results
+
+Typical usage:
+    ```python
+    # Create grid plot for single-qubit data
+    plot_on_qubit_grid(data_by_qubit, my_plot_function)
+
+    # Aggregate calibration plots
+    aggregator = CalibrationPlotAggregator.from_timestamps(['20230615'])
+    aggregator.plot_on_qubit_grid()
+    ```
+"""
 import matplotlib.pyplot as plt
 from io import BytesIO
 import matplotlib.image as mpimg

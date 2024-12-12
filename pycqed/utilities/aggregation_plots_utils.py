@@ -1,3 +1,16 @@
+"""Utility functions for creating grid-based plots and handling coordinates.
+
+This module provides helper functions used by aggregation_plots.py to create
+grid-based visualizations. It includes utilities for coordinate assignment,
+grid shape calculation, text handling, and figure saving.
+
+Key functions:
+    assign_coordinates: Maps labels to 2D grid coordinates
+    _get_gridshape_and_offsets: Calculates grid dimensions and offset values
+    add_text: Adds centered text labels to plot axes
+    savefig: Saves figures with timestamp
+    safe_format_str_with_keys: Safely formats strings with variable substitution
+"""
 import math
 import pathlib
 
