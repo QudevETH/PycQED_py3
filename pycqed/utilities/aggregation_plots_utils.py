@@ -21,11 +21,11 @@ import pycqed.analysis.analysis_toolbox as a_tools
 
 
 def assign_coordinates(labels, shape=None, order="row_first"):
-    """
-    Assigns 2D coordinates (xi, yi) to labels in either row-first or column-first order.
+    """Assigns 2D coordinates (xi, yi) to labels in row-first or column-first order.
 
     Args:
-        labels (list): List of labels (e.g., qubit names, pair names) to assign coordinates to.
+        labels (list): List of labels (e.g., qubit names, pair names) to assign
+                       coordinates to.
         shape (tuple, optional): The shape (rows, columns) of the grid. If not provided,
                                  the function will automatically infer the minimum shape
                                  required to fit all labels.
@@ -71,9 +71,9 @@ def assign_coordinates(labels, shape=None, order="row_first"):
 
 
 def _get_gridshape_and_offsets(indices: list[tuple[int, int]]):
-    """
-    Calculates the shape of a grid and the offsets required to adjust for
-    any negative indices in a list of 2D coordinates.
+    """Calculates the shape of a grid and the offsets required.
+
+    To adjust for any negative indices in a list of 2D coordinates.
 
     Given a list of (row, column) indices, this function determines the
     overall grid shape necessary to encompass all provided indices, as well
@@ -114,8 +114,7 @@ def _get_gridshape_and_offsets(indices: list[tuple[int, int]]):
 
 
 def add_text(ax, text, fontsize=35, alpha=0.2, **kwargs):
-    """
-    Adds a text label at the center of the given axis.
+    """Adds a text label at the center of the given axis.
 
     Args:
         ax (matplotlib.axes.Axes): The axis on which to place the text.
@@ -147,6 +146,19 @@ def add_text(ax, text, fontsize=35, alpha=0.2, **kwargs):
 
 
 def savefig(fig, path, fig_name, bbox_inches="tight", extension="pdf", dpi=None):
+    """Saves a matplotlib figure to a file with timestamp.
+
+    Args:
+        fig (matplotlib.figure.Figure): The figure to save.
+        path (str): Directory path where the figure will be saved.
+        fig_name (str): Base name for the figure file.
+        bbox_inches (str, optional): Bbox parameter for savefig. Defaults to "tight".
+        extension (str, optional): File extension for the figure. Defaults to "pdf".
+        dpi (int, optional): The resolution in dots per inch. Defaults to None.
+
+    Returns:
+        None
+    """
     figpath = pathlib.Path(path) / (
         fig_name + f"_{a_tools.current_timestamp()}.{extension}"
     )

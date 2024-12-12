@@ -301,18 +301,22 @@ def get_qubit_grid(
         remove_empty_axes=remove_empty_axes,
     )
 
+# Module functions (plotting)
 
-# plotting functions
 def fig_plot_func(ax, fig, dpi=500):
-    """
-    Plots 'fig' onto `ax`
+    """Plots a matplotlib figure onto a given axis.
+
     Args:
-        ax:
-        fig:
-        dpi:
+        ax (matplotlib.axes.Axes): The target axis to plot the figure on.
+        fig (matplotlib.figure.Figure): The source figure to be plotted.
+        dpi (int, optional): The resolution in dots per inch. Defaults to 500.
 
     Returns:
+        None
 
+    Note:
+        The function converts the figure to a PNG image in memory using BytesIO,
+        then displays it on the target axis with the image display turned off.
     """
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=dpi)
@@ -321,12 +325,10 @@ def fig_plot_func(ax, fig, dpi=500):
     ax.imshow(img)
     ax.axis("off")
 
-
 def fig_from_measurement_plot_func(
     ax, fig_info: dict, fig_name="", extension="png", ignore_missing: bool = True
 ):
-    """
-    Searches for a figure file matching `fig_name` in the folder associated
+    """Searches for a figure file matching `fig_name` in the folder associated
     with `timestamp`, then plots it onto the provided `ax`.
 
     Args:
@@ -389,8 +391,7 @@ class CalibrationPlotAggregator:
     def from_timestamps(
         cls, timestamps: Optional[Sequence] = None, qb_names: Optional[list] = None
     ):
-        """
-        Creates a CalibrationPlotAggregator instance from a list of timestamps.
+        """Creates a CalibrationPlotAggregator instance from a list of timestamps.
         The function scans the directories associated with each timestamp for
         qubit-related files and associates each qubit with its respective
         calibration plot.
@@ -448,8 +449,7 @@ class CalibrationPlotAggregator:
         quantum_experiments: Union[Sequence, "qe_mod.QuantumExperiment"],
         qb_names: Optional[list] = None,
     ):
-        """
-        Creates a CalibrationPlotAggregator instance from quantum experiments.
+        """Creates a CalibrationPlotAggregator instance from quantum experiments.
 
         Args:
             quantum_experiments: A sequence of quantum experiments or a single
@@ -470,8 +470,7 @@ class CalibrationPlotAggregator:
 
     @staticmethod
     def discover_qubit_names(file_names: list[str]) -> set[str]:
-        """
-        Finds all occurrences of 'qbX' in a list of strings, where X is one or
+        """Finds all occurrences of 'qbX' in a list of strings, where X is one or
         more digits. Each string's results are returned as a set of unique
         qubit names.
 
