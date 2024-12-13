@@ -1,9 +1,7 @@
 """Tools for creating combined plots from multiple measurements and experiments.
 
 This module provides functions and classes to create grid-based visualizations
-of measurement results, particularly useful for multi-qubit systems. It works
-in conjunction with aggregation_plots_utils.py, which provides the underlying
-utility functions for coordinate assignment, text handling, and figure saving.
+of measurement results, particularly useful for multi-qubit systems.
 
 Key features:
     - Plot data on customizable grids using arbitrary plotting functions
