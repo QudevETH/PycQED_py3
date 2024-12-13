@@ -48,7 +48,7 @@ COMBINED_PLOT_PREFIX = "_combined"
 
 
 def plot_on_grid(
-    data_by_index: dict[tuple[int, int], Any],
+    data_by_grid: dict[tuple[int, int], Any],
     plot_func: Callable,
     plot_func_kwargs: Optional[dict] = None,
     fig_axes: Optional[tuple[plt.Figure, np.ndarray]] = None,
@@ -60,10 +60,10 @@ def plot_on_grid(
     save: bool = False,
     save_kwargs: Optional[dict] = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plots data on a grid using the specified plotting function.
+    """Plots experimental data on a grid using the specified plotting function.
 
     Args:
-        data_by_index: Data mapped by grid coordinates.
+        data_by_grid: Experimental data mapped by grid coordinates.
         plot_func: Function to plot the experimental data on the given axis.
         plot_func_kwargs: Additional keyword arguments to pass to `plot_func`.
         fig_axes: Figure and axes to use. If None, new ones are created.
@@ -81,7 +81,7 @@ def plot_on_grid(
         tuple[plt.Figure, np.ndarray]: The figure and axes.
     """
     grid_shape, row_offset, column_offset = _get_gridshape_and_offsets(
-        list(data_by_index)
+        list(data_by_grid)
     )
 
     if fig_axes:
@@ -97,7 +97,7 @@ def plot_on_grid(
     ax_properties = ax_properties or {}
     plot_func_kwargs = plot_func_kwargs or {}
     visited_axes = set()
-    for (row, col), data in data_by_index.items():
+    for (row, col), data in data_by_grid.items():
         r, c = row + row_offset, col + column_offset
         plot_func(axes[r, c], data, **plot_func_kwargs)
         if labels and labels.get((row, col)):
@@ -159,7 +159,7 @@ def plot_on_qubit_grid(
     data_by_index_on_grid = {qubit_to_coord(q): d for q, d in data_by_qubit.items()}
     labels = {qubit_to_coord(q): q for q in data_by_qubit} if qubit_labels else None
     return plot_on_grid(
-        data_by_index=data_by_index_on_grid,
+        data_by_grid=data_by_index_on_grid,
         plot_func=plot_func,
         plot_func_kwargs=plot_func_kwargs,
         fig_axes=fig_axes,
@@ -245,7 +245,7 @@ def plot_on_pair_grid(
 
 
     return plot_on_grid(
-        data_by_index=data_by_index_on_grid,
+        data_by_grid=data_by_index_on_grid,
         plot_func=_plot_func,
         plot_func_kwargs=plot_func_kwargs,
         fig_axes=fig_axes,
@@ -288,7 +288,7 @@ def get_qubit_grid(
     labels = {qubit_to_coord(q): q for q in qubits} if qubit_labels else None
 
     return plot_on_grid(
-        data_by_index=data_by_index_on_grid,
+        data_by_grid=data_by_index_on_grid,
         plot_func=lambda ax, data: None,
         fig_axes=fig_axes,
         fig_kwargs=fig_kwargs,
