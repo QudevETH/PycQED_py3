@@ -112,7 +112,7 @@ def test_get_qubit_grid():
 @pytest.mark.parametrize('timestamps', (['20240606_000101'], # rabi 9 qubits single file
                                         ))
 def test_calibration_plot_aggregator_from_timestamps(timestamps):
-    aggregator = ap.CalibrationPlotAggregator.from_timestamps(timestamps)
+    aggregator = ap.PlotAggregator.from_timestamps(timestamps)
     fig, axes = aggregator.plot_on_qubit_grid()
 
 @pytest.mark.parametrize('timestamps', (['20240606_000101'], # rabi 9 qubits single file
@@ -121,7 +121,7 @@ def test_calibration_plot_aggregator_from_quantum_experiments(timestamps):
     qes = [qe_mod.QuantumExperiment() for _ in range(len(timestamps))]
     for qe, t in zip(qes, timestamps):
         qe.timestamp = t
-    aggregator = ap.CalibrationPlotAggregator.from_quantum_experiments(qes)
+    aggregator = ap.PlotAggregator.from_quantum_experiments(qes)
     fig, axes = aggregator.plot_on_qubit_grid()
 
     assert len(aggregator.fig_info) > 0

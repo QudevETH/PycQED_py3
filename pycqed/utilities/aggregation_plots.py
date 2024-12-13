@@ -9,7 +9,7 @@ Key features:
     - Plot data on customizable grids using arbitrary plotting functions
     - Automatic qubit coordinate assignment for grid layouts
     - Support for both single-qubit and two-qubit pair visualizations
-    - Aggregation of calibration plots from multiple timestamps
+    - Aggregation of plots from multiple timestamps
     - Integration with QuantumExperiment results
 
 Typical usage:
@@ -17,10 +17,11 @@ Typical usage:
     # Create grid plot for single-qubit data
     plot_on_qubit_grid(data_by_qubit, my_plot_function)
 
-    # Aggregate calibration plots
-    aggregator = CalibrationPlotAggregator.from_timestamps(['20230615'])
+    # Aggregate plots
+    aggregator = PlotAggregator.from_timestamps(['20230615'])
     aggregator.plot_on_qubit_grid()
     ```
+    
 
 Note:
     This module follows analysis_v3 design by a high degree. I.e., we defer
@@ -136,10 +137,10 @@ def plot_on_qubit_grid(
     save: bool = False,
     save_kwargs: Optional[dict] = None,
 ) -> Tuple[plt.Figure, np.ndarray]:
-    """Plots data on a grid based on qubit coordinates.
+    """Plots experimental data on a grid based on qubit coordinates.
 
     Args:
-        data_by_qubit: Data mapped by qubit identifiers.
+        data_by_qubit: Experimental data mapped by qubit identifiers.
         plot_func: Function to plot the experimental data on the given axis.
         plot_func_kwargs: Additional keyword arguments to pass to `plot_func`.
         qubit_to_coord: Function to map qubits to grid coordinates.
@@ -188,11 +189,11 @@ def plot_on_pair_grid(
     save: bool = False,
     save_kwargs: Optional[dict] = None,
 ) -> Tuple[plt.Figure, np.ndarray]:
-    """Plots data on a grid based on qubit pairs and their coordinates.
+    """Plots experimental data on a grid based on qubit pairs and their coordinates.
 
     Args:
-        data_by_pair: Data mapped by pairs of qubit identifiers.
-        plot_func: Function to plot the data on the given axis.
+        data_by_pair: Experimental data mapped by pairs of qubit identifiers.
+        plot_func: Function to plot the experimental data on the given axis.
         pair_to_coord: Function to map qubit pairs to grid coordinates.
         fig_axes: Figure and axes to use. If None, new ones are created.
         fig_kwargs: Additional keyword arguments for figure creation.
@@ -376,8 +377,8 @@ def fig_from_measurement_plot_func(
         ax.axis("off")
 
 
-class CalibrationPlotAggregator:
-    DEFAULT_CALIBRATION_PLOT_NAMES = {
+class PlotAggregator:
+    EXP_PLOT_FILENAME_DICT = {
         "Rabi": "Rabi_{qbn}",
         "Ramsey": "Ramsey_{qbn}",
         "ReparkingRamsey": "reparking_{qbn}",
@@ -391,10 +392,9 @@ class CalibrationPlotAggregator:
     def from_timestamps(
         cls, timestamps: Optional[Sequence] = None, qb_names: Optional[list] = None
     ):
-        """Creates a CalibrationPlotAggregator instance from a list of timestamps.
+        """Creates a PlotAggregator instance from a list of timestamps.
         The function scans the directories associated with each timestamp for
-        qubit-related files and associates each qubit with its respective
-        calibration plot.
+        qubit-related files and associates each qubit with its respective plot.
 
         Args:
             timestamps: A sequence of timestamps to search for qubit plots.
@@ -402,7 +402,7 @@ class CalibrationPlotAggregator:
                       the names will be discovered from the files.
 
         Returns:
-            CalibrationPlotAggregator: An instance of the class with the
+            PlotAggregator: An instance of the class with the
                                         associated figure information.
         """
 
@@ -426,16 +426,16 @@ class CalibrationPlotAggregator:
                     )
                 fig_dict[qbn] = dict(timestamp=t, fig_name="")
 
-                # Infer the calibration type and corresponding figure name.
+                # Infer the type and corresponding figure name.
                 for fn in os.listdir(a_tools.get_folder(t)):
-                    for cal_name in cls.DEFAULT_CALIBRATION_PLOT_NAMES:
-                        # find a figure that matched the calibration name which
+                    for cal_name in cls.EXP_PLOT_FILENAME_DICT:
+                        # find a figure that matched the experiment name which
                         # is not a combined plot (those might also have the
                         # cal name into their name)
                         if cal_name in fn and COMBINED_PLOT_PREFIX not in fn:
                             fig_dict[qbn].update(
                                 fig_name=aggr_u.safe_format_str_with_keys(
-                                    cls.DEFAULT_CALIBRATION_PLOT_NAMES[cal_name],
+                                    cls.EXP_PLOT_FILENAME_DICT[cal_name],
                                     qbn=qbn,
                                 )
                             )
@@ -449,7 +449,7 @@ class CalibrationPlotAggregator:
         quantum_experiments: Union[Sequence, "qe_mod.QuantumExperiment"],
         qb_names: Optional[list] = None,
     ):
-        """Creates a CalibrationPlotAggregator instance from quantum experiments.
+        """Creates a PlotAggregator instance from quantum experiments.
 
         Args:
             quantum_experiments: A sequence of quantum experiments or a single
@@ -458,7 +458,7 @@ class CalibrationPlotAggregator:
                       the names will be discovered from the files.
 
         Returns:
-            CalibrationPlotAggregator: An instance of the class with the
+            PlotAggregator: An instance of the class with the
                                         associated figure information.
         """
         if isinstance(quantum_experiments, qe_mod.QuantumExperiment):
@@ -491,7 +491,7 @@ class CalibrationPlotAggregator:
 
     def __init__(self, fig_info: dict):
         """
-        Initializes the CalibrationPlotAggregator with figure information.
+        Initializes the PlotAggregator with figure information.
 
         Args:
             fig_info: A dictionary containing information about the figures,
@@ -508,7 +508,7 @@ class CalibrationPlotAggregator:
         **plot_kwargs,
     ):
         """
-        Plots calibration figures on a grid based on the qubit names and
+        Plots figures on a grid based on the qubit names and
         figure information. Uses fig_from_measurement_plot_func
 
         Args:
