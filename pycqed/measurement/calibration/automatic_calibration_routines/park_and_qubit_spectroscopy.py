@@ -12,8 +12,7 @@ if not _device_db_client_module_missing:
 
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import logging
-import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from dataclasses import dataclass

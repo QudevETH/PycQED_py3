@@ -1,8 +1,4 @@
-import os
-import tempfile
 
-import numpy
-import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_base_instrument as zibi
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_PQSC as PQ
 import pytest
 

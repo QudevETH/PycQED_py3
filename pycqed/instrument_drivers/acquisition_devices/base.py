@@ -1,7 +1,5 @@
 import numpy as np
 from copy import deepcopy
-from qcodes.utils import validators
-from qcodes.instrument.parameter import ManualParameter
 import logging
 log = logging.getLogger(__name__)
 

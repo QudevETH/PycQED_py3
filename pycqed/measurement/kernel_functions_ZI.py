@@ -8,7 +8,6 @@ This implements three basic filters and a rounding function
 - multipath_filter2
 
 """
-import logging
 import numpy as np
 from scipy import signal
 

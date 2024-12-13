@@ -1,8 +1,6 @@
 import logging
 import re
-from typing import Optional
 import datetime
-import numpy as np
 
 log = logging.getLogger(__name__)
 

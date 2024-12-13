@@ -1,6 +1,5 @@
 import logging
 import numpy as np
-from copy import deepcopy
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf

@@ -5,7 +5,6 @@ detector function
 import qcodes as qc
 from pycqed.measurement import sweep_functions as swf
 from pycqed.measurement import detector_functions as det
-import time
 
 
 def wrap_par_to_swf(parameter, retrieve_value=False):

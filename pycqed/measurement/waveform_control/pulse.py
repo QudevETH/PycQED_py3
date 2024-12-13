@@ -12,7 +12,6 @@ The module variable `pulse_libraries` is a
 """
 
 import numpy as np
-import scipy as sp
 
 pulse_libraries = set()
 """set of module: The set of pulse implementation libraries.

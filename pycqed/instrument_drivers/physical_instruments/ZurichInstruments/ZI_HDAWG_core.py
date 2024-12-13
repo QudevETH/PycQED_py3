@@ -43,8 +43,6 @@ Changelog:
 
 import logging
 import time
-import json
-import copy
 
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.ZI_base_instrument as zibase
 
