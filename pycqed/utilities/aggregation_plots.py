@@ -156,7 +156,7 @@ def plot_on_qubit_grid(
         plotting.
     """
     if qubit_to_coord is None:
-        qubit_coordinates = assign_coordinates(list(data_by_qubit))
+        qubit_coordinates = get_coordinates(list(data_by_qubit))
         qubit_to_coord = lambda q: qubit_coordinates[q]
     data_by_index_on_grid = {qubit_to_coord(q): d for q, d in data_by_qubit.items()}
     labels = {qubit_to_coord(q): q for q in data_by_qubit} if qubit_labels else None
@@ -202,7 +202,7 @@ def plot_on_pair_grid(
         plotting.
     """
     if pair_to_coord is None:
-        pair_coordinates = assign_coordinates(list(data_by_pair))
+        pair_coordinates = get_coordinates(list(data_by_pair))
         pair_to_coord = lambda q1, q2: pair_coordinates[q1, q2]
         # in this case we just have the minimal case of coordinates for pairs,
         # not for qubits, so, deactivate qubit labels.
@@ -283,7 +283,7 @@ def get_qubit_grid(
         plotting.
     """
     if qubit_to_coord is None:
-        qubit_coordinates = assign_coordinates(qubits)
+        qubit_coordinates = get_coordinates(qubits)
         qubit_to_coord = lambda q: qubit_coordinates[q]
 
     data_by_index_on_grid = {qubit_to_coord(q): None for q in qubits}
@@ -561,7 +561,7 @@ class PlotAggregator:
 # FIXME: Utilities - to be simplified
 
 
-def assign_coordinates(labels, shape=None, order="row_first"):
+def get_coordinates(labels, shape=None, order="row_first"):
     """Assigns 2D coordinates (xi, yi) to labels in row-first or column-first order.
 
     Args:
