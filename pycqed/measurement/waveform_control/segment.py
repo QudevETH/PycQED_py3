@@ -1691,9 +1691,9 @@ class Segment:
 
             # Avoid creating repetitive waveforms due to small rounding errors
             if hasattr(pulse.pulse_obj, "phase"):
-                pulse.pulse_obj.phase = round(
-                    round(pulse.pulse_obj.phase,
-                          self.PHASE_ROUNDING_DIGITS) % 360.0,
+                pulse.pulse_obj.phase = np.round(
+                    np.round(pulse.pulse_obj.phase,
+                             self.PHASE_ROUNDING_DIGITS) % 360.0,
                     self.PHASE_ROUNDING_DIGITS)
 
     def add_pulse_to_element(self, element, pulse):
@@ -2365,7 +2365,7 @@ class Segment:
                     a.set_ylabel('Amplitude (norm.)')
                 else:
                     a.set_ylabel('Voltage (V)')
-            ax[-1, col_ind].set_xlabel('time ($\mu$s)')
+            ax[-1, col_ind].set_xlabel(r'time ($\mu$s)')
             if figtitle_kwargs:
                 fig.suptitle(f'{self.name}', **figtitle_kwargs)
             else:
@@ -2493,12 +2493,12 @@ class Segment:
                         num_single_qb += 1
         qb_output = ''
         for qb, qb_name in enumerate(qb_names):
-            qb_output += f'\draw ({tmin / tscale:.4f},-{qb}) node[left] {{{qb_name}}} -- ({tmax / tscale:.4f},-{qb});\n'
+            qb_output += rf'\draw ({tmin / tscale:.4f},-{qb}) node[left] {{{qb_name}}} -- ({tmax / tscale:.4f},-{qb});\n'
         output = start_output + qb_output + output + z_output
         axis_ycoord = -len(qb_names) + .4
-        output += f'\\foreach\\x in {{{tmin / tscale},{tmin / tscale + .2},...,{tmax / tscale}}} \\pgfmathprintnumberto[fixed]{{\\x}}{{\\tmp}} \draw (\\x,{axis_ycoord})--++(0,-.1) node[below] {{\\tmp}} ;\n'
+        output += f'\\foreach\\x in {{{tmin / tscale},{tmin / tscale + .2},...,{tmax / tscale}}} \\pgfmathprintnumberto[fixed]{{\\x}}{{\\tmp}} \\draw (\\x,{axis_ycoord})--++(0,-.1) node[below] {{\\tmp}} ;\n'
         output += f'\\draw[->] ({tmin / tscale},{axis_ycoord}) -- ({tmax / tscale},{axis_ycoord}) node[right] {{$t/\\mathrm{{\\mu s}}$}};\n'
-        output += '\\end{tikzpicture}}\end{document}'
+        output += '\\end{tikzpicture}}\\end{document}'
         output += f'\n% {num_single_qb} single-qubit gates, {num_two_qb} two-qubit gates, {num_virtual} virtual gates'
         return output
 

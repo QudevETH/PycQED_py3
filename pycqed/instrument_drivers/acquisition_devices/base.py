@@ -2,13 +2,11 @@ from copy import deepcopy
 import logging
 from typing import Dict, List, Optional, Union
 import numpy as np
-from qcodes.utils import validators
-from qcodes.instrument.parameter import ManualParameter
 
 log = logging.getLogger(__name__)
 
 
-class AcquisitionDevice():
+class AcquisitionDevice:
     """Base class for a standardized acquisition device driver interface.
 
     This class is not meant to be instantiated, but is only meant to be used
@@ -16,7 +14,7 @@ class AcquisitionDevice():
     Child classes should inherit via multi-inheritance from the underlying
     qcodes driver as first parent and from this class as subsequent parent.
     The init of the child class has to explicitly call the init of this base
-    class after calling the super init since the qcodes intrument (first
+    class after calling the super init since the qcodes instrument (first
     parent) will not forward the super call. In the list of attributes,
     (*) indicates constants that are meant to be overwritten by child
     classes if needed.
@@ -576,6 +574,12 @@ class AcquisitionDevice():
         tbase = np.arange(
             0, acq_length,
             1 / self.acq_sampling_rate)
+        # With polychromatic readout, mod_freq may be a list
+        # FIXME: this is just a quick hack so SSB is not completely broken
+        # FIXME: this should probably properly configure an extra integrator
+        #        (or integrator pair) per frequency; left for future work
+        if not np.isscalar(mod_freq):
+            mod_freq = mod_freq[0]
         cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         if weights_type == 'SSB':

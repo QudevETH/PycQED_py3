@@ -1,8 +1,6 @@
 import numpy as np
-import math
 import logging
 from copy import deepcopy
-from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
 from pycqed.instrument_drivers.acquisition_devices.base import \
     AcquisitionDevice

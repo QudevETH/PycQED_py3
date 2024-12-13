@@ -5,11 +5,7 @@ Date: 2019/09
 """
 
 import time
-import sys
-import os
 import logging
-import numpy as np
-import pycqed
 import json
 import copy
 
