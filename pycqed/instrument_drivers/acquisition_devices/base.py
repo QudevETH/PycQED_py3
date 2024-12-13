@@ -565,6 +565,12 @@ class AcquisitionDevice():
         tbase = np.arange(
             0, acq_length,
             1 / self.acq_sampling_rate)
+        # With polychromatic readout, mod_freq may be a list
+        # FIXME: this is just a quick hack so SSB is not completely broken
+        # FIXME: this should probably properly configure an extra integrator
+        #        (or integrator pair) per frequency; left for future work
+        if not np.isscalar(mod_freq):
+            mod_freq = mod_freq[0]
         cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         if weights_type == 'SSB':

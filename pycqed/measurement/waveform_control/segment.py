@@ -1691,9 +1691,9 @@ class Segment:
 
             # Avoid creating repetitive waveforms due to small rounding errors
             if hasattr(pulse.pulse_obj, "phase"):
-                pulse.pulse_obj.phase = round(
-                    round(pulse.pulse_obj.phase,
-                          self.PHASE_ROUNDING_DIGITS) % 360.0,
+                pulse.pulse_obj.phase = np.round(
+                    np.round(pulse.pulse_obj.phase,
+                             self.PHASE_ROUNDING_DIGITS) % 360.0,
                     self.PHASE_ROUNDING_DIGITS)
 
     def add_pulse_to_element(self, element, pulse):
