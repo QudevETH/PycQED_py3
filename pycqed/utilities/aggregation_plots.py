@@ -21,26 +21,27 @@ Typical usage:
     aggregator = PlotAggregator.from_timestamps(['20230615'])
     aggregator.plot_on_qubit_grid()
     ```
-    
 
 Note:
     This module follows analysis_v3 design by a high degree. I.e., we defer
     execution, like plotting, as long as possible.
 """
 
-import matplotlib.pyplot as plt
-from io import BytesIO
-import matplotlib.image as mpimg
-import re
+import fnmatch
 import logging
+import math
+import os
+import re
+from collections.abc import Sequence
+from io import BytesIO
+from typing import Any, Callable, Optional, Union
+
+import matplotlib.image as mpimg
+import matplotlib.pyplot as plt
+import numpy as np
 
 import pycqed.analysis.analysis_toolbox as a_tools
-import os
-import fnmatch
-from typing import Dict, Callable, Tuple, Any, Union, Optional, Sequence
-import numpy as np
 import pycqed.measurement.quantum_experiment as qe_mod
-import pycqed.utilities.aggregation_plots_utils as aggr_u
 
 logger = logging.getLogger(__name__)
 
@@ -49,18 +50,18 @@ COMBINED_PLOT_PREFIX = "_combined"
 
 
 def plot_on_grid(
-    data_by_index: Dict[Tuple[int, int], Any],
+    data_by_index: dict[tuple[int, int], Any],
     plot_func: Callable,
-    plot_func_kwargs: Optional[Dict] = None,
-    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
-    fig_kwargs: Optional[Dict] = None,
-    labels: Optional[Dict[Tuple[int, int], str]] = None,
+    plot_func_kwargs: Optional[dict] = None,
+    fig_axes: Optional[tuple[plt.Figure, np.ndarray]] = None,
+    fig_kwargs: Optional[dict] = None,
+    labels: Optional[dict[tuple[int, int], str]] = None,
     label_as_title: bool = True,
     remove_empty_axes: bool = False,
-    ax_properties: Optional[Dict] = None,
+    ax_properties: Optional[dict] = None,
     save: bool = False,
     save_kwargs: Optional[dict] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+) -> tuple[plt.Figure, np.ndarray]:
     """Plots data on a grid using the specified plotting function.
 
     Args:
@@ -75,12 +76,13 @@ def plot_on_grid(
         remove_empty_axes: If True, remove any axes that do not contain data
             after plotting.
         ax_properties: Properties to apply to each axis.
-
+        save: If True, save the figure.
+        save_kwargs: Additional keyword arguments for saving the figure.
 
     Returns:
-        Tuple[plt.Figure, np.ndarray]: The figure and axes.
+        tuple[plt.Figure, np.ndarray]: The figure and axes.
     """
-    grid_shape, row_offset, column_offset = aggr_u._get_gridshape_and_offsets(
+    grid_shape, row_offset, column_offset = _get_gridshape_and_offsets(
         list(data_by_index)
     )
 
@@ -104,15 +106,13 @@ def plot_on_grid(
             if label_as_title:
                 axes[r, c].set_title(labels.get((row, col)))
             else:
-                aggr_u.add_text(axes[r, c], labels.get((row, col)))
+                add_text(axes[r, c], labels.get((row, col)))
         axes[r, c].set(**ax_properties)
         visited_axes.add(axes[r, c])
 
     # remove unused axes
     for ax in axes.flatten():
-        if ax not in visited_axes:
-            ax.remove()
-        elif remove_empty_axes and not ax.has_data():
+        if ax not in visited_axes or remove_empty_axes and not ax.has_data():
             ax.remove()
 
     if save:
@@ -120,23 +120,22 @@ def plot_on_grid(
         sk.setdefault("path", ".")
         sk.setdefault("fig_name", COMBINED_PLOT_PREFIX)
         sk.setdefault("extension", "png")
-        aggr_u.savefig(fig, **sk)
+        savefig(fig, **sk)
     return fig, axes
 
-
 def plot_on_qubit_grid(
-    data_by_qubit: Dict[str, Any],
+    data_by_qubit: dict[str, Any],
     plot_func: Callable,
-    plot_func_kwargs: Optional[Dict] = None,
+    plot_func_kwargs: Optional[dict] = None,
     qubit_to_coord: Optional[Callable] = None,
-    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
-    fig_kwargs: Optional[Dict] = None,
+    fig_axes: Optional[tuple[plt.Figure, np.ndarray]] = None,
+    fig_kwargs: Optional[dict] = None,
     qubit_labels: bool = True,
     remove_empty_axes: bool = False,
-    ax_properties: Optional[Dict] = None,
+    ax_properties: Optional[dict] = None,
     save: bool = False,
     save_kwargs: Optional[dict] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+) -> tuple[plt.Figure, np.ndarray]:
     """Plots experimental data on a grid based on qubit coordinates.
 
     Args:
@@ -149,19 +148,18 @@ def plot_on_qubit_grid(
         qubit_labels: If True, use qubit identifiers as subplot titles.
         remove_empty_axes: If True, remove any axes that do not contain data.
         ax_properties: Properties to apply to each axis.
+        save: If True, save the figure.
+        save_kwargs: Additional keyword arguments for saving the figure.
 
     Returns:
-        Tuple[plt.Figure, np.ndarray]: The figure and axes used for
+        tuple[plt.Figure, np.ndarray]: The figure and axes used for
         plotting.
     """
     if qubit_to_coord is None:
-        qubit_coordinates = aggr_u.assign_coordinates(list(data_by_qubit))
+        qubit_coordinates = assign_coordinates(list(data_by_qubit))
         qubit_to_coord = lambda q: qubit_coordinates[q]
     data_by_index_on_grid = {qubit_to_coord(q): d for q, d in data_by_qubit.items()}
-    if qubit_labels:
-        labels = {qubit_to_coord(q): q for q in data_by_qubit}
-    else:
-        labels = None
+    labels = {qubit_to_coord(q): q for q in data_by_qubit} if qubit_labels else None
     return plot_on_grid(
         data_by_index=data_by_index_on_grid,
         plot_func=plot_func,
@@ -175,20 +173,19 @@ def plot_on_qubit_grid(
         save_kwargs=save_kwargs,
     )
 
-
 def plot_on_pair_grid(
-    data_by_pair: Dict[Tuple[str, str], Any],
+    data_by_pair: dict[tuple[str, str], Any],
     plot_func: Callable,
-    plot_func_kwargs: Optional[Dict] = None,
+    plot_func_kwargs: Optional[dict] = None,
     pair_to_coord: Optional[Callable] = None,
-    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
-    fig_kwargs: Optional[Dict] = None,
+    fig_axes: Optional[tuple[plt.Figure, np.ndarray]] = None,
+    fig_kwargs: Optional[dict] = None,
     pair_labels: bool = True,
     qubit_labels: bool = True,
-    ax_properties: Optional[Dict] = None,
+    ax_properties: Optional[dict] = None,
     save: bool = False,
     save_kwargs: Optional[dict] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+) -> tuple[plt.Figure, np.ndarray]:
     """Plots experimental data on a grid based on qubit pairs and their coordinates.
 
     Args:
@@ -201,11 +198,11 @@ def plot_on_pair_grid(
         ax_properties: Properties to apply to each axis.
 
     Returns:
-        Tuple[plt.Figure, np.ndarray]: The figure and axes used for
+        tuple[plt.Figure, np.ndarray]: The figure and axes used for
         plotting.
     """
     if pair_to_coord is None:
-        pair_coordinates = aggr_u.assign_coordinates(list(data_by_pair))
+        pair_coordinates = assign_coordinates(list(data_by_pair))
         pair_to_coord = lambda q1, q2: pair_coordinates[q1, q2]
         # in this case we just have the minimal case of coordinates for pairs,
         # not for qubits, so, deactivate qubit labels.
@@ -214,7 +211,7 @@ def plot_on_pair_grid(
         pair_to_coord(q1, q2): d for (q1, q2), d in data_by_pair.items()
     }
     plot_func_kwargs = plot_func_kwargs or {}
-    _, row_offset, col_offset = aggr_u._get_gridshape_and_offsets(
+    _, row_offset, col_offset = _get_gridshape_and_offsets(
         list(data_by_index_on_grid)
     )
     if qubit_labels:
@@ -224,7 +221,7 @@ def plot_on_pair_grid(
             row, col = subplot_spec.rowspan.start, subplot_spec.colspan.start
             qubit_labels = kwargs.pop("qubit_labels", {})
             if (row - row_offset, col - col_offset) in qubit_labels:
-                aggr_u.add_text(ax, qubit_labels[(row - row_offset, col - col_offset)])
+                add_text(ax, qubit_labels[(row - row_offset, col - col_offset)])
                 ax.axis("off")
             else:
                 plot_func(ax, data, **kwargs)
@@ -247,6 +244,8 @@ def plot_on_pair_grid(
         }
     else:
         labels = None
+
+
     return plot_on_grid(
         data_by_index=data_by_index_on_grid,
         plot_func=_plot_func,
@@ -259,16 +258,15 @@ def plot_on_pair_grid(
         save_kwargs=save_kwargs,
     )
 
-
 def get_qubit_grid(
     qubits: list,
     qubit_to_coord: Optional[Callable] = None,
-    fig_axes: Optional[Tuple[plt.Figure, np.ndarray]] = None,
-    fig_kwargs: Optional[Dict] = None,
+    fig_axes: Optional[tuple[plt.Figure, np.ndarray]] = None,
+    fig_kwargs: Optional[dict] = None,
     qubit_labels: bool = True,
     remove_empty_axes: bool = False,
-    ax_properties: Optional[Dict] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    ax_properties: Optional[dict] = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plots data on a grid based on qubit coordinates.
 
     Args:
@@ -281,17 +279,16 @@ def get_qubit_grid(
         ax_properties: Properties to apply to each axis.
 
     Returns:
-        Tuple[plt.Figure, np.ndarray]: The figure and axes used for
+        tuple[plt.Figure, np.ndarray]: The figure and axes used for
         plotting.
     """
     if qubit_to_coord is None:
-        qubit_coordinates = aggr_u.assign_coordinates(qubits)
+        qubit_coordinates = assign_coordinates(qubits)
         qubit_to_coord = lambda q: qubit_coordinates[q]
+
     data_by_index_on_grid = {qubit_to_coord(q): None for q in qubits}
-    if qubit_labels:
-        labels = {qubit_to_coord(q): q for q in qubits}
-    else:
-        labels = None
+    labels = {qubit_to_coord(q): q for q in qubits} if qubit_labels else None
+
     return plot_on_grid(
         data_by_index=data_by_index_on_grid,
         plot_func=lambda ax, data: None,
@@ -302,7 +299,8 @@ def get_qubit_grid(
         remove_empty_axes=remove_empty_axes,
     )
 
-# Module functions (plotting)
+# FIXME: Module functions (plotting) - to be simplified
+
 
 def fig_plot_func(ax, fig, dpi=500):
     """Plots a matplotlib figure onto a given axis.
@@ -326,11 +324,13 @@ def fig_plot_func(ax, fig, dpi=500):
     ax.imshow(img)
     ax.axis("off")
 
+
 def fig_from_measurement_plot_func(
     ax, fig_info: dict, fig_name="", extension="png", ignore_missing: bool = True
 ):
-    """Searches for a figure file matching `fig_name` in the folder associated
-    with `timestamp`, then plots it onto the provided `ax`.
+    """Searches & plots figure file matching `fig_name` in the folder.
+    
+    Associated with `timestamp`, then plots it onto the provided `ax`.
 
     Args:
         ax (matplotlib.axes.Axes): The axis on which to plot the figure.
@@ -378,6 +378,14 @@ def fig_from_measurement_plot_func(
 
 
 class PlotAggregator:
+    """
+    A class for aggregating and managing plots related to qubit experiments.
+
+    This class provides functionality to collect, organize, and display
+    various plots associated with different qubit experiments and measurements.
+    It can handle multiple timestamps and qubit names, making it easier to
+    analyze and compare results across different experimental runs.
+    """
     EXP_PLOT_FILENAME_DICT = {
         "Rabi": "Rabi_{qbn}",
         "Ramsey": "Ramsey_{qbn}",
@@ -393,6 +401,7 @@ class PlotAggregator:
         cls, timestamps: Optional[Sequence] = None, qb_names: Optional[list] = None
     ):
         """Creates a PlotAggregator instance from a list of timestamps.
+
         The function scans the directories associated with each timestamp for
         qubit-related files and associates each qubit with its respective plot.
 
@@ -405,7 +414,6 @@ class PlotAggregator:
             PlotAggregator: An instance of the class with the
                                         associated figure information.
         """
-
         if not timestamps:
             timestamps = a_tools.get_last_n_timestamps(n=1)
 
@@ -434,7 +442,7 @@ class PlotAggregator:
                         # cal name into their name)
                         if cal_name in fn and COMBINED_PLOT_PREFIX not in fn:
                             fig_dict[qbn].update(
-                                fig_name=aggr_u.safe_format_str_with_keys(
+                                fig_name=safe_format_str_with_keys(
                                     cls.EXP_PLOT_FILENAME_DICT[cal_name],
                                     qbn=qbn,
                                 )
@@ -470,9 +478,10 @@ class PlotAggregator:
 
     @staticmethod
     def discover_qubit_names(file_names: list[str]) -> set[str]:
-        """Finds all occurrences of 'qbX' in a list of strings, where X is one or
-        more digits. Each string's results are returned as a set of unique
-        qubit names.
+        """Finds all occurrences of 'qbX' in a list of strings.
+        
+        Where X is one or more digits. Each string's results are returned
+        as a set of unique qubit names.
 
         Args:
             file_names: List of strings to search for qubit names.
@@ -507,9 +516,9 @@ class PlotAggregator:
         save_kwargs: Optional[dict] = None,
         **plot_kwargs,
     ):
-        """
-        Plots figures on a grid based on the qubit names and
-        figure information. Uses fig_from_measurement_plot_func
+        """Plots figures on a grid based on the qubit names.
+        
+        And figure information. Uses fig_from_measurement_plot_func
 
         Args:
             fig_name: Specific figure name to plot. If None, all figures are
@@ -529,7 +538,7 @@ class PlotAggregator:
             fig_info = dict(self.fig_info)
         if fig_name:
             for qbn in fig_info:
-                fig_info[qbn]["fig_name"] = aggr_u.safe_format_str_with_keys(
+                fig_info[qbn]["fig_name"] = safe_format_str_with_keys(
                     fig_name, qbn=qbn
                 )
         last_entry = list(fig_info.values())[-1]
@@ -547,3 +556,159 @@ class PlotAggregator:
             save_kwargs=save_kwargs,
             **plot_kwargs,
         )
+
+
+# FIXME: Utilities - to be simplified
+
+
+def assign_coordinates(labels, shape=None, order="row_first"):
+    """Assigns 2D coordinates (xi, yi) to labels in row-first or column-first order.
+
+    Args:
+        labels (list): List of labels (e.g., qubit names, pair names) to assign
+                       coordinates to.
+        shape (tuple, optional): The shape (rows, columns) of the grid. If not provided,
+                                 the function will automatically infer the minimum shape
+                                 required to fit all labels.
+        order (str): 'row_first' or 'column_first'. Determines whether to assign
+                     coordinates row-wise or column-wise.
+
+    Returns:
+        dict: A dictionary mapping labels to 2D coordinates (xi, yi).
+    """
+    num_labels = len(labels)
+
+    # If shape is not provided, calculate it to fit all labels
+    if shape is None:
+        side_length = math.ceil(math.sqrt(num_labels))
+        shape = (side_length, side_length)
+
+    rows, cols = shape
+
+    # Ensure the shape can accommodate all labels
+    if num_labels > rows * cols:
+        raise ValueError("Shape is too small to fit all labels.")
+
+    coordinates = {}
+    count = 0
+
+    # Assign coordinates based on the chosen order
+    if order == "row_first":
+        for row in range(rows):
+            for col in range(cols):
+                if count < num_labels:
+                    coordinates[labels[count]] = (row, col)
+                    count += 1
+    elif order == "column_first":
+        for col in range(cols):
+            for row in range(rows):
+                if count < num_labels:
+                    coordinates[labels[count]] = (row, col)
+                    count += 1
+    else:
+        raise ValueError("Order must be 'row_first' or 'column_first'.")
+
+    return coordinates
+
+
+def _get_gridshape_and_offsets(indices: list[tuple[int, int]]):
+    """Calculates the shape of a grid and the offsets required.
+
+    To adjust for any negative indices in a list of 2D coordinates.
+
+    Given a list of (row, column) indices, this function determines the
+    overall grid shape necessary to encompass all provided indices, as well
+    as the offset values needed to translate any negative indices into a
+    positive-only grid system (e.g. for plotting on a figure).
+
+    Args:
+        indices (list[tuple[int, int]]): A list of tuples where each tuple
+            contains a pair of integers representing the (row, column)
+            indices in a 2D grid.
+
+    Returns:
+        tuple: A tuple containing:
+            - grid_shape (tuple[int, int]): The shape of the grid as
+              (number of rows, number of columns).
+            - row_offset (int): The amount to offset the row indices to
+              ensure all are non-negative.
+            - column_offset (int): The amount to offset the column indices
+              to ensure all are non-negative.
+
+    Example:
+        >>> indices = [(0, 0), (-1, 2), (2, -3)]
+        >>> _get_gridshape_and_offsets(indices)
+        ((4, 6), 1, 3)
+    """
+    row_indices = [i[0] for i in indices]
+    column_indices = [i[1] for i in indices]
+    grid_shape = (
+        max(row_indices) - min(row_indices) + 1,
+        max(column_indices) - min(column_indices) + 1,
+    )
+    # calculate offset in case there are negative indices,
+    # the index are padded by the offset
+    # such that because all indices in the grid are positive
+    row_offset = abs(np.minimum(0, min(row_indices)))
+    column_offset = abs(np.minimum(0, min(column_indices)))
+    return grid_shape, row_offset, column_offset
+
+
+def add_text(ax, text, fontsize=35, alpha=0.2, **kwargs):
+    """Adds a text label at the center of the given axis.
+
+    Args:
+        ax (matplotlib.axes.Axes): The axis on which to place the text.
+        text (str): The text to display.
+        fontsize (int, optional): Font size of the text.
+        alpha (float, optional): Opacity of the text.
+        **kwargs: Additional keyword arguments to pass to ax.text()
+
+    Example:
+        fig, ax = plt.subplots()
+        add_translucent_text(ax, "Sample Text")
+        plt.show()
+    """
+    # Get the center of the axis in data coordinates
+    x_center = (ax.get_xlim()[0] + ax.get_xlim()[1]) / 2
+    y_center = (ax.get_ylim()[0] + ax.get_ylim()[1]) / 2
+
+    # Add the text at the center
+    ax.text(
+        x_center,
+        y_center,
+        text,
+        fontsize=fontsize,
+        alpha=alpha,
+        ha="center",
+        va="center",
+        **kwargs,
+    )
+
+
+def savefig(fig, path, fig_name, bbox_inches="tight", extension="pdf", dpi=None):
+    """Saves a matplotlib figure to a file with timestamp.
+
+    Args:
+        fig (matplotlib.figure.Figure): The figure to save.
+        path (str): Directory path where the figure will be saved.
+        fig_name (str): Base name for the figure file.
+        bbox_inches (str, optional): Bbox parameter for savefig. Defaults to "tight".
+        extension (str, optional): File extension for the figure. Defaults to "pdf".
+        dpi (int, optional): The resolution in dots per inch. Defaults to None.
+
+    Returns:
+        None
+    """
+    figpath = pathlib.Path(path) / (
+        fig_name + f"_{a_tools.current_timestamp()}.{extension}"
+    )
+    fig.savefig(str(figpath), bbox_inches=bbox_inches, dpi=dpi)
+
+
+def safe_format_str_with_keys(mystr: str, **kwargs) -> str:
+    """Safely formats a string, ignores all keys if one key is missing."""
+    try:
+        return mystr.format(**kwargs)
+    except KeyError:
+        return mystr
