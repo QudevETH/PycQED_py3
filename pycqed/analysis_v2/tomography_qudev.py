@@ -345,7 +345,8 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
                Omega: Optional[np.ndarray] = None,
                rho_guess: Optional[qtp.Qobj] = None,
                solver = 'SCS', solveropt = {'': None},
-               cov_threshold = 1e-12):
+               cov_threshold = 1e-12,
+               verbose = False):
     """
     Executes a maximum likelihood fit to the measured observables, respecting
     the physicality constraints of the density matrix, using convex programming.
@@ -484,7 +485,7 @@ def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
                   normalize = normalize,
                   use_indirect = use_indirect,
                   use_quad_obj = use_quad_obj,
-                  verbose = False, # Set to True for numerical debugging
+                  verbose = verbose, # Set to True for numerical debugging
                   )
     result = qtp.Qobj(np.array(rho.value))
 
