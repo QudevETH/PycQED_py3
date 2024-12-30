@@ -1109,19 +1109,16 @@ def save_zibugreport(
             if involved_channels and SHF.name not in involved_channels.keys():
                 continue
 
-            wfm_dir = os.path.join(shf_data_dir, "sg", "sg_waveforms")
-            os.makedirs(wfm_dir, exist_ok=True)
-            cmt_dir = os.path.join(shf_data_dir, "sg", "sg_commandtables")
-            os.makedirs(cmt_dir, exist_ok=True)
-            seq_dir = os.path.join(shf_data_dir, "sg", "sg_sequencer")
-            os.makedirs(seq_dir, exist_ok=True)
-
             # saves settings for SG channels
             for sg_channel in range(n_sg_channels):
                 # save sg channel waveforms
                 if involved_channels and f"sg{sg_channel + 1}" not in \
                         involved_channels[SHF.name]:
                     continue
+
+                ch_dir = os.path.join(shf_data_dir, "sg", f"sg{sg_channel}")
+                os.makedirs(ch_dir, exist_ok=True)
+
                 save_shfsg_channel_data(
                     shf=SHF,
                     shf_tk=shf_tk,
@@ -1163,8 +1160,7 @@ def save_zibugreport(
             if involved_channels and SHF.name not in involved_channels.keys():
                 continue
 
-            n_qa_channels = len(SHF.qachannels)
-            for qa_channel in range(n_qa_channels):
+            for qa_channel in list(SHF.qachannels.keys()):
                 if involved_channels and f"qa{qa_channel + 1}" not in \
                         involved_channels[SHF.name]:
                     continue
@@ -1232,15 +1228,19 @@ def save_zibugreport(
                     "attribute and add assign station.UHFs = [UHF1, "
                     "UHF2, ...]")
 
+    if hasattr(station, "PQSC"):
+        pqsc_data_dir = os.path.join(brdir, station.PQSC.name)
+        os.makedirs(pqsc_data_dir, exist_ok=True)
+
     # save the firmware git revision
     for dev in instruments:
         dev_data_dir = os.path.join(brdir, dev.name)
         try:
             fw_git_revision_node = \
-                f"/{dev.devname}/raw/system/revisions/firmware"
+                f"/{dev.devname}/system/fwrevision"
             fw_git_revision_string = \
-                dev.daq.get(fw_git_revision_node, flat=True)[
-                    fw_git_revision_node][0]['vector']
+                str(dev.daq.get(fw_git_revision_node, flat=True)[
+                    fw_git_revision_node]["value"][0])
             fw_git_revision_dict = json.loads(fw_git_revision_string)
             write_logfile(os.path.join(
                 dev_data_dir, f'{dev.name}_{dev.devname}_firmware_revision'),
@@ -1253,16 +1253,16 @@ def save_zibugreport(
         dev_data_dir = os.path.join(brdir, dev.name)
         try:
             bs_git_revision_node = \
-                f"/{dev.devname}/raw/system/revisions/bitstream"
+                f"/{dev.devname}/system/fpgarevision"
             bs_git_revision_string = \
-                dev.daq.get(bs_git_revision_node, flat=True)[
-                    bs_git_revision_node][0]['vector']
+                str(dev.daq.get(bs_git_revision_node, flat=True)[
+                    bs_git_revision_node]["value"][0])
             bs_git_revision_dict = json.loads(bs_git_revision_string)
             write_logfile(os.path.join(
-                dev_data_dir, f'{dev.name}_{dev.devname}_bitstream_revision'),
+                dev_data_dir, f'{dev.name}_{dev.devname}_fpga_revision'),
                 repr(bs_git_revision_dict), dev_data_dir)
         except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_bitstream_revision'] = e
+            exceptions[f'{dev.name}_{dev.devname}_fpga_revision'] = e
 
     # print in kernel
     print(f'Bug report files saved to {brdir}')
@@ -1293,23 +1293,27 @@ def save_shfsg_channel_data(
         shf_data_dir (str): directory for exporting the program
         sg_channel (int): index (0-based) of the channel to export
     """
-    wfm_dir = os.path.join(shf_data_dir, "sg", "sg_waveforms")
-    cmt_dir = os.path.join(shf_data_dir, "sg", "sg_commandtables")
-    seq_dir = os.path.join(shf_data_dir, "sg", "sg_sequencer")
+    wfm_dir = os.path.join(shf_data_dir, "sg",
+                           f"sg{sg_channel}", "waveforms")
+    os.makedirs(wfm_dir, exist_ok=True)
 
-    channel_dir = os.path.join(wfm_dir, f"sg{sg_channel}")
-    os.mkdir(channel_dir)
+    cmt_dir = os.path.join(shf_data_dir, "sg",
+                           f"sg{sg_channel}", "commandtables")
+    seq_dir = os.path.join(shf_data_dir, "sg", f"sg{sg_channel}")
+
     wave_idx = 0
-    while (
-            len(shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]())):
-        w = shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]()
-        np.save(os.path.join(channel_dir, f'wave_{wave_idx}'), w)
-        wave_idx += 1
+    while True:
+        try:
+            w = shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]()
+            np.save(os.path.join(wfm_dir, f"wave_{wave_idx}"), w)
+            wave_idx += 1
+        except:
+            break
 
     # save sg channel commandtable
     w = eval(shf.sgchannels[sg_channel].awg.commandtable.data().replace(
         "false", "False"))
-    np.save(os.path.join(cmt_dir, f'commandtable_sg{sg_channel}'), w)
+    np.save(cmt_dir, w)
 
     # save sg sequence code
     w = shf.sgchannels[sg_channel].awg.sequencer.program()
@@ -1332,14 +1336,16 @@ def save_shfqa_channel_data(
         qa_channel (int): index (0-based) of the channel to export
     """
     # save qa channel waveforms
-    wfm_dir = os.path.join(shf_data_dir, "qa", "qa_waveforms")
+    wfm_dir = os.path.join(shf_data_dir, "qa",
+                           f"qa{qa_channel}", "waveforms")
     os.makedirs(wfm_dir, exist_ok=True)
     for i, wave in enumerate(shf.qachannels[qa_channel].generator.waveforms):
         w = wave.wave()
         np.save(os.path.join(wfm_dir, f'wave_{i}'), w)
 
     # save qa integration weights
-    wfm_dir = os.path.join(shf_data_dir, "qa", "qa_int_weights")
+    wfm_dir = os.path.join(shf_data_dir, "qa",
+                           f"qa{qa_channel}", "int_weights")
     os.makedirs(wfm_dir, exist_ok=True)
     for i, wave in enumerate(
             shf.qachannels[qa_channel].readout.integration.weights):
@@ -1347,7 +1353,8 @@ def save_shfqa_channel_data(
         np.save(os.path.join(wfm_dir, f'weight_{i}'), w)
 
     # save qa sequencer code
-    seq_dir = os.path.join(shf_data_dir, "qa", "qa_sequencer")
+    seq_dir = os.path.join(shf_data_dir, "qa",
+                           f"qa{qa_channel}")
     os.makedirs(seq_dir, exist_ok=True)
     w = shf.qachannels[qa_channel].generator.sequencer.program()
     f = open(os.path.join(seq_dir, f'sequencer_qa{qa_channel}.txt'), 'w')
@@ -1454,6 +1461,8 @@ def get_zhinst_modules_versions():
     import zhinst
     submodules = [sm for sm in dir(zhinst) if not sm.startswith('__')]
     for sm in submodules:
+        if sm in ['hdiq', 'timing_models']:
+            continue
         try:
             versions[f'zhinst-{sm}'] = zhinst.__dict__[sm].__version__
         except Exception as e:
