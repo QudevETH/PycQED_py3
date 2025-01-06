@@ -9,9 +9,9 @@ The actual pulse implementations are defined in separate modules,
 e.g. pulse_library.py.
 
 The module variable `pulse_libraries` of type `set()` is a set of pulse
-implementation libraries that will be searched when a pulse dictionary is
-converted to a pulse object. These libraries associate a pulse type with
-its corresponding class.
+implementation libraries that will be searched when a pulse dictionary that
+defines one or more operations is converted to a pulse object. These libraries
+associate a pulse type with its corresponding class.
 """
 
 import numpy as np
