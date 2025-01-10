@@ -63,8 +63,13 @@ def plot_on_grid(
     """Plots experimental data on a grid using the specified plotting function.
 
     Args:
-        data_by_grid: Experimental data mapped by grid coordinates.
+        data_by_grid: Data (anything really) that will be passed
+            as second argument of the plot_func, mapped by grid coordinates.
+            e.g. {(0,0): dict(x=xvals,y=yvals)} or {(0,0): ByteImageData} ...
         plot_func: Function to plot the experimental data on the given axis.
+            will be called for each instance in data_by_grid as
+            plot_func(ax, data, **plot_func_kwargs) where ax and data are the
+            ax and data for that grid coordinate
         plot_func_kwargs: Additional keyword arguments to pass to `plot_func`.
         fig_axes: Figure and axes to use. If None, new ones are created.
         fig_kwargs: Additional keyword arguments for figure creation.
@@ -91,7 +96,10 @@ def plot_on_grid(
         fig_kwargs["squeeze"] = False
         fig_kwargs.setdefault("sharex", True)
         fig_kwargs.setdefault("sharey", True)
-        fig_kwargs.setdefault("figsize", (grid_shape[0] * 2.5, grid_shape[1] * 2))
+        default_width = grid_shape[1] * 2.5  # width = ncol x 2.5 in
+        default_height = grid_shape[0] * 2   # heigh = rows x 2 in
+        fig_kwargs.setdefault("figsize", (default_width, default_height))
+        fig_kwargs.setdefault("dpi", 400)
         fig, axes = plt.subplots(grid_shape[0], grid_shape[1], **fig_kwargs)
 
     ax_properties = ax_properties or {}
@@ -213,8 +221,7 @@ def plot_on_pair_grid(
         list(data_by_index_on_grid)
     )
     if qubit_labels:
-
-        def plot_function_wrapper(ax, data, **kwargs):
+        def plot_function_wrapper_for_labels(ax, data, **kwargs):
             subplot_spec = ax.get_subplotspec()
             row, col = subplot_spec.rowspan.start, subplot_spec.colspan.start
             qubit_labels = kwargs.pop("qubit_labels", {})
@@ -232,7 +239,7 @@ def plot_on_pair_grid(
         plot_func_kwargs.update(
             dict(qubit_labels={pair_to_coord(q, q): q for q in unique_qubits})
         )
-        _plot_func = plot_function_wrapper
+        _plot_func = plot_function_wrapper_for_labels
     else:
         _plot_func = plot_func
     if pair_labels:
