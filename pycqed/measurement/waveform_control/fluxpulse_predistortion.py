@@ -213,15 +213,17 @@ def convert_expmod_to_IIR(expmod, dt, inverse_IIR=True, direct=False):
                 n, d = sp.fraction((n / d).simplify(rational=True), exact=True)
                 coeffs_n = n.as_poly(z).all_coeffs()
                 coeffs_d = d.as_poly(z).all_coeffs()
-                a = np.cast['float']([v.evalf() for v in coeffs_n])
-                b = np.cast['float']([v.evalf() for v in coeffs_d])
+                a = np.asarray([v.evalf() for v in coeffs_n], dtype="float")
+                b = np.asarray([v.evalf() for v in coeffs_d], dtype="float")
                 # further processing after the end of the if statement
             else:
                 roots_n = n.as_poly(p).all_roots()
                 # TODO: it seems that zeros can be complex even in the
                 #  overdamped case. Double-check this!
-                z_zeros = np.cast['complex128'](
-                    [complex(z.subs(p, r).evalf()) for r in roots_n])
+                z_zeros = np.asarray(
+                    [complex(z.subs(p, r).evalf()) for r in roots_n],
+                    dtype="complex128",
+                )
                 z_poles = np.exp(dt * (- 1 / np.array(tau)))
                 gain = sum([A] + list(B))
                 if inverse_IIR:

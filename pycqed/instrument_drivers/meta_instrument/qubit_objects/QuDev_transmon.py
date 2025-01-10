@@ -152,6 +152,13 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                                                     "none",
                                                                     "all",
                                                                     "odd", "even"))
+        self.add_pulse_parameter(
+            'RO', 'ro_flux_net_zero_pulse', 'flux_net_zero_pulse',
+            initial_value=False, vals=vals.Bool(),
+            docstring='If True, uses a net-zero pulse for '
+                      'flux-pulse-assisted readout (note that this doubles'
+                      'the  duration of the flux pulse, such that the '
+                      'readout pulse happens during the first half).')
 
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
@@ -422,6 +429,18 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                  'position.',
                            vals=vals.Numbers(),
                            parameter_class=ManualParameter)
+        self.add_parameter('instr_flux_dc', initial_value=None,
+                           parameter_class=InstrumentRefParameter,
+                           vals=vals.MultiType(
+                                    vals.Enum(None), vals.Strings()),
+                           docstring="Instrument name of the dc flux source")
+        self.add_parameter('flux_dc_channel', initial_value=None,
+                           parameter_class=ManualParameter,
+                           vals=vals.MultiType(
+                                    vals.Enum(None), vals.Strings()),
+                           docstring="Name of the flux dc channel "
+                                     "of instr_flux_dc, naming convention "
+                                     "e.g.: volt_fluxline1")
 
         # ac flux parameters
         self.add_parameter('flux_distortion', parameter_class=ManualParameter,
@@ -2189,8 +2208,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             analyze_ef:               whether or not to also look for the gf/2
 
         Keyword Args:
-            interactive_plot:        (default=False)
-                whether to plot with plotly or not
             analyze_ef:              (default=False)
                 whether to look for another f_ge/2 peak/dip
             percentile:              (default=20)

@@ -319,6 +319,29 @@ class Device(Instrument):
         else:
             return [qb_names.index(qb) for qb in qubits_to_return]
 
+    @property
+    def fluxlines_dict(self):
+        """
+        Creates and returns the fluxlines dict.
+
+        Takes qb.instr_flux_dc and qb.flux_dc_channel and creates
+        a dictionary with qubit names as keys and qcodes parameters
+        as values.
+
+        Returns:
+            fluxlines_dict
+        """
+        qubits = self.get_qubits()
+        fluxlines_dict = {}
+        for qb in qubits:
+            if qb.instr_flux_dc() is None:
+                continue
+            instr = qb.instr_flux_dc.get_instr()
+            if qb.flux_dc_channel() in instr.parameters:
+                fluxlines_dict[qb.name] = instr.parameters[
+                    qb.flux_dc_channel()]
+        return fluxlines_dict
+
     def get_pulse_par(self, gate_name, qb1, qb2, param):
         """
         Returns the object of a two qubit gate parameter.
@@ -1020,7 +1043,7 @@ class Device(Instrument):
         ax.set_ylabel('Coupled qubit')
         ax.tick_params(direction='out')
         cbar.set_label(
-            f'Flux coupling, $\\mathrm{{d}}\Phi/\\mathrm{{d}}V$ '
+            f'Flux coupling, $\\mathrm{{d}}\\Phi/\\mathrm{{d}}V$ '
             f'($\\mathrm{{{phi_unit}}}$/V)')
 
         for i in range(len(qubits)):

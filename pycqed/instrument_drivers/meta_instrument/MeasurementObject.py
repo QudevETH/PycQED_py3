@@ -211,6 +211,23 @@ class MeasurementObject(Instrument):
         self.add_pulse_parameter(
             'RO', 'ro_trigger_pars', 'trigger_pars',
             vals=vals.MultiType(vals.Enum(None), vals.Dict()))
+        # Values needed for two-step readout
+        self.add_pulse_parameter(
+            operation_name='RO',
+            parameter_name='ro_multistep_amp_factor_duration_tuples',
+            argument_name='multistep_amp_factor_duration_tuples',
+            initial_value=None,
+            # FIXME should really be vals.Lists(vals.Tuples(vals.Numbers))
+            #       but a Tuple validator does not exist
+            vals=vals.MultiType(vals.Enum(None), vals.Lists()),
+            docstring="List of tuples containing an amplitude scaling "
+                      "factor (unitless) and a duration (in s) for this"
+                      " multiplier. Amplitude scaling factors greater "
+                      "than 1 increase the output amplitude while those"
+                      " less than 1 reduce it. Defaults to None meaning"
+                      " that a constant amplitude is applied the entire"
+                      " time."
+        )
 
         # switch parameters
         DEFAULT_SWITCH_MODES = OrderedDict({'default': {}})

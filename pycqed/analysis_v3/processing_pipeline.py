@@ -837,6 +837,6 @@ class ProcessingPipeline(list):
         if save_name is not None:
             if save_folder is None:
                 save_folder = os.getcwd()
-            G.draw(f'{save_folder}\{save_name}.{fmt}')
+            G.draw(rf'{save_folder}\{save_name}.{fmt}')
 
         return G

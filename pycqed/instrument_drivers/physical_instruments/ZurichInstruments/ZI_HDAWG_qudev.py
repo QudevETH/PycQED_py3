@@ -32,6 +32,7 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
         super().__init__(*args, interface=interface, server=server, **kwargs)
         self.interface = interface
         self.server = server
+        self.exclude_from_stop = []
         self._snapshot_whitelist = snw.generate_snapshot_whitelist_hdawg()
 
     def _check_options(self):
@@ -43,3 +44,11 @@ class ZI_HDAWG_qudev(zicore.ZI_HDAWG_core,
 
     def clock_freq(self):
         return self.system_clocks_sampleclock_freq()
+
+    def stop(self):
+        log.info(f"{self.devname}: Stopping '{self.name}'")
+        # Stop all AWG's that are not part of exclude_from_stop
+        for awg_nr in range(self._num_awgs()):
+            if awg_nr not in self.exclude_from_stop:
+                self.set('awgs_{}_enable'.format(awg_nr), 0)
+        self.check_errors()
