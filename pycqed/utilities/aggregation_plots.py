@@ -20,9 +20,35 @@ Typical usage:
     aggregator.plot_on_qubit_grid()
     ```
 
-Note:
-    This module follows analysis_v3 design by a high degree. I.e., we defer
-    execution, like plotting, as long as possible.
+Implementation:
+    The code of this module has different abstraction layers:
+    PlotAggregator class: this is the highest level, intended to be used for
+    standard use cases from very little information. I.e. the idea is that,
+    given a list of timestamps or QuantumExperiment Objects,
+    the PlotAggregator knows which 'standard plot' to retrieve from the folder
+    and plot them on a grid. It does so by calling the lower-level
+    plot_on_qubit_grid with the appropriate arguments.
+    When called from the Device class, the coordinates of how the qubits
+    are arranged for that device can be used such that the user does
+    not need to specify them.
+    FIXME: Currently it only works seemlessly for common single-qubit
+      calibrations but could be extended relatively easily to also work for
+      two qubit calibrations.
+    ------------
+    plot_on_qubit_grid / plot_on_pair grid: These functions are on the inter-
+    mediate abstraction level and are meant to be flexible functions
+    that can plot _anything_ on a grid meant to represent qubits or anything
+    meant to be plotted for pairs of qubits (e.g. Chevron measurements).
+    The flexibility is achieved by admitting a plot_func argument which
+    is provided as an argument (some example plot functions are defined in this
+    module) and will be called once for each item in the data to plot. plot_func
+    is responsible to do the "plotting job" for one of the qubits/qubit pair.
+    The framework then takes care of doing this for all items in the grid.
+    -----------
+    plot_on_grid: this is the lowest level of abstraction.
+    plot_on_qubit_grid / plot_on_pair grid call are just wrappers of this function
+    This function can plot anything on a grid of coordinates, using
+    the same methodology as described above.
 """
 
 import fnmatch
@@ -61,7 +87,7 @@ def plot_on_grid(
     save_kwargs: Optional[dict] = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Plots experimental data on a grid using the specified plotting function.
-
+    See Also module description for more details.
     Args:
         data_by_grid: Data (anything really) that will be passed
             as second argument of the plot_func, mapped by grid coordinates.
@@ -143,7 +169,7 @@ def plot_on_qubit_grid(
     save_kwargs: Optional[dict] = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Plots experimental data on a grid based on qubit coordinates.
-
+    See Also module description for more details.
     Args:
         data_by_qubit: Experimental data mapped by qubit identifiers.
         plot_func: Function to plot the experimental data on the given axis.
@@ -193,7 +219,7 @@ def plot_on_pair_grid(
     save_kwargs: Optional[dict] = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Plots experimental data on a grid based on qubit pairs and their coordinates.
-
+    See Also module description for more details.
     Args:
         data_by_pair: Experimental data mapped by pairs of qubit identifiers.
         plot_func: Function to plot the experimental data on the given axis.

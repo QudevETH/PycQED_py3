@@ -1067,12 +1067,39 @@ class Device(Instrument):
             return fig
 
     def plot_on_qubit_grid(self, aggregator: Optional = None, **kw):
+        """
+        Plots data on a qubit grid, using self.qubit_coordinates
+        (a map where keys are qubit names and values are integers
+        of a grid coordinate system, e.g. {'qb1': (0,0), 'qb2': (0,1)}
+
+        To know which data to plot, the user can provide an aggregator
+        (see pycqed.utilities.aggregation_plots.PlotAggregator, which can
+        find the default data to plot for standard calibration routines from
+        a list of timestamps),
+        or directly provide a data_by_qubit dictionary and a plot_func,
+        see the doc string of aggregation_plots.plot_on_qubit_grid.
+        Args:
+            aggregator : pycqed.utilities.aggregation_plots.PlotAggregator
+            **kw: any kw passed to aggregation_plots.plot_on_qubit_grid
+
+        Returns:
+            Matplotlib Figure, Axes
+
+        """
+        # if coordinates are present, add them to the function call
+        if self.qubit_coordinates:
+            kw.setdefault('qubit_to_coord',
+                          lambda qbn: self.qubit_coordinates[qbn])
+        
         if aggregator is None:
+            # when no aggregator is used, call directly the underlying
+            # plot on qubit grid function.
             return ap.plot_on_qubit_grid(**kw)
         else:
-            if self.qubit_coordinates:
-                kw.setdefault('qubit_to_coord',
-                              lambda qbn: self.qubit_coordinates[qbn])
+            # if an aggregator is passed (can easily be constructed from
+            # timestamps or QE objects), use it and call the plotting function
+            # of the aggregator, which will call ap.plot_on_qubit_grid with
+            # appropriate parameters
             return aggregator.plot_on_qubit_grid(**kw)
 
     def plot_on_pair_grid(self, aggregator: Optional = None, **kw):
