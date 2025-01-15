@@ -12,8 +12,7 @@ if not _device_db_client_module_missing:
 
 from pycqed.utilities.flux_assisted_readout import ro_flux_tmp_vals
 import logging
-import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
     import QuDev_transmon
 from dataclasses import dataclass
@@ -137,11 +136,7 @@ class ParkAndQubitSpectroscopy(AutomaticCalibrationRoutine):
     def create_routine_template(self):
         """Creates routine template."""
         super().create_routine_template()
-        # Loop in reverse order so that the correspondence between the index
-        # of the loop and the index of the routine_template steps is preserved
-        # when new steps are added
-        for i, step in reversed(list(enumerate(self.routine_template))):
-            self.split_step_for_parallel_groups(index=i)
+        self.split_routine_template_for_parallel_groups()
 
     def post_run(self):
         """Save the results of the routine."""

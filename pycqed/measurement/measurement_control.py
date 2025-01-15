@@ -1,4 +1,3 @@
-import types
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -29,7 +28,6 @@ from pycqed.measurement.calibration import calibration_points as cp_mod
 
 # Used for auto qcodes parameter wrapping
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement import awg_sweep_functions as awg_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_det
 from pycqed.analysis.tools.data_manipulation import get_generation_means
@@ -861,8 +859,6 @@ class MeasurementControl(Instrument):
         else:
             # Transpose since detectors return [len(value_names), num_points],
             # to get shape [num_points, len(value_names)]
-            # TODO confirm that all det.acquire_data_point can be deleted,
-            #  see comment in Multi_Detector.acquire_data_point
             vals = np.array(self.detector_function.get_values()).T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
@@ -1546,7 +1542,7 @@ class MeasurementControl(Instrument):
                 self.TwoD_array = np.empty(
                     [len(sv[1]), len(sv[0]),
                      len(self.detector_function.value_names)])
-                self.TwoD_array[:] = np.NAN
+                self.TwoD_array[:] = np.nan
                 self.secondary_QtPlot.clear()
                 for j, vn in enumerate(self.detector_function.value_names):
                     axes_info = self._plotmon_axes_info[vn]
@@ -2118,6 +2114,7 @@ class MeasurementControl(Instrument):
                 'sweep_points': result['sweep_points']})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
+    @Timer()
     def save_instrument_settings(self, data_object=None, mode='xb', *args):
         '''
         uses QCodes station snapshot to save the last known value of any

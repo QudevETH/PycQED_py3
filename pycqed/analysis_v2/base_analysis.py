@@ -3,7 +3,6 @@ File containing the BaseDataAnalysis class.
 """
 from inspect import signature
 import os
-import sys
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -26,7 +25,7 @@ from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
     flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union
 import datetime
 import json
 import lmfit

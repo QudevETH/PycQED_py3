@@ -1,5 +1,5 @@
+import logging
 import numpy as np
-from copy import deepcopy
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
 from pycqed.measurement import sweep_functions as swf
@@ -10,9 +10,18 @@ from pycqed.instrument_drivers.physical_instruments.ZurichInstruments.\
 from zhinst.qcodes import SHFQA as SHFQA_core
 from zhinst.qcodes import SHFQC as SHFQC_core
 from zhinst.qcodes import AveragingMode
+from pycqed.utilities import general as gen
 from pycqed.utilities.timer import Timer
-import logging
+
 log = logging.getLogger(__name__)
+
+# FIXME: remove this once 24.10 is the mandatory version
+zhinst_core_version = gen.get_zhinst_modules_versions()[0]["zhinst-core"]
+# e.g. "24.10.64896"
+if zhinst_core_version[:5] >= "24.10":
+    ALLOWED_LO_FREQS = np.arange(1e9, 8.0e9 + 1, 200e6)  # Include 8.0e9
+else:
+    ALLOWED_LO_FREQS = np.arange(1e9, 8.1e9 + 1, 100e6)  # Include 8.1e9
 
 
 class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
@@ -43,9 +52,10 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
     # (this is not a symmetrical signal in f, hence I/Q)
     acq_sampling_rate = 2.0e9
     _acq_scope_memory = 2 ** 18
-    # Maximum acquisition shots according to YS
+    # Maximum acquisition results according to LabOne 24.10
+    # /dev..../qachannels/n/readout/result/length
     # (Can check in the LabOne GUI by typing larger numbers in)
-    ACQ_N_RESULTS_MAX = 2 ** 17  # 131072
+    ACQ_N_RESULTS_MAX = 2 ** 19  # 524288
     acq_weights_n_samples = 4096
     acq_Q_sign = -1  # Determined experimentally
     allowed_modes = {'avg': [],  # averaged raw input (time trace) in V
@@ -105,11 +115,12 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
 
         self.add_parameter(
             'allowed_lo_freqs',
-            initial_value=np.arange(1e9, 8.1e9, 100e6),
+            initial_value=ALLOWED_LO_FREQS,
             parameter_class=ManualParameter,
             docstring='List of values that the center frequency (LO) is '
-                      'allowed to take. As of now this is limited to steps '
-                      'of 100 MHz.',
+                      'allowed to take. As of LabOne 24.10 this is '
+                      'limited to steps of 200 MHz. Previously, it '
+                      "could take 100 MHz steps.",
             set_parser=lambda x: list(np.atleast_1d(x).flatten()),
             vals=validators.MultiType(validators.Lists(), validators.Arrays(),
                                       validators.Numbers()))

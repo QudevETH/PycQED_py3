@@ -2,7 +2,6 @@ import logging
 import time
 import numpy as np
 from pycqed.measurement import mc_parameter_wrapper
-import qcodes
 
 
 class Sweep_function(object):

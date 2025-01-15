@@ -3,7 +3,6 @@ log = logging.getLogger(__name__)
 
 import os
 import sys
-import h5py
 import lmfit
 import datetime
 import traceback
@@ -65,11 +64,11 @@ class Save:
                 filename = '{:%Y%m%d_%H%M%S}--{}'.format(
                     datetime.datetime.now(), filename)
             self.filepath = os.path.join(self.savedir, filename)
-            if save_processed_data:
-                self.save_data_dict()
             if save_figures and hlp_mod.get_param('figures', self.data_dict) \
                     is not None:
                 self.save_figures(**save_figs_params)
+            if save_processed_data:
+                self.save_data_dict()
 
             np.set_printoptions(**opt)
         except Exception:

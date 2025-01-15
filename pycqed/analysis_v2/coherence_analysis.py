@@ -187,7 +187,7 @@ class CoherenceTimesAnalysisSingle(ba.BaseDataAnalysis):
                                        xvals=self.fit_res['flux_values'],
                                        yvals=self.raw_data_dict['dac_sorted_tau'],
                                        yerr=self.raw_data_dict['dac_sorted_tau_stderr'],
-                                       xlabel='Flux Value', xunit='$\Phi_0$')
+                                       xlabel='Flux Value', xunit=r'$\Phi_0$')
 
     def _prepare_plot(self, ax_id, xvals, yvals, xlabel, xunit, yerr=None):
         plot_dict = {
@@ -528,8 +528,8 @@ class CoherenceTimesAnalysis(ba.BaseDataAnalysis):
                     sqrtA_echo = slope_echo / (np.pi * np.sqrt(1.386))
 
                     if self.verbose:
-                        print('Amplitude echo PSD = (%s u\Phi_0)^2' % (sqrtA_echo / 1e-6))
-                        print('Amplitude rams PSD = (%s u\Phi_0)^2' % (sqrtA_rams / 1e-6))
+                        print(r'Amplitude echo PSD = (%s u\Phi_0)^2' % (sqrtA_echo / 1e-6))
+                        print(r'Amplitude rams PSD = (%s u\Phi_0)^2' % (sqrtA_rams / 1e-6))
 
                     chi = self.chi_shift[qubit] if self.chi_shift else None
                     res_freq = self.res_freq[qubit] if self.res_freq else None
@@ -604,7 +604,7 @@ class CoherenceTimesAnalysis(ba.BaseDataAnalysis):
                     'xunit': r'GHz/$\Phi_0$',
                     'ylabel': r'$\Gamma_{\phi}$',
                     'yunit': r'$s^{-1}$',
-                    'setlabel': '$\Gamma_{\phi,\mathrm{Ramsey}}$',
+                    'setlabel': r'$\Gamma_{\phi,\mathrm{Ramsey}}$',
                 }
                 pdict_fit = {}
                 cg_base = qubit + "_" + cg_all_base
@@ -623,7 +623,7 @@ class CoherenceTimesAnalysis(ba.BaseDataAnalysis):
                 self.plot_dicts[cg_base + '_echo_scatter'] = pds
 
                 if self.options_dict.get('print_fit_result_plot', True):
-                    dac_fit_text = '$\Gamma = %.5f(\pm %.5f)$\n' % (
+                    dac_fit_text = '$\\Gamma = %.5f(\\pm %.5f)$\n' % (
                     self.fit_res[qubit]['gamma_intercept'], self.fit_res[qubit]['gamma_intercept_std'])
                     # dac_fit_text += '$\Gamma/2 \pi = %.2f(\pm %.3f)$ MHz\n' % (self.fit_res[qubit]['gamma_intercept'], self.fit_res[qubit]['gamma_intercept_std'])
                     # dac_fit_text += '$\Gamma/2 \pi = %.2f(\pm %.3f)$ MHz\n' % (self.fit_res[qubit]['gamma_intercept'], self.fit_res[qubit]['gamma_intercept_std'])
@@ -646,8 +646,8 @@ class CoherenceTimesAnalysis(ba.BaseDataAnalysis):
 
                 pdict_scatter = {
                     'xlabel': 'Flux',
-                    'xunit': 'm$\Phi_0$',
-                    'ylabel': '$T_\phi^{\mathrm{Echo}}/T_\phi^{\mathrm{Ramsey}}$',
+                    'xunit': r'm$\Phi_0$',
+                    'ylabel': r'$T_\phi^{\mathrm{Echo}}/T_\phi^{\mathrm{Ramsey}}$',
                 }
                 pds = plot_scatter_errorbar(self=self, ax_id=cr_all_base + '_flux',
                                             xdata=flux * 1e3,
@@ -659,7 +659,7 @@ class CoherenceTimesAnalysis(ba.BaseDataAnalysis):
                 pdict_scatter = {
                     'xlabel': r'Sensitivity $|\partial\nu/\partial\Phi|$',
                     'xunit': r'GHz/$\Phi_0$',
-                    'ylabel': '$T_\phi^{\mathrm{Echo}}/T_\phi^{\mathrm{Ramsey}}$',
+                    'ylabel': r'$T_\phi^{\mathrm{Echo}}/T_\phi^{\mathrm{Ramsey}}$',
                 }
                 pds = plot_scatter_errorbar(self=self, ax_id=cr_all_base + '_sensitivity',
                                             xdata=np.abs(sensitivity) * 1e-9,
@@ -721,8 +721,8 @@ class CoherenceTimesAnalysis(ba.BaseDataAnalysis):
                         if self.dac_keys and self.freq_keys:
                             pdict_scatter = {
                                 'xlabel': r'Sensitivity $|\partial\nu/\partial\Phi|$',
-                                'xunit': 'm$\Phi_0$',
-                                'ylabel': '$T_\phi^{\mathrm{Echo}}/T_\phi^{\mathrm{Ramsey}}$',
+                                'xunit': r'm$\Phi_0$',
+                                'ylabel': r'$T_\phi^{\mathrm{Echo}}/T_\phi^{\mathrm{Ramsey}}$',
                                 'setlabel': label
                             }
                             pds = plot_scatter_errorbar(self=self, ax_id=ct_base + '_flux_gamma_relation',

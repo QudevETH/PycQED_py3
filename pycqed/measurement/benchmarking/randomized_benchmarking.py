@@ -5,7 +5,6 @@ import random
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
 from pycqed.measurement.randomized_benchmarking import \
     randomized_benchmarking as rb
-from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.randomized_benchmarking.two_qubit_clifford_group as tqc
 import logging
 log = logging.getLogger(__name__)
@@ -187,7 +186,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
                 to translate the Clifford elements into applicable pulses.
                 Possible choices are 'HZ' or 'XY'.
                 See HZ_gate_decomposition and XY_gate_decomposition in
-                measurement\randomized_benchmarking\clifford_decompositions.py
+                measurement/randomized_benchmarking/clifford_decompositions.py
 
         Keyword args:
             passed to parent class; see docstring there
