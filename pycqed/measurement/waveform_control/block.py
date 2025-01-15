@@ -311,17 +311,13 @@ class ParametricValue:
     :param func_angle: (optional) a function which, when applied to the value
         of the sweep parameter, yields the gate angle to write in the resolved
         op_code
-    :param op_split: (optional) cache a splitted version of the op_code of
-        the pulse to allow for correct op_code resolution in cases of spaces
-        in a mathematical expression in an op_code.
 
     """
     _is_parametric_value = True
 
-    def __init__(self, param, func=None, func_angle=None, op_split=None):
+    def __init__(self, param, func=None, func_angle=None):
         self.param = param
         self.func = func
-        self.op_split = op_split
         self.func_angle = func_angle
 
     def resolve(self, sweep_dict, ind=None, op_code=None):
@@ -348,31 +344,25 @@ class ParametricValue:
         elif isinstance(sweep_dict[self.param], dict) and 'values' in \
                 sweep_dict[self.param]:  # convention in old sweep_dicts
             v = d['values'][ind]
-        else: # convention in SweepPoints class
+        else:  # convention in SweepPoints class
             v = d[0][ind]
-        v_processed = v if self.func is None else self.func(v)
+        v_physical = v if self.func is None else self.func(v)
         if op_code is not None:
-            if f'[{self.param}]' in op_code:
-                # if there is a cached splitted version, use that one instead
-                # in order to allow for correct op_code resolution in cases
-                # of in a mathematical expression in an op_code.
-                # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
-                # TODO op_split might not be needed anymore after introducing
-                #  func_angle
-                # FIXME: remove op_code caching as soon as a new op_code
-                #  concept (e.g. tuples instead of space-separated strings)
-                #  makes it obsolete
-                op_split = [s for s in self.op_split] if self.op_split is not \
-                            None else op_code.split(' ')
-                param_start = op_split[0].find(':')
-                v_code = v if not self.func_angle else self.func_angle(v)
-                op_split[0] = f"{op_split[0][:param_start]}{v_code}"
-                op_code = ' '.join(op_split)
-            else:
-                op_code = op_code.replace(f':{self.param} ', f"{v} ")
-            return v_processed, op_code
+            # op_code resolution in case of a mathematical expression
+            # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
+            op_split = op_code.split(' ')
+            op_type = op_split[0].split(':')[0].rstrip('0123456789.e-')
+            # Note for example that op_type might include an 'm' prefactor.
+            # This indicates a minus sign in v_physical: op_code = "mY:90 qb1"
+            # yields the pulse amp v_physical corresponding to a -90 angle.
+            # In this case, func_angle should not also contain this minus sign,
+            # else the op_code would become "mY:-90 qb1".
+            v_angle = self.func_angle(v) if self.func_angle else v
+            op_split[0] = f"{op_type}{v_angle}"
+            op_code = ' '.join(op_split)
+            return v_physical, op_code
         else:
-            return v_processed
+            return v_physical
 
     def _copy_self(self):
         """

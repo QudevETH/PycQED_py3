@@ -415,8 +415,7 @@ class CircuitBuilder:
                         func_angle = None
                     # sign * means that func will be -func_angle
                     cphase = sign * ParametricValue(
-                        param, func=func_angle, func_angle=func_angle,
-                        op_split=[op_name, *qbn])
+                        param, func=func_angle, func_angle=func_angle)
                 # op_name = "NameVal" (e.g. "Z100", see docstring)
                 elif angle:
                     cphase = float(angle)  # gate angle
@@ -456,10 +455,6 @@ class CircuitBuilder:
                     qb_dec = None
                 # If qb_dec is not None, we decompose the gate
                 if qb_dec:
-                    if isinstance(cphase, ParametricValue):
-                        # Update the op_split info in the ParametricValue,
-                        # such that it matches the operation decomposition
-                        cphase.op_split[0] = 'Z'
                     # CZ_x = diag(1,1,1,e^i*x)  # pycqed sign convention
                     #  = e^(i*x/4)*Z1(x/2)*Z0(x/2)*H1*CZ*H1*Z1(-x/2)*H1*CZ*H1
                     # and replacing each Hadamard H = i*Y*Z(pi) and
@@ -519,8 +514,7 @@ class CircuitBuilder:
                         func = (lambda x, qb=qbn[0], sign=sign, f=func_angle:
                                 {qb: sign * f(x)})
                         p[0]['basis_rotation'] = ParametricValue(
-                            param, func=func, func_angle=func_angle,
-                            op_split=(op_name, qbn[0]))
+                            param, func=func, func_angle=func_angle)
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
                         p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
@@ -539,8 +533,7 @@ class CircuitBuilder:
                                       f=func_angle: a * corr_func(
                                 ((sign * f(x) + 180) % (-360) + 180) / 180)
                         p[0]['amplitude'] = ParametricValue(
-                            param, func=func, func_angle=func_angle,
-                            op_split=(op_name, qbn[0]))
+                            param, func=func, func_angle=func_angle)
                     else:  # angle is a given value
                         angle = sign * float(angle)
                         # configure drive pulse amplitude for this angle
