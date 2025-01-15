@@ -1,8 +1,6 @@
 import pytest
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v3 import plotting as plot_mod
-from pycqedscripts.scripts.characterization import randomized_benchmarking\
-    as rb_ana_full
 
 # Navigate to the folder where the testdata of this test is contained
 @pytest.fixture(scope="module", autouse=True)
@@ -13,7 +11,10 @@ def set_module_data_dir(test_data_base_dir):
                               r'XLD\pydata')
     return sub_directory
 
+@pytest.mark.skip(reason="FIXME: Move to integration tests")
 def test_1qb_IRB_analysis():
+    from pycqedscripts.scripts.characterization import \
+        randomized_benchmarking as rb_ana_full
     timestamp = '20220203_183543'
     plot_mod.get_default_plot_params()
     pp = rb_ana_full.single_qubit_rb_analysis(
@@ -24,7 +25,10 @@ def test_1qb_IRB_analysis():
         save_processed_data=False,
     )
 
+@pytest.mark.skip(reason="FIXME: Move to integration tests")
 def test_2qb_IRB_analysis():
+    from pycqedscripts.scripts.characterization import \
+        randomized_benchmarking as rb_ana_full
     timestamp = '20220722_131009'
     plot_mod.get_default_plot_params()
     pp = rb_ana_full.two_qubit_irb_analysis(
