@@ -3333,7 +3333,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             sp_names = [list(sp_1dim.keys()) for sp_1dim in self.sp]
             sp_names = [keys[0] if len(keys) == 1 else f'{len(keys)}params'
                        for keys in sp_names]
-        fn = f"shots_{type}_{'x'.join(sp_names)}_{'x'.join(shape)}.pkl"
+        ts = self.timestamps[0]
+        fn = f"{ts}_shots_{type}_{'x'.join(sp_names)}_{'x'.join(shape)}.pkl"
         with open(os.path.join(a_tools.get_folder(self.timestamps[0]), fn),
                   "wb") as f:
             pickle.dump(shots, f)
