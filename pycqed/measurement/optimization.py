@@ -9,9 +9,8 @@ except Exception:
     logger.warning('Machine learning packages not loaded. '
                    'Run from pycqed.analysis import machine_learning_toolbox to see errors.')
 
-from sklearn.model_selection import GridSearchCV as gcv, train_test_split
 
-from scipy.optimize import fmin_l_bfgs_b,fmin,minimize,fsolve
+from scipy.optimize import minimize
 
 def nelder_mead(fun, x0,
                 initial_step=0.1,

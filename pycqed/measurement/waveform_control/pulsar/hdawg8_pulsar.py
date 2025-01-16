@@ -1,7 +1,5 @@
-import time
 import logging
 import numpy as np
-from copy import deepcopy
 from functools import partial
 import json
 
@@ -45,8 +43,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
-        "\n"
-        "{codeword_table_defs}\n"
         "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
@@ -477,7 +473,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 # calculated from awg_nr can ensure that a unique osc is
                 # used for every channel pair for which we configure
                 # internal modulation.
-                osc_nr = awg_nr * 4
+                osc_nr = awg_nr
                 # configure the oscillator frequency
                 self.awg.set(f'oscs_{osc_nr}_freq', freq)
                 # set up the two sines of the channel pair with the same
@@ -684,6 +680,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     https://docs.zhinst.com/hdawg_user_manual/overview.html
     for more details."""
 
+    COMMAND_TABLE_MAX_SIZE = 1024
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -735,7 +733,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     ):
         awg_nr = self._awg_nr
 
-        if not mod_config:
+        if not mod_config or not mod_config.get('internal_mod', True):
             # Modulation configuration is empty
             self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 0)
             self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 0)
@@ -764,7 +762,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
         # Choose oscillators, set phases and modulation frequencies.
         mod_frequency = mod_config.get("mod_frequency", 0.0)
-        osc_nr = mod_config.get("osc_nr", awg_nr * 4)
+        osc_nr = mod_config.get("osc_nr", awg_nr)
         self.awg.set(f'oscs_{osc_nr}_freq', mod_frequency)
         self.awg.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
         self.awg.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)
@@ -925,8 +923,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
     def _configure_awg_str(
             self,
-            awg_str
+            awg_str,
+            **kw,
     ):
+        # Ignore kws because they are not needed for legacy compiler
         self._awg.configure_awg_from_string(
             self._awg_nr,
             program_string=awg_str,

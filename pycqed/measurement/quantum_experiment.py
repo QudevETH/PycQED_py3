@@ -1,8 +1,5 @@
-import traceback
 
-import time
 
-import h5py
 import numpy as np
 from pycqed.analysis import analysis_toolbox as a_tools
 
@@ -14,10 +11,10 @@ from pycqed.measurement import sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
-import pycqed.utilities.general as general
 from copy import copy, deepcopy
 from collections import OrderedDict as odict
 from pycqed.measurement.sweep_points import SweepPoints
+from pycqed.utilities.io import hdf5 as h5d
 import itertools
 import logging
 from pycqed.gui.waveform_viewer import WaveformViewer
@@ -48,6 +45,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                  meas_objs=None, classified=False, MC=None,
                  label=None, exp_metadata=None, upload=True, measure=True,
                  analyze=True, temporary_values=(), drive="timedomain",
+                 switch='default',
                  sequences=(), sequence_function=None, sequence_kwargs=None,
                  plot_sequence=False, filter_segments_mask=None, df_kwargs=None, df_name=None,
                  timer_kwargs=None, mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
@@ -179,6 +177,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.temporary_values = list(temporary_values)
         self.analyze = analyze
         self.drive = drive
+        self.switch = switch
         self.callback = callback
         self.callback_condition = callback_condition
         self.plot_sequence = plot_sequence
@@ -294,7 +293,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # all measure objects.
             mos = self.qubits if self.qubits else self.meas_objs
             for m in mos:
-                m.prepare(drive=self.drive)
+                m.prepare(drive=self.drive, switch=self.switch)
 
             # create/retrieve sequence to run
             self._prepare_sequences(self.sequences, self.sequence_function,
@@ -828,7 +827,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             folder = a_tools.get_folder(self.timestamp,
                                         folder=self.MC.datadir())
             filepath = a_tools.measurement_filename(folder)
-        with h5py.File(filepath, mode="r+") as data_file:
+        with h5d.safe_file_open(filepath, mode='r+') as data_file:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
                 timer_group = data_file.create_group(Timer.HDF_GRP_NAME)

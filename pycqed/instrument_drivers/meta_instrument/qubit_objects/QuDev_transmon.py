@@ -10,7 +10,6 @@ import scipy as sp
 from qcodes.instrument.parameter import InstrumentRefParameter, ManualParameter
 from qcodes.utils import validators as vals
 
-import pycqed.analysis.fitting_models as fit_mods
 import pycqed.analysis_v2.spectroscopy_analysis as sa
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as fl_predist
 import pycqed.measurement.waveform_control.pulse as bpl
@@ -64,7 +63,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
     _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
-                           'GaussFilteredCosIQPulseMultiChromatic',
                            'GaussFilteredCosIQPulseWithFlux']
     _allowed_drive_modes = [None, 'continuous_spec',
                             'continuous_spec_modulated', 'pulsed_spec',
@@ -152,6 +150,13 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                                                     "none",
                                                                     "all",
                                                                     "odd", "even"))
+        self.add_pulse_parameter(
+            'RO', 'ro_flux_net_zero_pulse', 'flux_net_zero_pulse',
+            initial_value=False, vals=vals.Bool(),
+            docstring='If True, uses a net-zero pulse for '
+                      'flux-pulse-assisted readout (note that this doubles'
+                      'the  duration of the flux pulse, such that the '
+                      'readout pulse happens during the first half).')
 
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
@@ -422,6 +427,18 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                  'position.',
                            vals=vals.Numbers(),
                            parameter_class=ManualParameter)
+        self.add_parameter('instr_flux_dc', initial_value=None,
+                           parameter_class=InstrumentRefParameter,
+                           vals=vals.MultiType(
+                                    vals.Enum(None), vals.Strings()),
+                           docstring="Instrument name of the dc flux source")
+        self.add_parameter('flux_dc_channel', initial_value=None,
+                           parameter_class=ManualParameter,
+                           vals=vals.MultiType(
+                                    vals.Enum(None), vals.Strings()),
+                           docstring="Name of the flux dc channel "
+                                     "of instr_flux_dc, naming convention "
+                                     "e.g.: volt_fluxline1")
 
         # ac flux parameters
         self.add_parameter('flux_distortion', parameter_class=ManualParameter,
@@ -1795,6 +1812,12 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             ma (:py:class:~'pycqed.timedomain_analysis.MixerCarrierAnalysis'): 
                 The MixerCarrierAnalysis object.
         """
+        log.warning("This function (calibrate_drive_mixer_carrier_model) is "
+                    "deprecated and will be removed in a future MR. Use the "
+                    "quantum experiment "
+                    "pycqed.measurement.calibration.mixer.MixerCarrier "
+                    "instead. See docstring of the quantum experiment for "
+                    "further information.")
         MC = self.instr_mc.get_instr()
         if meas_grid is None:
             if len(limits) != 4:
@@ -2031,6 +2054,12 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             ma (:py:class:~'pycqed.timedomain_analysis.MixerSkewnessAnalysis'): 
                 The MixerSkewnessAnalysis object.
         """
+        log.warning("This function (calibrate_drive_mixer_skewness_model) is "
+                    "deprecated and will be removed in a future MR. Use the "
+                    "quantum experiment "
+                    "pycqed.measurement.calibration.mixer.MixerSkewness "
+                    "instead. See docstring of the quantum experiment for "
+                    "further information.")
         if meas_grid is None:
             if len(limits) != 4:
                 log.error('Input variable `limits` in function call '
@@ -2177,8 +2206,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             analyze_ef:               whether or not to also look for the gf/2
 
         Keyword Args:
-            interactive_plot:        (default=False)
-                whether to plot with plotly or not
             analyze_ef:              (default=False)
                 whether to look for another f_ge/2 peak/dip
             percentile:              (default=20)

@@ -22,21 +22,20 @@ log = logging.getLogger(__name__)
 import os
 import shutil
 import time
-import h5py
 import datetime
 import numpy as np
 # used by compare_instrument_settings_timestamp():
-from numpy import array  # DO not remove;
+from numpy import array  # noqa: F401  # DO not remove;
 from copy import deepcopy
 from matplotlib.colors import LogNorm
 from matplotlib.colors import LinearSegmentedColormap as lscmap
 from sklearn.mixture import GaussianMixture as GM
+from pycqed.utilities.io import hdf5 as h5d
 from scipy.interpolate import griddata
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import Bounds, LinearConstraint, minimize
 from pycqed.analysis.tools.plotting import *
 from matplotlib import cm
-from typing import Union
 
 latest_data_match_whole_words = False
 datadir = None
@@ -418,7 +417,7 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
             assert timestamp is not None
             folder = get_folder(timestamp)
         filepath = measurement_filename(folder, file_id=file_id, **kw)
-    return h5py.File(filepath, mode)
+    return h5d.safe_file_open(filepath, mode=mode)
 
 
 def open_config_file(timestamp=None, folder=None, filepath=None, mode='r',
@@ -568,14 +567,14 @@ def compare_instrument_settings(a, b, folder=None, instruments='all',
     try:
         if isinstance(a, str):
             h5filepath = measurement_filename(get_folder(a, folder=folder))
-            file_a = h5py.File(h5filepath, h5mode)
+            file_a = h5d.safe_file_open(h5filepath, mode=h5mode)
             files_to_close += [file_a]
         else:
             file_a = a.data_file
             a = getattr(a, 'timestamp', 'file a').replace('/', '_')
         if isinstance(b, str):
             h5filepath = measurement_filename(get_folder(b, folder=folder))
-            file_b = h5py.File(h5filepath, h5mode)
+            file_b = h5d.safe_file_open(h5filepath, mode=h5mode)
             files_to_close += [file_b]
         else:
             file_b = b.data_file

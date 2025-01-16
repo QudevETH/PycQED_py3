@@ -1,12 +1,12 @@
-import numpy as np
 from copy import deepcopy
-from qcodes.utils import validators
-from qcodes.instrument.parameter import ManualParameter
 import logging
+from typing import Dict, List, Optional, Union
+import numpy as np
+
 log = logging.getLogger(__name__)
 
 
-class AcquisitionDevice():
+class AcquisitionDevice:
     """Base class for a standardized acquisition device driver interface.
 
     This class is not meant to be instantiated, but is only meant to be used
@@ -14,7 +14,7 @@ class AcquisitionDevice():
     Child classes should inherit via multi-inheritance from the underlying
     qcodes driver as first parent and from this class as subsequent parent.
     The init of the child class has to explicitly call the init of this base
-    class after calling the super init since the qcodes intrument (first
+    class after calling the super init since the qcodes instrument (first
     parent) will not forward the super call. In the list of attributes,
     (*) indicates constants that are meant to be overwritten by child
     classes if needed.
@@ -25,6 +25,10 @@ class AcquisitionDevice():
             acquisition unit (*)
         n_acq_inp_channels (int): number of input channels (quadratures)
             per acquisition unit (*)
+        acq_default_fixed_lo_freq (dict[str, float], list[float], str, or float, optional):
+            Restrictions on the acquisition LO frequency. Optional, may be None
+            (default) or a value understood by
+            MeasurementObject.get_closest_lo_freq().
         acq_length_granularity (int): indicates that the number of samples
             in an acquired signal must be a multiple of this number (*)
         acq_sampling_rate (float): sampling rate of the acquisition units in
@@ -51,6 +55,9 @@ class AcquisitionDevice():
     n_acq_units = 1
     n_acq_int_channels = 1
     n_acq_inp_channels = 2  # I&Q by default, can be overridden by children
+    acq_default_fixed_lo_freq: Optional[
+        Union[Dict[str, float], List[float], str, float]
+    ] = None
     acq_length_granularity = 1
     acq_sampling_rate = None
     acq_weights_n_samples = None
@@ -567,6 +574,12 @@ class AcquisitionDevice():
         tbase = np.arange(
             0, acq_length,
             1 / self.acq_sampling_rate)
+        # With polychromatic readout, mod_freq may be a list
+        # FIXME: this is just a quick hack so SSB is not completely broken
+        # FIXME: this should probably properly configure an extra integrator
+        #        (or integrator pair) per frequency; left for future work
+        if not np.isscalar(mod_freq):
+            mod_freq = mod_freq[0]
         cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         if weights_type == 'SSB':

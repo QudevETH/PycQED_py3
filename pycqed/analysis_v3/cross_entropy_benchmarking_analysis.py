@@ -6,7 +6,7 @@ import time
 import lmfit
 import datetime
 import traceback
-import qutip as qt
+import pycqed.utilities.qutip_compat as qt
 import numpy as np
 import scipy as sp
 from copy import copy, deepcopy
@@ -17,7 +17,6 @@ from pycqed.analysis_v3 import *
 from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis import fitting_models as fit_mods
 import pycqed.measurement.sweep_points as sp_mod
-import pycqed.measurement.benchmarking.randomized_benchmarking as rb_meas
 
 
 convert_to_mhz = lambda freq_angle, t: freq_angle/2/np.pi/t
@@ -177,7 +176,7 @@ def calculate_ideal_circuit_1qb(nr_cycles, nr_seq, rots,
     :param nr_cycles (int): number of XEB cycles in circuit
     :param nr_seq (int): number of random samplings of the circuit
     :param rots (list of lists): of the form
-        [[qt.operations.rotation(qt.sigmaz(), z_angle).full()
+        [[qt.qip.operations.rotation(qt.sigmaz(), z_angle).full()
          for z_angle in z_angles[i]] for i in range(nr_seq)]
     :param init_state: length 2 numpy array for initial rotation
     :return: ideal populations
@@ -317,8 +316,7 @@ def single_qubit_xeb_analysis(timestamp=None, classifier_params=None,
                                                **params)
         n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
-        prep_params = hlp_mod.get_param_from_metadata_group(
-            timestamp, 'preparation_params')
+        prep_params = hlp_mod.get_preparation_parameters(data_dict, **params)
         reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
             'preparation_type'] else 0
 
@@ -503,7 +501,7 @@ def get_z_rotations(nr_cycles, nr_seq, z_angles=None, seed=None,
         rots_cycle = [''] * nr_cycles
         rots_cycle_qt = [''] * nr_cycles
         for j, a in enumerate(z_angles[i]):
-            z_rot = qt.operations.rotation(qt.sigmaz(), a)
+            z_rot = qt.qip.operations.rotation(qt.sigmaz(), a)
             rots_cycle[j] = z_rot.full()
             if qutip_type:
                 rots_cycle_qt[j] = z_rot
@@ -558,7 +556,7 @@ sqrtYqt_2qbs = qt.tensor(sqrtYqt, sqrtYqt)
 Tqt_2qbs = qt.tensor(Tqt, Tqt)
 sqrtX_2qbs, sqrtY_2qbs = sqrtXqt_2qbs.full(), sqrtYqt_2qbs.full()
 T_2qbs = Tqt_2qbs.full()
-czqt = qt.operations.cphase(np.pi)
+czqt = qt.qip.operations.cphase(np.pi)
 cz = czqt.full()
 
 gg_qt, ge_qt, eg_qt, ee_qt = [qt.states.basis(4, i).full() for i in range(4)]
@@ -795,39 +793,23 @@ def manual_propagator(gate):
 def proba(qc):
     """
     Computes the output states probabilities for a qutip quantum circuit
-
-    TODO: one can finish removing calls to qutip and make this method even
-     faster if needed.
     """
     # Equivalent (only for basic gates) to
     # U = qt.qip.operations.gate_sequence_product(qc.propagators())
     M = np.eye(4)
     for g in qc.gates:
         M = np.matmul(manual_propagator(g), M)
-    U = qt.Qobj(M)
-    U.dims = [[2, 2], [2, 2]]
-
-    gg = qt.tensor(qt.basis(2, 0), qt.basis(2, 0))
-    ge = qt.tensor(qt.basis(2, 0), qt.basis(2, 1))
-    eg = qt.tensor(qt.basis(2, 1), qt.basis(2, 0))
-    ee = qt.tensor(qt.basis(2, 1), qt.basis(2, 1))
-    s = U * gg
-    b = gg.dag() * s.data
-    proba_gg = abs(b[0][0])**2
-    d = ee.dag() * s.data
-    proba_ee = abs(d[0][0])**2
-    c = ge.dag() * s.data
-    proba_ge = abs(c[0][0])**2
-    a = eg.dag() * s.data
-    proba_eg = abs(a[0][0])**2
-    return [proba_gg, proba_ge, proba_eg, proba_ee]
+    gg = np.array([1,0,0,0])
+    final_state = np.matmul(M, gg)
+    probs = abs(final_state) ** 2
+    return probs
 
 
 def proba_from_all_circuits(circuit_list):
     lis = []
     for circ in circuit_list:
         pros = proba(circ)
-        lis.append(np.array(pros))
+        lis.append(pros)
     return lis
 
 
@@ -924,8 +906,7 @@ def two_qubit_xeb_analysis(timestamp=None, classifier_params=None,
         compression_factor = hlp_mod.get_param('compression_factor', data_dict)
         n_shots = hlp_mod.get_instr_param_from_file(
             meas_obj_names[0], 'acq_shots', timestamp)
-        prep_params = hlp_mod.get_param_from_metadata_group(
-            timestamp, 'preparation_params')
+        prep_params = hlp_mod.get_preparation_parameters(data_dict)
         reset_reps = prep_params['reset_reps'] if 'reset' in prep_params[
             'preparation_type'] else 0
 
@@ -1563,14 +1544,14 @@ def fit_plot_fidelity_purity(data_dict, idx0f=0, idx0p=0, meas_obj_names=None,
 
                     ax.plot([], [], 'o-', c=line_f.get_color(),  label='Fidelity')
                     ax.plot([], [], 'o-', c=line_p.get_color(),
-                            label='$\\sqrt{\mathrm{Purity}}$')
+                            label='$\\sqrt{\\mathrm{Purity}}$')
                     ax.legend(frameon=False, **legend_kw)
                     cz_name = f"_CZ{data_dict['exp_metadata']['cphase']}" \
                         if 'cphase' in data_dict['exp_metadata'] else ''
                     ax.set_title(
                         f'{filename_prefix}XEB{cz_name} {mobjn} - {timestamp}')
 
-                    ax.set_ylabel('XEB fidelity, $\\sqrt{\mathrm{Purity}}$')
+                    ax.set_ylabel('XEB fidelity, $\\sqrt{\\mathrm{Purity}}$')
                     ax.set_xlabel('Number of cycles, $m$')
                     if log_scale:
                         ax.set_yscale('log')

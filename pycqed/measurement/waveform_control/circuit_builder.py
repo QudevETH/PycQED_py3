@@ -49,7 +49,8 @@ class CircuitBuilder:
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
-                'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef']}
+                'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef'],
+                'h': ['X180', 'X180_ef', 'X180_fh']}
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  filter_qb_names=None, **kw):
@@ -970,7 +971,7 @@ class CircuitBuilder:
             parallel_qb_block = self.simultaneous_blocks(
                 f'parallel_qb_blk_{i}', qb_blocks, block_align=block_align)
 
-            prep = self.initialize(init_state=init_state,
+            prep = self.initialize(init_state='g',
                                    qb_names=cal_points.qb_names)
             ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
             cal_state_block = self.sequential_blocks(

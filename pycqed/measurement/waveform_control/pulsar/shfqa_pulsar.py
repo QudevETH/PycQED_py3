@@ -1,5 +1,4 @@
 import logging
-from typing import List, Tuple
 
 import numpy as np
 from copy import deepcopy
@@ -261,7 +260,8 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     if self.pulsar.use_mcc():
                         self.multi_core_compiler.sequencer_code_mcc[
                             f"{self.awg.name}_qa{i}"] = (
-                            self.awg_mcc_qagenerators[i], sequence_string)
+                            self.awg_mcc_qagenerators[i],
+                            dict(sequencer_program=sequence_string))
                         self.awg._awg_program[i] = sequence_string
                         self.awg.store_awg_source_string(
                             qachannel, sequence_string)
@@ -371,7 +371,8 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             if self.pulsar.use_mcc():
                 self.multi_core_compiler.sequencer_code_mcc[
                     f"{self.awg.name}_qa{i}"] = (
-                    self.awg_mcc_qagenerators[i], sequence_string)
+                    self.awg_mcc_qagenerators[i],
+                    dict(sequencer_program=sequence_string))
                 self.multi_core_compiler.post_sequencer_code_upload[
                     f"{self.awg.name}_qa{i}"] = [
                     (self.awg_mcc_qagenerators[i].write_to_waveform_memory,

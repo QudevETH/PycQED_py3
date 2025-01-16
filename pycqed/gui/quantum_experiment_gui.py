@@ -16,7 +16,6 @@ from pycqed.gui import qt_compat as qt
 import logging
 from enum import Enum
 from pycqed.analysis import analysis_toolbox as a_tools
-from pycqed.instrument_drivers.meta_instrument import device
 import traceback
 
 log = logging.getLogger(__name__)

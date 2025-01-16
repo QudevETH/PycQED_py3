@@ -1,5 +1,4 @@
 import logging
-from typing import List, Tuple
 
 import numpy as np
 import json
@@ -57,8 +56,6 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     _shfsg_sequence_string_template = (
         "{wave_definitions}\n"
-        "\n"
-        "{codeword_table_defs}\n"
         "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
@@ -544,6 +541,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
     https://docs.zhinst.com/shfsg_user_manual/overview.html
     for details."""
 
+    COMMAND_TABLE_MAX_SIZE = 4096
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -754,12 +753,14 @@ class SHFGeneratorModule(ZIGeneratorModule):
 
     def _configure_awg_str(
             self,
-            awg_str
+            awg_str,
+            **kw,
     ):
         sgchannel = self._awg.sgchannels[self._awg_nr]
         sgchannel.awg.load_sequencer_program(
             sequencer_program=awg_str,
-            timeout=600
+            timeout=600,
+            **kw,
         )
 
     def _save_awg_str(
