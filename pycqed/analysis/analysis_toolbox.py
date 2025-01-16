@@ -332,12 +332,12 @@ def data_from_time(timestamp, folder=None, auto_fetch=None):
     returns the full path of the data specified by its timestamp in the
     form YYYYmmddHHMMSS.
     '''
+
+    folder = folder or datadir
+
     if folder is None:
-        if datadir is None:
-            log.error('datadir is not set. Please set it.')
-            return None
-        else:
-            folder = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
 
     if auto_fetch is None:
         auto_fetch = (fetch_data_dir is not None)
@@ -621,12 +621,10 @@ compare_instrument_settings_timestamp = compare_instrument_settings
 def get_timestamps_in_range(timestamp_start, timestamp_end=None,
                             label=None, exact_label_match=False, folder=None,
                             auto_fetch=None, **kw):
+    folder = folder or datadir
     if folder is None:
-        if datadir is None:
-            log.error('datadir is not set. Please set it.')
-            return None
-        else:
-            folder = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
     if auto_fetch is None:
         auto_fetch = (fetch_data_dir is not None)
     if not isinstance(label, list):
@@ -722,9 +720,10 @@ def get_timestamps_in_range(timestamp_start, timestamp_end=None,
 #    Analysis tools
 ######################################################################
 
-# FIXME: **kw is not accessed
 def get_folder(timestamp=None, older_than=None, label='',
                suppress_printing=True, folder=None, **kw):
+    # NOTE: **kw are used to catch keyword arguments in 
+    # case more are passed than neeeded. We ignore them. :)
     if timestamp is not None:
         folder_ts = data_from_time(timestamp, folder=folder)
         if not suppress_printing:
@@ -1950,12 +1949,12 @@ def copy_data(timestamp, source_dir=None, target_dir=None,
             copy_data(t, source_dir, target_dir=target_dir,
                       delete_if_exists=delete_if_exists)
         return
+
+    target_dir = target_dir or datadir
     if target_dir is None:
-        if datadir is None:
-            log.error('datadir is not set. Please set it.')
-            return None
-        else:
-            target_dir = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
+
     f_src = data_from_time(timestamp, folder=source_dir, auto_fetch=False)
     daystamp, tstamp = verify_timestamp(timestamp)
     daydir = os.path.join(target_dir, daystamp)

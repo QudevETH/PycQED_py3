@@ -273,12 +273,12 @@ class MeasurementControl(Instrument):
             (will be appended to the default label Instrument_settings)
         '''
 
-        # Sanity checks
         if self.datadir() is None:
             log.error('datadir is None. Please set it.')
             return None
 
         label = '' if label is None else '_' + label
+
         self.set_measurement_name('Instrument_settings' + label)
         self.last_timestamp(self.get_datetimestamp())
 
@@ -336,7 +336,6 @@ class MeasurementControl(Instrument):
             except Exception:
                 pass  # no need to raise an exception if cleanup fails
 
-        # Sanity checks
         if self.datadir() is None:
             log.error('datadir is None. Please set it.')
             return None
@@ -2137,7 +2136,6 @@ class MeasurementControl(Instrument):
             'wb' to overwrite existing file
         '''
 
-        # Sanity checks
         if self.datadir() is None:
             log.error('datadir is None. Please set it.')
             return None
