@@ -2252,8 +2252,11 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         shots = np.array([
             shots_per_qb[key] for key in shots_per_qb.keys()
         ])
+        assert issubclass(shots.dtype.type, np.integer),\
+            "Shots correlation assumes thresholded (int) values!"
         shape = shots.shape
         n_qb, n_states = shape[0], shape[-1]
+        n_corr_states = n_states ** n_qb
         shape = shape[1:-1]  # To recover the original dims at the end
 
         # One-hot encoded states, with shape = (n_qb, -1, n_states):
@@ -2264,8 +2267,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         convrt = np.arange(n_states)  # [0, 1, 2] if n_states = 3
         shots = np.tensordot(shots, convrt, axes=1)  # 1 means summing one axis
 
-        # Convert to numerical (0, 1, ..., n_states**n_qb-1 indicating the
-        # state), with shape = (-1)
+        # Convert to numerical (0, 1, ..., n_states**n_qb-1) indicating the
+        # state, with shape = (-1)
         # Conversion matrix: [n_states**n_qb, n_states**(n_qb-1), ... 1]
         # Decreasing order, such that the first qubit corresponds to the
         # highest value (most significant, on the left of the bitstring)
@@ -2273,28 +2276,27 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         shots = np.tensordot(convrt, shots, axes=1)  # 1 means summing one axis
 
         # Convert back to a one-hot encoding,
-        # with shape = (-1, n_states**n_qb):
-        convrt = np.eye(n_states**n_qb)
+        # with shape = (-1, n_corr_states):
+        convrt = np.eye(n_corr_states)
         shots = convrt[shots]
 
-        # Recover original shape, shape = (other dims..., n_states**n_qb)
-        shots = np.reshape(shots, (*shape, n_states**n_qb))
+        # Recover original shape, shape = (other dims..., n_corr_states)
+        shots = np.reshape(shots, (*shape, n_corr_states))
 
         # Create new state map for each possible correlated state state_val
-        # digit = e.g. '20' for a gfg state
-        # join returns e.g. 'fg' for a gfg state
+        # - digit = e.g. '20' for a gfg state
+        # - join() returns e.g. 'fg' for a gfg state
         new_states_map = {
             state_val: ''.join([
                 states_map[int(digit)]
                 for digit in np.base_repr(state_val, n_states)
             ])
-            for state_val in np.arange(0, n_states ** n_qb)
+            for state_val in np.arange(0, n_corr_states)
         }
         # Pad with the correct number of states_map[0]
         # e.g. add 'g'*1 to 'fg' for a gfg state
-        max_string_len = np.max([len(s) for s in new_states_map.values()])
         new_states_map = {
-            k: states_map[0] * (max_string_len - len(s)) + s
+            k: states_map[0] * (n_qb - len(s)) + s
             for k, s in new_states_map.items()
         }
 
