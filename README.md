@@ -75,6 +75,8 @@ pip install -e .[test] # on Windows or `pip install -e '.[test]'` on linux/macos
 pytest -v --cov=pycqed --cov-report term -m "not hardware" pycqed/tests
 ```
 
+To learn more about pytest, please [read their docs](https://docs.pytest.org).
+
 ## License
 
 This software is released under the [MIT License](LICENSE.md)

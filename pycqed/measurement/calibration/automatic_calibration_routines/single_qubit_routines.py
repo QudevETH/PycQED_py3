@@ -728,7 +728,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
             raise ValueError("Currently only one qubit is allowed.")
 
         # Defining initial and allowed frequency difference
-        self.delta_f = np.Infinity
+        self.delta_f = np.inf
         self.iteration = 1
 
         self.final_init(**kw)

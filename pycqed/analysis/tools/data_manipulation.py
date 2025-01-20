@@ -34,7 +34,7 @@ def count_rounds_to_error(series):
         else:
             return i
     print('Warning did not find any error')
-    return np.NAN
+    return np.nan
 
 
 def count_rtf_and_term_cond(series, only_count_min_1=False,
