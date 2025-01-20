@@ -2211,28 +2211,26 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' than in the current measurement): {e}')
                     raise e
 
-            if correlate_proba:
-                # Note that this could be used as well if predict_proba = False
-                # if that is meaningful
-                shots_correlated, states_map = \
-                    MultiQubit_TimeDomain_Analysis._correlate_single_shots(
-                    shots_per_qb, states_map)
-                # FIXME this duplication is a hack, so that all the processing
-                #  and plotting based on qubit names still works
-                shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
-
-        for qbn, shots in shots_per_qb.items():
-            if thresholding:
+        if thresholding:
+            for qbn, shots in shots_per_qb.items():
                 # shots become one-hot encoded arrays with length n_states
                 # shots has shape (n_shots, n_states)
-
                 shots = a_tools.threshold_shots(shots)
-
                 if 'single_shots_per_qb_thresholded' not in pdd:
                     pdd['single_shots_per_qb_thresholded'] = {}
-                pdd['single_shots_per_qb_thresholded'][qbn] = \
-                    shots
+                pdd['single_shots_per_qb_thresholded'][qbn] = shots
+                shots_per_qb[qbn] = shots
 
+        if correlate_proba:
+            # Note that this assumes that shots are thresholded.
+            shots_correlated, states_map = \
+                MultiQubit_TimeDomain_Analysis._correlate_single_shots(
+                shots_per_qb, states_map)
+            # FIXME this duplication is a hack, so that all the processing
+            #  and plotting based on qubit names still works
+            shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
+
+        for qbn, shots in shots_per_qb.items():
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
             # Note: shots has been re-ordered in _get_single_shots_per_qb,
@@ -2272,63 +2270,72 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
     @staticmethod
     def _correlate_single_shots(shots_per_qb, states_map):
+        """
+        Correlates single-shot measurement results
+
+        Args:
+            shots_per_qb: dict of the form {
+                'qb_name': np.array(other dims..., n_states)}
+                where n_states is the number of states measured and
+                classified, e.g. 3 for the g, e and f states.
+            states_map: dict of the form {i: 'state_name'} to order states,
+                e.g. {0: "g", 1: "e", 2: "f"} for g, e, f states
+        Returns:
+            shots: correlated shots, of the form
+                np.array(other dims..., n_corr_states)
+            new_states_map: corresponding map, e.g. {0: 'ggg', 1: 'gge', ...}
+        """
+
         # Convert dict to array, with shape = (n_qb, other dims..., n_states):
         shots = np.array([
             shots_per_qb[key] for key in shots_per_qb.keys()
         ])
+        assert issubclass(shots.dtype.type, np.integer),\
+            "Shots correlation assumes thresholded (int) values!"
         shape = shots.shape
         n_qb, n_states = shape[0], shape[-1]
         n_corr_states = n_states ** n_qb
         shape = shape[1:-1]  # To recover the original dims at the end
 
-        # Convert to one-hot encoded states with shape (-1, 1, n_qb, n_states):
-        shots = shots.reshape([n_qb, 1, -1, n_states])
-        shots = np.swapaxes(shots, 0, 2)
+        # One-hot encoded states, with shape = (n_qb, -1, n_states):
+        shots = shots.reshape([n_qb, -1, n_states])
 
-        # Basis of one-hot encoded matrices, e.g. for 3 qb and 2 states,
-        # with the first qubit being the most significant:
-        #   | 1 0 |  | 1 0 |  | 1 0 |  | 1 0 |  | 0 1 |
-        # [ | 1 0 |, | 1 0 |, | 0 1 |, | 0 1 |, | 1 0 | ... ]
-        #   | 1 0 |  | 0 1 |  | 1 0 |  | 0 1 |  | 1 0 |
-        # (a list of n_corr_states matrices)
-        # We first compute this list as [ [0, 0, 0], [0, 0, 1], [0, 1, 0]... ]
-        # (a list of n_corr_states lists, each of length n_qb, containing
-        # entries with values up to n_states-1)
-        basis = [  # This list is left-truncated: [ [0], [1], [1, 0]... ]
-            [
-                int(digit)
-                for digit in np.base_repr(corr_state, n_states)
-            ]
-            for corr_state in range(n_corr_states)
-        ]
-        # Pad with zeros to obtain [ [0, 0, 0], [0, 0, 1], [0, 1, 0]... ]:
-        basis = [
-            [0] * (n_qb - len(s)) + s
-            for s in basis
-        ]
-        # Convert to one-hot encoded states:
-        basis_onehot = np.array([
-            np.eye(n_states)[corr_state]
-            for corr_state in basis
-        ])
-        # We have a basis array with shape (n_corr_states, n_qb, n_states)
+        # Convert to numerical (0, 1, 2... indicating the state per qubit),
+        # with shape = (n_qb, -1):
+        convrt = np.arange(n_states)  # [0, 1, 2] if n_states = 3
+        shots = np.tensordot(shots, convrt, axes=1)  # 1 means summing one axis
 
-        # Shots have shape (-1, 1, n_qb, n_states).
-        # Elementwise multiplying to project on each matrix in the basis
-        # yields shape (-1, n_corr_states, n_qb, n_states)
-        shots = shots * basis_onehot
-        # We sum over states to get the only entry which is nonzero
-        shots = np.sum(shots, axis=-1)
-        # We get the probability of a given correlated state by multiplying
-        # the marginal probabilities for each qubit
-        shots = np.prod(shots, axis=-1)
+        # Convert to numerical (0, 1, ..., n_states**n_qb-1) indicating the
+        # state, with shape = (-1)
+        # Conversion matrix: [n_states**n_qb, n_states**(n_qb-1), ... 1]
+        # Decreasing order, such that the first qubit corresponds to the
+        # highest value (most significant, on the left of the bitstring)
+        convrt = n_states ** np.arange(n_qb)[::-1]
+        shots = np.tensordot(convrt, shots, axes=1)  # 1 means summing one axis
 
-        # Create new state map for each possible correlated state corr_state
-        # e.g. basis[corr_state] = [0,2,0] yields 'gfg'
+        # Convert back to a one-hot encoding,
+        # with shape = (-1, n_corr_states):
+        convrt = np.eye(n_corr_states)
+        shots = convrt[shots]
+
+        # Recover original shape, shape = (other dims..., n_corr_states)
+        shots = np.reshape(shots, (*shape, n_corr_states))
+
+        # Create new state map for each possible correlated state state_val
+        # - digit = e.g. '20' for a gfg state
+        # - join() returns e.g. 'fg' for a gfg state
         new_states_map = {
-            corr_state:
-                ''.join(states_map[digit] for digit in basis[corr_state])
-            for corr_state in range(n_corr_states)
+            state_val: ''.join([
+                states_map[int(digit)]
+                for digit in np.base_repr(state_val, n_states)
+            ])
+            for state_val in np.arange(0, n_corr_states)
+        }
+        # Pad with the correct number of states_map[0]
+        # e.g. add 'g'*1 to 'fg' for a gfg state
+        new_states_map = {
+            k: states_map[0] * (n_qb - len(s)) + s
+            for k, s in new_states_map.items()
         }
 
         return shots, new_states_map
