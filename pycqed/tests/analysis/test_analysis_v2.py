@@ -85,6 +85,7 @@ def test_ChevronAnalysis():
                 'do_fitting': False,
                 'options_dict': {
                     'predict_proba': True,
+                    'thresholding': True,
                     'correlate_proba': True,
                 },
             }
