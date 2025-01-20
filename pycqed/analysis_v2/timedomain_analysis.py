@@ -8483,6 +8483,12 @@ class MultiQutrit_Timetrace_Analysis(ba.BaseDataAnalysis):
         plot_end_time = self.get_param_value('plot_end_time', None)
         for qbn in self.qb_names:
             mod_freq = self.get_instrument_setting(f'{qbn}.ro_mod_freq')
+            # For polychromatic readout, mod_freq may be a list
+            # Obey principle of least surprise by choosing the first
+            # frequency here
+            # FIXME: generalize this
+            if not np.isscalar(mod_freq):
+                mod_freq = mod_freq[0]
             tbase = rdd[0]['hard_sweep_points']
             plot_end_idx = np.where(tbase < plot_end_time)[0][-1] \
                 if plot_end_time is not None else None

@@ -141,22 +141,61 @@ unit_dict = dict(amplitude='V', amplitude2='V', pulse_length='s',
                  gaussian_filter_sigma='s', trans_length='s')
 
 
-def get_spectators(dev, anc_data_qb_map, gate_list, include_spec_of_data_qubits=False):
-    if isinstance(anc_data_qb_map, list):
-        return dev.get_qubits(anc_data_qb_map, 'obj')
-    gate_list_ancqb = [qb[0].name for qb in gate_list]
-    gate_list_dataqb = [qb[1].name for qb in gate_list]
-    dd_qubit_list = list(
-        np.unique([d for qb in gate_list_ancqb for d in anc_data_qb_map[qb] if
-                   d not in gate_list_dataqb]))
-    anc_qubit_list = []
-    for data_qb in gate_list_dataqb:
-        anc_qubit_list += [qb for qb, data_qb_list in anc_data_qb_map.items()
-                           if data_qb in data_qb_list]
-    anc_qubit_list = list(set([qb for qb in anc_qubit_list if qb not in
-                               gate_list_ancqb]))
-    qubit_list = dd_qubit_list + anc_qubit_list if include_spec_of_data_qubits\
-        else dd_qubit_list
+def get_spectators(dev, uss_lss_qb_map, gate_list,
+                   include_spectators_which_are_uss = True, include_spectators_which_are_lss = True):
+    """
+    Identifies and retrieves a list of spectator qubits coupled to the given gate qubits.
+
+    This function finds "spectator qubits," which are qubits outside of the current gate operations but are
+    mapped to the qubits involved in the gate operations (either USS or LSS qubits). Spectator qubits are
+    determined based on a mapping (`uss_lss_qb_map`) and gate qubits (`gate_list`). 
+
+    Parameters:
+        dev: 
+            Device object that provides access to qubit information via `get_qubits()`.
+        uss_lss_qb_map (dict or list): 
+            Mapping of USS qubits to LSS qubits.
+            If a list is provided, this list is returned without modification.
+            FIXME: Could be extracted from the connectivity graph.
+        gate_list (list): 
+            List of qubit pairs representing gate operations. Each entry is a pair (tuple) where the first 
+            element is a USS qubit and the second is an LSS qubit.
+        include_spectators_which_are_uss (bool, optional): 
+            If `True`, include USS qubits that are spectators. Defaults to `True`.
+        include_spectators_which_are_lss (bool, optional): 
+            If `True`, include LSS qubits that are spectators. Defaults to `True`.
+
+    Returns:
+        list: 
+            A list of spectator qubit objects retrieved using `dev.get_qubits()`.
+            The list is based on the inclusion flags and the spectators determined 
+            from the gate list and USS-LSS mapping.
+    """
+ 
+    if isinstance(uss_lss_qb_map, list):
+        return dev.get_qubits(uss_lss_qb_map, 'obj')
+    gate_list_uss_qb = [qb[0].name for qb in gate_list]
+    gate_list_lss_qb = [qb[1].name for qb in gate_list]
+
+    # Find the list of spectators of the gate uss qubits (which will be lss qubits)
+    spectators_of_uss_qb_list = list(
+        np.unique([d for qb in gate_list_uss_qb for d in uss_lss_qb_map[qb] if
+                   d not in gate_list_lss_qb]))
+    spectators_of_lss_qb_list = []
+
+    # Find the list of spectators of the gate lss qubits (which will be uss qubits)
+    for lss_qb in gate_list_lss_qb:
+        spectators_of_lss_qb_list += [qb for qb, lss_qb_list in uss_lss_qb_map.items()
+                           if lss_qb in lss_qb_list]
+    spectators_of_lss_qb_list = list(set([qb for qb in spectators_of_lss_qb_list if qb not in
+                               gate_list_uss_qb]))
+
+    qubit_list = []
+    if include_spectators_which_are_lss:
+        qubit_list += spectators_of_uss_qb_list
+    if include_spectators_which_are_uss:
+        qubit_list += spectators_of_lss_qb_list
+
     return dev.get_qubits(qubit_list,'obj')
 
 

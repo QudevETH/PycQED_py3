@@ -1,13 +1,8 @@
-from pycqed.measurement import quantum_experiment as qe_mod
 from pycqed.measurement.calibration import two_qubit_gates as twoqbcal
 from pycqed.measurement import sweep_points as sp_mod
-from pycqed.measurement.calibration import calibration_points as cp_mod
 from pycqed.analysis_v2 import timedomain_analysis as tda
-from pycqed.analysis_v2 import base_analysis as ba
 from pycqed.measurement import sweep_functions as swf
-import pycqed.measurement.awg_sweep_functions as awg_swf
 from copy import deepcopy
-import numpy as np
 import traceback
 
 

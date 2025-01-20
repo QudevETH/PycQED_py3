@@ -14,7 +14,6 @@ Hacked together by Rene Vollmer
 
 import datetime
 import pycqed.analysis_v2.base_analysis as ba
-from pycqed.analysis_v2.base_analysis import plot_scatter_errorbar_fit, plot_scatter_errorbar
 
 import numpy as np
 import lmfit

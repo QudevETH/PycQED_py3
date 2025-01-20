@@ -4,7 +4,6 @@ import os
 import shutil
 import numpy as np
 from copy import deepcopy
-from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from zhinst.core.errors import CoreError
 
