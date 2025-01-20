@@ -3,7 +3,6 @@
 # see https://stackoverflow.com/questions/42845972/typed-python-using-the-classes-own-type-inside-class-definition
 # for more details.
 from __future__ import annotations
-from copy import deepcopy
 
 
 class ParameterNotFoundError(Exception):
