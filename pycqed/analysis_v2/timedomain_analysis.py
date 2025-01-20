@@ -2169,6 +2169,17 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' than in the current measurement): {e}')
                     raise e
 
+        if thresholding:
+            for qbn, shots in shots_per_qb.items():
+                # shots become one-hot encoded arrays with length n_states
+                # shots has shape (n_shots, n_states)
+                shots = a_tools.threshold_shots(shots)
+                if 'single_shots_per_qb_thresholded' not in self.proc_data_dict:
+                    self.proc_data_dict['single_shots_per_qb_thresholded'] = {}
+                self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
+                    shots
+                shots_per_qb[qbn] = shots
+
         if self.get_param_value('correlate_proba', False):
             # Note that this assumes that shots contain probabilities,
             # e.g. if predict_proba or measured with a classifying detector
@@ -2182,17 +2193,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             self.default_options['plot_proj_data'] = False
 
         for qbn, shots in shots_per_qb.items():
-            if thresholding:
-                # shots become one-hot encoded arrays with length n_states
-                # shots has shape (n_shots, n_states)
-
-                shots = a_tools.threshold_shots(shots)
-
-                if 'single_shots_per_qb_thresholded' not in self.proc_data_dict:
-                    self.proc_data_dict['single_shots_per_qb_thresholded'] = {}
-                self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
-                    shots
-
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
             # Note: shots has been re-ordered in _get_single_shots_per_qb,
