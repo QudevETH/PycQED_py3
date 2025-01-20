@@ -62,7 +62,9 @@ class ColdSwitchController(Instrument):
     def __init__(self, name, port, power_supply: str, log_dirpath: str,
                  nb_cold_switches=None,
                  source_sink_table=None,
-                 power_supply_channel: str = 'ch1'):
+                 power_supply_channel: str = 'ch1',
+                 serial_port_timeout: int = 5,
+                 calibration_timeout: int = 10):
         """
         Initialise the cold switch controller.
         Args:
@@ -74,10 +76,15 @@ class ColdSwitchController(Instrument):
             source_sink_table (int): see docstring of class
             power_supply_channel (int): channel of the power supply which
                 supplies the power for switching the cold switches
+            serial_port_timeout (int): timeout limit in seconds for connecting
+                to the cold switch controller via serial port
+            calibration_timeout (int): timeout limit in seconds for
+                calibrating the cold switch controller
         """
         super().__init__(name)
-        self._timeout = 5
-        self.port = serial.Serial(port, 115200, timeout=self._timeout,
+        self._calibration_timeout = calibration_timeout
+        self.port = serial.Serial(port, 115200,
+                                  timeout=serial_port_timeout,
                                   writeTimeout=0)
         self.debug = False
         self.power_supply_channel = self.find_instrument(
@@ -258,10 +265,10 @@ class ColdSwitchController(Instrument):
             time.sleep(0.001)
             while self._read_current_ind():
                 time.sleep(0.01)
-                if time.time() - t0 > self._timeout:
+                if time.time() - t0 > self._calibration_timeout:
                     raise TimeoutError(f"Calibration of the cold switch "
                                        f"controller timed out after "
-                                       f"{self._timeout} seconds")
+                                       f"{self._calibration_timeout} seconds")
             t1 = time.time()
             durations.append(t1 - t0)
             time.sleep(0.05)
