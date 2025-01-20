@@ -2181,8 +2181,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 shots_per_qb[qbn] = shots
 
         if self.get_param_value('correlate_proba', False):
-            # Note that this assumes that shots contain probabilities,
-            # e.g. if predict_proba or measured with a classifying detector
+            # Note that this assumes that shots are thresholded.
             shots_correlated, states_map = self._correlate_single_shots(
                 shots_per_qb, states_map)
             # FIXME this duplication is a hack, so that all the processing
