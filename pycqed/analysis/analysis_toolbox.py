@@ -6,6 +6,8 @@ import shutil
 import time
 import datetime
 import numpy as np
+# used by compare_instrument_settings_timestamp():
+from numpy import array  # DO not remove;
 from copy import deepcopy
 from matplotlib.colors import LogNorm
 from matplotlib.colors import LinearSegmentedColormap as lscmap
@@ -17,7 +19,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import Bounds, LinearConstraint, minimize
 from pycqed.analysis.tools.plotting import *
 from matplotlib import cm
-from typing import Union
 
 latest_data_match_whole_words = False
 datadir = get_default_datadir()

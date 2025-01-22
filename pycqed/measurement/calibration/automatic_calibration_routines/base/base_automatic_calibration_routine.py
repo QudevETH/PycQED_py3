@@ -797,7 +797,7 @@ class AutomaticCalibrationRoutine(Step):
             self.current_step_index = 0
 
         if stop_index is None:
-            stop_index = np.Inf
+            stop_index = np.inf
 
         # Running the routine
         while self.current_step_index < len(self.routine_template):

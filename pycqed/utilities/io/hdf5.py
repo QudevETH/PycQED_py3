@@ -18,8 +18,8 @@ import logging
 from typing import IO, Optional
 
 # Do not remove, used inside eval()
-from numpy import array
-from collections import OrderedDict
+from numpy import array  # noqa: F401
+from collections import OrderedDict  # noqa: F401
 
 from pycqed.utilities.io.base_io import Loader, file_extensions, \
     DateTimeGenerator
@@ -101,7 +101,7 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
 
         # Basic types
         if isinstance(item, (str, float, int, bool, np.number,
-                             np.float_, np.int_, np.bool_)):
+                             np.float64, np.int_, np.bool_)):
             if not hasattr(key, "encode"):
                 key = repr(key)
             try:

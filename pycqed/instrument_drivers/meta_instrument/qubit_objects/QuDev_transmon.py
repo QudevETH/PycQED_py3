@@ -10,7 +10,6 @@ import scipy as sp
 from qcodes.instrument.parameter import InstrumentRefParameter, ManualParameter
 from qcodes.utils import validators as vals
 
-import pycqed.analysis.fitting_models as fit_mods
 import pycqed.analysis_v2.spectroscopy_analysis as sa
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as fl_predist
 import pycqed.measurement.waveform_control.pulse as bpl
@@ -64,7 +63,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
     _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
-                           'GaussFilteredCosIQPulseMultiChromatic',
                            'GaussFilteredCosIQPulseWithFlux']
     _allowed_drive_modes = [None, 'continuous_spec',
                             'continuous_spec_modulated', 'pulsed_spec',
