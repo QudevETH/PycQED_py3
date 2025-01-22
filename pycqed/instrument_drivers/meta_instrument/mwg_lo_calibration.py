@@ -51,10 +51,10 @@ def mwg_with_lo_calibration_template(mwg_class):
                        lo_cal_interp_kind=self.lo_cal_interp_kind: \
                    self.lo_calib(val, lo_cal_data, lo_cal_interp_kind)
 
-        @staticmethod
-        def lo_calib(val, lo_cal_data, lo_cal_interp_kind):
+        def lo_calib(self, val, lo_cal_data, lo_cal_interp_kind):
             for par, freqs, cal_vals in lo_cal_data().values():
-                par(float(sp.interpolate.interp1d(
+                par_qcodes = self.instr_pulsar.get_instr().get_component(par)
+                par_qcodes(float(sp.interpolate.interp1d(
                     freqs, cal_vals, kind=lo_cal_interp_kind(),
                     fill_value=(min(cal_vals), max(cal_vals)),
                     bounds_error=False)(val)))

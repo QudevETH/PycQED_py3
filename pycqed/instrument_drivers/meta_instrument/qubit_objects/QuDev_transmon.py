@@ -2648,8 +2648,8 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
                 lo_cal = ge_lo.get_instr().lo_cal_data()
                 qb_lo_cal = self.ge_lo_leakage_cal()
-                i_par = pulsar.parameters[self.get('ge_I_channel') + '_offset']
-                q_par = pulsar.parameters[self.get('ge_Q_channel') + '_offset']
+                i_par = self.get('ge_I_channel') + '_offset'
+                q_par = self.get('ge_Q_channel') + '_offset'
                 lo_cal[self.name + '_I'] = (i_par, qb_lo_cal['freqs'],
                                             qb_lo_cal['I_offsets'])
                 lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],
