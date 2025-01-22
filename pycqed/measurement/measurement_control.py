@@ -10,12 +10,10 @@ import requests
 
 import numpy as np
 import numbers
-from scipy.optimize import fmin_powell
 
 import pycqed.version
 from pycqed.utilities import general
 from pycqed.utilities.io import hdf5 as h5d
-from pycqed.utilities.general import dict_to_ordered_tuples
 from pycqed.utilities.get_default_datadir import get_default_datadir
 
 # used for saving instrument settings
@@ -604,6 +602,8 @@ class MeasurementControl(Instrument):
         self.adaptive_function = self.af_pars.pop('adaptive_function')
         self.data_processing_function = self.af_pars.pop(
             'data_processing_function', self._default_data_processing_function)
+        self.f_termination = self.af_pars.pop('f_termination', None)
+
         if self._live_plot_enabled():
             self.initialize_plot_monitor()
             self.initialize_plot_monitor_adaptive()
@@ -620,8 +620,6 @@ class MeasurementControl(Instrument):
             "MeasurementControl.measure_soft_adaptive.prepare.end")
         self.get_measurement_preparetime()
 
-        if self.adaptive_function == 'Powell':
-            self.adaptive_function = fmin_powell
         self.timer.checkpoint(
             "MeasurementControl.measure_soft_adaptive.adaptive_function.start")
         if callable(self.adaptive_function):
@@ -639,8 +637,7 @@ class MeasurementControl(Instrument):
         print()  # New line after self.print_progress_adaptive
         self.timer.checkpoint(
             "MeasurementControl.measure_soft_adaptive.adaptive_function.end")
-        self.save_optimization_results(self.adaptive_function,
-                                       result=self.adaptive_result)
+        self.save_optimization_results(self.adaptive_result)
 
         for sweep_function in self.sweep_functions:
             sweep_function.finish()
@@ -929,46 +926,22 @@ class MeasurementControl(Instrument):
 
     @Timer()
     def optimization_function(self, x):
-        '''
+        """
         A wrapper around the measurement function.
         It takes the following actions based on parameters specified
         in self.af_pars:
-        - Rescales the function using the "x_scale" parameter, default is 1
-        - Inverts the measured values if "minimize"==False
         - Compares measurement value with "f_termination" and raises an
         exception, that gets caught outside of the optimization loop, if
         the measured value is smaller than this f_termination.
 
         Measurement function with scaling to correct physical value
-        '''
-        if self.x_scale is not None:
-            for i in range(len(x)):
-                x[i] = float(x[i])/float(self.x_scale[i])
+        """
 
         vals = self.measurement_function(x)
-        self.timer.checkpoint(
-            "MeasurementControl.data_processing_function.start")
         vals = self.data_processing_function(vals, self.dset)
-        self.timer.checkpoint(
-            "MeasurementControl.data_processing_function.end")
-        if self.minimize_optimization:
-            if (self.f_termination is not None):
-                if (vals < self.f_termination):
-                    raise StopIteration()
-        else:
-            # when maximizing, interrupt when larger than condition before
-            # inverting
-            if (self.f_termination is not None):
-                if (vals > self.f_termination):
-                    raise StopIteration()
-            vals = np.multiply(-1, vals)
-
-        # Not sure about what is this
-        # to check if vals is an array with multiple values
-        # if hasattr(vals, '__iter__'):
-        #     if len(vals) > 1 and self.par_idx is not None:
-        #         vals = vals[self.par_idx]
-
+        if self.f_termination is not None:
+            if vals < self.f_termination:
+                raise StopIteration()
         return vals
 
     def finish(self, result):
@@ -1592,8 +1565,6 @@ class MeasurementControl(Instrument):
         '''
         Uses the Qcodes plotting windows for plotting adaptive plot updates
         '''
-        if self.adaptive_function.__module__ == 'cma.evolution_strategy':
-            return self.initialize_plot_monitor_adaptive_cma()
         self.time_last_ad_plot_update = time.time()
         self.secondary_QtPlot.clear()
 
@@ -1610,9 +1581,6 @@ class MeasurementControl(Instrument):
                                       symbol='o', symbolSize=5)
 
     def update_plotmon_adaptive(self, force_update=False):
-        if self.adaptive_function.__module__ == 'cma.evolution_strategy':
-            return self.update_plotmon_adaptive_cma(force_update=force_update)
-
         if self._live_plot_enabled():
             try:
                 if (time.time() - self.time_last_ad_plot_update >
@@ -1625,205 +1593,6 @@ class MeasurementControl(Instrument):
                         self.secondary_QtPlot.traces[j]['config']['y'] = y
                         self.time_last_ad_plot_update = time.time()
                         self.secondary_QtPlot.update_plot()
-            except Exception as e:
-                log.warning(traceback.format_exc())
-
-    def initialize_plot_monitor_adaptive_cma(self):
-        '''
-        Uses the Qcodes plotting windows for plotting adaptive plot updates
-        '''
-        # new code
-        if self.main_QtPlot.traces != []:
-            self.main_QtPlot.clear()
-
-        self.curves = []
-        self.curves_best_ever = []
-        self.curves_distr_mean = []
-
-        xlabels = self.sweep_par_names
-        xunits = self.sweep_par_units
-        ylabels = self.detector_function.value_names
-        yunits = self.detector_function.value_units
-
-        j = 0
-        if (self._persist_ylabs == ylabels and
-                self._persist_xlabs == xlabels) and self.persist_mode():
-            persist = True
-        else:
-            persist = False
-
-        ##########################################
-        # Main plotmon
-        ##########################################
-        for yi, ylab in enumerate(ylabels):
-            for xi, xlab in enumerate(xlabels):
-                if persist:  # plotting persist first so new data on top
-                    yp = self._persist_dat[
-                        :, yi+len(self.sweep_function_names)]
-                    xp = self._persist_dat[:, xi]
-                    if len(xp) < self.plotting_max_pts():
-                        self.main_QtPlot.add(x=xp, y=yp,
-                                             subplot=j+1,
-                                             color=0.75,  # a grayscale value
-                                             symbol='o',
-                                             pen=None,  # makes it a scatter
-                                             symbolSize=5)
-
-                self.main_QtPlot.add(x=[0], y=[0],
-                                     xlabel=xlab,
-                                     xunit=xunits[xi],
-                                     ylabel=ylab,
-                                     yunit=yunits[yi],
-                                     subplot=j+1,
-                                     pen=None,
-                                     color=color_cycle[0],
-                                     symbol='o', symbolSize=5)
-                self.curves.append(self.main_QtPlot.traces[-1])
-
-                self.main_QtPlot.add(x=[0], y=[0],
-                                     xlabel=xlab,
-                                     xunit=xunits[xi],
-                                     ylabel=ylab,
-                                     yunit=yunits[yi],
-                                     subplot=j+1,
-                                     color=color_cycle[2],
-                                     symbol='o', symbolSize=5)
-                self.curves_distr_mean.append(self.main_QtPlot.traces[-1])
-
-                self.main_QtPlot.add(x=[0], y=[0],
-                                     xlabel=xlab,
-                                     xunit=xunits[xi],
-                                     ylabel=ylab,
-                                     yunit=yunits[yi],
-                                     subplot=j+1,
-                                     pen=None,
-                                     color=color_cycle[1],
-                                     symbol='star',  symbolSize=10)
-                self.curves_best_ever.append(self.main_QtPlot.traces[-1])
-
-                j += 1
-            self.main_QtPlot.win.nextRow()
-
-        ##########################################
-        # Secondary plotmon
-        ##########################################
-
-        self.secondary_QtPlot.clear()
-        self.iter_traces = []
-        self.iter_bever_traces = []
-        self.iter_mean_traces = []
-        for j in range(len(self.detector_function.value_names)):
-            self.secondary_QtPlot.add(x=[0],
-                                      y=[0],
-                                      name='Measured values',
-                                      xlabel='Iteration',
-                                      x_unit='#',
-                                      color=color_cycle[0],
-                                      ylabel=ylabels[j],
-                                      yunit=yunits[j],
-                                      subplot=j+1,
-                                      symbol='o', symbolSize=5)
-            self.iter_traces.append(self.secondary_QtPlot.traces[-1])
-
-            self.secondary_QtPlot.add(x=[0], y=[0],
-                                      symbol='star', symbolSize=15,
-                                      name='Best ever measured',
-                                      color=color_cycle[1],
-                                      xlabel='iteration',
-                                      x_unit='#',
-                                      ylabel=ylabels[j],
-                                      yunit=yunits[j],
-                                      subplot=j+1)
-            self.iter_bever_traces.append(self.secondary_QtPlot.traces[-1])
-            self.secondary_QtPlot.add(x=[0], y=[0],
-                                      color=color_cycle[2],
-                                      name='Generational mean',
-                                      symbol='o', symbolSize=8,
-                                      xlabel='iteration',
-                                      x_unit='#',
-                                      ylabel=ylabels[j],
-                                      yunit=yunits[j],
-                                      subplot=j+1)
-            self.iter_mean_traces.append(self.secondary_QtPlot.traces[-1])
-
-        # required for the first update call to work
-        self.time_last_ad_plot_update = time.time()
-
-    def update_plotmon_adaptive_cma(self, force_update=False):
-        """
-        Special adaptive plotmon for
-        """
-
-        if self._live_plot_enabled():
-            try:
-                if (time.time() - self.time_last_ad_plot_update >
-                        self.plotting_interval() or force_update):
-                    ##########################################
-                    # Main plotmon
-                    ##########################################
-                    i = 0
-                    nr_sweep_funcs = len(self.sweep_function_names)
-
-                    # best_idx -1 as we count from 0 and best eval
-                    # counts from 1.
-                    best_index = int(self.opt_res_dset[-1, -1] - 1)
-
-                    for j in range(len(self.detector_function.value_names)):
-                        y_ind = nr_sweep_funcs + j
-
-                        ##########################################
-                        # Main plotmon
-                        ##########################################
-                        for x_ind in range(nr_sweep_funcs):
-
-                            x = self.dset[:, x_ind]
-                            y = self.dset[:, y_ind]
-
-                            self.curves[i]['config']['x'] = x
-                            self.curves[i]['config']['y'] = y
-
-                            best_x = x[best_index]
-                            best_y = y[best_index]
-                            self.curves_best_ever[i]['config']['x'] = [best_x]
-                            self.curves_best_ever[i]['config']['y'] = [best_y]
-                            mean_x = self.opt_res_dset[:, 2+x_ind]
-                            # std_x is needed to implement errorbars on X
-                            # std_x = self.opt_res_dset[:, 2+nr_sweep_funcs+x_ind]
-                            # to be replaced with an actual mean
-                            mean_y = self.opt_res_dset[:, 2+2*nr_sweep_funcs]
-                            mean_y = get_generation_means(
-                                self.opt_res_dset[:, 1], y)
-                            # TODO: turn into errorbars
-                            self.curves_distr_mean[i]['config']['x'] = mean_x
-                            self.curves_distr_mean[i]['config']['y'] = mean_y
-                            i += 1
-                        ##########################################
-                        # Secondary plotmon
-                        ##########################################
-                        # Measured value vs function evaluation
-                        y = self.dset[:, y_ind]
-                        x = range(len(y))
-                        self.iter_traces[j]['config']['x'] = x
-                        self.iter_traces[j]['config']['y'] = y
-
-                        # generational means
-                        gen_idx = self.opt_res_dset[:, 1]
-                        self.iter_mean_traces[j]['config']['x'] = gen_idx
-                        self.iter_mean_traces[j]['config']['y'] = mean_y
-
-                        # This plots the best ever measured value vs iteration
-                        # number of evals column
-                        best_evals_idx = (
-                            self.opt_res_dset[:, -1] - 1).astype(int)
-                        best_func_val = y[best_evals_idx]
-                        self.iter_bever_traces[j]['config']['x'] = best_evals_idx
-                        self.iter_bever_traces[j]['config']['y'] = best_func_val
-
-                    self.main_QtPlot.update_plot()
-                    self.secondary_QtPlot.update_plot()
-
-                    self.time_last_ad_plot_update = time.time()
-
             except Exception as e:
                 log.warning(traceback.format_exc())
 
@@ -2035,83 +1804,21 @@ class MeasurementControl(Instrument):
         Saves the parameters used for optimization
         '''
         opt_sets_grp = self.data_object.create_group('Optimization settings')
-        param_list = dict_to_ordered_tuples(self.af_pars)
-        for (param, val) in param_list:
+        for param, val in self.af_pars.items():
             opt_sets_grp.attrs[param] = str(val)
 
-    def save_cma_optimization_results(self, es):
-        """
-        This function is to be used as the callback when running cma.fmin.
-        It get's handed an instance of an EvolutionaryStrategy (es).
-        From here it extracts the results and stores these in the hdf5 file
-        of the experiment.
-        """
-        # code extra verbose to understand what is going on
-        generation = es.result.iterations
-        evals = es.result.evaluations  # number of evals at start of each gen
-        xfavorite = es.result.xfavorite  # center of distribution, best est
-        stds = es.result.stds   # stds of distribution, stds of xfavorite
-        fbest = es.result.fbest  # best ever measured
-        xbest = es.result.xbest  # coordinates of best ever measured
-        evals_best = es.result.evals_best  # index of best measurement
-
-        if not self.minimize_optimization:
-            fbest = -fbest
-
-        results_array = np.concatenate([[generation, evals],
-                                        xfavorite, stds,
-                                        [fbest], xbest, [evals_best]])
-        if (not 'optimization_result'
-                in self.data_object[EXPERIMENTAL_DATA_GROUP_NAME].keys()):
-            opt_res_grp = self.data_object[EXPERIMENTAL_DATA_GROUP_NAME]
-            self.opt_res_dset = opt_res_grp.create_dataset(
-                'optimization_result', (0, len(results_array)),
-                maxshape=(None, len(results_array)),
-                dtype='float64')
-
-            # FIXME: Jan 2018, add the names of the parameters to column names
-            self.opt_res_dset.attrs['column_names'] = h5d.encode_to_utf8(
-                'generation, ' + 'evaluations, ' +
-                'xfavorite, ' * len(xfavorite) +
-                'stds, '*len(stds) +
-                'fbest, ' + 'xbest, '*len(xbest) +
-                'best evaluation,')
-
-        old_shape = self.opt_res_dset.shape
-        new_shape = (old_shape[0]+1, old_shape[1])
-        self.opt_res_dset.resize(new_shape)
-        self.opt_res_dset[-1, :] = results_array
-
-    def save_optimization_results(self, adaptive_function, result):
+    def save_optimization_results(self, result):
         """
         Saves the result of an adaptive measurement (optimization) to
         the hdf5 file.
-
-        Contains some hardcoded data reshufling based on known adaptive
-        functions.
         """
         opt_res_grp = self.data_object.create_group('Optimization_result')
-
-        if adaptive_function.__module__ == 'cma.evolution_strategy':
-            res_dict = {'xopt':  result[0],
-                        'fopt':  result[1],
-                        'evalsopt': result[2],
-                        'evals': result[3],
-                        'iterations': result[4],
-                        'xmean': result[5],
-                        'stds': result[6],
-                        'stop': result[-3]}
-            # entries below cannot be stored
-            # 'cmaes': result[-2],
-            # 'logger': result[-1]}
-        elif adaptive_function.__module__ == 'pycqed.measurement.optimization':
-            res_dict = {'xopt':  result[0],
-                        'fopt':  result[1]}
-        else:
-            res_dict = {'opt':  result}
+        res_dict = {'opt':  result}
+        # If sweep points are constructed a posteriori by the optimizer: save
+        # them in the metadata, so they can be used like normal sweep points.
         if isinstance(result, dict) and 'sweep_points' in result:
             self.save_exp_metadata({
-                'sweep_points': result['sweep_points']})
+                'sweep_points': result.pop('sweep_points')})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
     @Timer()
@@ -2192,9 +1899,8 @@ class MeasurementControl(Instrument):
         import numpy
         import sys
         set_grp = data_object.create_group('Instrument settings')
-        inslist = dict_to_ordered_tuples(station.components)
         with numpy.printoptions(threshold=sys.maxsize):
-            for (iname, ins) in inslist:
+            for iname, ins in station.components.items():
                 instrument_grp = set_grp.create_group(iname)
                 if snapshot_kwargs is None:
                     inst_snapshot = ins.snapshot()
@@ -2251,8 +1957,7 @@ class MeasurementControl(Instrument):
 
         if 'parameters' in inst_snapshot:
             par_snap = inst_snapshot['parameters']
-            parameter_list = dict_to_ordered_tuples(par_snap)
-            for (p_name, p) in parameter_list:
+            for p_name, p in par_snap.items():
                 if sp_wl is not None and p_name not in sp_wl:
                     # If a whitelist exists, only include parameters that are
                     # in the snapshot_whitelist.
@@ -2673,18 +2378,8 @@ class MeasurementControl(Instrument):
 
         Reserved keywords:
             "adaptive_function":    function
-            "x_scale": (array)     rescales sweep parameters for
-                adaptive function, defaults to None (no rescaling).
-                Each sweep_function/parameter is rescaled by dividing by
-                the respective component of x_scale.
-            "minimize": True        Bool, inverts value to allow minimizing
-                                    or maximizing
             "f_termination" None    terminates the loop if the measured value
                                     is smaller than this value
-            "par_idx": 0            If a parameter returns multiple values,
-                                    specifies which one to use. If set to
-                                    None, there will be no selection and all
-                                    values are passed on.
             "data_processing_function":    function. Overwrites
                                            _default_data_processing_function
 
@@ -2695,18 +2390,6 @@ class MeasurementControl(Instrument):
             "maxiter"
         """
         self.af_pars = adaptive_function_parameters
-
-        # x_scale is expected to be an array or list.
-        self.x_scale = self.af_pars.pop('x_scale', None)
-        self.par_idx = self.af_pars.pop('par_idx', 0)
-        # Determines if the optimization will minimize or maximize
-        self.minimize_optimization = self.af_pars.pop('minimize', True)
-        self.f_termination = self.af_pars.pop('f_termination', None)
-
-        # ensures the cma optimization results are saved during the experiment
-        if (self.af_pars['adaptive_function'].__module__ ==
-                'cma.evolution_strategy' and 'callback' not in self.af_pars):
-            self.af_pars['callback'] = self.save_cma_optimization_results
 
     def get_adaptive_function_parameters(self):
         return self.af_pars
@@ -2719,12 +2402,6 @@ class MeasurementControl(Instrument):
 
     def get_measurement_name(self):
         return self.measurement_name
-
-    def set_optimization_method(self, optimization_method):
-        self.optimization_method = optimization_method
-
-    def get_optimization_method(self):
-        return self.optimization_method
 
     ################################
     # Actual parameters            #
