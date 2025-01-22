@@ -1539,7 +1539,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                         'x0': x0,
                         'initial_step': [initial_stepsize, initial_stepsize],
                         'no_improv_break': no_improv_break,
-                        'minimize': True,
                         'maxiter': 500}
         chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
             self.ge_I_channel())]
@@ -1717,7 +1716,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                         'x0': x0,
                         'initial_step': [initial_stepsize, initial_stepsize],
                         'no_improv_break': no_improv_break,
-                        'minimize': True,
                         'maxiter': 500}
         chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
             self.ro_I_channel())]
@@ -1948,7 +1946,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                         'x0': [self.ge_alpha(), self.ge_phi_skew()],
                         'initial_step': initial_stepsize,
                         'no_improv_break': no_improv_break,
-                        'minimize': True,
                         'maxiter': 500}
         MC.set_sweep_functions([self.ge_alpha, self.ge_phi_skew])
         MC.set_adaptive_function_parameters(ad_func_pars)
