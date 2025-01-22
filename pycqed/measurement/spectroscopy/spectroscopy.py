@@ -642,7 +642,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             analysis_kwargs = {}
         if 'options_dict' not in analysis_kwargs:
             analysis_kwargs['options_dict'] = {}
-        if np.any(['ro_amp' in self.get_task(qb) for qb in self.qubits]):
+        if np.any(['ro_amp' in task for task in self.task_list]):
             analysis_kwargs['options_dict'].setdefault("plot_TwoD_as_curves",
                                                        True)
             analysis_kwargs['options_dict'].setdefault("logzscale", True)
