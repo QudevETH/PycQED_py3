@@ -81,7 +81,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 self.MC.set_adaptive_function_parameters(dict(
                     adaptive_function=self.optimizer,
                     data_processing_function=self._data_processing_function,
-                    indexed_sweep=True,
+                    indexed_sweep=True,  # TODO what is this??
                 ))
                 self.exp_metadata.update({
                     'training_settings': optimizer.training_settings,
