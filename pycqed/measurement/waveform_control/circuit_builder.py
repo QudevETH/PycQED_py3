@@ -410,12 +410,14 @@ class CircuitBuilder:
                     #  we improve or generalise further what op codes can be
                     #  parsed by this method.
                     if param_start > 0:
-                        func_angle = eval('lambda x, cb=self : ' + angle)
+                        func_for_op_code = eval('lambda x, cb=self : ' + angle)
                     else:
-                        func_angle = None
-                    # sign * means that func will be -func_angle
+                        func_for_op_code = None
+                    # sign * means that func_for_pulse_param
+                    # will be -func_for_op_code
                     cphase = sign * ParametricValue(
-                        param, func=func_angle, func_angle=func_angle)
+                        param, func_for_pulse_param=func_for_op_code,
+                        func_for_op_code=func_for_op_code)
                 # op_name = "NameVal" (e.g. "Z100", see docstring)
                 elif angle:
                     cphase = float(angle)  # gate angle
@@ -481,7 +483,8 @@ class CircuitBuilder:
                         # The following will not work with ParametricValue:
                         # this should look like
                         # p[4]['basis_rotation'] = -cphase/2+180
-                        # with cphase.func wrapping into a dict, as 'Z' below
+                        # with cphase.func_for_pulse_param wrapping
+                        # into a dict, as 'Z' below
                     p[4]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
                     p[9]['basis_rotation'] = {qb_dec[0]: cphase/2+180}
                     p[10]['basis_rotation'] = {qb_dec[1]: cphase/2}
@@ -504,17 +507,20 @@ class CircuitBuilder:
                 if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func_angle = eval('lambda x, cb=self : ' + angle)
+                            func_for_op_code = eval(
+                                'lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
-                            func_angle = lambda x: x
-                        # In this case, func (function determining the
+                            func_for_op_code = lambda x: x
+                        # In this case, func_for_pulse_param (determining the
                         # physical parameter, the basis rotation) is the
-                        # same as func_angle (determining the gate angle,
+                        # same as func_for_op_code (determining the gate angle,
                         # as indicated in the op_code)
-                        func = (lambda x, qb=qbn[0], sign=sign, f=func_angle:
+                        func_for_pulse_param = (
+                            lambda x, qb=qbn[0], sign=sign, f=func_for_op_code:
                                 {qb: sign * f(x)})
                         p[0]['basis_rotation'] = ParametricValue(
-                            param, func=func, func_angle=func_angle)
+                            param, func_for_pulse_param=func_for_pulse_param,
+                            func_for_op_code=func_for_op_code)
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
                         p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
@@ -523,17 +529,21 @@ class CircuitBuilder:
                     corr_func = qb[0].calculate_nonlinearity_correction
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func_angle = eval('lambda x, cb=self : ' + angle)
+                            func_for_op_code = eval(
+                                'lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
-                            func_angle = lambda x: x
-                        # func (function determining the pulse amplitude)
-                        # combines func_angle (function determining the gate
-                        # angle) with the nonlinearity correction
-                        func = lambda x, a=p[0]['amplitude'], sign=sign,\
-                                      f=func_angle: a * corr_func(
+                            func_for_op_code = lambda x: x
+                        # func_for_pulse_param (which determines the pulse
+                        # amplitude) combines func_for_op_code (determining
+                        # the gate angle) with the nonlinearity correction
+                        func_for_pulse_param = (
+                            lambda x, a=p[0]['amplitude'], sign=sign,
+                                   f=func_for_op_code: a * corr_func(
                                 ((sign * f(x) + 180) % (-360) + 180) / 180)
+                        )
                         p[0]['amplitude'] = ParametricValue(
-                            param, func=func, func_angle=func_angle)
+                            param, func_for_pulse_param=func_for_pulse_param,
+                            func_for_op_code=func_for_op_code)
                     else:  # angle is a given value
                         angle = sign * float(angle)
                         # configure drive pulse amplitude for this angle

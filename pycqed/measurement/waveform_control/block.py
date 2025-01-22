@@ -307,19 +307,21 @@ class ParametricValue:
     by Block.pulses_sweepcopy).
 
     :param param: a string specifying the name of the parameter.
-    :param func: (optional) a function applied to the value of the sweep
-        parameter to yield the value of the physical parameter, e.g. amplitude
-    :param func_angle: (optional) a function which, when applied to the value
-        of the sweep parameter, yields the gate angle to write in the resolved
-        op_code
+    :param func_for_pulse_param: (optional) a function which, applied to the
+        value of the sweep parameter, yields the value of the physical
+        parameter, e.g. amplitude
+    :param func_for_op_code: (optional) a function which, when applied to the
+        value of the sweep parameter, yields the string representation of
+        the pulse parameter (e.g. gate angle) to write in the resolved op_code
 
     """
     _is_parametric_value = True
 
-    def __init__(self, param, func=None, func_angle=None):
+    def __init__(self, param, func_for_pulse_param=None,
+        func_for_op_code=None):
         self.param = param
-        self.func = func
-        self.func_angle = func_angle
+        self.func_for_pulse_param = func_for_pulse_param
+        self.func_for_op_code = func_for_op_code
 
     def resolve(self, sweep_dict, ind=None, op_code=None):
         """
@@ -347,7 +349,8 @@ class ParametricValue:
             v = d['values'][ind]
         else:  # convention in SweepPoints class
             v = d[0][ind]
-        v_physical = v if self.func is None else self.func(v)
+        v_pulse_param = self.func_for_pulse_param(v) \
+            if self.func_for_pulse_param else v
         if op_code is not None:
             if ':' in op_code:
                 # op_code resolution in case of a mathematical expression
@@ -357,65 +360,72 @@ class ParametricValue:
                 # Note for example that op_type might include an 'm' prefactor.
                 # This indicates a - sign in v_physical: op_code = "mY:90 qb1"
                 # yields the pulse amp v_physical corresponding to a -90 angle.
-                # In this case, func_angle should not also contain this - sign,
-                # else the op_code would become "mY:-90 qb1".
-                v_angle = self.func_angle(v) if self.func_angle else v
-                op_split[0] = f"{op_type}{v_angle}"
+                # In this case, func_for_op_code should not also contain
+                # this - sign, else the op_code would become "mY:-90 qb1".
+                v_op_code = self.func_for_op_code(v) \
+                    if self.func_for_op_code else v
+                op_split[0] = f"{op_type}{v_op_code}"
                 op_code = ' '.join(op_split)
-            return v_physical, op_code
+            return v_pulse_param, op_code
         else:
-            return v_physical
+            return v_pulse_param
 
     def _copy_self(self):
         """
-        Returns a copy of self, ensuring that self.func exists
+        Returns a copy of self, ensuring that self.func_for_pulse_param exists
 
         Note that this might be inefficient, since this makes use of a
         deepcopy, and creates a lambda function which is itself wrapped in a
         lambda function in the methods below, e.g. self.__add__.
         """
         new_parametric_value = deepcopy(self)
-        if new_parametric_value.func is None:
-            new_parametric_value.func = lambda x: x
+        if new_parametric_value.func_for_pulse_param is None:
+            new_parametric_value.func_for_pulse_param = lambda x: x
         return new_parametric_value
 
     def __add__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: f(x) + other
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+                f(x) + other
         return pv
 
     __radd__ = __add__
 
     def __sub__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: f(x) - other
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+            f(x) - other
         return pv
 
     def __rsub__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: other - f(x)
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+                other - f(x)
         return pv
 
     def __neg__(self):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: -f(x)
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: -f(x)
         return pv
 
     def __mul__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: f(x) * other
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+            f(x) * other
         return pv
 
     __rmul__ = __mul__
 
     def __truediv__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: f(x) / other
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+            f(x) / other
         return pv
 
     def __rtruediv__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: other / f(x)
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+            other / f(x)
         return pv
 
     def __repr__(self):
