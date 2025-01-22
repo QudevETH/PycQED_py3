@@ -349,18 +349,19 @@ class ParametricValue:
             v = d[0][ind]
         v_physical = v if self.func is None else self.func(v)
         if op_code is not None:
-            # op_code resolution in case of a mathematical expression
-            # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
-            op_split = op_code.split(' ')
-            op_type = op_split[0].split(':')[0].rstrip('0123456789.e-')
-            # Note for example that op_type might include an 'm' prefactor.
-            # This indicates a minus sign in v_physical: op_code = "mY:90 qb1"
-            # yields the pulse amp v_physical corresponding to a -90 angle.
-            # In this case, func_angle should not also contain this minus sign,
-            # else the op_code would become "mY:-90 qb1".
-            v_angle = self.func_angle(v) if self.func_angle else v
-            op_split[0] = f"{op_type}{v_angle}"
-            op_code = ' '.join(op_split)
+            if ':' in op_code:
+                # op_code resolution in case of a mathematical expression
+                # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
+                op_split = op_code.split(' ')
+                op_type = op_split[0].split(':')[0]
+                # Note for example that op_type might include an 'm' prefactor.
+                # This indicates a - sign in v_physical: op_code = "mY:90 qb1"
+                # yields the pulse amp v_physical corresponding to a -90 angle.
+                # In this case, func_angle should not also contain this - sign,
+                # else the op_code would become "mY:-90 qb1".
+                v_angle = self.func_angle(v) if self.func_angle else v
+                op_split[0] = f"{op_type}{v_angle}"
+                op_code = ' '.join(op_split)
             return v_physical, op_code
         else:
             return v_physical
