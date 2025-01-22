@@ -2217,22 +2217,19 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 # shots become one-hot encoded arrays with length n_states
                 # shots has shape (n_shots, n_states)
                 shots = a_tools.threshold_shots(shots)
-                if 'single_shots_per_qb_thresholded' not in self.proc_data_dict:
-                    self.proc_data_dict['single_shots_per_qb_thresholded'] = {}
-                self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
-                    shots
+                if 'single_shots_per_qb_thresholded' not in pdd:
+                    pdd['single_shots_per_qb_thresholded'] = {}
+                pdd['single_shots_per_qb_thresholded'][qbn] = shots
                 shots_per_qb[qbn] = shots
 
-        if self.get_param_value('correlate_proba', False):
+        if correlate_proba:
             # Note that this assumes that shots are thresholded.
-            shots_correlated, states_map = self._correlate_single_shots(
+            shots_correlated, states_map = \
+                MultiQubit_TimeDomain_Analysis._correlate_single_shots(
                 shots_per_qb, states_map)
             # FIXME this duplication is a hack, so that all the processing
             #  and plotting based on qubit names still works
             shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
-            # TODO This could be used to plot readout-corrected correlated
-            #  data, see the case self.rotate = False in self.process_data.
-            self.default_options['plot_proj_data'] = False
 
         for qbn, shots in shots_per_qb.items():
             averaged_shots = [] # either raw voltage shots or probas
