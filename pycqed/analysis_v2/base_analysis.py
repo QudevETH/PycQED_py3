@@ -766,6 +766,20 @@ class BaseDataAnalysis(object):
                                 ' is not extracted from the file. '
                                 'An empty list will be returned.')
                     raw_data_dict_ts['measured_values'] = []
+                if 'exp_metadata' in params_dict:
+                    if opt_res := data_file.get('Optimization_result'):
+                        raw_data_dict_ts['optimizer'] = dict()
+                        # FIXME this assumes that the 'Optimization_result'
+                        #  group contains the dict {'opt': {k: v...}}
+                        #  where each v is a numpy array. This could be
+                        #  generalised once there is a concrete use case.
+                        for k, v in dict(opt_res['opt']).items():
+                            if k == 'sweep_points':
+                                # For backwards compatibility with
+                                # measurements done in 2024 in which sweep
+                                # points were not removed from this opt result.
+                                continue
+                            raw_data_dict_ts['optimizer'][k] = np.array(v)
 
                 # add hdf attributes and groups
                 for save_par, file_par in params_dict.items():
@@ -807,48 +821,6 @@ class BaseDataAnalysis(object):
                     if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
-
-                # Add training process data. The if is
-                # because this part is called twice: the first time to read
-                # experiment data and the second time just to extract
-                # the classifier.
-                if 'exp_metadata' in params_dict:
-                    if raw_data_dict_ts['exp_metadata'].get('optimize'):
-                        raw_data_dict_ts['optimizer'] = dict()
-                        for k, v in dict(data_file['Optimization_result'][
-                                            'opt']).items():
-                            # FIXME
-                            if k == 'sweep_points':
-                                continue  # already in metadata
-                            raw_data_dict_ts['optimizer'][k] = np.array(v)
-
-                        #
-                        # # extract param values during optimisation
-                        # raw_data_dict_ts['optim_param_values'] = np.array(
-                        #     data_file['Optimization_result']['opt'][
-                        #         'optim_param_values'])
-                        # # extract cost function values
-                        # raw_data_dict_ts['cost_function_values'] = np.array(
-                        #     data_file['Optimization_result']['opt'][
-                        #         'cost_function_values'])
-                        # # FIXME: why update params_dict
-                        # self.params_dict.update({
-                        #     'optim_param_values': 'optim_param_values',
-                        #     'cost_function_values': 'cost_function_values'
-                        # })
-                        #
-                        # # extract classical params result
-                        # if raw_data_dict_ts['exp_metadata']['hybrid']:
-                        #     classical_params_result = data_file[
-                        #         'Optimization_result']['opt'].attrs[
-                        #         'classical_params_result']
-                        #     raw_data_dict_ts['classical_params_result'] = \
-                        #         np.array(eval(classical_params_result))
-                        #     # FIXME: why update params_dict
-                        #     self.params_dict.update({
-                        #         'classical_params_result':
-                        #             'classical_params_result',
-                        #     })
 
                 a_tools.close_files([data_file])
                 raw_data_dict.append(raw_data_dict_ts)
