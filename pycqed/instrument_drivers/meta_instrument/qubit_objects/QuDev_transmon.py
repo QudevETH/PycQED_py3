@@ -1745,7 +1745,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             other_qb.prepare(drive=None)
             MC.set_detector_function(det.IndexDetector(
                 other_qb.int_avg_det_spec, 0))
-            awg_n = other_qb.instr_acq().get_instr().get_awg_control_object()[1]
+            awg_n = other_qb.instr_acq.get_instr().get_awg_control_object()[1]
             other_qb.instr_pulsar.get_instr().start(exclude=[awg_n])
             MC.run(name='readout_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
@@ -1913,7 +1913,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
 
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
                                        trigger_sep=5e-6, no_improv_break=50,
-                                       initial_stepsize=(0.15, 10)):
+                                       initial_stepsize=None):
         """Calibrate drive upconversion mixer other sideband.
 
         Measures the averaged signal of a square-pulse at the other sideband
@@ -1942,6 +1942,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         Return:
             optimal IQ amplitude ratio `alpha` and phase correction `phi`.
         """
+        initial_stepsize = initial_stepsize or [0.15, 10]
         MC = self.instr_mc.get_instr()
         ad_func_pars = {'adaptive_function': opti.nelder_mead,
                         'x0': [self.ge_alpha(), self.ge_phi_skew()],
