@@ -1,7 +1,8 @@
 import scipy as sp
 
 from qcodes import validators as vals
-from qcodes.instrument.parameter import ManualParameter
+from qcodes.instrument.parameter import (
+    ManualParameter, InstrumentRefParameter)
 
 
 def mwg_with_lo_calibration_template(mwg_class):
@@ -36,6 +37,8 @@ def mwg_with_lo_calibration_template(mwg_class):
                                vals=vals.Dict(),
                                parameter_class=ManualParameter,
                                initial_value=dict())
+            self.add_parameter('instr_pulsar',
+                               parameter_class=InstrumentRefParameter)
             self.add_parameter('lo_cal_interp_kind',
                                vals=vals.Enum(
                                    'linear', 'nearest', 'zero', 'slinear',
