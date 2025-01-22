@@ -812,6 +812,7 @@ class BaseDataAnalysis(object):
                     else:
                         raw_data_dict_ts[save_par] = \
                             h5d.read_from_hdf5(file_par, data_file)
+                a_tools.close_files([data_file])
                 # add settings
                 raw_data_dict_ts.update(
                     self.get_instrument_settings(
@@ -821,8 +822,6 @@ class BaseDataAnalysis(object):
                     if par_name in numeric_params:
                         raw_data_dict_ts[par_name] = \
                             np.double(raw_data_dict_ts[par_name])
-
-                a_tools.close_files([data_file])
                 raw_data_dict.append(raw_data_dict_ts)
 
             except Exception as e:
