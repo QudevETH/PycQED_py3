@@ -647,7 +647,7 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
                                                        True)
             analysis_kwargs['options_dict'].setdefault("logzscale", True)
             analysis_kwargs['options_dict'].setdefault("logyscale", True)
-        return super().run_analysis(analysis_kwargs)
+        return super().run_analysis(analysis_kwargs, **kw)
 
     @classmethod
     def gui_kwargs(cls, device):
