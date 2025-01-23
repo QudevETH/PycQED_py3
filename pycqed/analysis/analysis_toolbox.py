@@ -435,11 +435,14 @@ def get_plot_title_from_folder(folder):
 
 def compare_instrument_settings(*timestamps, **kwargs):
     """Compare instrument settings from two instrument settings files.
+
     Convenience wrapper for SettingsManager.compare_stations.
+
     Args:
         see SettingsManager.compare_stations
-    Returns:
 
+    Returns:
+        see SettingsManager.compare_stations
     """
     from pycqed.utilities.settings_manager import SettingsManager
     sm = SettingsManager()
@@ -447,7 +450,7 @@ def compare_instrument_settings(*timestamps, **kwargs):
         if not isinstance(ts, str):
             raise TypeError(f'Comparison is only compatible with timestamp '
                             f'strings as input. '
-                            f'({ts} is not a timestamp string.')
+                            f'({ts} is not a timestamp string.)')
     return sm.compare_stations(timestamps=timestamps, **kwargs)
 
 

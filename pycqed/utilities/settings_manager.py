@@ -213,16 +213,26 @@ class SettingsManager:
         Helper function which compares n dictionaries and returns a combined
         dictionary with the intersection of all keys which values do not
         coincide
+
         Args:
             dict_list (list of dict): list of dictionaries which are compared
             name_list (list of strings): list of unique names of the
                 dictionaries (e.g. timestamp). Names are used as Timestamps
                  objects for unique keys for the combined dictionaries.
 
-        Returns (dict, list): combined dictionary of with values which do not
-        coincide between the different dictionaries and a list of print
-        statements for the comparison report.
+        Returns:
+            A tuple (diff, msg) where diff is the dictionary containing only
+            those keys which are different among the input dictionaries
+            and msg is a list of print statements for the comparison report.
+            For example:
 
+            (
+              {'value': {'20250101_000000': 1, '20250102_000000': 1.5},
+                'update': {'20250102_000000': True}},
+              ['"value" has a different value: 1 for 20250101_000000,
+                  1.5 for 20250102_000000\n',
+                'Parameter "update" missing in 20250101_000000.\n']
+            )
         """
         all_keys = set()
         all_diff = {}
