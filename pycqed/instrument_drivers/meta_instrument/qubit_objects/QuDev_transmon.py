@@ -2637,6 +2637,10 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
 
         if set_ge_offsets:
             ge_lo = self.instr_ge_lo
+
+            if param := ge_lo.get_instr().parameters.get('instr_pulsar'):
+                param(self.instr_pulsar())
+
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
                 offset_list += [('ge_I_channel', 'ge_I_offset'),
                                 ('ge_Q_channel', 'ge_Q_offset')]
