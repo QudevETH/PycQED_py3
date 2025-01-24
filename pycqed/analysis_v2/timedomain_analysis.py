@@ -3799,6 +3799,9 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         self.amps = OrderedDict()
         self.freqs = OrderedDict()
         for qbn in self.qb_names:
+            # Extract sweep parameter names corresponding to typical
+            # parameters which get swept, e.g. pulse length. In case several
+            # parameters are found, take the first one.
             len_key = [pn for pn in self.mospm[qbn] if 'length' in pn]
             if len(len_key) == 0:
                 raise KeyError('Couldn"t find sweep points corresponding to '
