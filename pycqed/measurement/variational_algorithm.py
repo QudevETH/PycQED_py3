@@ -863,6 +863,7 @@ class VQAOptimizer:
                         gradient = rate * np.dot(seed.T, cost_diff) / npop
 
                         angles_ev[i + 1] = angles_ev[i] - gradient
+                        # TODO remove print statements outside MC
                         print(f'iteration: {i}/{Nsteps}', ', cost:',
                               np.mean(cost))
                 self.optimizer_function = _evolutionary_strategy

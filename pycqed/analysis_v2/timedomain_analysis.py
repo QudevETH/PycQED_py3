@@ -3185,6 +3185,9 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
 class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
+    # FIXME: this optimal post-processing should later be unified with
+    #  the utils developed with FAU. One could then add a cpp_name flag to
+    #  indicate which cpp function (with a fixed interface) should be used.
     def process_data(self):
         super().process_data()
 
@@ -3661,43 +3664,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # Extend new_axes dims so they match 'shape'
         new_array = np.broadcast_to(new_array, new_shape)
         return new_array
-
-    def cpp_auto_collapse_to_1D_whatever(self, shots, sp):  # TODO
-        # -> (n_shots, soft_sweep, hard_sweep, soft_label, hard_label)
-        cpp_output = np.reshape(
-            a=shots,
-            newshape=(-1, *sp.length(), 1, 1)
-        )
-        # oneD_axis is the indicator for the plot function
-        oneD_axis = None
-        if 'targets' in self.sp[0]:
-            oneD_axis = 1
-        elif 'targets' in self.sp[1]:
-            oneD_axis = 0
-        # Reason for assume target = 0: when there is only one state in the
-        # training set, the absolute value of the cost function doesn't
-        # matter, and there is no need to specify the exact value of
-        # targets.
-        targets = [0]
-        if oneD_axis is not None:
-            targets = self.sp[1 - oneD_axis]['targets'][0]
-            cpp_output = \
-                np.swapaxes(cpp_output, 1 + 1 - oneD_axis,
-                            3 + 1 - oneD_axis)
-        n_shots, soft_sweep, hard_sweep, soft_label, hard_label = \
-            cpp_output.shape
-        # The following reshaping makes the cpp_output a valid input for
-        # va.cost_function.
-        cpp_output = cpp_output.reshape((n_shots, soft_sweep*hard_sweep,
-                                         soft_label*hard_label))
-        cost_function_values = va.cost_function(cpp_output, targets)
-        # reconstruct the 2D data structure for single state cost function
-        if len(targets) == 1:
-            cost_function_values = np.reshape(
-                a=cost_function_values,
-                newshape=(soft_sweep, hard_sweep)
-            )
-        return cost_function_values
 
     def prepare_plots(self):
         super().prepare_plots()
