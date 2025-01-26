@@ -3223,27 +3223,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 [self.sp.length(1)]
             )
             # shape: (bitstring, n_sets_trainable_pars, n_targets, n_iter)
-            # special settings to plot slices of cost function
-            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'training_set_cost', [(':', 'smcol')]
-            )
-            # slice-plot output along the soft sweep axis (iteration)
-            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'output', [(':', 'scol')]
-            )
-            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'cost', [(':', 'smcol')]
-            )
         elif self.sp.find_parameter('targets') is not None:
             # sweep mode with targets
             targets_sp_axis = self.sp.find_parameter('targets')
             targets_axis = targets_sp_axis + 1
             targets_num = self.sp.length()[targets_sp_axis]
             targets = self.get_param_value('targets', self.sp['targets'])
-            # slice-plot output along the hard sweep axis
-            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'output', [(':', 'srow')]
-            )
 
         # freqs.shape = (n_states, ..., n_targets, ...)
         # n_states corresponds to dimension state_axis
@@ -3347,6 +3332,25 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
         for key, (values, sp) in self.cpp_results.items():
             self.add_dummy_qb_data(key, values, sp)
+
+        # Slice plotting options
+        if self.get_param_value('optimize'):
+            # special settings to plot slices of cost function
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'training_set_cost', [(':', 'smcol')]
+            )
+            # slice-plot output along the soft sweep axis (iteration)
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'output', [(':', 'scol')]
+            )
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'cost', [(':', 'smcol')]
+            )
+        elif self.sp.find_parameter('targets') is not None:
+            # slice-plot output along the hard sweep axis
+            self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
+                'output', [(':', 'srow')]
+            )
 
     def _adjust_sp_length(self, sp, axis=None, scale=1):
         # expand the sweep points size to suit the virtual fms population by
