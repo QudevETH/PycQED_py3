@@ -350,16 +350,16 @@ class ParametricValue:
             v = d[0][ind]
         v_pulse_param = self.func_for_pulse_param(v) \
             if self.func_for_pulse_param else v
+        if op_code is not None and ':' in op_code:
+            # op_code resolution in case of a mathematical expression
+            # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
+            op_split = op_code.split(' ')
+            op_type = op_split[0].split(':')[0]
+            v_op_code = self.func_for_op_code(v) \
+                if self.func_for_op_code else v
+            op_split[0] = f"{op_type}{v_op_code}"
+            op_code = ' '.join(op_split)
         if op_code is not None:
-            if ':' in op_code:
-                # op_code resolution in case of a mathematical expression
-                # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
-                op_split = op_code.split(' ')
-                op_type = op_split[0].split(':')[0]
-                v_op_code = self.func_for_op_code(v) \
-                    if self.func_for_op_code else v
-                op_split[0] = f"{op_type}{v_op_code}"
-                op_code = ' '.join(op_split)
             return v_pulse_param, op_code
         else:
             return v_pulse_param
