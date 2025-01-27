@@ -14,7 +14,6 @@ Hacked together by Rene Vollmer
 
 import datetime
 import pycqed.analysis_v2.base_analysis as ba
-from pycqed.analysis_v2.base_analysis import plot_scatter_errorbar_fit, plot_scatter_errorbar
 
 import numpy as np
 import lmfit
@@ -481,7 +480,7 @@ class RamseyAnalysis(ba.BaseDataAnalysis):
 
     def prepare_plots(self):
         name = ''
-        fit_text = "$\sigma = %.3f \pm %.3f$"%(self.fit_dicts['coherence_fit']['sigma'],
+        fit_text = r"$\sigma = %.3f \pm %.3f$"%(self.fit_dicts['coherence_fit']['sigma'],
                                     self.fit_dicts['coherence_fit']['sigma_std'])
         self.plot_dicts['text_msg_' + name + 'amp_vs_Ramsey'] = {
                     'ax_id':name + 'amp_vs_Ramsey',

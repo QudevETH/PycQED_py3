@@ -14,9 +14,8 @@ cache:
 
 # FIXME: Build an image to make this fast
 .base_setup:
-  image: python:3.11-bookworm
+  image: $CI_REGISTRY/qudev/control_software/pycqed_py3/pycqed-requirements
   before_script:
-    - apt-get update && apt-get install -y libegl1 libgl1 openssh-client git python3-pyqt6 libxcb-cursor0 xvfb
     - Xvfb :99 -ac &
     - export DISPLAY=:99
     - pip install '.[docs,linting,user,measurement_setup]'
@@ -61,13 +60,21 @@ code_quality_slim:
   script:
     - pip install pipx
     - export PATH="$PATH:/root/.local/bin"
-# FIXME: mypy - see below
-    - pipx install gitlab-cq ruff pyright
-    - gitlab-cq --output gl-code-quality-report.json ruff check .
-    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
-# FIXME: mypy's report is too massive right now - enable later
-#    - gitlab-cq --output gl-code-quality-report.json --merge mypy .
+    - pipx install gitlab-cq ruff
+    - echo "Fetching branch:"
+    - echo $CI_DEFAULT_BRANCH
+    - git fetch origin $CI_DEFAULT_BRANCH # Fetch the target branch
+    - git diff --name-only origin/$CI_DEFAULT_BRANCH # Compare against the fetched branch
+    - CHANGED_FILES=$(git diff --name-only origin/$CI_DEFAULT_BRANCH)
+    - CHANGED_PY_FILES=$(echo "$CHANGED_FILES" | grep '\.py$')
+    - echo $CHANGED_PY_FILES
+    - gitlab-cq --output gl-code-quality-report.json ruff check $CHANGED_PY_FILES
+  # FIXME: pyright - too verbose right now / we have too many problems
+  #    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
+  # FIXME: mypy's report is too massive right now - enable later
+  #    - gitlab-cq --output gl-code-quality-report.json --merge mypy .
   artifacts:
+    when: on_success
     reports:
       codequality: gl-code-quality-report.json
     expire_in: 90 days

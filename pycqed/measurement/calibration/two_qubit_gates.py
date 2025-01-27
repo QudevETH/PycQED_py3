@@ -14,7 +14,6 @@ from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.measurement.sweep_functions as swf
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\

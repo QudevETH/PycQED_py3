@@ -2,7 +2,6 @@ import pytest
 from pycqed.instrument_drivers.physical_instruments.rohde_schwarz_nge100 import (
     NGE102B,
     NGE103B,
-    NGE100Channel,
 )
 
 

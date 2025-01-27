@@ -1,7 +1,5 @@
-from time import sleep, time
+from time import time
 import numpy as np
-import ctypes as ct
-import logging
 
 from pycqed.instrument_drivers.instrument import Instrument
 from qcodes import validators as vals

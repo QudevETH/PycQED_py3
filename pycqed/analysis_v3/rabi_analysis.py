@@ -143,7 +143,7 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
                 'xvals': np.array([piPulse_amp]),
                 'yvals': np.array([fit_res.model.func(piPulse_amp,
                                                       **fit_res.best_values)]),
-                'setlabel': '$\pi$ amp',
+                'setlabel': r'$\pi$ amp',
                 'color': 'r',
                 'marker': 'o',
                 'line_kws': {'markersize': plot_mod.get_default_plot_params(
@@ -174,7 +174,7 @@ def prepare_rabi_plots(data_dict, data_to_proc_dict, **params):
                 'xvals': np.array([piHalfPulse_amp]),
                 'yvals': np.array([fit_res.model.func(piHalfPulse_amp,
                                                       **fit_res.best_values)]),
-                'setlabel': '$\pi /2$ amp',
+                'setlabel': r'$\pi /2$ amp',
                 'color': 'm',
                 'marker': 'o',
                 'line_kws': {'markersize': plot_mod.get_default_plot_params(
@@ -239,17 +239,17 @@ def get_rabi_textbox_properties(data_dict, textstr='',
     # if old_pihalfpulse_val != old_pihalfpulse_val:
     #     old_pihalfpulse_val = 0
     old_pihalfpulse_val *= old_pipulse_val
-    textstr += ('  $\pi-Amp$:\n   {:.3f} V'.format(
+    textstr += ('  $\\pi-Amp$:\n   {:.3f} V'.format(
         hlp_mod.get_param(f'{mobjn}.piPulse_value', data_dict)) +
-               '$\pm$ {:.3f} V '.format(
+               r'$\pm$ {:.3f} V '.format(
         hlp_mod.get_param(f'{mobjn}.piPulse_stderr', data_dict)) +
-               '\n$\pi/2-Amp$:\n   {:.3f} V '.format(
+               '\n$\\pi/2-Amp$:\n   {:.3f} V '.format(
         hlp_mod.get_param(f'{mobjn}.piHalfPulse_value', data_dict)) +
-               ' $\pm$ {:.3f} V '.format(
+               r' $\pm$ {:.3f} V '.format(
         hlp_mod.get_param(f'{mobjn}.piHalfPulse_stderr', data_dict)) +
-               '\n  $\pi-Amp_{old}$ = ' + '{:.3f} V '.format(
+               '\n  $\\pi-Amp_{old}$ = ' + '{:.3f} V '.format(
         old_pipulse_val) +
-               '\n$\pi/2-Amp_{old}$ = ' + '{:.3f} V '.format(
+               '\n$\\pi/2-Amp_{old}$ = ' + '{:.3f} V '.format(
         old_pihalfpulse_val))
 
     hp = -0.135

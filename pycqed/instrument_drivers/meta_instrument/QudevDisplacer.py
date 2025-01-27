@@ -1,9 +1,6 @@
-import time
-import logging
 
 from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import InstrumentRefParameter
-from qcodes.utils.validators import Enum, Ints, Numbers
 
 
 class QudevDisplacer(Instrument):

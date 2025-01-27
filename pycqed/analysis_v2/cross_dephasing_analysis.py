@@ -4,7 +4,6 @@ Toolset to analyse measurement-induced Dephasing of qubits
 Hacked together by Rene Vollmer
 '''
 
-import pycqed
 from pycqed.analysis_v2.quantum_efficiency_analysis import RamseyAnalysisSweep
 import pycqed.analysis_v2.base_analysis as ba
 import numpy as np
@@ -15,7 +14,6 @@ import os
 from pycqed.analysis import analysis_toolbox as a_tools
 
 import numpy as np
-import matplotlib.pyplot as plt
 import numpy.ma
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 

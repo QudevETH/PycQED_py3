@@ -1,4 +1,3 @@
-import qcodes as qc
 from qcodes.instrument.parameter import (
     ManualParameter, InstrumentRefParameter)
 from qcodes.utils import validators as vals

@@ -4,7 +4,6 @@ import os
 import shutil
 import numpy as np
 from copy import deepcopy
-from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from zhinst.core.errors import CoreError
 
@@ -257,22 +256,6 @@ class ZIPulsarMixin:
     def zi_playback_string_loop_end(metadata):
         return ["}"] if metadata.get("end_loop", False) else []
 
-    def zi_codeword_table_entry(self, codeword, wave, placeholder_wave=False,
-                                internal_mod=False):
-        w1, w2 = self.zi_waves_to_wavenames(wave)
-        use_hack = True
-        if w1 is None and w2 is not None and use_hack and not placeholder_wave:
-            # This hack is needed due to a bug on the HDAWG.
-            # Remove this if case once the bug is fixed.
-            return [f"setWaveDIO({codeword}, zeros(1) + marker(1, 0), {w2});"]
-        elif w1 is None and w2 is not None and use_hack and placeholder_wave:
-            return [f"setWaveDIO({codeword}, {w2}_but_zero, {w2});"]
-        elif not (w1 is None and w2 is None):
-            return ["setWaveDIO({}, {});".format(codeword,
-                        self._zi_wavename_pair_to_argument(
-                            w1, w2, internal_mod=internal_mod))]
-        else:
-            return []
 
     def zi_waves_to_wavenames(self, wave):
         wavenames = []
@@ -508,12 +491,20 @@ class ZIGeneratorModule:
     _sequence_string_template = (
         "{wave_definitions}\n"
         "\n"
-        "{codeword_table_defs}\n"
-        "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
         "}}\n"
     )
+
+    COMMAND_TABLE_MAX_SIZE = None  # Should be defined in child classes
+    """Specifies the maximum size of the command tables of the generator
+    module."""
+    
+    #NOTE: the internal shift is limited to 1024, thus the commands for reset, 
+    ## ff and decoder need to be in the first 1024 command table entries. 
+    FEEDBACK_ENTRIES_START_INDEX = 0  
+    NORMAL_ENTRIES_START_INDEX = 4
+    """Specifies the first command table entry for saving the decoder waveforms."""
 
     def __init__(
             self,
@@ -569,12 +560,6 @@ class ZIGeneratorModule:
 
         self._wave_definitions = []
         """Wave definition strings to be added to the sequencer code."""
-
-        self._codeword_table = {}
-        """Codeword table for DIO wave triggering."""
-
-        self._codeword_table_defs = []
-        """Codeword table definitions to be added to the sequencer code."""
 
         self._command_table = []
         """Command table for pulse sequencing."""
@@ -642,17 +627,12 @@ class ZIGeneratorModule:
     def _reset_sequence_strings(
             self,
             reset_wave_definition: bool = True,
-            reset_codeword_table: bool = True,
             reset_playback_strings: bool = True,
             reset_command_table: bool = True,
     ):
         """Resets everything relates to sequence code strings."""
         if reset_wave_definition:
             self._wave_definitions = []
-
-        if reset_codeword_table:
-            self._codeword_table = {}
-            self._codeword_table_defs = []
 
         if reset_command_table:
             self._command_table = []
@@ -1038,6 +1018,10 @@ class ZIGeneratorModule:
                 self._playback_strings += \
                     ZIPulsarMixin.zi_playback_string_loop_end(metadata)
                 continue
+            if nr_cw > 0 and not self._use_command_table:
+                raise ValueError(f"Set {self.pulsar.name}."
+                                 f"{self._awg.name}_use_command_table to "
+                                 f"True for feedback operations!")
 
             for cw in awg_sequence_element:
                 if cw == 'no_codeword':
@@ -1080,22 +1064,6 @@ class ZIGeneratorModule:
                         self._check_ignore_waveforms():
                     continue
 
-                # Updates the codeword table if there exists codewords.
-                if nr_cw != 0:
-                    w1, w2 = self._awg_interface.zi_waves_to_wavenames(wave)
-                    if cw not in self._codeword_table:
-                        self._codeword_table_defs += \
-                            self._awg_interface.zi_codeword_table_entry(
-                                cw, wave, self._use_placeholder_waves,
-                                internal_mod=self._use_internal_mod
-                            )
-                        self._codeword_table[cw] = (w1, w2)
-                    elif self._codeword_table[cw] != (w1, w2) \
-                            and self.pulsar.reuse_waveforms():
-                        log.warning(f'Same codeword {cw} used for different '
-                                    f'waveforms: {self._codeword_table[cw]} '
-                                    f'vs {(w1, w2)}. Using first waveform. '
-                                    f'Ignoring element {element}.')
 
                 # Update self.has_waveforms flag of the corresponding channel
                 # ID if there are waveforms defined.
@@ -1110,6 +1078,7 @@ class ZIGeneratorModule:
 
                 self._wave_idx_lookup[element][cw] = None
                 reuse_definition = False
+                # generate or retrieve waveform_idx
                 if self._use_placeholder_waves or self._use_command_table:
                     # If the wave is already assigned an index, we will point
                     # the wave to the existing index and skip the rest of wave
@@ -1125,25 +1094,17 @@ class ZIGeneratorModule:
 
                 # Update (and thus activate) command table if specified.
                 if self._use_command_table:
-                    if cw != 'no_codeword':
-                        raise RuntimeError(
-                            f"On device: {self._awg.name}: Pulse sequencing "
-                            f"with DIO and with command table are turned on "
-                            f"at the same time. Please do not use them "
-                            f"simultaneously, as they conflicts with each "
-                            f"other in the sequencer code. "
-                        )
-
                     scaling_factor = metadata.get("scaling_factor", dict())
-                    entry_index = len(self._command_table)
+                    
                     amplitude = self._extract_command_table_amplitude(
                         scaling_factor=scaling_factor
                     )
                     phase=metadata.get('mod_config', {})\
                         .get(self.i_channel_name, {}).get("phase", 0)
 
+                    # entry_index will be set to a value below
                     entry = self._generate_command_table_entry(
-                        entry_index=entry_index,
+                        entry_index=None,
                         wave_index=self._wave_idx_lookup[element][cw],
                         amplitude=amplitude,
                         phase=phase,
@@ -1153,24 +1114,52 @@ class ZIGeneratorModule:
                     # Check if the same entry already exists in the command
                     # table. If so, the existing entry will be reused and the
                     # new entry will not be uploaded.
-                    for existing_entry in self._command_table:
-                        if self._compare_command_table_entry(
-                            entry,
-                            existing_entry
-                        ):
-                            entry_index = existing_entry["index"]
+                    # command table entries reserved for
+                    # non-feedback pulses.
+                    if cw == 'no_codeword':
+                        i_start = self.NORMAL_ENTRIES_START_INDEX
+                        i_end = self.COMMAND_TABLE_MAX_SIZE
+                        entry_index = i_start
+                        for existing_entry in self._command_table:
+                            if i_start <= existing_entry["index"] < i_end:
+                                if self._compare_command_table_entry(
+                                        entry,
+                                        existing_entry
+                                ):
+                                    entry_index = existing_entry["index"]
+                                    update_entry = False
+                                    break
+                                else:
+                                    entry_index += 1
+
+                        if entry_index >= i_end:
+                            raise RuntimeError(
+                                f"On {self.awg.name} generator module "
+                                f"{self._awg_nr}: command table memory overflow. "
+                                f"Please check if you have defined too many "
+                                f"different waveforms or allocated too few space "
+                                f"for feedback or non-feedback pulses. "
+                                f"entry_index = {entry_index}, cw = {cw}."
+                            )
+                    else:
+                        i_start = 0
+                        i_end = self.NORMAL_ENTRIES_START_INDEX
+                        entry_index = cw
+                        if cw in [existing_entry["index"]
+                                  for existing_entry in self._command_table
+                                  if i_start<=existing_entry["index"]<i_end]:
                             update_entry = False
 
                     # records mapping between element-codeword and entry index
                     self._command_table_lookup[element] = entry_index
+                    entry["index"] = entry_index
                     if update_entry:
                         self._command_table.append(entry)
-
+                
                 if self._use_placeholder_waves:
                     # No need to add new definitions when reusing old ones
                     if reuse_definition:
                         continue
-
                     # Check if the longest placeholder wave length equals to
                     # the shortest one. If not, use the longest wave
                     # length to fit all waveforms.
@@ -1181,16 +1170,8 @@ class ZIGeneratorModule:
                         log.warning(f"Waveforms of unequal length on"
                                     f"{self._awg.name}, vawg{self._awg_nr},"
                                     f" {current_segment}, {element}.")
-
-                    # Add new wave definition and save wave index.
-                    self._wave_definitions += \
-                        self._awg_interface.zi_wave_definition(
-                            wave=wave,
-                            defined_waves=self._defined_waves,
-                            wave_index=self._wave_idx_lookup[element][cw],
-                            placeholder_wave_length=max(placeholder_wave_lengths),
-                            internal_mod=self._use_internal_mod,
-                        )
+                
+                    placeholder_wave_length =  max(placeholder_wave_lengths)
                 else:
                     # No indices will be assigned when not using placeholder
                     # waves.
@@ -1199,15 +1180,17 @@ class ZIGeneratorModule:
                         if h is not None:
                             wave[i] = self._with_divisor(h, self.channel_ids[i])
                     wave = tuple(wave)
-
-                    self._wave_definitions += \
-                        self._awg_interface.zi_wave_definition(
-                            wave=wave,
-                            wave_index=self._wave_idx_lookup[element][cw] if
-                            self._use_command_table else None,
-                            defined_waves=self._defined_waves,
-                            internal_mod=self._use_internal_mod,
-                        )
+                    placeholder_wave_length = None
+                    
+                self._wave_definitions += \
+                    self._awg_interface.zi_wave_definition(
+                        wave=wave,
+                        defined_waves=self._defined_waves,
+                        wave_index=self._wave_idx_lookup[element][cw] if
+                        self._use_command_table or self._use_placeholder_waves else None,
+                        placeholder_wave_length=placeholder_wave_length,
+                        internal_mod=self._use_internal_mod,
+                    )
 
             if not upload:
                 # _program_awg was called only to decide which AWG modules are
@@ -1389,7 +1372,6 @@ class ZIGeneratorModule:
         """
         awg_str = self._sequence_string_template.format(
             wave_definitions='\n'.join(self._wave_definitions),
-            codeword_table_defs='\n'.join(self._codeword_table_defs),
             playback_string='\n  '.join(self._playback_strings),
         )
 

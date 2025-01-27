@@ -320,7 +320,7 @@ class DevicePropertyValueUploader:
                     # and not the whole path because the live and archive folder
                     # are stored in the `Setup` class in order to prevent
                     # redunant storage of all the folder paths.
-                    regex_matches = re.search('(.*)\\\\(\d*)_(.*)', value_node['rawdata_folder_path'])
+                    regex_matches = re.search('(.*)\\\\(\\d*)_(.*)', value_node['rawdata_folder_path'])
                     routine_name = regex_matches[3]
 
                     raw_data = device_db_client.model.timestamp_raw_data.TimestampRawData(

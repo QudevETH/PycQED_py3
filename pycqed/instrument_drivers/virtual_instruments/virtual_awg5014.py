@@ -218,11 +218,11 @@ class VirtualAWG5014(Tektronix_AWG5014):
             i += 1
 
             if cid[4:] == 'm1':
-                ydata = np.float_((pwfs // 16384) % 2)
+                ydata = np.float64((pwfs // 16384) % 2)
             elif cid[4:] == 'm2':
-                ydata = np.float_((pwfs // 32768) % 2)
+                ydata = np.float64((pwfs // 32768) % 2)
             else:
-                ydata = (np.float_(np.bitwise_and(pwfs, 16383)) - 8191) / 8191
+                ydata = (np.float64(np.bitwise_and(pwfs, 16383)) - 8191) / 8191
             xdata = np.arange(len(ydata)) / self.clock_freq()
 
             ax.plot(xdata / 1e-9, ydata)
