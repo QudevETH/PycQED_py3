@@ -1062,7 +1062,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 axs[axes_pdict['fig_id']] = ax
 
             # transparent background around axes for presenting data
-            # TODO: !692 will solve this with a flag, remove before un-drafting this MR
+            # FIXME: !692 will solve this with a flag, remove before un-drafting this MR
             #figs[axes_pdict['fig_id']].patch.set_alpha(0)
 
             if axes_pdict.get('tight_layout', True):
@@ -1155,7 +1155,6 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
             figs[fig_name].align_ylabels()
         except AttributeError:
             pass
-        # TODO: Don't close figures?
         plt.close(figs[fig_name])
 
     # add figures and axes to data_dict
@@ -1981,16 +1980,6 @@ def plot_colorbar(
 
     # Create or adapt colorbar
     if hasattr(cmap, "autoscale_None"):
-        # Componsate position for tick flip
-        # TODO: if plot_ctick_loc / labels
-        #axs.cax.set_position(
-        #    [
-        #        axs.cax.get_position().x0 - 0.5,  # Shift left by 0.05
-        #        axs.cax.get_position().y0,
-        #        axs.cax.get_position().width / 2,
-        #        axs.cax.get_position().height,
-        #    ]
-        #)
         axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
     else:
         axs.cbar = mpl.colorbar.ColorbarBase(
@@ -2004,8 +1993,8 @@ def plot_colorbar(
     if plot_clabel is not None and not plot_nolabel:
         axs.cbar.set_label(plot_clabel)    
 
-    # TODO: adjust tight layout at the end of creation
-    # .     else we draw outside of the viewport which sucks
+    # Adjust tight layout at the end of creation
+    # else we draw outside of the viewport.
     if tight_fig:
         axs.figure.tight_layout()
 

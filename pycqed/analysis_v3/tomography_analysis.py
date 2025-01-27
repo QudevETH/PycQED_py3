@@ -129,7 +129,6 @@ def state_tomography_analysis(
     cp = hlp_mod.get_measurement_properties(data_dict, props_to_extract=['cp'],
                                             raise_error=False, **params)
 
-    # TODO: What does this do?
     basis_rots = hlp_mod.get_param('basis_rots', data_dict,
                                    raise_error=True, **params)
     if hlp_mod.get_param('basis_rots', data_dict) is None:
@@ -139,7 +138,6 @@ def state_tomography_analysis(
 
 
     # Take active reset into account
-    # TODO: is this compatible with the 2024 way of doing active reset?
     do_preselection = hlp_mod.get_param('do_preselection', data_dict,
                                         **params)
     if do_preselection is None:
@@ -745,8 +743,7 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
     color = np.concatenate((1.1*np.ones_like(color_tar), color_meas))
 
 
-    # TODO: Why are the plot settings reimplemented when they are set already above
-    #       but for the target density matrix only?
+    # FIXME:  Reimplementation of that plot is unclear and duplicated code
     plot_dicts[f'{figures_prefix}density_matrix_' \
                f'{estimation_type}_{"".join(meas_obj_names)}'] = {
         'plotfn': 'plot_bar3D',
