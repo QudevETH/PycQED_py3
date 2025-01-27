@@ -1460,10 +1460,10 @@ class BaseDataAnalysis(object):
             no_label (bool): whether figure should have a label.
             fig_id (str): figure id from `self.plot_dicts`. If passed only
                 specified figure will be plotted.
-            save_figs (bool): Whether to save the figures.
-            save_figs (bool): Whether to close the figures at the end. They
-                are kept open by default, useful e.g. if this method is
-                called manually be the user to further use the figures.
+            save_figs (bool): Whether to save the figures (defaults to False).
+            close_figs (bool): Whether to close the figures at the end. They
+                are not closed by default, useful e.g. if this method is
+                called manually by the user to further use the figures.
         """
 
         key_list = self._get_key_list(key_list)
