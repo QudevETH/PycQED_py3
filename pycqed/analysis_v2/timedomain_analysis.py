@@ -3197,7 +3197,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         self.cpp_results = {}
         shots = self.proc_data_dict['single_shots_per_qb_thresholded']
         shots = self._get_binary_shots_array(shots=shots)
-        self._save_shots_pk(shots)
+        if self.get_param_value('save_shots_pk'):
+            self._save_shots_pk(shots)
         freqs, bitstrings_labels = self.cpp_histogram(shots)
         # shape: (bitstring, hard sweep, soft sweep)
         weights = self.get_param_value('weights')
@@ -3608,7 +3609,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         freqs, _ = VariationalAlgorithmAnalysis.cpp_histogram(shots)
         # targets_axis: the axis of targets in freqs
         # TODO allow other shape orders
-        print('freqs shape during training, before fms:', freqs.shape)
         state_axis = 0
         targets_axis = 2
         shape = freqs.shape
