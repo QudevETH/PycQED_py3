@@ -376,9 +376,8 @@ class DateTimeGenerator:
                     if counter >= 3600:
                         raise Exception()
                 except OSError as err:
-                    if 'cannot find the path specified' in str(err):
-                        timestamp_verified = True
-                    elif 'No such file or directory' in str(err):
+                    # mark timestamps as verified if directory does not exist
+                    if not os.path.exists(path):
                         timestamp_verified = True
                     else:
                         raise err
