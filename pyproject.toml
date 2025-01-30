@@ -74,7 +74,7 @@ measurement_setup = [
 user = [
     "cython",
     "jupyterlab",
-    "notebook < 7.0.0",
+    "notebook",
     "pyyaml",
 ]
 compression = [
