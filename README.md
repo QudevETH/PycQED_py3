@@ -61,14 +61,21 @@ Further, general documentation and how to get started in depth can be found on
 
 ## Testing
 
-For testing, make sure your correct environment is activated. See [Installation](#installation)
+For testing, make sure your pycqed environment is activated. See [Installation](#installation). Additionally,
+clone the test data repository to your local computer, see [here](https://gitlab.phys.ethz.ch/qudev/control_software/pycqed_testdata) for instructions (requires access to DPHYS gitlab).
 
-Then you can run the test suite in your _current_ environment via:
+We use our experimental data as testbed. Internally it is the `pycqed_testdata` repo. If you you are outside of QuDev, you unfortunately have to generate some experimental data first.
 
-```
-pip install '.[test]'
+Then, you can run the test suite in your _current_ environment via:
+
+```bash
+# activate the correct environment where you did setup pycqed
+cd /path/to/pycqed_py3
+pip install -e .[test] # on Windows or `pip install -e '.[test]'` on linux/macos
 pytest -v --cov=pycqed --cov-report term -m "not hardware" pycqed/tests
 ```
+
+To learn more about pytest, please [read their docs](https://docs.pytest.org).
 
 ## License
 
