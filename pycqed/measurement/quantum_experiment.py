@@ -524,7 +524,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
         # check whether the number of readouts is the same for all sequences
         assert len(np.unique([s.n_acq_elements() for s in self.sequences])) == 1, \
-            "All sequences must have the same number of readouts"
+            "All sequences must have the same n_acq_elements (number of ROs)."
         # if not, then the definition of the mc_points and the compression
         # would need to be changed
 
