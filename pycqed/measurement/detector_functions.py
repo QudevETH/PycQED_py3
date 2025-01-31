@@ -1418,7 +1418,7 @@ class IntegratingAveragingPollDetector(PollDetector):
         return data
 
     @Timer()
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         """
         Prepares instruments for acquisition:
          - defines self.nr_sweep_points based on sweep_points,
@@ -1432,7 +1432,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
-        super().prepare()
+        super().prepare(**kw)
         if self.AWG is not None:
             self.AWG.stop()
         # Determine the number of sweep points and set them
