@@ -371,9 +371,10 @@ class DateTimeGenerator:
                     ts = time.localtime(time.mktime(ts) + 1)
                     tsd = time.strftime('%H%M%S', ts)
                     
-                if counter >= 3600:
-                    raise TimeoutError("Could not find unique timestamp after"
-                        "1 hour of attempts")
+                if counter >= 3:
+                    raise TimeoutError("Could not find a unique timestamp after"
+                        "moving 3 sec into the future.\n"
+                        "Please check this machine or its filesystem.")
                     
             if name is not None:
                 path = os.path.join(path, tsd+'_'+name)
