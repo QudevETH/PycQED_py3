@@ -354,33 +354,26 @@ class DateTimeGenerator:
             tsd = time.strftime('%H%M%S', ts)
             timestamp_verified = False
             counter = 0
-            # Verify if timestamp is unique by seeing if the folder exists
+
+            # Verify if timestamp is unique by checking if the folder exists
             while not timestamp_verified and auto_increase:
                 counter += 1
-                try:
-                    measdirs = [d for d in os.listdir(path)
-                                if d[:6] == tsd]
-                    if len(measdirs) == 0:
-                        timestamp_verified = True
-                    else:
-                        # if timestamp not unique, add one second
-                        # This is quite a hack
-                        # FIXME: Could add a time.sleep(1) instead of
-                        #  artificially increasing the timestamp by 1.
-                        #  Like this, timestamps in the future are avoided.
-                        #  This does not solve the problem if a data directory
-                        #  for a custom timestamp is requested but this
-                        #  timestamp already exists.
-                        ts = time.localtime((time.mktime(ts)+1))
-                        tsd = time.strftime('%H%M%S', ts)
-                    if counter >= 3600:
-                        raise Exception()
-                except OSError as err:
-                    # mark timestamps as verified if directory does not exist
-                    if not os.path.exists(path):
-                        timestamp_verified = True
-                    else:
-                        raise err
+                if not os.path.exists(path):
+                    timestamp_verified = True
+                    continue
+                    
+                measdirs = [d for d in os.listdir(path)
+                            if d.startswith(tsd)]
+                if not measdirs:
+                    timestamp_verified = True
+                else:
+                    # Add one second to timestamp until we find a unique one
+                    ts = time.localtime(time.mktime(ts) + 1)
+                    tsd = time.strftime('%H%M%S', ts)
+                    
+                if counter >= 3600:
+                    raise TimeoutError("Could not find unique timestamp after '1 hour' of attempts")
+                    
             if name is not None:
                 path = os.path.join(path, tsd+'_'+name)
             else:
