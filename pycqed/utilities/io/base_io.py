@@ -352,20 +352,20 @@ class DateTimeGenerator:
             path = os.path.join(path, time.strftime('%Y%m%d', ts))
         if timesubdir:
             tsd = time.strftime('%H%M%S', ts)
-            timestamp_verified = False
+            timestamp_unique = False
             counter = 0
 
             # Verify if timestamp is unique by checking if the folder exists
-            while not timestamp_verified and auto_increase:
+            while not timestamp_unique and auto_increase:
                 counter += 1
                 if not os.path.exists(path):
-                    timestamp_verified = True
+                    timestamp_unique = True
                     continue
                     
                 measdirs = [d for d in os.listdir(path)
                             if d.startswith(tsd)]
                 if not measdirs:
-                    timestamp_verified = True
+                    timestamp_unique = True
                 else:
                     # Add one second to timestamp until we find a unique one
                     ts = time.localtime(time.mktime(ts) + 1)
