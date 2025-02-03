@@ -1935,7 +1935,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                 Defaults to `50`.
             initial_stepsize:
                 Size of the initial step of the optimization algorithm in volts.
-                Defaults to `0.01`.
+                Defaults to [0.15, 10].
 
         Return:
             optimal IQ amplitude ratio `alpha` and phase correction `phi`.
