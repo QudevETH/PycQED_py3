@@ -1,8 +1,6 @@
-import copy
 import math
 import logging
 import numpy as np
-import matplotlib.pyplot as plt
 from abc import ABCMeta, abstractmethod
 
 from sklearn.neural_network import MLPRegressor as mlpr
@@ -11,15 +9,19 @@ from sklearn.cluster import KMeans as KMeans
 import fractions, math
 fractions.gcd = math.gcd  # fractions.gcd (for neupy) is removed in python 3.9
 
+log = logging.getLogger(__name__)
+
 # These libraries might not be available. Please check pypproject.toml
 try:
     from neupy.algorithms import GRNN as grnn
 except Exception:
-    logging.warning('Could not import neupy.')
+    log.warning('Could not import neupy. This is OK as long as you do not '
+                'use machine learning features that rely on neupy.')
 try:
     import tensorflow as tf
 except Exception:
-    logging.warning('Could not import tensorflow.')
+    log.warning('Could not import tensorflow. This is OK as long as you do '
+                'not use machine learning features that rely on tensorflow.')
 
 
 class Estimator(metaclass=ABCMeta):
@@ -122,7 +124,7 @@ class MLP_Regressor_scikit(Estimator):
                           activation=self.activation,
                           alpha=self.alpha,
                           max_iter=5000,**kw)
-        self.score = -np.infty
+        self.score = -np.inf
 
     def extract_hyper_params_from_dict(self):
         self._hidden_layers= self.hyper_parameter_dict.get('hidden_layers',[10])

@@ -7,6 +7,16 @@ import re
 import time
 from pathlib import Path
 import logging
+from collections import OrderedDict
+
+from pycqed.utilities.warnings import deprecated
+
+try:
+    import blosc2
+except ModuleNotFoundError:
+    _blosc2_missing = True
+else:
+    _blosc2_missing = False
 
 from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
 
@@ -15,9 +25,12 @@ logger = logging.getLogger(__name__)
 # file extensions used to dump and load files. Extensions are ordered beginning
 # with the filetype which should be favoured when opening a file with the same
 # filenames.
-file_extensions = {
-    'msgpack': '.msg', 'msgpack_comp': '.msgc', 'pickle': '.pickle',
-    'pickle_comp': '.picklec', 'hdf5': '.hdf5'}
+# The first extension in each list is used when dumping data in files of the
+# specific format.
+file_extensions = OrderedDict({
+    'msgpack': ['.msgpack', '.msg'], 'msgpack_comp': ['.msgpack', '.msgc'],
+    'pickle': ['.pickle'],'pickle_comp': ['.picklec'],
+    'hdf5': ['.hdf5']})
 
 
 class Dumper:
@@ -61,10 +74,22 @@ class Dumper:
         if not os.path.isdir(self.folder):
             os.makedirs(self.folder)
 
+
     @staticmethod
+    @deprecated(
+        "Compression of settings files is deprecated since 2024-08-21."
+    )
     def compress_file(file):
-        import blosc2
-        return blosc2.compress(file)
+        if _blosc2_missing:
+            logger.warning(
+                "blosc2 could not be imported so compression cannot "
+                "be used. Please install the compression optional "
+                "dependency group if you want to use compression. "
+                "Returning the uncompressed file."
+            )
+            return file
+        else:
+            return blosc2.compress(file)
 
 
 class Loader:
@@ -109,14 +134,23 @@ class Loader:
                                          **kwargs)
         else:
             self.folder = kwargs.get('folder', None)
-        self.filepath = a_tools.measurement_filename(self.folder,
-                                                     ext=self.extension[1:],
-                                                     **kwargs)
-        return self.filepath
+        for extension in self.extension:
+            try:
+                self.filepath = a_tools.measurement_filename(
+                    self.folder, ext=extension[1:],
+                    raise_errors=True, **kwargs)
+                return self.filepath
+            except FileNotFoundError:
+                continue
+        raise FileNotFoundError(
+            f"Could not find a file in the folder {self.folder} "
+            f"with an extension {self.extension}."
+        )
+
 
     @staticmethod
     def get_file_format(timestamp=None, folder=None, filepath=None,
-                        file_id=None):
+                        file_id=None, return_extension=False):
         """
         Returns the file format of a given timestamp.
         If several files with the same filename but different file extensions
@@ -153,20 +187,22 @@ class Loader:
             # https://stackoverflow.com/questions/2595119/glob-and-bracket-characters
 
             # Substitution [ -> [[] and ] -> []] done via regular expression:
-            dirname = re.sub('([\[\]])', '[\\1]', dirname)
+            dirname = re.sub(r'([\[\]])', '[\\1]', dirname)
 
             filepath = sorted(path.glob(dirname + ".*"))
 
             if len(filepath) > 1:
-                for format, extension in file_extensions.items():
+                for format, extensions in file_extensions.items():
                     for path in filepath:
                         file_name, file_extension = os.path.splitext(path)
-                        if extension == file_extension:
-                            logger.warning(
-                                f"More than one file found for timestamp "
-                                f"'{timestamp}'. File in format '{format}' will"
-                                f" be considered.")
-                            return format
+                        for extension in extensions:
+                            if extension == file_extension:
+                                # More than one file found for the given
+                                # timestamp. The file with the file format
+                                # first occurring in file_extension will be
+                                # considered.
+                                return format if not return_extension else (
+                                    extension)
                 raise KeyError(f"More than one file found for "
                                f"timestamp '{timestamp}' and none matches the "
                                f"standard file extensions '{file_extensions}'.")
@@ -176,9 +212,10 @@ class Loader:
                 filepath = filepath[0]
         file_name, file_extension = os.path.splitext(filepath)
 
-        for format, extension in file_extensions.items():
-            if file_extension == extension:
-                return format
+        for format, extensions in file_extensions.items():
+            for extension in extensions:
+                if file_extension == extension:
+                    return format if not return_extension else extension
 
         raise KeyError(f"File extension '{file_extension}' not in "
                        f"standard form '{file_extensions}'")
@@ -228,9 +265,20 @@ class Loader:
         pass
 
     @staticmethod
+    @deprecated(
+        "Compression of settings files is deprecated since 2024-08-21."
+    )
     def decompress_file(file):
-        import blosc2
-        return blosc2.decompress(file)
+        if _blosc2_missing:
+            logger.warning(
+                "blosc2 could not be imported so decompression cannot "
+                "be used. Please install the compression optional "
+                "dependency group if you want to use decompression. "
+                "Returning the compressed file."
+            )
+            return file
+        else:
+            return blosc2.decompress(file)
 
     def get_station(self, param_path=None):
         """

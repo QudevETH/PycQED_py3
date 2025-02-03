@@ -5,7 +5,6 @@ import random
 from pycqed.measurement.calibration.two_qubit_gates import MultiTaskingExperiment
 from pycqed.measurement.randomized_benchmarking import \
     randomized_benchmarking as rb
-from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.randomized_benchmarking.two_qubit_clifford_group as tqc
 import logging
 log = logging.getLogger(__name__)
@@ -187,7 +186,7 @@ class RandomizedBenchmarking(MultiTaskingExperiment,
                 to translate the Clifford elements into applicable pulses.
                 Possible choices are 'HZ' or 'XY'.
                 See HZ_gate_decomposition and XY_gate_decomposition in
-                measurement\randomized_benchmarking\clifford_decompositions.py
+                measurement/randomized_benchmarking/clifford_decompositions.py
 
         Keyword args:
             passed to parent class; see docstring there
@@ -816,10 +815,10 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                     if cphase == 'randomized' else np.repeat([cphase], length)
                 cphases = cphases_modifier(cphases)
                 gates = [
-                    s_gates[1] + " qb_1",
-                    s_gates[1] + "s qb_2",
-                    s_gates[2] + " qb_1",
-                    s_gates[2] + "s qb_2",
+                    f"{s_gates[1]} qb_1",
+                    f"s{s_gates[1]} qb_2",
+                    f"{s_gates[2]} qb_1",
+                    f"s{s_gates[2]} qb_2",
                 ]
                 last_1qb_gates = [s_gates[2], s_gates[2]]
                 if cphases[0] != 'nogate':
@@ -835,13 +834,13 @@ class TwoQubitXEB(CrossEntropyBenchmarking):
                             ng = random.choice(choices)
                             new_1qb_gates.append(ng)
 
-                        gates.append(new_1qb_gates[0] + " qb_1")
+                        gates.append(f"{new_1qb_gates[0]} qb_1")
                         # Virtual Z should not be flagged as simultaneous, such
                         # that e.g. for ['X90 qb_1', 'Z45 qb_1', 'CZ qb_1 qb_2']
                         # the CZ is correctly referenced to the end of the
                         # last gate, which is the longer X90
                         simultaneous = '' if 'Z' in new_1qb_gates[1] else 's'
-                        gates.append(new_1qb_gates[1] + simultaneous + " qb_2")
+                        gates.append(f"{simultaneous}{new_1qb_gates[1]} qb_2")
                         last_1qb_gates = new_1qb_gates
 
                         if cphases[i] != 'nogate':

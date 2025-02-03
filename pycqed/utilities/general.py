@@ -1,7 +1,7 @@
+from copy import deepcopy
 import os
 import sys
 import numpy as np
-import h5py
 import json
 import time
 import datetime
@@ -15,20 +15,90 @@ from os.path import dirname, exists
 from os import makedirs
 import logging
 import subprocess
-from functools import reduce  # forward compatibility for Python 3
+from functools import reduce, wraps
 import operator
 import string
-import functools
 from zipfile import ZipFile
 
-
-from copy import deepcopy
-log = logging.getLogger(__name__)
 try:
     import msvcrt  # used on windows to catch keyboard input
 except:
     pass
 
+log = logging.getLogger(__name__)
+
+def assert_not_none(*param_names):
+    """
+    Decorator that ensures that all (keyword) arguments of the decorated function
+     `f` provided in param_names are not None.
+
+    Args:
+        *param_names (str): One or several strings indicating the name of the
+            (keyword) arguments which should not have a value of None
+
+    Returns:
+         decorated function.
+
+    Examples:
+        >>>  class Test:
+        >>>    @assert_not_none('arg2', 'kwarg1', "other_kwarg")
+        >>>    def test(self, arg1, arg2, kwarg1=0, kwarg2=None, **kwargs):
+        >>>        pass
+        >>> t = Test()
+        >>> t.test('a', "b") # does not raise an error
+        >>> t.test('a', None) # raises error because arg2 is None
+        >>> t.test('a', 'b', None,) # raises error because kwarg1 is passed
+        >>>                         # as positional argument with a value of None
+        >>> t.test('a', 'b', "c", something=None) # does not raise an error
+        >>> t.test('a', 'b', "c", other_kwarg=None) # raises an error because
+        >>>                                         # other_kwarg is None
+
+    Raises:
+        ValueError if a (keyword) argument mentioned in param_names is None.
+    """
+    import inspect
+
+    def check(f):
+        @wraps(f)
+        def wrapped_func(*args, **kwds):
+            signature_args_and_kwargs = inspect.getfullargspec(f).args
+            default_kwarg_values = inspect.getfullargspec(f).defaults
+            error_msg = (
+                " {name} is None, but {name} should not be None when "
+                "passed to " + f.__qualname__
+            )
+
+            # check if a positional argument is None or a signature keyword
+            # argument is None:
+            # take argument values and default values of keyword arguments
+            # which are not passed as positional arguments (since keyword
+            # arguments can also be provided as positional arguments)
+            x = len(signature_args_and_kwargs) - len(
+                args
+            )  # index of first needed default keyword arg value
+            for name, value in zip(
+                signature_args_and_kwargs, args + default_kwarg_values[x:]
+            ):
+                # print(name, value)
+                if name in param_names and value is None:
+                    raise ValueError(error_msg.format(f=f, name=name))
+
+            # check if a passed keyword argument is None
+            for name, value in kwds.items():
+                if name in param_names and value is None:
+                    raise ValueError(error_msg.format(f=f, name=name))
+
+            return f(*args, **kwds)
+
+        wrapped_func.__name__ = f.__name__
+        return wrapped_func
+
+    return check
+
+
+# FIXME: This global is unnecessary. Search below for:
+#        This can be simplified and made more robust.
+#        e.g., base >= 2, remove global (digs), zero handling, etc...
 digs = string.digits + string.ascii_letters
 
 
@@ -45,10 +115,18 @@ def get_git_info():
     try:
         # Refers to the global qc_config
         PycQEDdir = pq.__path__[0]
-        githash = subprocess.check_output(['git', 'rev-parse',
-                                           '--short=10', 'HEAD'], cwd=PycQEDdir)
-        diff = subprocess.run(['git', '-C', PycQEDdir, "diff"],
-                              stdout=subprocess.PIPE).stdout.decode('utf-8')
+        kw = {}
+        if os.name == 'nt':
+            # Prevent cmd.exe window from popping up
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            kw['startupinfo'] = si
+
+        githash = subprocess.check_output(
+            ['git', 'rev-parse', '--short=10', 'HEAD'], cwd=PycQEDdir, **kw)
+        diff = subprocess.run(
+            ['git', '-C', PycQEDdir, "diff"],
+            stdout=subprocess.PIPE, **kw).stdout.decode('utf-8')
     except Exception:
         pass
     return githash, diff
@@ -85,6 +163,8 @@ def int_to_bin(x, w, lsb_last=True):
         return bin_str[::-1]
 
 
+# FIXME: This can be simplified and made more robust.
+#        e.g., base >= 2, remove global (digs), zero handling, etc...
 def int2base(x: int, base: int, fixed_length: int=None):
     """
     Convert an integer to string representation in a certain base.
@@ -337,7 +417,7 @@ def load_settings_onto_instrument_v2(instrument, load_from_instr: str=None,
                                             older_than=older_than)
                 filepath = a_tools.measurement_filename(folder)
 
-            f = h5py.File(filepath, 'r')
+            f = h5d.safe_file_open(filepath, mode='r')
             snapshot = {}
             h5d.read_dict_from_hdf5(snapshot, h5_group=f['Snapshot'])
 
@@ -376,13 +456,11 @@ def load_settings_onto_instrument_v2(instrument, load_from_instr: str=None,
     return True
 
 
-
 def send_email(subject='PycQED needs your attention!',
                body='', email=None):
     # Import smtplib for the actual sending function
     import smtplib
     # Here are the email package modules we'll need
-    from email.mime.image import MIMEImage
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
 
@@ -894,15 +972,6 @@ def get_pycqed_appdata_dir():
     return path
 
 
-def default_awg_dir():
-    """
-    Returns the path of an awg subfolder in the pycqed application data dir.
-    """
-    path = os.path.join(get_pycqed_appdata_dir(), 'awg')
-    os.makedirs(path, exist_ok=True)
-    return path
-
-
 def raise_warning_image(destination_path, warning_image_path=None):
     """
     Copy the image specified by warning_image_path to the folder specified by
@@ -1270,64 +1339,3 @@ class TempLogLevel:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.logger.setLevel(self.log_level)
-
-
-def assert_not_none(*param_names):
-    """
-    Decorator that ensures that all (keyword) arguments of the decorated function
-     `f` provided in param_names are not None.
-    Args:
-        *param_names (str): One or several strings indicating the name of the
-            (keyword) arguments which should not have a value of None
-    Returns:
-         decorated function.
-    Examples:
-        >>>  class Test:
-        >>>    @assert_not_none('arg2', 'kwarg1', "other_kwarg")
-        >>>    def test(self, arg1, arg2, kwarg1=0, kwarg2=None, **kwargs):
-        >>>        pass
-        >>> t = Test()
-        >>> t.test('a', "b") # does not raise an error
-        >>> t.test('a', None) # raises error because arg2 is None
-        >>> t.test('a', 'b', None,) # raises error because kwarg1 is passed
-        >>>                         # as positional argument with a value of None
-        >>> t.test('a', 'b', "c", something=None) # does not raise an error
-        >>> t.test('a', 'b', "c", other_kwarg=None) # raises an error because
-        >>>                                         # other_kwarg is None
-    Raises:
-        ValueError if a (keyword) argument mentioned in param_names is None.
-    """
-    import inspect
-
-    def check(f):
-        @functools.wraps(f)
-        def wrapped_func(*args, **kwds):
-            signature_args_and_kwargs = inspect.getfullargspec(f).args
-            default_kwarg_values = inspect.getfullargspec(f).defaults
-            error_msg = ' {name} is None, but {name} should not be None when ' \
-                        'passed to ' + f.__qualname__
-
-            # check if a positional argument is None or a signature keyword
-            # argument is None:
-            # take argument values and default values of keyword arguments
-            # which are not passed as positional arguments (since keyword
-            # arguments can also be provided as positional arguments)
-            x = len(signature_args_and_kwargs) - len(
-                args)  # index of first needed default keyword arg value
-            for (name, value) in zip(signature_args_and_kwargs,
-                                     args + default_kwarg_values[x:]):
-                # print(name, value)
-                if name in param_names and value is None:
-                    raise ValueError(error_msg.format(f=f, name=name))
-
-            # check if a passed keyword argument is None
-            for (name, value) in kwds.items():
-                if name in param_names and value is None:
-                    raise ValueError(error_msg.format(f=f, name=name))
-
-            return f(*args, **kwds)
-
-        wrapped_func.__name__ = f.__name__
-        return wrapped_func
-
-    return check

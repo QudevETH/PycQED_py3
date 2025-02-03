@@ -590,8 +590,6 @@ def rb_analysis(data_dict, keys_in, sweep_type=None, **params):
     data_to_proc_dict = hlp_mod.get_data_to_process(data_dict, keys_in)
     keys_in = list(data_to_proc_dict)
 
-    prep_fit_dicts = hlp_mod.pop_param('prep_fit_dicts', data_dict,
-                                       default_value=True, node_params=params)
     do_fitting = hlp_mod.pop_param('do_fitting', data_dict,
                                    default_value=True, node_params=params)
     prepare_plotting = hlp_mod.pop_param('prepare_plotting', data_dict,
@@ -610,16 +608,15 @@ def rb_analysis(data_dict, keys_in, sweep_type=None, **params):
                                              mospm[mobjn])[0]
 
     # prepare fitting
-    if prep_fit_dicts:
+    if do_fitting:
         prepare_rb_fitting(data_dict, data_to_proc_dict, cliffords, nr_seeds,
                         **params)
 
-        if do_fitting:
-            getattr(fit_mod, 'run_fitting')(data_dict, keys_in=list(
-                    data_dict['fit_dicts']),**params)
-            # extract EPC, leakage, and seepage from fits and save to
-            # data_dict[meas_obj_name]
-            analyze_rb_fit_results(data_dict, keys_in, **params)
+        getattr(fit_mod, 'run_fitting')(data_dict, keys_in=list(
+                data_dict['fit_dicts']),**params)
+        # extract EPC, leakage, and seepage from fits and save to
+        # data_dict[meas_obj_name]
+        analyze_rb_fit_results(data_dict, keys_in, **params)
 
     # prepare plots
     if prepare_plotting:
@@ -638,7 +635,7 @@ def prepare_rb_fitting(data_dict, data_to_proc_dict, cliffords, nr_seeds,
     do_simple_fit = hlp_mod.get_param(
         'do_simple_fit', data_dict, default_value=True, **params)
     d = hlp_mod.get_param('d', data_dict, raise_error=True, **params)
-    print('d: ', d)
+    log.info(f'd: {d}')
     guess_pars = {'A': {'value': 1},
                   'p': {'value': 0.99},
                   'B': {'value': 0}}
@@ -784,7 +781,11 @@ def analyze_rb_fit_results(data_dict, keys_in, **params):
 
             # Google-style leakage and seepage:
             # https://journals.aps.org/prl/pdf/10.1103/PhysRevLett.116.020501
-            fit_res = fit_dicts['rbleak_fit' + keyi]['fit_res']
+            fit_res = fit_dicts['rbleak_fit' + keyi].get('fit_res')
+            if not fit_res:
+                log.warning(f"RB leakage fitting ({'rbleak_fit' + keyi}) "
+                            f"failed. Skipping storing results.")
+                continue
             hlp_mod.add_param(f'{keys_out_container}.Google-style leakage value',
                               fit_res.best_values['pu'],
                               data_dict,
@@ -919,6 +920,10 @@ def prepare_rb_plots(data_dict, keys_in, sweep_type, **params):
             fit_dicts = data_dict['fit_dicts']
             textstr = ''
             if 'pf' in keyi:
+                if 'fit_res' not in fit_dicts['rbleak_fit' + keyi]:
+                    log.warning(f"RB leakage fitting ({'rbleak_fit' + keyi}) "
+                                f"failed. Skipping plotting.")
+                    continue
                 # plot Google-style leakage fit + textbox
                 plot_dicts.update(plot_mod.prepare_fit_plot_dicts(
                     data_dict=data_dict,
@@ -945,7 +950,11 @@ def prepare_rb_plots(data_dict, keys_in, sweep_type, **params):
             plot_dicts.update(pd)
 
             # plot coherence-limit
-            fit_res = fit_dicts['rb_fit' + keyi]['fit_res']
+            fit_res = fit_dicts['rb_fit' + keyi].get('fit_res')
+            if not fit_res:
+                log.warning(f"RB fitting ({'rbleak_fit' + keyi}) "
+                            f"failed. Skipping plotting.")
+                continue
             if hlp_mod.get_param('plot_T1_lim', data_dict,
                     default_value=False, **params) and 'pf' not in keyi:
                 keys_out_container = hlp_mod.get_param('keys_out_container',
@@ -1026,14 +1035,14 @@ def prepare_irb_plot(data_dict, plot_dict_names_irb_plot=None,
     for label in ['rb', 'irb']:
         epc_value = hlp_mod.get_param(f'{mobjn}.{label}.EPC value',
                                       data_dict, **params)
-        print(epc_value)
+        log.info(epc_value)
         leg_label = ''
         if epc_value is not None:
             epc_stderr = hlp_mod.get_param(f'{mobjn}.{label}.EPC stderr',
                                            data_dict, **params)
             leg_label = f'{label.upper()}:\t' \
                         f'{100*epc_value:.2f}%$\\pm${100*epc_stderr:.2f}% EPC'
-        print(leg_label)
+        log.info(leg_label)
         plot_dicts_updated[f'legend_data_IRB_{label}'] = {
             'fig_id': figure_name,
             'plotfn': 'plot_line',
@@ -1117,7 +1126,7 @@ def get_rb_leakage_ibm_textstr(data_dict, fit_res=None, **params):
         f'{keys_out_container}.depolarization parameter stderr', data_dict)
     textstr += f'\np = {100*p_value:.4f}%'
     if p_stderr is not None:
-        textstr += f'$\pm$ {100*p_stderr:.3f}%'
+        textstr += rf'$\pm$ {100*p_stderr:.3f}%'
 
     L_value = hlp_mod.get_param(
         f'{keys_out_container}.IBM-style leakage value', data_dict,
@@ -1126,7 +1135,7 @@ def get_rb_leakage_ibm_textstr(data_dict, fit_res=None, **params):
     L_stderr = hlp_mod.get_param(
         f'{keys_out_container}.IBM-style leakage stderr', data_dict)
     if L_stderr is not None:
-        textstr += f'$\pm$ {100*L_stderr:.3f}%'
+        textstr += rf'$\pm$ {100*L_stderr:.3f}%'
 
     S_value = hlp_mod.get_param(
         f'{keys_out_container}.IBM-style seepage value', data_dict,
@@ -1135,37 +1144,37 @@ def get_rb_leakage_ibm_textstr(data_dict, fit_res=None, **params):
     S_stderr = hlp_mod.get_param(
         f'{keys_out_container}.IBM-style seepage stderr', data_dict)
     if S_stderr is not None:
-        textstr += f'$\pm$ {100*S_stderr:.3f}%'
+        textstr += rf'$\pm$ {100*S_stderr:.3f}%'
     return textstr
 
 
 def get_rb_leakage_google_textstr(fit_res, **params):
     textstr = 'Google style:'
     textstr += ('\n$p_{\\uparrow}$' +
-                ' = {:.4f}% $\pm$ {:.3f}%'.format(
+                r' = {:.4f}% $\pm$ {:.3f}%'.format(
                     fit_res.params['pu'].value*100,
                     fit_res.params['pu'].stderr*100) +
                 '\n$p_{\\downarrow}$' +
-                ' = {:.4f}% $\pm$ {:.3f}%'.format(
+                r' = {:.4f}% $\pm$ {:.3f}%'.format(
                     fit_res.params['pd'].value*100,
                     fit_res.params['pd'].stderr*100) +
-                '\n$p_0$' + ' = {:.2f}% $\pm$ {:.2f}%\n'.format(
+                '\n$p_0$' + ' = {:.2f}% $\\pm$ {:.2f}%\n'.format(
                 fit_res.params['p0'].value,
                 fit_res.params['p0'].stderr))
     return textstr
 
 
 def get_rb_regular_textstr(fit_res, epc_T1=None, **params):
-    textstr = ('$r_{\mathrm{Cl}}$' + ' = {:.4f}% $\pm$ {:.3f}%'.format(
+    textstr = (r'$r_{\mathrm{Cl}}$' + r' = {:.4f}% $\pm$ {:.3f}%'.format(
         (1-fit_res.params['fidelity_per_Clifford'].value)*100,
         fit_res.params['fidelity_per_Clifford'].stderr*100))
     if epc_T1 is not None:
-        textstr += ('\n$r_{\mathrm{coh-lim}}$  = ' +
+        textstr += ('\n$r_{\\mathrm{coh-lim}}$  = ' +
                     '{:.3f}%'.format(epc_T1*100))
-    textstr += ('\n' + 'p = {:.4f}% $\pm$ {:.3f}%'.format(
+    textstr += ('\n' + r'p = {:.4f}% $\pm$ {:.3f}%'.format(
         fit_res.params['p'].value*100, fit_res.params['p'].stderr*100))
     textstr += ('\n' + r'$\langle \sigma_z \rangle _{m=0}$ = ' +
-                '{:.2f} $\pm$ {:.2f}'.format(
+                r'{:.2f} $\pm$ {:.2f}'.format(
                     fit_res.params['Amplitude'].value +
                     fit_res.params['offset'].value,
                     np.sqrt(fit_res.params['offset'].stderr**2 +
@@ -1175,19 +1184,19 @@ def get_rb_regular_textstr(fit_res, epc_T1=None, **params):
 
 def get_cz_irb_textstr(fit_res,  epc_T1=None, **params):
     suffix = params.get('suffix', 'RB')
-    textstr = (f'$r_{{\mathrm{{Cl}}, {{{suffix}}}}}$' +
-               ' = {:.4f}% $\pm$ {:.3f}%'.format(
+    textstr = (rf'$r_{{\mathrm{{Cl}}, {{{suffix}}}}}$' +
+               r' = {:.4f}% $\pm$ {:.3f}%'.format(
         (1-fit_res.params['fidelity_per_Clifford'].value)*100,
         fit_res.params['fidelity_per_Clifford'].stderr*100))
     if epc_T1 is not None:
-        textstr += ('\n$r_{\mathrm{coh-lim}}$  = ' +
+        textstr += ('\n$r_{\\mathrm{coh-lim}}$  = ' +
                     '{:.3f}%'.format(epc_T1*100))
     textstr += (f'\n$p_{{\\uparrow, {suffix}}}$' +
-                ' = {:.4f}% $\pm$ {:.3f}%'.format(
+                r' = {:.4f}% $\pm$ {:.3f}%'.format(
                     fit_res.params['pu'].value*100,
                     fit_res.params['pu'].stderr*100) +
                 f'\n$p_{{\\downarrow, {suffix}}}$' +
-                ' = {:.4f}% $\pm$ {:.3f}%'.format(
+                r' = {:.4f}% $\pm$ {:.3f}%'.format(
                     fit_res.params['pd'].value*100,
                     fit_res.params['pd'].stderr*100))
     return textstr

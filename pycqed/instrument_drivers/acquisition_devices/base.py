@@ -1,12 +1,12 @@
-import numpy as np
 from copy import deepcopy
-from qcodes.utils import validators
-from qcodes.instrument.parameter import ManualParameter
 import logging
+from typing import Dict, List, Optional, Union
+import numpy as np
+
 log = logging.getLogger(__name__)
 
 
-class AcquisitionDevice():
+class AcquisitionDevice:
     """Base class for a standardized acquisition device driver interface.
 
     This class is not meant to be instantiated, but is only meant to be used
@@ -14,7 +14,7 @@ class AcquisitionDevice():
     Child classes should inherit via multi-inheritance from the underlying
     qcodes driver as first parent and from this class as subsequent parent.
     The init of the child class has to explicitly call the init of this base
-    class after calling the super init since the qcodes intrument (first
+    class after calling the super init since the qcodes instrument (first
     parent) will not forward the super call. In the list of attributes,
     (*) indicates constants that are meant to be overwritten by child
     classes if needed.
@@ -25,6 +25,10 @@ class AcquisitionDevice():
             acquisition unit (*)
         n_acq_inp_channels (int): number of input channels (quadratures)
             per acquisition unit (*)
+        acq_default_fixed_lo_freq (dict[str, float], list[float], str, or float, optional):
+            Restrictions on the acquisition LO frequency. Optional, may be None
+            (default) or a value understood by
+            MeasurementObject.get_closest_lo_freq().
         acq_length_granularity (int): indicates that the number of samples
             in an acquired signal must be a multiple of this number (*)
         acq_sampling_rate (float): sampling rate of the acquisition units in
@@ -40,8 +44,9 @@ class AcquisitionDevice():
             of acquisition_initialize, and the corresponding value is a list
             of str, which are supported as data_type argument of
             acquisition_initialize if that mode is used (*)
-        lo_freqs (list of float/None): LO frequencies of the internal or
-            external LOs of all acquisition units, see set_lo_freq
+        lo_freqs (dict of float/None): LO frequencies of the internal or
+            external LOs of all acquisition units, see set_lo_freq (keys are
+            indices of the acquisition units)
         timer: Timer object (see pycqed.utilities.timer.Timer). This is
             currently set by the detector function, in order to recover timer
             data from the acquisition device through the detector function.
@@ -50,6 +55,9 @@ class AcquisitionDevice():
     n_acq_units = 1
     n_acq_int_channels = 1
     n_acq_inp_channels = 2  # I&Q by default, can be overridden by children
+    acq_default_fixed_lo_freq: Optional[
+        Union[Dict[str, float], List[float], str, float]
+    ] = None
     acq_length_granularity = 1
     acq_sampling_rate = None
     acq_weights_n_samples = None
@@ -74,7 +82,7 @@ class AcquisitionDevice():
         self._acq_data_type = None
         self._acq_classifier_params = {}
         self._reset_n_acquired()
-        self.lo_freqs = [None] * self.n_acq_units
+        self.lo_freqs = {i: None for i in range(self.n_acq_units)}
         self._acq_units_used = []
         self.timer = None
         self.extra_data = []
@@ -97,6 +105,10 @@ class AcquisitionDevice():
             lo_freq (float): the LO frequency
         """
         self.lo_freqs[acq_unit] = lo_freq
+
+    def _acq_unit_exists(self, acq_unit):
+        """Returns whether the acquisition unit with index acq_unit exists"""
+        return acq_unit in range(self.n_acq_units)
 
     def acquisition_initialize(self, channels, n_results, averages, loop_cnt,
                                mode, acquisition_length, data_type=None,
@@ -134,7 +146,7 @@ class AcquisitionDevice():
         self._acq_length = acquisition_length
         self._acq_channels = channels
         for ch in channels:
-            if ch[0] not in range(self.n_acq_units):
+            if not self._acq_unit_exists(ch[0]):
                 raise ValueError(f'{self.name}: Acquisition unit {ch[0]} '
                                  f'does not exist.')
             if mode == 'int_avg' and ch[1] not in range(
@@ -562,6 +574,12 @@ class AcquisitionDevice():
         tbase = np.arange(
             0, acq_length,
             1 / self.acq_sampling_rate)
+        # With polychromatic readout, mod_freq may be a list
+        # FIXME: this is just a quick hack so SSB is not completely broken
+        # FIXME: this should probably properly configure an extra integrator
+        #        (or integrator pair) per frequency; left for future work
+        if not np.isscalar(mod_freq):
+            mod_freq = mod_freq[0]
         cosI = np.cos(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         sinI = np.sin(2 * np.pi * mod_freq * tbase + acq_IQ_angle)
         if weights_type == 'SSB':

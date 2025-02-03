@@ -115,7 +115,7 @@ class Sequence:
                                 and not self.is_resolved):
             for seg in self.segments.values():
                 seg.resolve_segment()
-                seg.gen_elements_on_awg()
+                seg.gen_elements_on_awg(return_sorted=True)
 
         if trigger_groups is None:
             trigger_groups = set()
@@ -150,13 +150,7 @@ class Sequence:
                 # Take element metadata from the resolved segments.
                 element_metadata = seg.element_metadata
                 elnames = seg.elements_on_awg.get(group, [])
-                # Determine when each element starts in the current group
-                el_start_times = {
-                    elname: seg.element_start_length(elname, group)[0]
-                    for elname in elnames}
-                # Loop through elements in the order of their start time
-                for i in np.argsort(list(el_start_times.values())):
-                    elname = elnames[i]
+                for elname in elnames:
                     # uelname = element name unique within the AWG
                     # If elements are shared between trigger groups of an AWG,
                     # this ensures that the following logic correctly orders
@@ -173,7 +167,8 @@ class Sequence:
                             if awg_sequences:
                                 h = awg_sequences[awg][uelname][cw][chid]
                             else:
-                                h = seg.calculate_hash(elname, cw, ch)
+                                h = seg.calculate_hash(elname, cw, ch,
+                                                       trigger_group=group)
                             sequences[awg][uelname][cw][chid] = h
                             if get_channel_hashes:
                                 if ch not in channel_hashes:
@@ -247,7 +242,7 @@ class Sequence:
             seq_groups.append(set())
             for seg in seq.segments.values():
                 seg.resolve_segment()
-                seg.gen_elements_on_awg()
+                seg.gen_elements_on_awg(return_sorted=False)
             seq_groups[i] |= set(
                 [group for group in seg.elements_on_awg
                  if seq.pulsar.get_awg_from_trigger_group(group) in awgs])
@@ -660,9 +655,39 @@ class Sequence:
         assert len(np.unique([s.n_segments() for s in sequences])) == 1, \
             "To allow compression, all sequences must have the same number " \
             "of segments"
-        from pycqed.utilities.math import factors
         n_soft_sp = len(sequences)
         n_seg = sequences[0].n_segments()
+        seg_lim_eff, factor = Sequence.compute_compression_seg_lim(
+            n_soft_sp, n_seg, segment_limit)
+        compressed_2D_sweep = Sequence.merge(sequences, seg_lim_eff,
+                                              merge_repeat_patterns)
+        if mc_points is None:
+            hard_sp_ind = np.arange(compressed_2D_sweep[0].n_acq_elements())
+            soft_sp_ind = np.arange(len(compressed_2D_sweep))
+        else:
+            hard_sp_ind = np.arange(len(mc_points)*len(sequences) //
+                                    len(compressed_2D_sweep))
+            soft_sp_ind = np.arange(len(compressed_2D_sweep))
+
+        return compressed_2D_sweep, hard_sp_ind, soft_sp_ind, factor
+
+    @staticmethod
+    def compute_compression_seg_lim(n_soft_sp, n_seg, segment_limit=None):
+        """
+        Computes the maximum compression possible for a list of sequences
+
+        See compress_2D_sweep for details.
+        Args:
+            n_soft_sp: original number of sequences (soft sweep points)
+            n_seg: number of segments in one Sequence
+            segment_limit: maximum allowed number of segments per Sequence
+
+        Returns:
+            seg_lim_eff: number of segments in one compressed Sequence
+            factor: compression factor (size of a compressed Sequence / size of
+                an uncompressed Sequence, which is >= 1)
+        """
+        from pycqed.utilities.math import factors
         if segment_limit is None:
             segment_limit = np.inf
 
@@ -687,17 +712,7 @@ class Sequence:
                       f'{np.floor(segment_limit / n_seg)} (full compression)')
             break
         seg_lim_eff = factor * n_seg
-        compressed_2D_sweep = Sequence.merge(sequences, seg_lim_eff,
-                                              merge_repeat_patterns)
-        if mc_points is None:
-            hard_sp_ind = np.arange(compressed_2D_sweep[0].n_acq_elements())
-            soft_sp_ind = np.arange(len(compressed_2D_sweep))
-        else:
-            hard_sp_ind = np.arange(len(mc_points)*len(sequences) //
-                                    len(compressed_2D_sweep))
-            soft_sp_ind = np.arange(len(compressed_2D_sweep))
-
-        return compressed_2D_sweep, hard_sp_ind, soft_sp_ind, factor
+        return seg_lim_eff, factor
 
     def rename(self, new_name):
         self.name = new_name

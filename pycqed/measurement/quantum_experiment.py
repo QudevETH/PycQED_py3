@@ -1,8 +1,5 @@
-import traceback
 
-import time
 
-import h5py
 import numpy as np
 from pycqed.analysis import analysis_toolbox as a_tools
 
@@ -14,10 +11,10 @@ from pycqed.measurement import sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
-import pycqed.utilities.general as general
 from copy import copy, deepcopy
 from collections import OrderedDict as odict
 from pycqed.measurement.sweep_points import SweepPoints
+from pycqed.utilities.io import hdf5 as h5d
 import itertools
 import logging
 from pycqed.gui.waveform_viewer import WaveformViewer
@@ -37,7 +34,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
     """
     TIMED_METHODS = ["run_analysis"]
-    _metadata_params = {'cal_points', 'preparation_params', 'sweep_points',
+    _metadata_params = {'cal_points', 'sweep_points',
                         'channel_map', 'meas_objs'}
     # The following string can be overwritten by child classes to provide a
     # default value for the kwarg experiment_name. None means that the name
@@ -48,6 +45,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                  meas_objs=None, classified=False, MC=None,
                  label=None, exp_metadata=None, upload=True, measure=True,
                  analyze=True, temporary_values=(), drive="timedomain",
+                 switch='default',
                  sequences=(), sequence_function=None, sequence_kwargs=None,
                  plot_sequence=False, filter_segments_mask=None, df_kwargs=None, df_name=None,
                  timer_kwargs=None, mc_points=None, sweep_functions=(awg_swf.SegmentHardSweep,
@@ -179,6 +177,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.temporary_values = list(temporary_values)
         self.analyze = analyze
         self.drive = drive
+        self.switch = switch
         self.callback = callback
         self.callback_condition = callback_condition
         self.plot_sequence = plot_sequence
@@ -219,20 +218,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             self.df_name = 'int_avg{}_det'.format('_classif' if self.classified else '')
         self.df = None
 
-        # determine data type
-        if "log" in self.df_name or not \
-                self.df_kwargs.get("det_get_values_kws",
-                                   {}).get('averaged', True):
-            data_type = "singleshot"
-        else:
-            data_type = "averaged"
-
         self.exp_metadata.update(kw)
-        self.exp_metadata.update({'classified_ro': self.classified,
-                                  'cz_pulse_name': self.cz_pulse_name,
-                                  'data_type': data_type,
-                                  'right_handed_basis': True,
-                                  })
         self.waveform_viewer = None
 
     def create_meas_objs_list(self, meas_objs=None, **kwargs):
@@ -285,11 +271,29 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
         exception = None
         with temporary_value(*self.temporary_values):
+            # update the nr_averages based on the settings in the user measure
+            # objects
+            self.df_kwargs.update({'nr_averages': max(
+                qb.acq_averages() for qb in self.meas_objs)})
+            
+            # determine data type
+            if "log" in self.df_name or not \
+                    self.df_kwargs.get("det_get_values_kws",
+                                       {}).get('averaged', True):
+                data_type = "singleshot"
+            else:
+                data_type = "averaged"
+            self.exp_metadata.update({'classified_ro': self.classified,
+                                      'cz_pulse_name': self.cz_pulse_name,
+                                      'data_type': data_type,
+                                      'reset_params': self.get_reset_params(),
+                                      })
+
             # Perpare all involved qubits. If not available, prepare
             # all measure objects.
             mos = self.qubits if self.qubits else self.meas_objs
             for m in mos:
-                m.prepare(drive=self.drive)
+                m.prepare(drive=self.drive, switch=self.switch)
 
             # create/retrieve sequence to run
             self._prepare_sequences(self.sequences, self.sequence_function,
@@ -582,7 +586,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 parameter_name=sweep_param_name, unit=unit)
         elif isinstance(self.sweep_functions[0], swf.UploadingSweepFunction):
             sweep_func_1st_dim = self.sweep_functions[0]
-            sweep_func_1st_dim.sequence = self.sequences[0]
+            # sequences may not exist yet, e.g. when using a BlockSoftHardSweep
+            if self.sequences:
+                sweep_func_1st_dim.sequence = self.sequences[0]
         else:
             # Check whether it is a nested sweep function whose first
             # sweep function is a SegmentHardSweep class as placeholder.
@@ -821,7 +827,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             folder = a_tools.get_folder(self.timestamp,
                                         folder=self.MC.datadir())
             filepath = a_tools.measurement_filename(folder)
-        with h5py.File(filepath, mode="r+") as data_file:
+        with h5d.safe_file_open(filepath, mode='r+') as data_file:
             timer_group = data_file.get(Timer.HDF_GRP_NAME)
             if timer_group is None:
                 timer_group = data_file.create_group(Timer.HDF_GRP_NAME)

@@ -1,7 +1,5 @@
-import time
 import logging
 import numpy as np
-from copy import deepcopy
 from functools import partial
 import json
 
@@ -45,8 +43,6 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     _hdawg_sequence_string_template = (
         "{wave_definitions}\n"
-        "\n"
-        "{codeword_table_defs}\n"
         "\n"
         "while (1) {{\n"
         "  {playback_string}\n"
@@ -143,12 +139,16 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                              )
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
-                             vals=vals.Enum("Dig1", "DIO", "ZSync"),
+                             vals=vals.MultiType(
+                                 vals.Dict(),
+                                 vals.Enum("Dig1", "DIO", "ZSync")),
                              parameter_class=ManualParameter,
                              docstring="Defines for which trigger source the "
                                        "AWG should wait, before playing the "
                                        "next waveform. Allowed values are: "
-                                       "'Dig1', 'DIO', 'ZSync'.")
+                                       "'Dig1', 'DIO', 'ZSync'. "
+                                       "Can be a dict with trigger "
+                                       "group names as keys.")
         pulsar.add_parameter(f"{name}_prepend_zeros",
                              initial_value=None,
                              vals=vals.MultiType(vals.Enum(None), vals.Ints(),
@@ -212,6 +212,9 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 for ch_name in group:
                     pulsar.channel_groups.update({ch_name: group})
                 group = []
+        # The following is required for HDAWGGeneratorModule.trigger_group
+        for awg_module in self.awg_modules:
+            awg_module.update_i_channel_name()
 
     def create_channel_parameters(self, id:str, ch_name:str, ch_type:str):
         super().create_channel_parameters(id, ch_name, ch_type)
@@ -470,7 +473,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 # calculated from awg_nr can ensure that a unique osc is
                 # used for every channel pair for which we configure
                 # internal modulation.
-                osc_nr = awg_nr * 4
+                osc_nr = awg_nr
                 # configure the oscillator frequency
                 self.awg.set(f'oscs_{osc_nr}_freq', freq)
                 # set up the two sines of the channel pair with the same
@@ -677,6 +680,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     https://docs.zhinst.com/hdawg_user_manual/overview.html
     for more details."""
 
+    COMMAND_TABLE_MAX_SIZE = 1024
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -728,7 +733,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     ):
         awg_nr = self._awg_nr
 
-        if not mod_config:
+        if not mod_config or not mod_config.get('internal_mod', True):
             # Modulation configuration is empty
             self.awg.set(f"awgs_{awg_nr}_outputs_0_modulation_mode", 0)
             self.awg.set(f"awgs_{awg_nr}_outputs_1_modulation_mode", 0)
@@ -757,7 +762,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
         # Choose oscillators, set phases and modulation frequencies.
         mod_frequency = mod_config.get("mod_frequency", 0.0)
-        osc_nr = mod_config.get("osc_nr", awg_nr * 4)
+        osc_nr = mod_config.get("osc_nr", awg_nr)
         self.awg.set(f'oscs_{osc_nr}_freq', mod_frequency)
         self.awg.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
         self.awg.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)
@@ -880,7 +885,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         else:
             prepend_zeros = 0
         self._playback_strings += self._awg_interface.zi_playback_string(
-            name=self._awg.name,
+            name=self._awg_name,
             device='hdawg',
             wave=wave,
             codeword=codeword,
@@ -889,12 +894,39 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             command_table_index=command_table_index,
             internal_mod=self._use_internal_mod,
             allow_filter=metadata.get('allow_filter', False),
+            trigger_source=self.trigger_source,
         )
+
+    @property
+    def trigger_source(self):
+        trigger_source = self.pulsar.parameters[
+            self._awg_name + "_trigger_source"].cache.get()
+        if isinstance(trigger_source, str):
+            return trigger_source
+        return trigger_source[self.trigger_group]
+
+    @property
+    def trigger_group(self):
+        """The pulsar trigger group to which this AWG module belong.
+
+        Remark: for speed reasons, this is not implemented via calls to
+            pulsar.get_trigger_group.
+        """
+        # FIXME: some kind of caching should be implemented since this might
+        #  be called from trigger_source for each element.
+        trigger_groups = self.pulsar.parameters[
+            self._awg_name + "_trigger_groups"].cache.get()
+        for group, channels in trigger_groups.items():
+            if self.i_channel_name in channels:
+                return group
+        return f"{self._awg_name}_{self.pulsar.DEFAULT_TRG_GRP}"
 
     def _configure_awg_str(
             self,
-            awg_str
+            awg_str,
+            **kw,
     ):
+        # Ignore kws because they are not needed for legacy compiler
         self._awg.configure_awg_from_string(
             self._awg_nr,
             program_string=awg_str,

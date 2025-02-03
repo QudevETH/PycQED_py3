@@ -3,7 +3,6 @@ File containing the BaseDataAnalysis class.
 """
 from inspect import signature
 import os
-import sys
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -26,14 +25,14 @@ from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
     flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union
 import datetime
 import json
 import lmfit
 import h5py
 from pycqed.measurement.sweep_points import SweepPoints
 from pycqed.measurement.calibration.calibration_points import CalibrationPoints
-from pycqed.utilities.io import hdf5 as hdf5_io
+from pycqed.utilities.io import hdf5 as h5d
 import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
@@ -293,11 +292,12 @@ class BaseDataAnalysis(object):
                     self.prepare_plots()  # specify default plots
                     if not self.extract_only:
                         # make the plots
-                        self.plot(key_list='auto')
+                        self.plot(
+                            key_list='auto',
+                            save_figs=self.options_dict['save_figs'],
+                            close_figs=self.options_dict['close_figs'],
+                        )
 
-                if self.options_dict.get('save_figs', False):
-                    self.save_figures(close_figs=self.options_dict.get(
-                        'close_figs', False))
             self._raise_warning()
         except Exception as e:
             if self.raise_exceptions:
@@ -389,16 +389,13 @@ class BaseDataAnalysis(object):
 
     def save_job_string_in_result_file(self):
         """Saves `self.job` in analysis result file under "Analysis" group.
-
-        Raises:
-            RuntimeError: in case `write_dict_to_hdf5` fails.
         """
         file_path = self._get_analysis_result_file_path()
-        with h5py.File(file_path, 'a') as data_file:
-            analysis_group = hdf5_io.get_hdf_group_by_name(
+        with h5d.safe_file_open(file_path, mode='a') as data_file:
+            analysis_group = h5d.get_hdf_group_by_name(
                 data_file, "Analysis")
             if isinstance(analysis_group, h5py.Group):
-                hdf5_io.write_dict_to_hdf5(
+                h5d.write_dict_to_hdf5(
                     {BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF: self.job},
                     entry_point=analysis_group
                 )
@@ -413,7 +410,7 @@ class BaseDataAnalysis(object):
         if a_tools.ignore_delegate_plotting:
             return False
         if self.get_param_value("delegate_plotting", False):
-            if len(self.timestamps) == 1:
+            if isinstance(self.raw_data_dict, dict):
                 f = self.raw_data_dict['folder']
             else:
                 f = self.raw_data_dict[0]['folder']
@@ -453,9 +450,9 @@ class BaseDataAnalysis(object):
             Optional[BaseDataAnalysis]: analysis object reconstructed from
                 the job string saved in the HDF5 file or None.
         """
-        with h5py.File(data_file_path, 'r') as data_file:
+        with h5d.safe_file_open(data_file_path, mode='r') as data_file:
             try:
-                job = hdf5_io.read_from_hdf5(
+                job = h5d.read_from_hdf5(
                     BaseDataAnalysis.JOB_ATTRIBUTE_NAME_IN_HDF,
                     data_file['Analysis']
                 )
@@ -536,6 +533,146 @@ class BaseDataAnalysis(object):
                 return recursive_search(param, search_attrs[search_attrs.index(p) +
                                                          1])
         return recursive_search(param_name, search_attrs[0])
+
+    def get_reset_params(self, qbn=None, default_value=None):
+        """Retrieves the reset parameters for the analysis.
+
+        It first checks if the legacy way of specifying reset parameters is used
+        by checking the value of 'preparation_params' and 'reset_params'
+        attributes:
+
+        - If 'reset_params' is not specified while 'preparation_params' is
+        present, a warning is logged indicating the deprecation of using
+        'preparation_params' and suggests using 'reset_params' instead. The
+        method assumes that the provided 'preparation_params' are in the
+        adequate format (legacy format) for the analysis and returns
+        'preparation_params' in this case.  
+        - If 'reset_params' is provided, the method calls the
+        'translate_reset_to_prep_params' method to translate the reset
+        parameters to preparation parameters required by the analysis framework.
+
+        Args:
+            qbn (Optional[str]): Qubit name of which the reset parameters
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
+            default_value (Optional): Default value to be returned if the reset
+                parameters do not match any known patterns. Defaults to None.
+
+        Returns:
+            dict or default_value: Dictionary containing the translated preparation
+                parameters if the reset parameters match a known pattern or
+                'preparation_params' if the legacy format is used. Otherwise,
+                returns the default_value.
+
+        """
+        # check if legacy way of specifying reset parameters is used
+        prep_params = self.get_param_value("preparation_params", None)
+        reset_params = self.get_param_value("reset_params", None)
+
+        if reset_params is None and prep_params is not None:
+            log.warning("Using 'preparation_params' to specify reset"
+                        " parameters is deprecated. Please use 'reset_params'"
+                        " instead. The code will assume that the provided"
+                        "'preparation_params' is using the adequate"
+                        "format (i.e. legacy format) for the analysis. ")
+            return prep_params
+        return self.translate_reset_to_prep_params(reset_params, qbn,
+                                                   default_value)
+    @staticmethod
+    def translate_reset_to_prep_params(reset_params, qbn=None,
+                                       default_value=None):
+        """
+        This static method performs the translation of reset parameters
+        (new framework for performing reset, used on the control measurement side)
+        to a preparation parameters dict (old framework)
+        required by the analysis framework. It handles cases
+        where the reset parameters are either a string or a dictionary.
+
+        Args:
+            reset_params (str or dict): The reset parameters to be translated.
+            qbn (Optional[str]): Qubit name of which the reset parameters
+                should be extracted. In the new framework, each qubit
+                can have its own type of reset and thus the
+                returned analysis instructions can depend on the qubit.
+                In the old framework, there is only one global set of preparation
+                parameters. `qbn` indicates the reset parameters of which are used
+                as global preparation parameters for the legacy analysis code.
+                Defaults to the first qubit listed in reset_params['analysis_instructions'].
+            default_value (Optional): Default value to be returned if the reset
+                parameters do not match any known patterns. Defaults to None.
+
+        Returns:
+            dict or default_value: Dictionary containing the translated preparation
+                parameters if the reset parameters match a known pattern. Otherwise,
+                returns the default_value.
+
+        Note:
+            In case of legacy code where the reset parameters stored in the
+            experimental metadata or provided to the analysis is only a string
+            summarizing the reset type for all qubits, this method manually performs
+            the translation to the dictionary required by the analysis framework.
+
+            If the reset parameters are a string, the method maps specific values of
+            the string to the corresponding dictionary format. If the reset
+            parameters are a dictionary, it checks for the presence of
+            "analysis_instructions" and returns the last step of the analysis
+            instructions for the specified qubit.
+
+            If the reset parameters do not match any known patterns or if there is
+            missing data, appropriate warning messages are logged, and the
+            default_value is returned.
+
+            """
+        if isinstance(reset_params, str):
+            if reset_params == "preselection":
+                return dict(preparation_type="preselection")
+            elif reset_params == "feedback":
+                return dict(preparation_type="active_reset")
+            elif reset_params == "parametric_flux":
+                return dict(preparation_type="wait")
+            else:
+                log.warning(f"Reset parameters : '{reset_params}'"
+                            f"unknown for legacy analysis code. Analysis will"
+                            f"assume that the analysis can be performed "
+                            f"with the default behavior i.e. "
+                            f"preparation_type='wait' in the legacy code.")
+                return dict(preparation_type="wait")
+        # in most QE based measurements the stored reset params is a dict which
+        # stores instructions for the analysis.
+        elif isinstance(reset_params, dict):
+            if "analysis_instructions" not in reset_params:
+                log.warning(f'Reset params dictionary does not contain '
+                            f'"analysis_instructions": {reset_params}.'
+                            f' Analysis will proceed without any specific'
+                            f' reset-specific data processing.')
+                return dict(preparation_type="wait")
+            else:
+                if qbn is None:
+                    if reset_params['analysis_instructions']:
+                        qbn = list(reset_params['analysis_instructions'].keys())[0]
+                    else:
+                        log.warning('reset_params[analysis_instructions] is empty.\n'
+                                    'Likely the reset used does not require any '
+                                    ' special instructions for data analysis.')
+                        return dict(preparation_type="wait")
+                if len(reset_params['analysis_instructions'][qbn]) == 0:
+                    # empty list, i.e. no reset steps
+                    return dict(preparation_type="wait")
+                elif len(reset_params['analysis_instructions'][qbn]) > 1:
+                # FIXME: Implement the support of multiple steps / analysis_instructions
+                    log.warning(f'Reset params dictionary contains several'
+                                f' steps: {reset_params["steps"]}, '
+                                f'currently the analysis will consider'
+                                f' only the last step for data '
+                                f'processing/filtering'
+                                )
+                return reset_params['analysis_instructions'][qbn][-1]
+        return default_value
 
     def get_instrument_settings(self, params_dict, timestamp=-1):
         """
@@ -639,7 +776,7 @@ class BaseDataAnalysis(object):
                         continue
                     elif file_par == 'Timers':
                         raw_data_dict_ts[save_par] = \
-                            hdf5_io.read_dict_from_hdf5({}, data_file[file_par])
+                            h5d.read_dict_from_hdf5({}, data_file[file_par])
                     elif len(file_par.split('.')) == 1:
                         # Group was not specified. The following code tries to find an
                         # attribute or subgroup in any of the groups in the hdf file.
@@ -652,7 +789,7 @@ class BaseDataAnalysis(object):
                         for i, group_name in enumerate(data_file.keys()):
                             try:
                                 raw_data_dict_ts[save_par] = \
-                                    hdf5_io.read_from_hdf5(
+                                    h5d.read_from_hdf5(
                                         par_name, data_file[group_name])
                             except ParameterNotFoundError as e:
                                 if i == len(data_file.keys()) - 1:
@@ -663,7 +800,7 @@ class BaseDataAnalysis(object):
                             break  # keep first found parameter
                     else:
                         raw_data_dict_ts[save_par] = \
-                            hdf5_io.read_from_hdf5(file_par, data_file)
+                            h5d.read_from_hdf5(file_par, data_file)
                 a_tools.close_files([data_file])
                 # add settings
                 raw_data_dict_ts.update(
@@ -788,6 +925,7 @@ class BaseDataAnalysis(object):
                         prep_params = dict()
                     # get length of hard sweep points (1st sweep dimension)
                     len_dim_1_sp = len(sp.get_sweep_params_property('values', 0))
+                    reset_reps = 0
                     if 'active' in prep_params.get('preparation_type', 'wait'):
                         reset_reps = prep_params.get('reset_reps', 3)
                         len_dim_1_sp *= reset_reps + 1
@@ -813,7 +951,7 @@ class BaseDataAnalysis(object):
                         idx_dict_1 = next(iter(cal_points.get_indices(
                             cal_points.qb_names, prep_params).values()))
                         num_cal_segments = len([i for j in idx_dict_1.values()
-                                                for i in j])
+                                                for i in j]) * (reset_reps + 1)
                         # take out CalibrationPoints from the end of each
                         # segment, and reshape the remaining data based on the
                         # hard (1st dimension) and soft (1st dimension)
@@ -904,8 +1042,7 @@ class BaseDataAnalysis(object):
                 self.raw_data_dict,
                 self.get_param_value('compression_factor', 1),
                 SweepPoints(self.get_param_value('sweep_points')),
-                cp, self.get_param_value('preparation_params',
-                                         default_value=dict()),
+                cp, self.get_reset_params(),
                 soft_sweep_mask=self.get_param_value(
                     'soft_sweep_mask', None))
 
@@ -960,8 +1097,7 @@ class BaseDataAnalysis(object):
 
     def save_figures(self, savedir: str = None, savebase: str = None,
                      tag_tstamp: bool = True, dpi: int = 300,
-                     fmt: str = 'png', key_list: list = 'auto',
-                     close_figs: bool = True):
+                     fmt: str = 'png', key_list: list = 'auto'):
 
         if savedir is None:
             if isinstance(self.raw_data_dict, tuple):
@@ -985,6 +1121,7 @@ class BaseDataAnalysis(object):
 
         if key_list == 'auto' or key_list is None:
             key_list = self.figs.keys()
+        key_list = [k for k in key_list if k in self.figs]
 
         try:
             os.mkdir(savedir)
@@ -995,18 +1132,12 @@ class BaseDataAnalysis(object):
             print('Saving figures to %s' % savedir)
 
         for key in key_list:
+            savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
+            self.figs[key].savefig(savename, bbox_inches='tight',
+                                   format=fmt, dpi=dpi)
             if self.presentation_mode:
-                savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.' + fmt)
-                self.figs[key].savefig(savename, bbox_inches='tight',
-                                       format=fmt, dpi=dpi)
                 savename = os.path.join(savedir, savebase + key + tstag + 'presentation' + '.svg')
                 self.figs[key].savefig(savename, bbox_inches='tight', format='svg')
-            else:
-                savename = os.path.join(savedir, savebase + key + tstag + '.' + fmt)
-                self.figs[key].savefig(savename, bbox_inches='tight',
-                                       format=fmt, dpi=dpi)
-        if close_figs:
-            self.close_figs(key_list)
 
     def close_figs(self, key_list='auto'):
         """Closes specified figures.
@@ -1020,6 +1151,7 @@ class BaseDataAnalysis(object):
         """
         if key_list == 'auto' or key_list is None:
             key_list = self.figs.keys()
+        key_list = [k for k in key_list if k in self.figs]
         axes_to_pop = []
         for key in list(key_list):
             axes_to_pop.extend(self.figs[key].axes)
@@ -1138,6 +1270,8 @@ class BaseDataAnalysis(object):
                 # because we have observed recent lmfit versions showing a
                 # warning when passing this parameter.
                 fit_kwargs['steps'] = fit_dict['steps']
+            if 'max_nfev' in fit_dict:
+                fit_kwargs['max_nfev'] = fit_dict['max_nfev']
 
             model = fit_dict.get('model', None)
             if model is None:
@@ -1191,9 +1325,9 @@ class BaseDataAnalysis(object):
             if self.verbose:
                 print('Saving fitting results to %s' % fn)
 
-            with h5py.File(fn, 'a') as data_file:
+            with h5d.safe_file_open(fn, mode='a') as data_file:
                 try:
-                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                    analysis_group = h5d.get_hdf_group_by_name(
                         data_file, "Analysis")
 
                     # Iterate over all the fit result dicts as not to
@@ -1210,7 +1344,7 @@ class BaseDataAnalysis(object):
                             fr_group = analysis_group.create_group(fr_key)
 
                         d = self._convert_dict_rec(copy.deepcopy(fit_res))
-                        hdf5_io.write_dict_to_hdf5(d, entry_point=fr_group)
+                        h5d.write_dict_to_hdf5(d, entry_point=fr_group)
                 except Exception as e:
                     data_file.close()
                     raise e
@@ -1264,19 +1398,19 @@ class BaseDataAnalysis(object):
             if self.verbose:
                 print('Saving fitting results to %s' % fn)
 
-            with h5py.File(fn, 'a') as data_file:
+            with h5d.safe_file_open(fn, mode='a') as data_file:
                 try:
-                    analysis_group = hdf5_io.get_hdf_group_by_name(
+                    analysis_group = h5d.get_hdf_group_by_name(
                         data_file, "Analysis")
-                    proc_data_group = hdf5_io.get_hdf_group_by_name(
+                    proc_data_group = h5d.get_hdf_group_by_name(
                         analysis_group, "Processed data")
 
                     if key in proc_data_group.keys():
                         del proc_data_group[key]
 
                     d = {key: self.proc_data_dict[key]}
-                    hdf5_io.write_dict_to_hdf5(d, entry_point=proc_data_group,
-                                       overwrite=overwrite)
+                    h5d.write_dict_to_hdf5(d, entry_point=proc_data_group,
+                                           overwrite=overwrite)
                 except Exception as e:
                     data_file.close()
                     raise e
@@ -1313,7 +1447,8 @@ class BaseDataAnalysis(object):
         return dic
 
     def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
-             transparent_background=None, no_label=False, fig_id=None):
+             transparent_background=None, no_label=False, fig_id=None,
+             save_figs=False, close_figs=False):
         """Plot figures defined in self.plot_dict.
 
         Args.
@@ -1325,16 +1460,32 @@ class BaseDataAnalysis(object):
             no_label (bool): whether figure should have a label.
             fig_id (str): figure id from `self.plot_dicts`. If passed only
                 specified figure will be plotted.
+            save_figs (bool): Whether to save the figures (defaults to False).
+            close_figs (bool): Whether to close the figures at the end. They
+                are not closed by default, useful e.g. if this method is
+                called manually by the user to further use the figures.
         """
-        self._prepare_for_plot(key_list, axs_dict, no_label)
-        if presentation_mode is None:
-            presentation_mode = self.presentation_mode
-        if transparent_background is None:
-            transparent_background = self.transparent_background
-        if presentation_mode:
-            self.plot_for_presentation(self.key_list, transparent_background)
-        else:
-            self._plot(self.key_list, transparent_background, fig_id=fig_id)
+
+        key_list = self._get_key_list(key_list)
+        self._generate_fig_ids()
+        # Select entries corresponding to key_list, i.e., to be plotted
+        plot_dicts = {k: p for k, p in self.plot_dicts.items()
+                      if k in key_list}
+
+        # p['fig_id'] always exists after _generate_fig_ids
+        unique_fig_names = set(p['fig_id'] for k, p in plot_dicts.items())
+        # Create and close each figure successively, such that only one figure
+        # is open in memory at a time
+        for unique_fig_name in unique_fig_names:
+            fig_key_list = [k for k, p in plot_dicts.items()
+                            if p['fig_id'] == unique_fig_name]
+            self._prepare_for_plot(fig_key_list, axs_dict, no_label,
+                                   presentation_mode)
+            self._plot(fig_key_list, transparent_background, fig_id=fig_id)
+            if save_figs:
+                self.save_figures(key_list=[unique_fig_name])
+            if close_figs:
+                self.close_figs(key_list=[unique_fig_name])
 
     def plot_for_gui(self, fig_id: str) -> Tuple[Figure, Union[Axes, np.array]]:
         """Prepares and creates a plot for GUI and returns one figure and axes.
@@ -1349,8 +1500,12 @@ class BaseDataAnalysis(object):
             tuple: with `Figure` and either `Axes` or `np.array` with
                 multiple `Axes`.
         """
-        self._prepare_for_plot(key_list='auto')
-        self._plot(key_list=self.key_list, fig_id=fig_id)
+        key_list = self._get_key_list()
+        self._generate_fig_ids()
+        # FIXME calling this for fig_id only might be faster, as in plot().
+        #  Kept as it is for now as this is only relevant to the gui.
+        self._prepare_for_plot(key_list=key_list)
+        self._plot(key_list=key_list, fig_id=fig_id)
 
         figure = None
         if isinstance(self.axs[fig_id], Axes):
@@ -1365,7 +1520,29 @@ class BaseDataAnalysis(object):
 
         return figure, self.axs[fig_id]
 
-    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False):
+    def _get_key_list(self, key_list='auto'):
+        if key_list == 'auto':
+            key_list = self.auto_keys
+        if key_list is None:
+            key_list = self.plot_dicts.keys()
+        if type(key_list) is str:
+            key_list = [key_list]
+        return key_list
+
+    def _generate_fig_ids(self):
+        """Ensure that each dict in plot_dicts has a key fig_id"""
+        for key in self.plot_dicts:
+            pdict = self.plot_dicts[key]
+            # Use the key of the plot_dict if no ax_id is specified
+            pdict['fig_id'] = pdict.get('fig_id', key)
+            pdict['ax_id'] = pdict.get('ax_id', None)
+
+            if isinstance(pdict['ax_id'], str):
+                pdict['fig_id'] = pdict['ax_id']
+                pdict['ax_id'] = None
+
+    def _prepare_for_plot(self, key_list=None, axs_dict=None, no_label=False,
+                          presentation_mode=None):
         """
         Goes over the entries in self.plot_dict specified by key_list, and
         prepares them for plotting. If key_list is None, the keys of
@@ -1375,42 +1552,31 @@ class BaseDataAnalysis(object):
             key_list (list): list of keys in self.plot_dicts
             axs_dict (dict): will be used to define self.axs
             no_label (bool): whether figure should have a label
+            presentation_mode (bool): whether to prepare for presentation
         """
         if axs_dict is not None:
             for key, val in list(axs_dict.items()):
                 self.axs[key] = val
-        if key_list == 'auto':
-            key_list = self.auto_keys
-        if key_list is None:
-            key_list = self.plot_dicts.keys()
-        if type(key_list) is str:
-            key_list = [key_list]
-        self.key_list = key_list
 
         for key in key_list:
             # go over all the plot_dicts
             pdict = self.plot_dicts[key]
             if 'no_label' not in pdict:
                 pdict['no_label'] = no_label
-            # Use the key of the plot_dict if no ax_id is specified
-            pdict['fig_id'] = pdict.get('fig_id', key)
-            pdict['ax_id'] = pdict.get('ax_id', None)
 
-            if isinstance(pdict['ax_id'], str):
-                pdict['fig_id'] = pdict['ax_id']
-                pdict['ax_id'] = None
+            if presentation_mode is None:
+                presentation_mode = self.presentation_mode
+            if presentation_mode:
+                pdict['title'] = None
 
             if pdict['fig_id'] not in self.axs:
-                # This fig variable should perhaps be a different
-                # variable for each plot!!
-                # This might fix a bug.
                 self.figs[pdict['fig_id']], self.axs[pdict['fig_id']] = plt.subplots(
                     pdict.get('numplotsy', 1), pdict.get('numplotsx', 1),
                     sharex=pdict.get('sharex', False),
                     sharey=pdict.get('sharey', False),
                     figsize=pdict.get('plotsize', None),
-                    gridspec_kw=pdict.get('gridspec_kw', None),
                     # plotsize None uses .rc_default of matplotlib
+                    gridspec_kw=pdict.get('gridspec_kw', None),
                 )
                 if pdict.get('3d', False):
                     self.axs[pdict['fig_id']].remove()
@@ -1447,7 +1613,7 @@ class BaseDataAnalysis(object):
                 for ax_name, formatter in fmt.items():
                     getattr(ax, ax_name).set_major_formatter(formatter)
 
-    def _plot(self, key_list, transparent_background=False, fig_id=None):
+    def _plot(self, key_list, transparent_background=None, fig_id=None):
         """Creates the figures specified by key_list.
 
         Args:
@@ -1520,6 +1686,8 @@ class BaseDataAnalysis(object):
                 raise ValueError(
                     '"{}" is not a valid plot function'.format(plotfn))
 
+            if transparent_background is None:
+                transparent_background = self.transparent_background
             if transparent_background and 'fig_id' in pdict:
                 # transparent background around axes for presenting data
                 self.figs[pdict['fig_id']].patch.set_alpha(0)
@@ -1533,11 +1701,9 @@ class BaseDataAnalysis(object):
         Returns:
             list: list of unique figure ids.
         """
-        fig_ids = []
-        for name, item in self.plot_dicts.items():
-            fig_ids.append(item['fig_id'])
-
-        return np.unique(fig_ids).tolist()
+        self._generate_fig_ids()
+        fig_ids = [v['fig_id'] for v in self.plot_dicts.values()]
+        return list(np.unique(fig_ids))
 
     def add_to_plots(self, key_list=None):
         pass
@@ -1550,19 +1716,6 @@ class BaseDataAnalysis(object):
                 if (type(pdict['xvals'][0]) is datetime.datetime and
                         key in self.axs.keys()):
                     self.axs[key].figure.autofmt_xdate()
-
-    def plot_for_presentation(self, key_list=None, transparent_background=True):
-        """
-        Prepares and produces plots for presentation.
-        Args.
-            key_list (list): list of keys in self.plot_dicts
-        """
-        if key_list is None:
-            key_list = list(self.plot_dicts.keys())
-        for key in key_list:
-            self.plot_dicts[key]['title'] = None
-
-        self._plot(key_list, transparent_background)
 
     def plot_bar(self, pdict, axs):
         pfunc = getattr(axs, pdict.get('func', 'bar'))
@@ -1587,6 +1740,8 @@ class BaseDataAnalysis(object):
         plot_xtick_labels = pdict.get('xtick_labels', None)
         plot_ytick_labels = pdict.get('ytick_labels', None)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_barkws = pdict.get('bar_kws', {})
@@ -1634,6 +1789,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -1796,12 +1954,15 @@ class BaseDataAnalysis(object):
         plot_xtick_rotation = pdict.get('xtick_rotation', 90)
         plot_ytick_rotation = pdict.get('ytick_rotation', 0)
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
         plot_xrange = pdict.get('xrange', None)
         plot_yrange = pdict.get('yrange', None)
         plot_yscale = pdict.get('yscale', None)
         plot_xscale = pdict.get('xscale', None)
         plot_grid = pdict.get('grid', None)
+        plot_opposite_axis = pdict.get('opposite_axis', False)
         plot_title_pad = pdict.get('titlepad', 0) # in figure coords
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         # Ensures that 'color' can be passed both ways (and that it does not
         # collide with plot_linekws).
         plot_color = pdict.get('color', plot_linekws.pop('color') if
@@ -1880,6 +2041,9 @@ class BaseDataAnalysis(object):
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
 
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
+
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
             legend_title = pdict.get('legend_title', None)
@@ -1918,6 +2082,9 @@ class BaseDataAnalysis(object):
         if plot_ytick_labels is not None:
             axs.yaxis.set_ticklabels(plot_ytick_labels,
                                      rotation=plot_ytick_rotation)
+        if plot_opposite_axis:
+            axs.yaxis.set_label_position("right")
+            axs.yaxis.tick_right()
 
         if self.tight_fig:
             axs.figure.tight_layout()
@@ -1939,6 +2106,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_nolabel = pdict.get('no_label', False)
         plot_title = pdict['title']
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         slice_idxs = pdict['sliceidxs']
         slice_label = pdict.get('slicelabel', '')
         slice_units = pdict.get('sliceunits', '')
@@ -1979,6 +2148,9 @@ class BaseDataAnalysis(object):
 
         if plot_title is not None:
             axs.set_title(plot_title)
+
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
         if do_legend:
             legend_ncol = pdict.get('legend_ncol', 1)
@@ -2240,6 +2412,8 @@ class BaseDataAnalysis(object):
         plot_ylabel = pdict['ylabel']
         plot_yunit = pdict['yunit']
         plot_title = pdict.get('title', None)
+        plot_fig_title = pdict.get('fig_title', None)
+        plot_fig_title_pad = pdict.get('fig_titlepad', 0.1)
         if plot_transpose:
             # transpose switches X and Y
             set_axis_label('x', axs, plot_ylabel, plot_yunit)
@@ -2253,6 +2427,8 @@ class BaseDataAnalysis(object):
                             verticalalignment='bottom',
                             transform=axs.transAxes)
             # axs.set_title(plot_title)
+        if plot_fig_title is not None:
+            axs.figure.suptitle(plot_fig_title, y=1.+plot_fig_title_pad)
 
     def plot_colorbar(self, cax=None, key=None, pdict=None, axs=None,
                       orientation='vertical', no_label=None):
@@ -2273,6 +2449,7 @@ class BaseDataAnalysis(object):
         plot_cbarpad = pdict.get('cbarpad', '5%')
         plot_ctick_loc = pdict.get('ctick_loc', None)
         plot_ctick_labels = pdict.get('ctick_labels', None)
+        plot_cbar_opposite_axis = pdict.get('cbar_opposite_axis', False)
         if not isinstance(axs, Axes3D):
             cmap = axs.cmap
         else:
@@ -2292,7 +2469,10 @@ class BaseDataAnalysis(object):
         else:
             axs.cax = cax
         if hasattr(cmap, 'autoscale_None'):
-            axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
+            # Ensure the colorbar is added to the figure that the axis
+            # is a part of
+            fig = axs.get_figure()
+            axs.cbar = fig.colorbar(cmap, cax=axs.cax, orientation=orientation)
         else:
             norm = mpl.colors.Normalize(0, 1)
             axs.cbar = mpl.colorbar.ColorbarBase(axs.cax, cmap=cmap, norm=norm)
@@ -2302,9 +2482,16 @@ class BaseDataAnalysis(object):
             axs.cbar.set_ticklabels(plot_ctick_labels)
         if not plot_nolabel and plot_clabel is not None:
             axs.cbar.set_label(plot_clabel)
-        if orientation == 'horizontal':
+        if orientation == 'horizontal' and not plot_cbar_opposite_axis:
+            # Defaults to top here (matplotlib defaults to bottom),
+            # unless plot_cbar_opposite_axis
             axs.cax.xaxis.set_label_position("top")
             axs.cax.xaxis.tick_top()
+        if orientation == 'vertical' and plot_cbar_opposite_axis:
+            # Defaults to right (as in matplotlib),
+            # unless plot_cbar_opposite_axis
+            axs.cax.yaxis.set_label_position("left")
+            axs.cax.yaxis.tick_left()
 
         if self.tight_fig:
             axs.figure.tight_layout()

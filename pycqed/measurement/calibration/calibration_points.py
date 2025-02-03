@@ -6,8 +6,7 @@ import logging
 
 from pycqed.measurement.pulse_sequences.multi_qubit_tek_seq_elts import \
     generate_mux_ro_pulse_list
-from pycqed.measurement.pulse_sequences.single_qubit_tek_seq_elts import \
-    add_preparation_pulses, sweep_pulse_params
+from pycqed.measurement.pulse_sequences import single_qubit_tek_seq_elts as sqtse
 from pycqed.measurement.waveform_control import segment
 
 log = logging.getLogger(__name__)
@@ -24,7 +23,7 @@ class CalibrationPoints:
 
     def create_segments(self, operation_dict, pulse_modifs=None,
                         segment_prefix='calibration_',
-                        **prep_params):
+                        reset_params=None):
         segments = []
         if pulse_modifs is None:
             pulse_modifs = dict()
@@ -51,7 +50,7 @@ class CalibrationPoints:
                         # The pulse(s) to which the pulse_modifs refer might
                         # not be present in all calibration segments. We
                         # thus disable the pulse_not_found_warning.
-                        pulse = sweep_pulse_params(
+                        pulse = sqtse.sweep_pulse_params(
                             [pulse], pulse_modifs,
                             pulse_not_found_warning=False)[0][0]
                         # reset the name as sweep_pulse_params deletes it
@@ -59,10 +58,10 @@ class CalibrationPoints:
                                         f"{cal_pt_idx}"
                     pulse_list.append(pulse)
             state_prep_pulse_names = [p['name'] for p in pulse_list]
-            pulse_list = add_preparation_pulses(pulse_list,
+            pulse_list = sqtse.add_preparation_pulses(pulse_list,
                                                 operation_dict,
                                                 [qbn for qbn in self.qb_names],
-                                                **prep_params)
+                                                reset_params=reset_params)
 
             ro_pulses = generate_mux_ro_pulse_list(self.qb_names,
                                                      operation_dict)

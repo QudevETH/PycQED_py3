@@ -35,15 +35,23 @@ def DoubleExpDampOscFunc(t, tau_1, tau_2,
     return cos_1 + cos_2 + osc_offset
 
 
-def double_RandomizedBenchmarkingDecay(numCliff, p, offset,
-                                       invert=1):
+def double_RandomizedBenchmarkingDecay(numCliff, p, offset, invert=1):
     """
     A variety of the RB-curve that allows fitting both the inverting and
     non-inverting exponential.
+
     The amplitude of the decay curve is constrained to start at 0 or 1.
     The offset is the common point both curves converge to.
 
-    pick invert to be 1 or 0
+    Args:
+        numCliff (float | numpy.ndarray): Number of Clifford gates.
+        p (float): depolarizing parameter (0 <= p <= 1).
+        offset (float): offset (value of the function when numCliff -> infinity).
+        invert (int, optional): Whether the exponential decay should start from 0 (invert = 0)
+            or from 1 (invert = 1). Defaults to 1.
+
+    Returns:
+        float | numpy.ndarray: Value of the function.
     """
     # Inverting clifford curve
     val_inv = (1 - offset) * (p ** numCliff) + offset
@@ -250,14 +258,14 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
     coupling: coupling to resonator (Hz).
     fr (float): frequency of resonator (Hz)
     dac_sweet_spot: voltage at which the sweet-spot is found (V)
-    branch (enum: 'positive' 'negative' or "smallest" or int/float):
+    branch: 'positive', 'negative', 'smallest', or `int`/`float`(= "volt_guess"):
         if "positive": returns voltages corresponding to the positive flux
             branch (right to the upper sweetspot).
         if "negative": returns voltages corresponding to the negative flux
             (left to the upper sweetspot).
         if "smallest": equivalent to branch = 0.
-        if volt_guess (integer):
-            returns voltages in the period closest to volt_guess
+        if volt_guess (integer/float):
+            returns voltages in the branch closest to volt_guess
     n_periods (int, int): range of periods in which to look for voltages
         close to volt_guess
     single_branch (bool): forces all voltages to lie in a single branch (e.g. to
@@ -468,15 +476,15 @@ def CosFunc(t, amplitude, frequency, phase, offset):
 
 
 def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
-    """Calculates the damped oscillation value based on Dr. Paul Magnard's model.
-
-    This function implements equation 5.3 from Dr. Paul Magnard's PhD Thesis (2021).
+    r"""Describes the damped oscillation model used for f0g1 calibration
+    routines. This function implements equation 5.3 from Dr. Paul Magnard's
+    PhD Thesis (2021).
 
     Args:
         t (float): Time value.
         amp (float): Amplitude.
-        gamma (float): Damping coefficient.
-        kappa (float): Coupling coefficient.
+        gamma (float): Coupling coefficient.
+        kappa (float): Damping coefficient.
         mu_a (float): Coefficient of the oscillation term.
         mu_b (float): Baseline offset.
         t0 (float): Initial time.
@@ -487,25 +495,32 @@ def damped_oscillation(t, amp, gamma, kappa, mu_a, mu_b, t0, c1, c3, c5):
     Returns:
         float: The calculated damped oscillation value at time 't'.
 
-    Function used for fitting model, that fits the following equation:
+    Notes:
+        The function fits the following equation:
 
-    Dr. Paul Magnard PhD Thesis, 2021 - equation 5.3 :
-                       Γ                                                                                              -
-                      |       -tau * (kappa+gamma)       |        rabi*tau       kappa-gamma         rabi*tau    |^2   |
-        mu_b + mu_a * |  exp( ———————————————————— )  *  |  cosh( ———————— ) +   ——————————— * sinh( ———————— )  |     |
-                      |                2                 |           2              2*rabi              2        |     |
-                      L                                                                                               ⅃
-                                                         ________________________________
-        where:                                          /          (kappa-gamma)^2
-                tau = t-t0        and        rabi = \  /  - g^2 + ————————————————
-                                                     \/                  4
-                and      g = c1*amp + c3*amp^3 + c5*amp^5
+        .. math::
+
+            \mu_b + \mu_a \cdot \left[ e^{-\frac{(\kappa+\gamma)}{2}\tau}
+                \left| \cosh\left(\frac{\Omega\tau}{2}\right) +
+                \frac{\kappa-\gamma}{2\Omega} \cdot
+                \sinh\left(\frac{\Omega\tau}{2}\right) \right|^2
+            \right]
+
+        where:
+
+        .. math::
+
+            FIXME: Why does the Rabi term not have a factor of 2?
+            \tau = t-t_0 \\
+            \Omega = \sqrt{-g^2 + \frac{(\kappa-\gamma)^2}{4}} \\
+            g = c_1*\text{amp} + c_3*\text{amp}^3 + c_5*\text{amp}^5
     """
+
 
     g = c1 * amp + c3 * amp**3 + c5 * amp**5
 
     tau = t - t0
-    rabi = np.sqrt((-(g**2) + (kappa - gamma) ** 2 / 4) * (1 + 0j))
+    rabi = np.sqrt((-(g**2) + (kappa - gamma) ** 2 / 4) * (1 + 0j)) # \Omega
     return (
         mu_b
         + mu_a
@@ -1730,7 +1745,7 @@ def TwoErrorFunc_guess(model, delays, data):
 
 
 def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
-    """Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
+    r"""Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
 
     Args:
         alpha (float): Correction factor that is applied to the amplitude of 
@@ -1780,14 +1795,14 @@ def mixer_imbalance_sideband_guess(model, **kwargs):
     Returns:
         :py:class:'lmfit.parameters': Parameters
     """
-    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
+    model.set_param_hint('g', value=1.0, min=0.5, max=2)
     model.set_param_hint('phi', value=0, min=-180, max=180)
     model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
     return model.make_params(**kwargs)
 
 
 def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
-    """Analytical model for maximum amplitude of LO leakage of an IQ mixer.
+    r"""Analytical model for maximum amplitude of LO leakage of an IQ mixer.
 
     Args:
         vi (:obj:'float'): DC bias voltage applied on the I input of the mixer.

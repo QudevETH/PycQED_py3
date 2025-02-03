@@ -1,4 +1,3 @@
-import types
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -29,7 +28,6 @@ from pycqed.measurement.calibration import calibration_points as cp_mod
 
 # Used for auto qcodes parameter wrapping
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement import awg_sweep_functions as awg_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_det
 from pycqed.analysis.tools.data_manipulation import get_generation_means
@@ -220,8 +218,9 @@ class MeasurementControl(Instrument):
             'settings_file_compression',
             vals=vals.Bool(),
             docstring='True if file should be compressed with blosc2. '
-                      'Does not support hdf5 files.',
-            initial_value=True,
+                      'Does not support hdf5 files. We do not recommend '
+                      'using compression.',
+            initial_value=False,
             parameter_class=ManualParameter
         )
 
@@ -322,7 +321,7 @@ class MeasurementControl(Instrument):
                     the calling function, but only used by run() when it
                     calls itself recursively.
             store_sweep_indices (bool): If True, when storing the data the
-                iteration indices are prepended instead of the sweep points.
+                sweep indices are prepended instead of the sweep points.
         '''
 
         def try_finish():
@@ -382,8 +381,13 @@ class MeasurementControl(Instrument):
                 self.exp_metadata = {}
             det_metadata = self.detector_function.generate_metadata()
             self.exp_metadata.update(det_metadata)
-            self.exp_metadata['sweep_control'] = [
-                s.sweep_control for s in getattr(self, 'sweep_functions', [])]
+            self.exp_metadata.update({
+                'sweep_control': [s.sweep_control for s in getattr(
+                    self, 'sweep_functions', [])],
+                # Indicates to the analysis a measurement performed after
+                # changes ensuring a right-handed single-qubit gate basis
+                'right_handed_basis': True,
+            })
             self.save_exp_metadata(self.exp_metadata)
             exception = None
             try:
@@ -429,7 +433,13 @@ class MeasurementControl(Instrument):
                 # automatic retry is triggered) or raised.
                 exception = e
                 log.error(traceback.format_exc())
-            result = self.dset[()]
+            try:
+                result = self.dset[()]
+            except Exception:
+                # If we cannot get the data set here, we set it to None
+                # to inform self.finish that no data is available for
+                # persistent traces of the live plotting.
+                result = None
             self.get_measurement_endtime()
             self.save_MC_metadata(self.data_object)  # timing labels etc
             # FIXME: Nathan 2020.12.03.
@@ -440,8 +450,9 @@ class MeasurementControl(Instrument):
             #  we're sure that experiment that are not based on Qexp still have some timers
             #  saved.
             self.save_timers(self.data_object)
-            return_dict = self.create_experiment_result_dict()
-            if exception is not None:  # exception occurred in above try-block
+            if exception is None:  # no exception occurred in above try-block
+                return_dict = self.create_experiment_result_dict()
+            else:
                 if previous_attempts + 1 < self.max_attempts():
                     # Maximum number of attempts not reached. Log to logger
                     # and to slack, and retry.
@@ -621,10 +632,11 @@ class MeasurementControl(Instrument):
                     self.adaptive_function(self.optimization_function,
                                            **self.af_pars)
             except StopIteration:
-                print('Reached f_termination: %s' % (self.f_termination))
+                print('\nReached f_termination: %s' % (self.f_termination))
         else:
             raise Exception('optimization function: "%s" not recognized'
                             % self.adaptive_function)
+        print()  # New line after self.print_progress_adaptive
         self.timer.checkpoint(
             "MeasurementControl.measure_soft_adaptive.adaptive_function.end")
         self.save_optimization_results(self.adaptive_function,
@@ -847,8 +859,6 @@ class MeasurementControl(Instrument):
         else:
             # Transpose since detectors return [len(value_names), num_points],
             # to get shape [num_points, len(value_names)]
-            # TODO confirm that all det.acquire_data_point can be deleted,
-            #  see comment in Multi_Detector.acquire_data_point
             vals = np.array(self.detector_function.get_values()).T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
@@ -857,7 +867,11 @@ class MeasurementControl(Instrument):
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
         if self.store_sweep_indices:
-            x = self.iteration
+            # First colum: hard indices = range(len(x)), second: self.iteration
+            x = np.concatenate((
+                np.array(range(len(x))).reshape(-1,1),
+                np.ones((len(x), 1)) * self.iteration,
+            ), axis=1)
         # Because x is allowed to be a list of tuples (batch sampling),
         # and the detector function may return 1D values, we unify their
         # format before we can save them to the dset.
@@ -885,7 +899,9 @@ class MeasurementControl(Instrument):
         elif self.mode == 'adaptive':
             self.update_plotmon_adaptive()
         self.iteration += 1
-        if self.mode != 'adaptive':
+        if self.mode == 'adaptive':
+            self.print_progress_adaptive()
+        else:
             self.print_progress()
         return vals
 
@@ -960,7 +976,7 @@ class MeasurementControl(Instrument):
         '''
         # this data can be plotted by enabling persist_mode
         n = len(self.sweep_par_names)
-        if self._live_plot_enabled():
+        if self._live_plot_enabled() and result is not None:
             self._persist_dat = np.concatenate([
                 result[:, :n],
                 self.detector_function.live_plot_transform(result[:, n:])
@@ -1525,7 +1541,7 @@ class MeasurementControl(Instrument):
                 self.TwoD_array = np.empty(
                     [len(sv[1]), len(sv[0]),
                      len(self.detector_function.value_names)])
-                self.TwoD_array[:] = np.NAN
+                self.TwoD_array[:] = np.nan
                 self.secondary_QtPlot.clear()
                 for j, vn in enumerate(self.detector_function.value_names):
                     axes_info = self._plotmon_axes_info[vn]
@@ -1920,7 +1936,7 @@ class MeasurementControl(Instrument):
 
     def _get_nr_sweep_point_columns(self):
         if self.store_sweep_indices:
-            return 1
+            return 2
         else:
             return np.sum([sweep_function.get_nr_parameters() \
                 for sweep_function in self.sweep_functions])
@@ -2092,8 +2108,12 @@ class MeasurementControl(Instrument):
                         'fopt':  result[1]}
         else:
             res_dict = {'opt':  result}
+        if isinstance(result, dict) and 'sweep_points' in result:
+            self.save_exp_metadata({
+                'sweep_points': result['sweep_points']})
         h5d.write_dict_to_hdf5(res_dict, entry_point=opt_res_grp)
 
+    @Timer()
     def save_instrument_settings(self, data_object=None, mode='xb', *args):
         '''
         uses QCodes station snapshot to save the last known value of any
@@ -2107,48 +2127,27 @@ class MeasurementControl(Instrument):
         '''
 
         if self.settings_file_format() == 'hdf5':
-            def save_settings_in_hdf(data_object):
-                if not hasattr(self, 'station'):
-                    log.warning('No station object specified, could not save '
-                                'instrument settings')
-                else:
-                    # # This saves the snapshot of the entire setup
-                    # snap_grp = data_object.create_group('Snapshot')
-                    # snap = self.station.snapshot()
-                    # h5d.write_dict_to_hdf5(snap, entry_point=snap_grp)
-
-                    # Below is old style saving of snapshot, exists for the sake of
-                    # preserving deprecated functionality. Here only the values
-                    # of the parameters are saved.
-                    set_grp = data_object.create_group('Instrument settings')
-                    inslist = dict_to_ordered_tuples(self.station.components)
-                    for (iname, ins) in inslist:
-                        instrument_grp = set_grp.create_group(iname)
-                        inst_snapshot = ins.snapshot()
-                        self.store_snapshot_parameters(inst_snapshot,
-                                                       entry_point=instrument_grp,
-                                                       instrument=ins)
-                numpy.set_printoptions(**opt)
-            import numpy
-            import sys
-            opt = numpy.get_printoptions()
-            numpy.set_printoptions(threshold=sys.maxsize)
+            if not hasattr(self, 'station'):
+                log.warning('No station object specified, could not save '
+                            'instrument settings')
             if data_object is None:
                 data_object = self.data_object
             # checks if data object is closed and opens it if necessary in ,
             # a context manager, such that it is closed after save method.
             if not data_object.__bool__():
                 with h5d.Data(name=self.get_measurement_name(),
-                  datadir=self.datadir(),
-                  timestamp=self.last_timestamp(),
-                                       auto_increase=False) as data_object:
-                    save_settings_in_hdf(data_object)
+                              datadir=self.datadir(),
+                              timestamp=self.last_timestamp(),
+                              auto_increase=False) as data_object:
+                    MeasurementControl.save_station_in_hdf(data_object,
+                                                            self.station)
             else:
                 # hdf file was already opened and does not need to be
                 # closed at the end, because save_instrument_settings was
                 # called inside a context manager and may be used
                 # after calling save_instrument_settings (e.g. MC.run())
-                save_settings_in_hdf(data_object)
+                MeasurementControl.save_station_in_hdf(data_object,
+                                                        self.station)
 
         else:
             if self.settings_file_format() == 'msgpack':
@@ -2180,8 +2179,33 @@ class MeasurementControl(Instrument):
                             timestamp=self.last_timestamp())
             dumper.dump(mode=mode)
 
+    @staticmethod
+    def save_station_in_hdf(data_object, station, snapshot_kwargs=None):
+        '''
+        Writes snapshot of station in HDF5-data object.
+        Args:
+            data_object (h5py.File): opened HDF5 data file
+            station (Station): QCodes or mock_qcodes_interface station object
+            snapshot_kwargs (**): optional snapshot parameters
+        '''
+        import numpy
+        import sys
+        set_grp = data_object.create_group('Instrument settings')
+        inslist = dict_to_ordered_tuples(station.components)
+        with numpy.printoptions(threshold=sys.maxsize):
+            for (iname, ins) in inslist:
+                instrument_grp = set_grp.create_group(iname)
+                if snapshot_kwargs is None:
+                    inst_snapshot = ins.snapshot()
+                else:
+                    inst_snapshot = ins.snapshot(*snapshot_kwargs)
+                MeasurementControl.store_snapshot_parameters(
+                    inst_snapshot,
+                    entry_point=instrument_grp,
+                    instrument=ins)
 
-    def store_snapshot_parameters(self, inst_snapshot, entry_point,
+    @staticmethod
+    def store_snapshot_parameters(inst_snapshot, entry_point,
                                   instrument):
         """
         Save the values of keys in the "parameters" entry of inst_snapshot.
@@ -2221,7 +2245,7 @@ class MeasurementControl(Instrument):
                     # that are in the snapshot_whitelist
                     continue
                 submod_grp = entry_point.create_group(key)
-                self.store_snapshot_parameters(
+                MeasurementControl.store_snapshot_parameters(
                     submod_snapshot, entry_point=submod_grp, instrument=subins)
 
         if 'parameters' in inst_snapshot:
@@ -2409,26 +2433,31 @@ class MeasurementControl(Instrument):
                            elapsed_time, 1) if percdone != 0 else '??'
             t_end = time.strftime('%H:%M:%S', time.localtime(time.time() +
                                   + t_left)) if percdone != 0 else '??'
-            # The trailing spaces are to overwrite some characters in case the
-            # previous progress message was longer. (Due to \r, the string
-            # output will start at the beginning of the current line and
-            # each character of the new string will overwrite a character
-            # of the previous output in the current line.)
             progress_message = (
-                "\r{timestamp}\t{percdone}% completed \telapsed time: "
-                "{t_elapsed}s \ttime left: {t_left}s\t(until {t_end})     "
-                "").format(
-                    timestamp=time.strftime('%H:%M:%S', time.localtime()),
-                    percdone=int(percdone),
-                    t_elapsed=round(elapsed_time, 1),
-                    t_left=t_left,
-                    t_end=t_end,)
+                f"\r{time.strftime('%H:%M:%S', time.localtime())}\t"
+                f"{int(percdone)}% completed\t"
+                f"elapsed time: {elapsed_time:.1f}s\t"
+                f"time left: {t_left}s\t(until {t_end})     "
+            ).ljust(80)  # Pad to fixed width to overwrite previous line
 
             if percdone != 100 or current_acq:
                 end_char = ''
             else:
                 end_char = '\n'
-            print('\r', progress_message, end=end_char)
+            print(progress_message, end=end_char)
+
+    def print_progress_adaptive(self):
+        """
+        Prints the progress of the current measurement, in adaptive mode.
+        """
+        if self.verbose():
+            elapsed_time = time.time() - self.begintime
+            progress_message = (
+                f"\r{time.strftime('%H:%M:%S', time.localtime())}\t"
+                f"{self.iteration} iterations completed\t"
+                f"elapsed time: {elapsed_time:.1f}s"
+            ).ljust(80)  # Pad to fixed width to overwrite previous line
+            print(progress_message, end='')
 
     def is_complete(self):
         """

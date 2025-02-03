@@ -8,7 +8,7 @@ from pycqed.utilities.io.base_io import Loader
 import pycqed.gui.dict_viewer as dict_viewer
 from collections import OrderedDict
 
-from pycqed.utilities.io.hdf5 import HDF5Loader
+from pycqed.utilities.io.hdf5 import HDF5Loader, safe_file_open
 from pycqed.utilities.io.msgpack import MsgLoader
 from pycqed.utilities.io.pickle import PickleLoader
 
@@ -72,6 +72,7 @@ class SettingsManager:
                             f'not specified.')
         if hasattr(station, 'snapshot'):
             self.stations[timestamp] = station
+            station.settings_manager = self
         else:
             raise TypeError(f'Cannot add station "{timestamp}", because the '
                             'station is not a QCode or Mock station class '
@@ -133,6 +134,10 @@ class SettingsManager:
             self.load_from_file(timestamp, param_path=param_path, **kwargs)
         else:
             if param_path is None:
+                # Remove the reference to allow python garbage collection to
+                # collect the previous settings_manager if it is not needed
+                # anymore.
+                self.stations[timestamp].settings_manager = None
                 self.stations.pop(timestamp)
                 self.load_from_file(timestamp=timestamp)
             else:
@@ -329,7 +334,7 @@ class SettingsManager:
         return all_diff, all_msg
 
     def compare_stations(self, timestamps, instruments='all',
-                         reduced_compare=False, output='viewer',
+                         reduced_compare=True, output='viewer',
                          new_process=False):
         """
         Compare instrument settings from n different station in the settings
@@ -482,3 +487,47 @@ def get_station_from_file(timestamp=None, folder=None, filepath=None,
     return get_loader_from_file(timestamp=timestamp, folder=folder,
                                 filepath=filepath, file_id=file_id) \
         .get_station(param_path=param_path)
+
+
+def convert_settings_to_hdf(timestamp: str, skip_if_exists=False):
+    """
+    Creates/writes settings to a hdf5-file specified by a timestamp.
+    Write the instrument settings into the preexisting hdf-file with the
+    same timestamp from any settings file supported by the settings manager.
+    If the hdf-file does not exist, it creates a hdf-file with the same
+    filename as the settings file.
+    This serves as a helper to ensure compatibility with user-notebooks which
+    rely on instrument settings being stored in hdf5-files.
+
+    Args:
+        timestamp(str): Timestamp of the settings file.
+        skip_if_exists (bool): Whether to silently skip writing to the HDF
+            file if a group with the name Instrument settings already exists
+            in the HDF file. By default, a KeyError is raised in such a case.
+
+    Raises:
+        KeyError: If a group Instrument settings already exists in the HDF
+            file and skip_if_exists is False.
+    """
+    from pycqed.analysis import analysis_toolbox as a_tools
+    from pycqed.measurement.measurement_control import MeasurementControl
+    from pycqed.utilities.io import base_io
+
+    station = get_station_from_file(timestamp)
+    fn = a_tools.measurement_filename(a_tools.get_folder(timestamp))
+    # if hdf-file does not exist, the filename of the settings file is copied
+    if fn is None:
+        ext = Loader.get_file_format(timestamp=timestamp,
+                                     return_extension=True)
+        # a_tools expects extension without a dot (e.g. 'hdf'),
+        # the extension dict in base_io stores it with a dot (e.g. '.hdf')
+        fn = a_tools.measurement_filename(a_tools.get_folder(timestamp),
+                                          ext=ext[1:])
+        fn = fn[:-len(ext)] + base_io.file_extensions['hdf5'][0]
+    with safe_file_open(fn, mode='a') as hdf_file:
+        if 'Instrument settings' not in hdf_file:
+            MeasurementControl.save_station_in_hdf(hdf_file, station)
+        elif not skip_if_exists:
+            raise KeyError(
+                'HDF file with group Instrument settings already exists for '
+                'timestamp {timestamp}.')

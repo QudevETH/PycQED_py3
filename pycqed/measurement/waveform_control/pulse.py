@@ -8,11 +8,13 @@ function.
 The actual pulse implementations are defined in separate modules,
 e.g. pulse_library.py.
 
-The module variable `pulse_libraries` is a
+The module variable `pulse_libraries` of type `set()` is a set of pulse
+implementation libraries that will be searched when a dictionary that
+defines an operation is converted to a pulse object. These libraries
+associate a pulse type with its corresponding class.
 """
 
 import numpy as np
-import scipy as sp
 
 pulse_libraries = set()
 """set of module: The set of pulse implementation libraries.
@@ -22,7 +24,7 @@ The pulse class is stored as a string in a pulse dictionary.
 
 Each pulse library module should add itself to this set, e.g.
 >>> import sys
->>> from pyceqed.measurement.waveform_control import pulse
+>>> from pycqed.measurement.waveform_control import pulse
 >>> pulse.pulse_libraries.add(sys.modules[__name__])
 """
 
@@ -42,7 +44,8 @@ class Pulse:
             Defaults to 0.
         channels (list of str, optional): A list of channel names that the pulse
             instance generates waveforms form. Defaults to empty list.
-
+        filter_bypass ('FIR', 'IIR', 'all' or None, optional): If not None,
+            skips the listed predistortion filters.
     Attrs:
         channel_mask: set[str]
             A set of channel names to be excluded from waveform generation.
@@ -78,6 +81,7 @@ class Pulse:
         self.codeword = kw.pop('codeword', 'no_codeword')
         self.pulse_off = kw.pop('pulse_off', False)
         self.is_net_zero = False
+        self.filter_bypass = kw.pop('filter_bypass', None)
         self.truncation_length = kw.pop('truncation_length', None)
         self.truncation_decay_length = kw.pop('truncation_decay_length', None)
         self.truncation_decay_const = kw.pop('truncation_decay_const', None)

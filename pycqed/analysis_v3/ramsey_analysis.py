@@ -189,34 +189,34 @@ def prepare_ramsey_plots(data_dict, data_to_proc_dict, **params):
                 if i != 0:
                     textstr += '\n'
                 textstr += \
-                    ('$f_{{qubit \_ new \_ {{{key}}} }}$ = '.format(
+                    (r'$f_{{qubit \_ new \_ {{{key}}} }}$ = '.format(
                         key=('exp' if i == 0 else 'gauss')) +
                      '{:.6f} GHz '.format(hlp_mod.get_param(
                          f'{mobjn}.new_freq '+fit_name, data_dict)*1e-9) +
-                     '$\pm$ {:.2E} GHz '.format(hlp_mod.get_param(
+                     r'$\pm$ {:.2E} GHz '.format(hlp_mod.get_param(
                          f'{mobjn}.new_freq ' + fit_name + '_stderr',
                          data_dict)*1e-9))
                 T2_star_str += \
-                    ('\n$T_{{2,{{{key}}} }}^\star$ = '.format(
+                    ('\n$T_{{2,{{{key}}} }}^\\star$ = '.format(
                         key=('exp' if i == 0 else 'gauss')) +
-                     '{:.2f} $\mu$s'.format(
+                     r'{:.2f} $\mu$s'.format(
                          fit_res.params['tau'].value*1e6) +
-                     ' $\pm$ {:.2f} $\mu$s'.format(
+                     r' $\pm$ {:.2f} $\mu$s'.format(
                          fit_res.params['tau'].stderr*1e6))
 
             fit_name = 'exp_decay'
             fit_res = data_dict['fit_dicts'][
                 fit_name + keyi]['fit_res']
             old_qb_freq = hlp_mod.get_param(f'{mobjn}.old_freq', data_dict)
-            textstr += '\n$f_{qubit \_ old}$ = '+'{:.6f} GHz '.format(
+            textstr += '\n$f_{qubit \\_ old}$ = '+'{:.6f} GHz '.format(
                 old_qb_freq*1e-9)
-            textstr += ('\n$\Delta f$ = {:.4f} MHz '.format(
+            textstr += ('\n$\\Delta f$ = {:.4f} MHz '.format(
                 (hlp_mod.get_param(f'{mobjn}.new_freq ' + fit_name, data_dict) -
                  old_qb_freq)*1e-6) +
-                        '$\pm$ {:.2E} MHz'.format(
+                        r'$\pm$ {:.2E} MHz'.format(
                 fit_res.params['frequency'].stderr*1e-6) +
                         '\n$f_{Ramsey}$ = '+
-                        '{:.4f} MHz $\pm$ {:.2E} MHz'.format(
+                        r'{:.4f} MHz $\pm$ {:.2E} MHz'.format(
                         fit_res.params['frequency'].value*1e-6,
                         fit_res.params['frequency'].stderr*1e-6))
             textstr += T2_star_str

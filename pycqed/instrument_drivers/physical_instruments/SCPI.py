@@ -9,7 +9,6 @@ Bugs:
 '''
 
 from qcodes import IPInstrument
-from qcodes import validators as vals
 import socket
 
 """

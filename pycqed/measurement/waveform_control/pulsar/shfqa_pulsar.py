@@ -1,5 +1,4 @@
 import logging
-from typing import List, Tuple
 
 import numpy as np
 from copy import deepcopy
@@ -59,12 +58,12 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         self.awg_mcc = self.awg
         self.awg_mcc_qagenerators = list()
-        for qachannel in self.awg_mcc.qachannels:
+        for qachannel in self.awg_mcc.qachannels.values():
             self.awg_mcc_qagenerators.append(qachannel.generator)
 
     def _create_all_channel_parameters(self, channel_name_map: dict):
         # real and imaginary part of the wave form channel groups
-        for ch_nr in range(len(self.awg.qachannels)):
+        for ch_nr in self.awg.qachannels:
             group = []
             for q in ["i", "q"]:
                 id = f"qa{ch_nr + 1}{q}"
@@ -128,7 +127,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         # re-upload in spectroscopy mode. This could be optimized in the future.
 
         grp_has_waveforms = {}
-        for i, qachannel in enumerate(self.awg.qachannels):
+        for i, qachannel in self.awg.qachannels.items():
             grp = f'qa{i+1}'
             chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
@@ -261,7 +260,8 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     if self.pulsar.use_mcc():
                         self.multi_core_compiler.sequencer_code_mcc[
                             f"{self.awg.name}_qa{i}"] = (
-                            self.awg_mcc_qagenerators[i], sequence_string)
+                            self.awg_mcc_qagenerators[i],
+                            dict(sequencer_program=sequence_string))
                         self.awg._awg_program[i] = sequence_string
                         self.awg.store_awg_source_string(
                             qachannel, sequence_string)
@@ -371,7 +371,8 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             if self.pulsar.use_mcc():
                 self.multi_core_compiler.sequencer_code_mcc[
                     f"{self.awg.name}_qa{i}"] = (
-                    self.awg_mcc_qagenerators[i], sequence_string)
+                    self.awg_mcc_qagenerators[i],
+                    dict(sequencer_program=sequence_string))
                 self.multi_core_compiler.post_sequencer_code_upload[
                     f"{self.awg.name}_qa{i}"] = [
                     (self.awg_mcc_qagenerators[i].write_to_waveform_memory,
@@ -384,10 +385,10 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def is_awg_running(self):
         is_running = []
-        for awg_nr, qachannel in enumerate(self.awg.qachannels):
+        for awg_nr, qachannel in self.awg.qachannels.items():
             if not self.awg.awg_active[awg_nr]:
                 continue  # no check needed
-            if self.awg._awg_program[awg_nr]:
+            if self.awg.has_awg_program(awg_nr):
                 # hardware spec or 'readout' mode
                 is_running.append(qachannel.generator.enable())
             else:
