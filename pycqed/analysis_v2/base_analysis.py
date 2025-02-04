@@ -37,7 +37,6 @@ import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
 import logging
-import re
 log = logging.getLogger(__name__)
 
 class BaseDataAnalysis(object):
