@@ -99,7 +99,7 @@ class UploadingSweepFunction(Sweep_function):
         super().__init__(**kw)
         self.sequence = sequence
         self.upload = upload
-        self.upload_first = upload_first  # TODO why needed in addition?
+        self.upload_first = upload_first
         self.start_pulsar = start_pulsar
         self.start_exclude_awgs = start_exclude_awgs
         self.upload_finished_callback = upload_finished_callback
