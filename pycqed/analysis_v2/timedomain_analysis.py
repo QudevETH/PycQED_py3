@@ -2070,7 +2070,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         if classifier_params is None:
             classifier_params = self.get_data_from_timestamp_list({
                 f'{qbn}': f"Instrument settings.{qbn}.acq_classifier_params"
-                for qbn in self.qb_names})  # FIXME was qb_names_to_extract
+                for qbn in self.qb_names})
 
         correlate_proba = self.get_param_value('correlate_proba', False)
         if correlate_proba:
