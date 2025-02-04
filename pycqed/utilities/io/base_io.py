@@ -325,16 +325,21 @@ class DateTimeGenerator:
     def __init__(self):
         pass
 
-    def create_data_dir(self, datadir: str, name: str=None, ts=None,
-                        datesubdir: bool=True, timesubdir: bool=True,
-                        auto_increase: bool = True):
-        """
-        Create and return a new data directory.
+    def create_data_dir(
+        self,
+        datadir: str,
+        name: str = None,
+        input_ts=None,
+        datesubdir: bool = True,
+        timesubdir: bool = True,
+        auto_increase: bool = True,
+    ):
+        """Create and return a new data directory.
 
         Input:
             datadir (string): base directory
             name (string): optional name of measurement
-            ts (time.localtime()): timestamp which will be used
+            input_ts (time.localtime()): timestamp which will be used
                 if timesubdir=True
             datesubdir (bool): whether to create a subdirectory for the date
             timesubdir (bool): whether to create a subdirectory for the time
@@ -346,12 +351,14 @@ class DateTimeGenerator:
         """
 
         path = datadir
-        if ts is None:
+        ts_string = time.strftime(time.localtime())
+
+        if input_ts is None:
             ts = time.localtime()
         if datesubdir:
-            path = os.path.join(path, time.strftime('%Y%m%d', ts))
+            path = os.path.join(path, time.strftime("%Y%m%d", ts))
         if timesubdir:
-            tsd = time.strftime('%H%M%S', ts)
+            ts_string = time.strftime("%H%M%S", ts)
             timestamp_unique = False
             counter = 0
 
@@ -361,27 +368,28 @@ class DateTimeGenerator:
                 if not os.path.exists(path):
                     timestamp_unique = True
                     continue
-                    
-                measdirs = [d for d in os.listdir(path)
-                            if d.startswith(tsd)]
+
+                measdirs = [d for d in os.listdir(path) if d.startswith(ts_string)]
                 if not measdirs:
                     timestamp_unique = True
                 else:
                     # Add one second to timestamp until we find a unique one
                     ts = time.localtime(time.mktime(ts) + 1)
-                    tsd = time.strftime('%H%M%S', ts)
-                    
-                if counter >= 3:
-                    raise TimeoutError("Could not find a unique timestamp after"
-                        "moving 3 sec into the future.\n"
-                        "Please check this machine or its filesystem.")
-                    
-            if name is not None:
-                path = os.path.join(path, tsd+'_'+name)
-            else:
-                path = os.path.join(path, tsd)
+                    ts_string = time.strftime("%H%M%S", ts)
 
-        return path, tsd
+                if counter >= 3:
+                    raise TimeoutError(
+                        "Could not find a unique timestamp after"
+                        "moving 3 sec into the future.\n"
+                        "Please check this machine or its filesystem."
+                    )
+
+            if name is not None:
+                path = os.path.join(path, ts_string + "_" + name)
+            else:
+                path = os.path.join(path, ts_string)
+
+        return path, ts_string
 
     def new_filename(self, data_obj, folder, auto_increase: bool = True):
         """Return a new filename, based on name and timestamp."""
