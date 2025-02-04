@@ -3200,8 +3200,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         if self.get_param_value('save_shots_pk'):
             self._save_shots_pk(shots)
         freqs, bitstrings_labels = self.cpp_histogram(shots)
-        # shape: (bitstring, hard sweep, soft sweep)
-        weights = self.get_param_value('weights')
+        # shape: (n_states, hard sweep, soft sweep)
+
         # targets_sp_axis is the dimension of targets in self.sp,
         # targets_axis is that in freqs and the extended targets
         targets = None
@@ -3217,15 +3217,16 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             targets_sp_axis = 0
             targets_axis = 2
             targets_num = len(targets)
-            # shape: (bitstring, n_sets_trainable_pars * n_targets, n_iter)
+            # shape: (n_states, n_sets_trainable_pars * n_targets, n_iter)
             freqs = freqs.reshape(
                 [freqs.shape[0]] +
                 list(self.raw_data_dict['optimizer']['batch_shape']) +
                 [self.sp.length(1)]
             )
-            # shape: (bitstring, n_sets_trainable_pars, n_targets, n_iter)
+            # shape: (n_states, n_sets_trainable_pars, n_targets, n_iter)
         elif self.sp.find_parameter('targets') is not None:
             # sweep mode with targets
+            # shape: (n_states, hard sweep, soft sweep) with targets in targets_axis
             targets_sp_axis = self.sp.find_parameter('targets')
             targets_axis = targets_sp_axis + 1
             targets_num = self.sp.length()[targets_sp_axis]
@@ -3256,7 +3257,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             freqs = np.concatenate(
                 (freqs, np.ones(shape_fms) / shape[state_axis]),
                 axis=targets_axis)
-            # Amounts to np.concatenate((targets, [0])) for 1D targets
+            # Equivalent to np.concatenate((targets, [0])) for 1D targets
             targets = np.concatenate(
                 (targets, np.zeros(shape_fms)),
                 axis=targets_axis)
@@ -3264,12 +3265,14 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     axis=targets_sp_axis, scale=(targets_num+1)/targets_num)
             targets_num += 1
         elif self.get_param_value('fms', False):
-            print('replace target-0 data with fms')
+            print('Replacing target-0 data with fms!')
             # Replace all states (soft dim) with target==0 by a mixed state
             # Using the fact that targets has the same shape as freqs
             freqs[targets == 0] = 1 / shape[state_axis]  # Uniform probs
 
         # main data processing
+        # TODO add a case to set weights to ones, for stabilizer measurements?
+        weights = self.get_param_value('weights')
         if weights is None:
             assert targets is not None, 'Pass at least weights or targets'
             weights = self.cpp_opt_bxe_weights(
@@ -3279,11 +3282,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             targets=targets, targets_axis=targets_axis,
             keepdims=(not self.get_param_value('optimize')),
         )
-        # FIXME this atleast_2d is mostly because of _adjust_sp_length
-        #  solved?
-        # training_set_cost = np.atleast_2d(training_set_cost)
-        # training_set_cost_sp = self._adjust_sp_length(
-        #     self.sp, training_set_cost)
+
         output = output.reshape(virtual_sp.length())
         if cost is not None:
             cost = cost.reshape(virtual_sp.length())
@@ -3318,6 +3317,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     p_name, [(':', 'smcol')]
                 )
 
+        # FIXME one could add an option to calculate stabilizers
         # state preparation analysis (stabilizer analysis)
         # print('tda: doing stabilizer analysis')
         # if shots.shape[0] == 4:
@@ -3385,15 +3385,13 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         import pickle
         shape = [str(l) for l in shots.shape]
         if self.get_param_value('optimize'):
-            type = "optim"
-            sp_names = ''  # TODO
+            sp_names = ["optim"]
         else:
-            type = "sweep"
             sp_names = [list(sp_1dim.keys()) for sp_1dim in self.sp]
             sp_names = [keys[0] if len(keys) == 1 else f'{len(keys)}params'
                        for keys in sp_names]
         ts = self.timestamps[0]
-        fn = f"{ts}_shots_{type}_{'x'.join(sp_names)}_{'x'.join(shape)}.pkl"
+        fn = f"{ts}_shots_{'x'.join(sp_names)}_{'x'.join(shape)}.pkl"
         with open(os.path.join(a_tools.get_folder(self.timestamps[0]), fn),
                   "wb") as f:
             pickle.dump(shots, f)
@@ -3608,7 +3606,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     def cpp_bxe_cost_function(shots, targets, fms=False):
         freqs, _ = VariationalAlgorithmAnalysis.cpp_histogram(shots)
         # targets_axis: the axis of targets in freqs
-        # TODO allow other shape orders
+        # TODO currently only used during training, unify with process_data
         state_axis = 0
         targets_axis = 2
         shape = freqs.shape
@@ -3650,10 +3648,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     def _expand_to_ND_from_axis(current_array, new_shape,
                                 current_axes=None, new_axes=None):
         # Broadcast array to a bigger array of dims given by 'new_shape',
-        # assuming that 'current_array' corresponds to 'current_axes' within
+        # assuming that 'current_array' corresponds to dimensions 'current_axes' within
         # the new array. Disregards order of 'current_axes'.
-        # new_axes are the new axes to be added to match 'new_shape' (these
-        # can also be passed directly.
+        # Alternatively to passing 'current_axes', in which case 'new_axes' are figured
+        # out automatically, one can directly pass 'new_axes' (ignoring 'current_axes').
         # If the numbers of dimensions already match, only the lengths are
         # increased
         if len(current_array.shape) == len(new_shape):
@@ -3665,16 +3663,9 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     new_axes.pop(axis)
             # Create all new_axes, with length 1
             new_array = np.expand_dims(current_array, axis=new_axes)
-        # Extend new_axes dims so they match 'shape'
+        # Extend new_axes dims so they match new_shape
         new_array = np.broadcast_to(new_array, new_shape)
         return new_array
-
-    def prepare_plots(self):
-        super().prepare_plots()
-        # self.prepare_cost_function_plots()
-    #
-    # def prepare_cost_function_plots(self):
-    #     self.prepare_projected_data_plots()
 
 
 class MultiQubit_HistogramAnalysis(MultiQubit_TimeDomain_Analysis):
