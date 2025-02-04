@@ -3966,6 +3966,9 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         'colors': f'C{i}',
                         'line_kws': {'alpha': 0.5},
                         'linestyles': '--',
+                        # When using get_interactions_for_plotting from the device object,
+                        # int_val[1] is currently either 'ge' or 'ef', depending on the
+                        # qubit, see the fixme there
                         'setlabel': int_val[1] + ' <-> ' + int_qb,
                         'do_legend': True,
                     }
