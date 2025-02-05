@@ -3225,8 +3225,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             )
             # shape: (n_states, n_sets_trainable_pars, n_targets, n_iter)
         elif self.sp.find_parameter('targets') is not None:
-            # sweep mode with targets
-            # shape: (n_states, hard sweep, soft sweep) with targets in targets_axis
+            # sweep mode with targets in targets_axis
+            # shape: (n_states, hard sweep, soft sweep)
             targets_sp_axis = self.sp.find_parameter('targets')
             targets_axis = targets_sp_axis + 1
             targets_num = self.sp.length()[targets_sp_axis]
@@ -3648,10 +3648,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     def _expand_to_ND_from_axis(current_array, new_shape,
                                 current_axes=None, new_axes=None):
         # Broadcast array to a bigger array of dims given by 'new_shape',
-        # assuming that 'current_array' corresponds to dimensions 'current_axes' within
-        # the new array. Disregards order of 'current_axes'.
-        # Alternatively to passing 'current_axes', in which case 'new_axes' are figured
-        # out automatically, one can directly pass 'new_axes' (ignoring 'current_axes').
+        # assuming that 'current_array' corresponds to dims 'current_axes'
+        # within the new array. Disregards order of 'current_axes'.
+        # Alternatively to passing 'current_axes', which sets 'new_axes',
+        # one can directly pass 'new_axes' (ignoring 'current_axes').
         # If the numbers of dimensions already match, only the lengths are
         # increased
         if len(current_array.shape) == len(new_shape):
