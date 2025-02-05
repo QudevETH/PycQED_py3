@@ -464,17 +464,13 @@ class QCNNExperiment(VariationalAlgorithm):
             # self._add_rxy_block('RY', range(len(self.qubits)), [90]*9)
             if self.do_qcnn:
                 # QCNN. Each gate has an independent parameter.
-                self._add_rxy_block('RY1', range(len(self.qubits)),
-                                   ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
+                self._add_rxy_block('RY1', range(len(self.qubits)))
                 self._add_cz_block('CZ1', [[1, 2], [4, 5], [8, 7]])
-                self._add_rxy_block('RY2', range(len(self.qubits)),
-                                   ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
+                self._add_rxy_block('RY2', range(len(self.qubits)))
                 self._add_cz_block('CZ2', [[0, 1], [3, 4], [6, 7]])
-                self._add_rxy_block('RY3', range(len(self.qubits)),
-                                   ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
+                self._add_rxy_block('RY3', range(len(self.qubits)))
                 self._add_cz_block('CZ3', [[2, 3], [5, 6]])
-                self._add_rxy_block('RY4', range(len(self.qubits)),
-                                   ['RY4_0', 'RY4_1', 'RY4_2', 'RY4_3'])
+                self._add_rxy_block('RY4', range(len(self.qubits)))
             else:
                 self._add_rxy_block('RYb', range(len(self.qubits)),
                                     ['theta_b']*9)
