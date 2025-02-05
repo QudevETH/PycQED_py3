@@ -571,7 +571,7 @@ class MeasurementControl(Instrument):
                 self.measurement_function(sweep_point, index=i)
 
     @Timer()
-    def measure_soft_adaptive(self, method=None):
+    def measure_soft_adaptive(self):
         '''
         Uses the adaptive function and keywords for that function as
         specified in self.af_pars()
@@ -581,8 +581,8 @@ class MeasurementControl(Instrument):
            itself expects a function returning data as its argument
          - the user passes data_processing_function, which is an analysis
          - measure_soft_adaptive calls the adaptive_function, passing
-           optimization_function to it
-         - optimization_function calls measurement_function (which calls
+           measurement_function_wrapper to it
+         - measurement_function_wrapper calls measurement_function (which calls
            the detectors), and data_processing_function, and returns values
          - adaptive_function gets the values, takes a decision, and returns
            an optimal (set of) sweep point(s)
@@ -596,10 +596,10 @@ class MeasurementControl(Instrument):
          In addition, one could replace the adaptive_function by a base
          class, including a data_processing_function analysis and an
          optimisation method (defaulting to doing a min/max optimisation as
-         currently in optimization_function).
+         currently in measurement_function_wrapper).
         '''
         self.save_optimization_settings()
-        # See set_adaptive_function_parameters for the reserved arguments in af_pars
+        # See set_adaptive_function_parameters for these reserved arguments
         self.adaptive_function = self.af_pars.pop('adaptive_function')
         self.data_processing_function = self.af_pars.pop(
             'data_processing_function', self._default_data_processing_function)
@@ -627,9 +627,8 @@ class MeasurementControl(Instrument):
             try:
                 # exists so it is possible to extract the result
                 # of an optimization post experiment
-                self.adaptive_result = \
-                    self.adaptive_function(self.optimization_function,
-                                           **self.af_pars)
+                self.adaptive_result = self.adaptive_function(
+                    self.measurement_function_wrapper, **self.af_pars)
             except StopIteration:
                 print('\nReached f_termination: %s' % (self.f_termination))
         else:
@@ -909,7 +908,7 @@ class MeasurementControl(Instrument):
     def _default_data_processing_function(vals):
         """Default data processing function for adaptive measurements.
 
-        This is used in optimization_function (mode = adaptive) if no
+        This is used in measurement_function_wrapper (mode = adaptive) if no
         custom function is provided via af_pars['data_processing_function'].
 
         The default processing takes the first column if the data has two
@@ -925,9 +924,9 @@ class MeasurementControl(Instrument):
         return vals
 
     @Timer()
-    def optimization_function(self, x):
+    def measurement_function_wrapper(self, x):
         """
-        A wrapper around the measurement function.
+        A wrapper around the measurement function, to be used in adaptive mode.
 
         Args:
             x:
