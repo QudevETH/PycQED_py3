@@ -599,6 +599,7 @@ class MeasurementControl(Instrument):
          currently in optimization_function).
         '''
         self.save_optimization_settings()
+        # See set_adaptive_function_parameters for the reserved arguments in af_pars
         self.adaptive_function = self.af_pars.pop('adaptive_function')
         self.data_processing_function = self.af_pars.pop(
             'data_processing_function', self._default_data_processing_function)
@@ -754,6 +755,8 @@ class MeasurementControl(Instrument):
 
         FIXME: not tested for len(self.sweep_functions) > 2
         '''
+        # FIXME should be replaced by x = np.atleast_2d(x), to ensure that x is always 2D
+        #  and to clean up the two atleast_2d below
         if np.isscalar(x):
             x = [x]
         # The len()==1 condition is a consistency check because batch_mode
@@ -903,7 +906,7 @@ class MeasurementControl(Instrument):
         return vals
 
     @staticmethod
-    def _default_data_processing_function(vals, dset):
+    def _default_data_processing_function(vals):
         """Default data processing function for adaptive measurements.
 
         This is used in optimization_function (mode = adaptive) if no
@@ -916,9 +919,6 @@ class MeasurementControl(Instrument):
 
         Args:
             vals (array): Array with the output of measurement_function.
-            dset (array): The data set self.dset will be passed here. Not
-                used in the default processing, but included as an argument
-                to allow custom data processing functions to access the dset.
         """
         if len(np.shape(vals)) == 2:
             vals = np.array(vals)[:, 0]
@@ -928,17 +928,18 @@ class MeasurementControl(Instrument):
     def optimization_function(self, x):
         """
         A wrapper around the measurement function.
+
+        Args:
+            x:
         It takes the following actions based on parameters specified
         in self.af_pars:
         - Compares measurement value with "f_termination" and raises an
         exception, that gets caught outside of the optimization loop, if
         the measured value is smaller than this f_termination.
-
-        Measurement function with scaling to correct physical value
         """
 
         vals = self.measurement_function(x)
-        vals = self.data_processing_function(vals, self.dset)
+        vals = self.data_processing_function(vals)
         if self.f_termination is not None:
             if vals < self.f_termination:
                 raise StopIteration()
