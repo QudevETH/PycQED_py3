@@ -906,7 +906,7 @@ class MeasurementControl(Instrument):
         return vals
 
     @staticmethod
-    def _default_data_processing_function(vals, dset):
+    def _default_data_processing_function(vals):
         """Default data processing function for adaptive measurements.
 
         This is used in optimization_function (mode = adaptive) if no
@@ -919,9 +919,6 @@ class MeasurementControl(Instrument):
 
         Args:
             vals (array): Array with the output of measurement_function.
-            dset (array): The data set self.dset will be passed here. Not
-                used in the default processing, but included as an argument
-                to allow custom data processing functions to access the dset.
         """
         if len(np.shape(vals)) == 2:
             vals = np.array(vals)[:, 0]
@@ -942,7 +939,7 @@ class MeasurementControl(Instrument):
         """
 
         vals = self.measurement_function(x)
-        vals = self.data_processing_function(vals, self.dset)
+        vals = self.data_processing_function(vals)
         if self.f_termination is not None:
             if vals < self.f_termination:
                 raise StopIteration()
