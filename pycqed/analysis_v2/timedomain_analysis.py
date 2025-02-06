@@ -3904,6 +3904,9 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         self.amps = OrderedDict()
         self.freqs = OrderedDict()
         for qbn in self.qb_names:
+            # Extract sweep parameter names corresponding to typical
+            # parameters which get swept, e.g. pulse length. In case several
+            # parameters are found, take the first one.
             len_key = [pn for pn in self.mospm[qbn] if 'length' in pn]
             if len(len_key) == 0:
                 raise KeyError('Couldn"t find sweep points corresponding to '
@@ -4068,6 +4071,9 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         'colors': f'C{i}',
                         'line_kws': {'alpha': 0.5},
                         'linestyles': '--',
+                        # When using get_interactions_for_plotting from the device object,
+                        # int_val[1] is currently either 'ge' or 'ef', depending on the
+                        # qubit, see the fixme there
                         'setlabel': int_val[1] + ' <-> ' + int_qb,
                         'do_legend': True,
                     }

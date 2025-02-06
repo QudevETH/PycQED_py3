@@ -648,15 +648,15 @@ class Device(Instrument):
                         'qb3': {'qb4': (5262961708.784315, 'ge'), ...},
                         'qb4': {'qb3': (5262961708.784315, 'ef'), ...},
                         ...
-                }
+                    },
                 'interaction_amps': # same with amplitudes instead of freqs
             }
             The second entry of each tuple indicates the transition whose
-            frequency is indicated as first entry. Currently
-            interaction_freqs contains ge frequencies for high- and ef for
-            low-frequency qubits, while interaction_amps arbitrarily labels
-            the corresponding amplitudes as ge, since this was the easiest
-            way to implement this method.
+            frequency is indicated as first entry.
+            FIXME Currently interaction_freqs contains ge frequencies for
+             high- and ef for low-frequency qubits, while interaction_amps
+             arbitrarily labels the corresponding amplitudes as ge,
+             since this was the easiest way to implement this method.
         """
         if cz_pulse_name is None:
             cz_pulse_name = self.default_cz_gate_name()
