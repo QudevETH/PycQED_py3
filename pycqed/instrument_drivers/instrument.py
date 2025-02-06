@@ -1,21 +1,23 @@
 from qcodes.instrument.base import Instrument as QcodesInstrument
 from qcodes.instrument.channel import InstrumentModule as QcodesInstrumentModule
 import weakref
+from abc import ABC
+
 
 class FurtherInstrumentsDictMixIn:
     _further_instruments = weakref.WeakValueDictionary()
 
 
-class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
+class PycqedInstrumentMixin(ABC):
     """
-    Class for all QCodes instruments.
+    Mixin to be used for both QCodes-based Instrument and InstrumentModule
     """
 
     def get_idn(self):
         """
         Required as a standard interface for QCoDeS instruments.
         """
-        return {'driver': str(self.__class__), 'name': self.name}
+        return {'driver': self.__class__.__name__, 'name': self.name}
 
     def get(self, param_name, *args):
         """Shortcut for getting a parameter from its name or a default value.
@@ -59,6 +61,9 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
         # use the form below instead
         self.parameters[param_name].set(value)
 
+
+class Instrument(PycqedInstrumentMixin, QcodesInstrument,
+                 FurtherInstrumentsDictMixIn):
     @classmethod
     def find_instrument(cls, name, instrument_class=None):
         # This overrides the super method to allow normal qcodes instruments
@@ -87,24 +92,8 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
             return ins
 
 
-# FIXME: Is this class really needed?
-class InstrumentModule(QcodesInstrumentModule):
-    """
-    Custom extension of QcodesInstrumentModule for ResetScheme.
-
-    See QCoDeS docs & reset_schemes.py for more details.
-    """
-
-    def get_idn(self):
-        """Get the Instrument Module's ID and Name.
-
-        See QCoDeS docs for more details.
-
-        Returns:
-            dict: A dictionary with two keys: 'driver' and 'name'.
-                The values are the name of the driver and the name of the instrument (set during initialization).
-        """
-        return {'driver': self.__class__.__name__, 'name': self.name}
+class InstrumentModule(PycqedInstrumentMixin, QcodesInstrumentModule):
+    pass
 
 
 class DummyVisaHandle:
