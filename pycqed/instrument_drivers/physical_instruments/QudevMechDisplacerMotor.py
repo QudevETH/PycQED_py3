@@ -3,7 +3,7 @@ import logging
 
 from pycqed.instrument_drivers.physical_instruments.NanotecSMI33\
     import NanotecSMI33
-from qcodes.utils.validators import Enum, Ints, Numbers
+from qcodes.utils.validators import Numbers
 
 log = logging.getLogger(__name__)
 
