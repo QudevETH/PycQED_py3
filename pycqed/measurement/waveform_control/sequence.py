@@ -423,27 +423,39 @@ class Sequence:
 
         return scaling_factors
 
-    def n_acq_elements(self, per_segment=False):
+    def n_acq_elements(self, per_segment=False,
+                       include_non_logged_acquisitions=False):
         """
         Gets the number of acquisition elements in the sequence.
         Args:
             per_segment (bool): Whether or not to return the number of
                 acquisition elements per segment. Defaults to False.
+            include_non_logged_acquisitions (bool): If True, returns the
+                total number of acquisitions including those which are not
+                logged in the data returned by the acquisition device
 
         Returns:
             number of acquisition elements (list (if per_segment) or int)
-
-        Note: this only counts the acquisitions which are really logged and
-        returned by the acquisition device.
-
+            ordered (bool, optionally): checks if non-logged acquisitions
+                always precede logged acquisitions
         """
-        n_readouts = [len(
-            [e for e in seg.acquisition_elements if seg.element_metadata.get(
-                e, {}).get('log_acquisition', True)]
-        ) for seg in self.segments.values()]
+        # e.g. [[False, False, True...]]  where True indicates a logged acq
+        acqs_per_seg = [
+            [seg.element_metadata.get(e, {}).get('log_acquisition',True)
+             for e in seg.acquisition_elements
+             ] for seg in self.segments.values()
+        ]
+        ordered = all([[acqs[i]<=acqs[i+1] for i in range(len(acqs)-1)]
+                       for acqs in acqs_per_seg])
+        n_acqs = [len(
+            [acq or include_non_logged_acquisitions for acq in acqs]
+        ) for acqs in acqs_per_seg]
         if not per_segment:
-            n_readouts = np.sum(n_readouts)
-        return n_readouts
+            n_acqs = np.sum(n_acqs)
+        if include_non_logged_acquisitions:
+            return n_acqs, ordered
+        else:
+            return n_acqs
 
     def n_segments(self):
         """
@@ -482,19 +494,30 @@ class Sequence:
         Wrapper for repeated readout
         :param pulse_name:
         :param operation_dict:
-        :param sequence:
         :return:
         """
 
-        # FIXME generalise this
-        # FIXME will assume seg.acquisition_elements is ordered
-        # FIXME bypasses n_acq_elements
-        if any([not e.get('log_acquisition', True)
-                for seg in self.segments.values()
-                for e in seg.element_metadata.values()]):
-            num_resets = len(
-                list(self.segments.values())[0].acquisition_elements) - 1
-            pattern = (self.n_acq_elements(), (num_resets, 1), (1, 1))
+        n_acq_per_seg, ordered = self.n_acq_elements(
+            per_segment=True, include_non_logged_acquisitions=True)
+        n_logged_acq_per_seg = self.n_acq_elements(per_segment=True)
+        n_non_logged_acq_per_seg = \
+            np.array(n_acq_per_seg) - np.array(n_logged_acq_per_seg)
+        if sum(n_non_logged_acq_per_seg):  # If there are non logged acqs
+            if np.unique(n_non_logged_acq_per_seg).size > 1 or\
+                    np.unique(n_logged_acq_per_seg).size > 1:
+                raise ValueError(
+                    "All segments in sequence must have the same number of"
+                    "non-logged acquisitions, as well as logged acquisitions, "
+                    "when using repeat readout patterns, but currently"
+                    f"{n_non_logged_acq_per_seg=} and {n_logged_acq_per_seg=}")
+            if not ordered:
+                raise NotImplementedError(
+                    "All non-logged acquisitions should happen before "
+                    "logged acquisitions in a segment when using repeat "
+                    "readout patterns!")
+            pattern = (self.n_acq_elements(),
+                       (n_non_logged_acq_per_seg[0], 1),
+                       (n_logged_acq_per_seg[0], 1))
         else:
             pattern = (self.n_acq_elements(), 1)
         return self.repeat(pulse_name, operation_dict, pattern)
