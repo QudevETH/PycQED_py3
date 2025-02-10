@@ -1,7 +1,5 @@
-import time
 import logging
 import numpy as np
-from copy import deepcopy
 from functools import partial
 import json
 
@@ -475,7 +473,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 # calculated from awg_nr can ensure that a unique osc is
                 # used for every channel pair for which we configure
                 # internal modulation.
-                osc_nr = awg_nr * 4
+                osc_nr = awg_nr
                 # configure the oscillator frequency
                 self.awg.set(f'oscs_{osc_nr}_freq', freq)
                 # set up the two sines of the channel pair with the same
@@ -682,6 +680,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     https://docs.zhinst.com/hdawg_user_manual/overview.html
     for more details."""
 
+    COMMAND_TABLE_MAX_SIZE = 1024
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -762,7 +762,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
         # Choose oscillators, set phases and modulation frequencies.
         mod_frequency = mod_config.get("mod_frequency", 0.0)
-        osc_nr = mod_config.get("osc_nr", awg_nr * 4)
+        osc_nr = mod_config.get("osc_nr", awg_nr)
         self.awg.set(f'oscs_{osc_nr}_freq', mod_frequency)
         self.awg.set(f'sines_{awg_nr * 2}_oscselect', osc_nr)
         self.awg.set(f'sines_{awg_nr * 2 + 1}_oscselect', osc_nr)

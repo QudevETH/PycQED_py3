@@ -62,8 +62,8 @@ def create_experiment_list_pyGSTi_qudev(filename, qb_names=[''],
             measfiducial = []
 
             if "^" in clean_seq:
-                power = int(re.findall("\d+", clean_seq)[0])
-                result = re.split("[(]|\)\^\d", clean_seq)
+                power = int(re.findall(r"\d+", clean_seq)[0])
+                result = re.split(r"[(]|\)\^\d", clean_seq)
             else:
                 power = 1
                 result = re.split("[()]", clean_seq)

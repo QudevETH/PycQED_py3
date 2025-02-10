@@ -18,8 +18,8 @@ import logging
 from typing import IO, Optional
 
 # Do not remove, used inside eval()
-from numpy import array
-from collections import OrderedDict
+from numpy import array  # noqa: F401
+from collections import OrderedDict  # noqa: F401
 
 from pycqed.utilities.io.base_io import Loader, file_extensions, \
     DateTimeGenerator
@@ -101,7 +101,7 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
 
         # Basic types
         if isinstance(item, (str, float, int, bool, np.number,
-                             np.float_, np.int_, np.bool_)):
+                             np.float64, np.int_, np.bool_)):
             if not hasattr(key, "encode"):
                 key = repr(key)
             try:
@@ -519,20 +519,23 @@ def safe_file_open(
     # FIXME replace Optional[IO] with IO | None once we use python > 3.10
     """Open an HDF5 file safely.
 
+    Opens the file while catching instances where the file has been
+    temporarily locked due to being opened by another program (*e.g.*
+    in an HDF viewer or by a file backup utility).
+
     Arguments:
-        file_path: A string specifying the path to the file to open.
-        mode: A string specifying the mode to open the file in. See
-            the options for `h5py.File()`. Optional, defaults to 'a'.
-        max_open_attempts: An integer specifying the maximum number of
-            times to try opening the file. Optional, defaults to 12.
-        sleep_duration: An integer specifying the duration (in seconds)
-            to wait in between each attempt at opening the file.
-            Optional, defaults to 10 seconds.
+        file_path (str): The path to the file to open.
+        mode (str): The mode to open the file in. See the options for
+            ``h5py.File()``. Optional, defaults to ``'a'``.
+        max_open_attempts (int): The maximum number of times to try
+            opening the file. Optional, defaults to 12.
+        sleep_duration (int): The duration (in seconds) to wait in
+            between each attempt at opening the file. Optional, defaults
+            to 10 seconds.
 
     Returns:
-        file_object: An IO object of the opened HDF5 file (if opening
-            succeeds) or None (if it fails). Use like normal in context
-            managers.
+        (IO|None): The opened HDF5 file (if opening succeeds) or
+            ``None`` (if it fails). Use like normal in context managers.
     """
     cur_open_attempt = 0
     file_opened = False

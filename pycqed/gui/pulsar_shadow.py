@@ -1,6 +1,3 @@
-import types
-from qcodes.instrument.base import Instrument
-from pycqed.measurement.waveform_control.pulsar import Pulsar
 from copy import deepcopy
 
 

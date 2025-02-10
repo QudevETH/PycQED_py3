@@ -1,6 +1,5 @@
 import numpy as np
-import scipy
-from lmfit import minimize, Parameters, Parameter, report_fit
+from lmfit import Parameters
 
 
 def cavity_traj(dt, eps, df, Xi, kappa):

@@ -6,7 +6,7 @@ import os
 from copy import deepcopy
 from pycqed.analysis_v3 import saving as save_mod
 from pycqed.analysis_v3 import helper_functions as hlp_mod
-from numpy import array  # Needed for eval. Do not remove.
+from numpy import array  # noqa: F401 # Needed for eval. Do not remove.
 
 search_modules = set()
 search_modules.add(hlp_mod)
@@ -837,6 +837,6 @@ class ProcessingPipeline(list):
         if save_name is not None:
             if save_folder is None:
                 save_folder = os.getcwd()
-            G.draw(f'{save_folder}\{save_name}.{fmt}')
+            G.draw(rf'{save_folder}\{save_name}.{fmt}')
 
         return G

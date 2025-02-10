@@ -26,7 +26,7 @@ class QLineEditInitStateSelection(qt.QtWidgets.QLineEdit):
         # all characters are interpreted as literals, except the dash,
         # hence it has to be escaped
         regex = qt.QtCore.QRegularExpression('[%s]{2}' % ''.join(
-            allowed_states).replace('-', '\-'))
+            allowed_states).replace('-', r'\-'))
         validator = qt.QtGui.QRegularExpressionValidator(regex)
         self.setPlaceholderText('e.g. "1+"')
         self.setToolTip(f"two chars from {allowed_states}, first should be "

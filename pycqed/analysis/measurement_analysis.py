@@ -1175,7 +1175,7 @@ class OptimizationAnalysisNN(MeasurementAnalysis):
         self.round = kw.pop('round',1)
         self.estimator_name = kw.pop('estimator','GRNN_neupy')
 
-        self.accuracy= -np.infty
+        self.accuracy = -np.inf
         self.make_fig = kw.pop('make_fig',True)
 
         self.train_NN(**kw)
@@ -2055,21 +2055,21 @@ class Rabi_Analysis(TD_Analysis):
                     pi_half_pulse_old = \
                         pi_pulse_old * eval(
                             instr_set[self.qb_name].attrs['amp90_scale'])
-                old_vals = '\n  $\pi-Amp_{old}$ = %.3g ' % (pi_pulse_old) + \
+                old_vals = '\n  $\\pi-Amp_{old}$ = %.3g ' % (pi_pulse_old) + \
                            self.parameter_units[0] + \
-                           '\n$\pi/2-Amp_{old}$ = %.3g ' % (pi_half_pulse_old) + \
+                           '\n$\\pi/2-Amp_{old}$ = %.3g ' % (pi_half_pulse_old) + \
                            self.parameter_units[0]
             except(TypeError, KeyError, ValueError):
                 log.warning('qb_name is None. Default value qb_name="qb" is '
                                 'used. Old parameter values will not be retrieved.')
                 old_vals = ''
 
-            textstr = ('  $\pi-Amp$ = %.3g ' % (pi_pulse) + self.parameter_units[0] +
-                       ' $\pm$ (%.3g) ' % (self.rabi_amplitudes['piPulse_std']) +
+            textstr = (r'  $\pi-Amp$ = %.3g ' % (pi_pulse) + self.parameter_units[0] +
+                       r' $\pm$ (%.3g) ' % (self.rabi_amplitudes['piPulse_std']) +
                        self.parameter_units[0] +
-                       '\n$\pi/2-Amp$ = %.3g ' % (pi_half_pulse) +
+                       '\n$\\pi/2-Amp$ = %.3g ' % (pi_half_pulse) +
                        self.parameter_units[0] +
-                       ' $\pm$ (%.3g) ' % (self.rabi_amplitudes['piHalfPulse_std']) +
+                       r' $\pm$ (%.3g) ' % (self.rabi_amplitudes['piHalfPulse_std']) +
                        self.parameter_units[0] + old_vals)
 
             self.add_textbox(textstr, fig=self.fig, ax=self.ax)
@@ -2403,7 +2403,7 @@ class Echo_analysis(TD_Analysis):
 
         scale_factor, unit = SI_prefix_and_scale_factor(
             self.fit_res.params['tau'].value, self.parameter_units[0])
-        textstr = '$T_2$={:.3g}$\pm$({:.3g}) {} '.format(
+        textstr = r'$T_2$={:.3g}$\pm$({:.3g}) {} '.format(
             self.fit_res.params['tau'].value * scale_factor,
             self.fit_res.params['tau'].stderr * scale_factor,
             unit)
@@ -2555,7 +2555,7 @@ class QScale_Analysis(TD_Analysis):
                             'not be retrieved.')
             old_vals = ''
 
-        textstr = ('qscale = %.5g $\pm$ %.5g'
+        textstr = (r'qscale = %.5g $\pm$ %.5g'
                    % (self.optimal_qscale['qscale'],
                       self.optimal_qscale['qscale_std']) + old_vals)
 
@@ -3366,7 +3366,7 @@ class SSRO_Analysis(MeasurementAnalysis):
                        # '$V_{\mathrm{th}}$ = ' + '{:.4f} V'.format(self.V_th_a),
                        'SNR = {:.2f}'.format(SNR),
                        '$p(e|0)$ = {:.4f}'.format(frac1_0),
-                       '$p(g|\pi)$ = {:.4f}'.format(1-frac1_1)]
+                       r'$p(g|\pi)$ = {:.4f}'.format(1-frac1_1)]
             if masked:
                 p_rem = self.removed_points / self.total_points
                 markers += [nomarker]
@@ -3574,7 +3574,7 @@ class T1_Analysis(TD_Analysis):
 
             textstr = ('$T_1$ = {:.5f} '.format(T1_micro_sec) +
                        units +
-                       ' $\pm$ {:.5f} '.format(T1_err_micro_sec) +
+                       r' $\pm$ {:.5f} '.format(T1_err_micro_sec) +
                        units + old_vals)
             self.add_textbox(textstr, fig=self.fig, ax=self.ax)
 
@@ -3796,41 +3796,41 @@ class Ramsey_Analysis(TD_Analysis):
                 fit_res_gauss = self.fit_results_dict['gaussian']
                 fit_res_array = [fit_res, fit_res_gauss]
 
-                textstr = ('$f_{qubit \_ old}$ = %.7g GHz'
+                textstr = (r'$f_{qubit \_ old}$ = %.7g GHz'
                            % (self.qubit_freq_spec*1e-9) +
-                           '\n$f_{qubit \_ new \_ exp}$ = %.7g $\pm$ (%.5g) GHz'
+                           '\n$f_{qubit \\_ new \\_ exp}$ = %.7g $\\pm$ (%.5g) GHz'
                            % (self.qubit_frequency*1e-9,
                               fit_res.params['frequency'].stderr*1e-9) +
-                           '\n$f_{qubit \_ new \_ gauss}$ = %.7g $\pm$ (%.5g) GHz'
+                           '\n$f_{qubit \\_ new \\_ gauss}$ = %.7g $\\pm$ (%.5g) GHz'
                            % (self.qubit_frequency_gauss *1e-9,
                               fit_res_gauss.params['frequency'].stderr*1e-9))
-                T2_star_str = ('\n$T_{2,exp}^\star$ = %.6g '
+                T2_star_str = ('\n$T_{2,exp}^\\star$ = %.6g '
                                % (fit_res.params['tau'].value*self.scale)  +
-                               self.units + ' $\pm$ (%.6g) '
+                               self.units + r' $\pm$ (%.6g) '
                                % (fit_res.params['tau'].stderr*self.scale) +
                                self.units +
-                               '\n$T_{2,gauss}^\star$ = %.6g '
+                               '\n$T_{2,gauss}^\\star$ = %.6g '
                                %(fit_res_gauss.params['tau'].value*self.scale) +
-                               self.units + ' $\pm$ (%.6g) '
+                               self.units + r' $\pm$ (%.6g) '
                                %(fit_res_gauss.params['tau'].stderr*self.scale)+
                                self.units)
             else:
                 fit_res_array = [fit_res]
-                textstr = ('$f_{qubit \_ old}$ = %.7g GHz'
+                textstr = (r'$f_{qubit \_ old}$ = %.7g GHz'
                            % (self.qubit_freq_spec*1e-9) +
-                           '\n$f_{qubit \_ new}$ = %.7g $\pm$ (%.5g) GHz'
+                           '\n$f_{qubit \\_ new}$ = %.7g $\\pm$ (%.5g) GHz'
                            % (self.qubit_frequency*1e-9,
                               fit_res.params['frequency'].stderr*1e-9))
-                T2_star_str = ('\n$T_2^\star$ = %.6g '
+                T2_star_str = ('\n$T_2^\\star$ = %.6g '
                                % (fit_res.params['tau'].value*self.scale)  +
-                               self.units + ' $\pm$ (%.6g) '
+                               self.units + r' $\pm$ (%.6g) '
                                % (fit_res.params['tau'].stderr*self.scale) +
                                self.units)
 
-            textstr += ('\n$\Delta f$ = %.5g $ \pm$ (%.5g) MHz'
+            textstr += ('\n$\\Delta f$ = %.5g $ \\pm$ (%.5g) MHz'
                         % ((self.qubit_frequency - self.qubit_freq_spec) * 1e-6,
                            fit_res.params['frequency'].stderr * 1e-6) +
-                        '\n$f_{Ramsey}$ = %.5g $ \pm$ (%.5g) MHz'
+                        '\n$f_{Ramsey}$ = %.5g $ \\pm$ (%.5g) MHz'
                         % (fit_res.params['frequency'].value*1e-6,
                            fit_res.params['frequency'].stderr*1e-6))
             textstr += T2_star_str
@@ -4121,12 +4121,12 @@ class Ramsey_Analysis(TD_Analysis):
 
                 textstr = ('artificial detuning = %.2g MHz'
                            % (self.artificial_detuning[i] * 1e-6) +
-                           '\n$f_{Ramsey}$ = %.5g $ MHz \pm$ (%.5g) MHz'
+                           '\n$f_{Ramsey}$ = %.5g $ MHz \\pm$ (%.5g) MHz'
                            % (fit_res_array[i].params['frequency'].value * 1e-6,
                               fit_res_array[i].params['frequency'].stderr * 1e6) +
-                           '\n$T_2^\star$ = %.3g '
+                           '\n$T_2^\\star$ = %.3g '
                            % (fit_res_array[i].params['tau'].value * self.scale) +
-                           self.units + ' $\pm$ (%.3g) '
+                           self.units + r' $\pm$ (%.3g) '
                            % (fit_res_array[i].params['tau'].stderr * self.scale) +
                            self.units)
                 ax.annotate(textstr, xy=(0.99, 0.98), xycoords='axes fraction',
@@ -4134,14 +4134,14 @@ class Ramsey_Analysis(TD_Analysis):
                             horizontalalignment='right', verticalalignment='top')
 
                 if i == (len_art_det - 1):
-                    textstr_main = ('$f_{qubit \_ old}$ = %.5g GHz'
+                    textstr_main = (r'$f_{qubit \_ old}$ = %.5g GHz'
                                     % (self.qubit_freq_spec * 1e-9) +
-                                    '\n$f_{qubit \_ new}$ = %.5g $ GHz \pm$ (%.5g) GHz'
+                                    '\n$f_{qubit \\_ new}$ = %.5g $ GHz \\pm$ (%.5g) GHz'
                                     % (self.qubit_frequency * 1e-9,
                                        qb_stderr * 1e-9) +
-                                    '\n$T_2^\star$ = %.3g '
+                                    '\n$T_2^\\star$ = %.3g '
                                     % (self.T2_star['T2_star'] * self.scale) +
-                                    self.units + ' $\pm$ (%.3g) '
+                                    self.units + r' $\pm$ (%.3g) '
                                     % (self.T2_star['T2_star_stderr'] * self.scale) +
                                     self.units)
 
@@ -4459,7 +4459,7 @@ class Homodyne_Analysis(MeasurementAnalysis):
         instr_set = self.data_file['Instrument settings']
         try:
             old_RO_freq = eval(instr_set[self.qb_name].attrs['f_RO'])
-            old_vals = '\n$f_{\mathrm{old}}$ = %.5f GHz' % (old_RO_freq * scale)
+            old_vals = '\n$f_{\\mathrm{old}}$ = %.5f GHz' % (old_RO_freq * scale)
         except (TypeError, KeyError, ValueError):
             log.warning('qb_name is None. Old parameter values will '
                             'not be retrieved.')
@@ -4467,13 +4467,13 @@ class Homodyne_Analysis(MeasurementAnalysis):
 
         if ('hanger' in fitting_model) or ('complex' in fitting_model):
             if kw['custom_power_message'] is None:
-                textstr = '$f_{\mathrm{center}}$ = %.5f GHz $\pm$ (%.3g) GHz' % (
+                textstr = r'$f_{\mathrm{center}}$ = %.5f GHz $\pm$ (%.3g) GHz' % (
                     fit_res.params['f0'].value,
                     fit_res.params['f0'].stderr) + '\n' \
-                                                   '$Qc$ = %.1f $\pm$ (%.1f)' % (
+                                                   r'$Qc$ = %.1f $\pm$ (%.1f)' % (
                               fit_res.params['Qc'].value,
                               fit_res.params['Qc'].stderr) + '\n' \
-                                                             '$Qi$ = %.1f $\pm$ (%.1f)' % (
+                                                             r'$Qi$ = %.1f $\pm$ (%.1f)' % (
                               fit_res.params['Qi'].value, fit_res.params['Qi'].stderr) + \
                           old_vals
             else:
@@ -4492,25 +4492,25 @@ class Homodyne_Analysis(MeasurementAnalysis):
                         2 * pi * fit_res.params['f0'].value * 1e9) ** 2)) * power_in_w
                 phase_vel = 4 * custom_power['res_len'] * fit_res.params['f0'].value * 1e9
 
-                textstr = '$f_{\mathrm{center}}$ = %.5f GHz $\pm$ (%.3g) GHz' % (
+                textstr = r'$f_{\mathrm{center}}$ = %.5f GHz $\pm$ (%.3g) GHz' % (
                     fit_res.params['f0'].value,
                     fit_res.params['f0'].stderr) + '\n' \
-                                                   '$Qc$ = %.1f $\pm$ (%.1f)' % (
+                                                   r'$Qc$ = %.1f $\pm$ (%.1f)' % (
                               fit_res.params['Qc'].value,
                               fit_res.params['Qc'].stderr) + '\n' \
-                                                             '$Qi$ = %.1f $\pm$ (%.1f)' % (
+                                                             r'$Qi$ = %.1f $\pm$ (%.1f)' % (
                               fit_res.params['Qi'].value, fit_res.params['Qi'].stderr) + \
                           old_vals + '\n' \
-                                     '$< n_{\mathrm{ph} }>$ = %.1f' % (mean_ph) + '\n' \
-                                                                                  '$v_{\mathrm{phase}}$ = %.3e m/s' % (
+                                     r'$< n_{\mathrm{ph} }>$ = %.1f' % (mean_ph) + '\n' \
+                                                                                  r'$v_{\mathrm{phase}}$ = %.3e m/s' % (
                               phase_vel)
 
         elif fitting_model == 'lorentzian':
-            textstr = '$f_{{\mathrm{{center}}}}$ = %.5f GHz ' \
-                      '$\pm$ (%.3g) GHz' % (
+            textstr = r'$f_{{\mathrm{{center}}}}$ = %.5f GHz ' \
+                      r'$\pm$ (%.3g) GHz' % (
                           fit_res.params['f0'].value * scale,
                           fit_res.params['f0'].stderr * scale) + '\n' \
-                                                                 '$Q$ = %.1f $\pm$ (%.1f)' % (
+                                                                 r'$Q$ = %.1f $\pm$ (%.1f)' % (
                           fit_res.params['Q'].value,
                           fit_res.params['Q'].stderr) + old_vals
 

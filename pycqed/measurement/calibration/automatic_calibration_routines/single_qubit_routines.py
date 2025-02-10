@@ -9,8 +9,7 @@ from pycqed.measurement.calibration.automatic_calibration_routines.\
 from pycqed.measurement.calibration.automatic_calibration_routines.base import \
     update_nested_dictionary
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
-    base_automatic_calibration_routine import (_device_db_client_module_missing,
-                                               keyword_subset_for_function)
+    base_automatic_calibration_routine import (_device_db_client_module_missing)
 
 if not _device_db_client_module_missing:
     from pycqed.utilities.devicedb import utils as db_utils
@@ -23,14 +22,11 @@ from pycqed.utilities.general import (
     configure_qubit_mux_drive,
     configure_qubit_mux_readout
 )
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon import \
-    QuDev_transmon
 
 import numpy as np
 import copy
 import logging
 import time
-from typing import Tuple, Dict
 
 log = logging.getLogger(__name__)
 
@@ -644,11 +640,7 @@ class PiPulseCalibration(AutomaticCalibrationRoutine):
         """Creates routine template.
         """
         super().create_routine_template()
-        # Loop in reverse order so that the correspondence between the index
-        # of the loop and the index of the routine_template steps is preserved
-        # when new steps are added
-        for i, step in reversed(list(enumerate(self.routine_template))):
-            self.split_step_for_parallel_groups(index=i)
+        self.split_routine_template_for_parallel_groups()
 
     _DEFAULT_ROUTINE_TEMPLATE = RoutineTemplate([
         [RabiStep, 'rabi', {}],
@@ -732,7 +724,7 @@ class FindFrequency(AutomaticCalibrationRoutine):
             raise ValueError("Currently only one qubit is allowed.")
 
         # Defining initial and allowed frequency difference
-        self.delta_f = np.Infinity
+        self.delta_f = np.inf
         self.iteration = 1
 
         self.final_init(**kw)
@@ -1126,12 +1118,8 @@ class SingleQubitCalib(AutomaticCalibrationRoutine):
                                                    step_tmp_settings)
 
         self.routine_template = detailed_routine_template
+        self.split_routine_template_for_parallel_groups()
 
-        # Loop in reverse order so that the correspondence between the index
-        # of the loop and the index of the routine_template steps is preserved
-        # when new steps are added
-        for i, step in reversed(list(enumerate(self.routine_template))):
-            self.split_step_for_parallel_groups(index=i)
 
     class SQCPreparation(IntermediateStep):
         """

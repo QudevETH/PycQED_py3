@@ -924,7 +924,7 @@ def get_legend_artists_labels(data_dict, estimation_type='least_squares',
             for key, leak in leakage.items():
                 k = key.split('_')[0]
                 legend_entries += [
-                    (empty_artist, f'Leakage, $L_{{{k}}} = {100*leak:.2f}\%$')]
+                    (empty_artist, rf'Leakage, $L_{{{k}}} = {100*leak:.2f}\%$')]
     return legend_entries
 
 

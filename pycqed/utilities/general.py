@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import sys
 import numpy as np
@@ -17,49 +18,14 @@ import subprocess
 from functools import reduce, wraps
 import operator
 import string
-import warnings
 from zipfile import ZipFile
 
-
-from copy import deepcopy
-
-log = logging.getLogger(__name__)
 try:
     import msvcrt  # used on windows to catch keyboard input
 except:
     pass
 
-# FIXME: Compensate feature-lag due to older Python version usage
-# Only define some decorators while we are
-# lagging behind the current Python stable.
-#
-# See: https://peps.python.org/pep-0702/
-#
-if sys.version_info < (3, 13):
-
-    def deprecated(reason: str):
-        """Marks a deprecated function."""
-
-        def decorator(func):
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                warnings.warn(
-                    f"Call to deprecated function '{func.__name__}': {reason}",
-                    category=DeprecationWarning,
-                    stacklevel=2,
-                )
-                return func(*args, **kwargs)
-
-            return wrapper
-
-        return decorator
-
-else:  # Python 3.13+, use a "pass-through" decorator and shout
-    warnings.warn("Please remove the @deprecated implementation from general.py")
-
-    def deprecated(func):
-        return func
-
+log = logging.getLogger(__name__)
 
 def assert_not_none(*param_names):
     """
@@ -495,7 +461,6 @@ def send_email(subject='PycQED needs your attention!',
     # Import smtplib for the actual sending function
     import smtplib
     # Here are the email package modules we'll need
-    from email.mime.image import MIMEImage
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
 

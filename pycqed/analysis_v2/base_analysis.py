@@ -3,7 +3,6 @@ File containing the BaseDataAnalysis class.
 """
 from inspect import signature
 import os
-import sys
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -26,7 +25,7 @@ from pycqed.analysis.tools.plotting import (
     set_axis_label, flex_colormesh_plot_vs_xy,
     flex_color_plot_vs_x, rainbow_text, contourf_plot)
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union
 import datetime
 import json
 import lmfit
@@ -293,7 +292,11 @@ class BaseDataAnalysis(object):
                     self.prepare_plots()  # specify default plots
                     if not self.extract_only:
                         # make the plots
-                        self.plot(key_list='auto')
+                        self.plot(
+                            key_list='auto',
+                            save_figs=self.options_dict['save_figs'],
+                            close_figs=self.options_dict['close_figs'],
+                        )
 
             self._raise_warning()
         except Exception as e:
@@ -1444,7 +1447,8 @@ class BaseDataAnalysis(object):
         return dic
 
     def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
-             transparent_background=None, no_label=False, fig_id=None):
+             transparent_background=None, no_label=False, fig_id=None,
+             save_figs=False, close_figs=False):
         """Plot figures defined in self.plot_dict.
 
         Args.
@@ -1456,6 +1460,10 @@ class BaseDataAnalysis(object):
             no_label (bool): whether figure should have a label.
             fig_id (str): figure id from `self.plot_dicts`. If passed only
                 specified figure will be plotted.
+            save_figs (bool): Whether to save the figures (defaults to False).
+            close_figs (bool): Whether to close the figures at the end. They
+                are not closed by default, useful e.g. if this method is
+                called manually by the user to further use the figures.
         """
 
         key_list = self._get_key_list(key_list)
@@ -1474,9 +1482,9 @@ class BaseDataAnalysis(object):
             self._prepare_for_plot(fig_key_list, axs_dict, no_label,
                                    presentation_mode)
             self._plot(fig_key_list, transparent_background, fig_id=fig_id)
-            if self.options_dict['save_figs']:
+            if save_figs:
                 self.save_figures(key_list=[unique_fig_name])
-            if self.options_dict['close_figs']:
+            if close_figs:
                 self.close_figs(key_list=[unique_fig_name])
 
     def plot_for_gui(self, fig_id: str) -> Tuple[Figure, Union[Axes, np.array]]:

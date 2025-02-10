@@ -8,11 +8,13 @@ function.
 The actual pulse implementations are defined in separate modules,
 e.g. pulse_library.py.
 
-The module variable `pulse_libraries` is a
+The module variable `pulse_libraries` of type `set()` is a set of pulse
+implementation libraries that will be searched when a dictionary that
+defines an operation is converted to a pulse object. These libraries
+associate a pulse type with its corresponding class.
 """
 
 import numpy as np
-import scipy as sp
 
 pulse_libraries = set()
 """set of module: The set of pulse implementation libraries.
@@ -22,7 +24,7 @@ The pulse class is stored as a string in a pulse dictionary.
 
 Each pulse library module should add itself to this set, e.g.
 >>> import sys
->>> from pyceqed.measurement.waveform_control import pulse
+>>> from pycqed.measurement.waveform_control import pulse
 >>> pulse.pulse_libraries.add(sys.modules[__name__])
 """
 

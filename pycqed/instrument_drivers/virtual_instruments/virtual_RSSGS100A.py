@@ -1,5 +1,5 @@
 from qcodes.instrument.parameter import ManualParameter
-from qcodes import VisaInstrument, validators as vals
+from qcodes import validators as vals
 from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.utils.helpers import create_on_off_val_mapping
 
