@@ -33,7 +33,6 @@ def mwg_with_lo_calibration_template(mwg_class):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
-            self.lo_cal_data = dict()
             self.add_parameter('lo_cal_data',
                                vals=vals.Dict(),
                                parameter_class=ManualParameter,

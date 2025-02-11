@@ -2651,7 +2651,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             elif ge_lo() is not None:
                 # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
-                lo_cal = ge_lo.get_instr().lo_cal_data
+                lo_cal = ge_lo.get_instr().lo_cal_data()
                 qb_lo_cal = self.ge_lo_leakage_cal()
                 i_par = self.get('ge_I_channel') + '_offset'
                 q_par = self.get('ge_Q_channel') + '_offset'
