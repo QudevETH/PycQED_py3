@@ -5318,7 +5318,7 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
         init_state = kw.get('init_state')
         # Need to set transition_name here since it is used to determine the
         # calibration points
-        kw['transition_name'] = '' if init_state == 'g' else (
+        kw['transition_name'] = 'ge' if init_state == 'g' else (
             'ge' if init_state == 'e' else (
                 'ef' if init_state == 'f' else 'fh'))
         try:
