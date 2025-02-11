@@ -2638,6 +2638,9 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         if set_ge_offsets:
             ge_lo = self.instr_ge_lo
 
+            # Here we configure the instrument reference parameter
+            # MWG.instr_pulsar, so the MWG (MWGWithLOCalibration) can update
+            # the LO-leakage calibration as its frequency is changed.
             if param := ge_lo.get_instr().parameters.get('instr_pulsar'):
                 param(self.instr_pulsar())
 

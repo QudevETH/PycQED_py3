@@ -46,16 +46,13 @@ def mwg_with_lo_calibration_template(mwg_class):
                                parameter_class=ManualParameter,
                                initial_value='linear')
 
-            self.frequency.set_parser = \
-                lambda val, lo_cal_data=self.lo_cal_data, \
-                       lo_cal_interp_kind=self.lo_cal_interp_kind: \
-                   self.lo_calib(val, lo_cal_data, lo_cal_interp_kind)
+            self.frequency.set_parser = self.lo_calib
 
-        def lo_calib(self, val, lo_cal_data, lo_cal_interp_kind):
-            for par, freqs, cal_vals in lo_cal_data().values():
-                par_qcodes = self.instr_pulsar.get_instr().get_component(par)
-                par_qcodes(float(sp.interpolate.interp1d(
-                    freqs, cal_vals, kind=lo_cal_interp_kind(),
+        def lo_calib(self, val):
+            for par_name, freqs, cal_vals in self.lo_cal_data().values():
+                par = self.instr_pulsar.get_instr().get_component(par_name)
+                par(float(sp.interpolate.interp1d(
+                    freqs, cal_vals, kind=self.lo_cal_interp_kind(),
                     fill_value=(min(cal_vals), max(cal_vals)),
                     bounds_error=False)(val)))
             return val
