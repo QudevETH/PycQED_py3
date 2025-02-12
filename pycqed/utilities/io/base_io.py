@@ -325,14 +325,14 @@ class DateTimeGenerator:
     def __init__(self):
         pass
 
-    def create_data_dir(
+    def create_data_dir_name(
         self,
         datadir: str,
         name: str = None,
         ts=None,
         auto_increase: bool = True,
     ):
-        """Create and return a new data directory.
+        """Create and return the name of a new data directory.
 
         Input:
             datadir (string): base directory
@@ -386,9 +386,10 @@ class DateTimeGenerator:
 
     def new_filename(self, data_obj, folder, auto_increase: bool = True):
         """Return a new filename, based on name and timestamp."""
-        path, tstr = self.create_data_dir(folder,
-                                          name=data_obj._name,
-                                          ts=data_obj._localtime,
-                                          auto_increase=auto_increase)
+        path, tstr = self.create_data_dir_name(
+            folder,
+            name=data_obj._name,
+            ts=data_obj._localtime,
+            auto_increase=auto_increase)
         filename = '%s_%s.hdf5' % (tstr, data_obj._name)
         return os.path.join(path, filename)
