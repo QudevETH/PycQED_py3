@@ -558,7 +558,7 @@ class VQAOptimizer:
             self.optimizer_function  # this is the actual optimiser
                 self._full_circuit  # f to be optimised (circuit + post-proc.)
                     self.get_batch_params  # prepares measurement params
-                    self.measurement_function = MC.measurement_function_wrapper
+                    self.measurement_wrapper = MC.measurement_function_wrapper
                         MC.measurement_function  # quantum circuit
                         MC.data_processing_function  # see VariationalAlgorithm
                     self.cost_function  # raw state probabilities -> cost
@@ -577,7 +577,7 @@ class VQAOptimizer:
         self._set_optimizer_function(optimizer_function, optimizer_kw)
         self._set_cost_function(cost_function)
         self.training_settings = training_settings
-        self.measurement_function = None
+        self.measurement_wrapper = None
         self.sweep_points = None
         self.optim_param_values = []
         self.cost_function_values = []
@@ -586,8 +586,8 @@ class VQAOptimizer:
         if self.hybrid:
             self._set_classical_optimizer_function(
                 classical_optimizer_function_name, classical_optimizer_kw)
-            self.classical_params_list = []
-            self.classical_params_result = []
+            self.classical_optim_param_values = []
+            self.classical_cost_function_values = []
 
     def __call__(self, fun, **kw):
         # in MeasurementControl.measure_soft_adaptive:
@@ -595,7 +595,7 @@ class VQAOptimizer:
         if self.iterations:
             log.warning("Reusing an optimizer which has previously run! "
                         "We should first reset all relevant parameters here.")
-        self.measurement_function = fun
+        self.measurement_wrapper = fun
         try:
             self.optimizer_function(self._full_circuit,
                                     **self.optimizer_kw)
@@ -628,15 +628,17 @@ class VQAOptimizer:
         }
         if self.hybrid:
             result_dict.update({
-                'classical_params_list': self.classical_params_list,
-                'classical_params_result': self.classical_params_result,
+                'classical_optim_param_values':
+                    self.classical_optim_param_values,
+                'classical_cost_function_values':
+                    self.classical_cost_function_values,
             })
         return result_dict
 
     def _full_circuit(self, params):
         all_params, batch_shape, targets = self.get_batch_params(params)
         # Same format as analysis.proc_data_dict
-        pdd = self.measurement_function(all_params)
+        pdd = self.measurement_wrapper(all_params)
         shots = pdd['single_shots_per_qb_thresholded']
         # TODO use _get_binary_shots_array
         #  the only difference now is that here there is no "soft sweep" dim,
@@ -652,19 +654,13 @@ class VQAOptimizer:
         #   sets of non trainable params (prep circuit))
         # with batch_shape = (sets_trainable, sets_non_trainable)
 
-        # if self.hybrid:
-        #     costs = []
-        #     for i in range(batch_shape[0]):
-        #         data_batch = data[:, :, i, :, :]
-        #         # data batch shape: (n_qb, n_shots, n_non_trainable_params,
-        #         # 3 states)
-        #         # cost below is scalar
-        #         cost, classical_params, classical_param = \
-        #             self._classical_training(data_batch, targets)
-        #         costs.append([cost])
-        #         self.classical_params_list.append(np.array(classical_params))
-        #         self.classical_params_result.append(np.array(classical_param))
-        #     costs = np.array(costs)
+        if self.hybrid:  # TODO test
+            from qml_training_utils.utils import neural_network_post_processing
+            freqs = pdd['TODO']
+            cost, weights = neural_network_post_processing(
+                freqs, targets, optimize=True)
+            self.classical_optim_param_values.append(cost)
+            self.classical_cost_function_values.append(weights)
 
         costs = self.cost_function(shots, targets)
         self.iterations += 1
@@ -674,51 +670,6 @@ class VQAOptimizer:
         self.batch_shape = batch_shape
         self.targets = targets
         return costs
-
-    # def _classical_training(self, data_batch, targets):
-    #     # return: cost (scalar)
-    #     classical_params = []
-    #     # There are two ways to define the cost function. The first one
-    #     # calculate the cost function value for each single shot readout and
-    #     # then take the average, while the second one take the average of
-    #     # the single shot readout result and then calculate the cost function.
-    #
-    #     # def to_optimize(c_para):
-    #     #     # c_para_vector: 1D array conforms the multi-qubit single-shot
-    #     #     # readout
-    #     #     data_batch_shape = data_batch.shape
-    #     #     c_para_vector = np.array(
-    #     #       [1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
-    #     #     cpp_output = np.zeros((data_batch_shape[1], data_batch_shape[2]))
-    #     #     # cpp_output shape = (n_shots, n_non_trainable_params)
-    #     #     for i in range(data_batch_shape[1]):
-    #     #         for j in range(data_batch_shape[2]):
-    #     #             cpp_output[i, j] = np.dot(data_batch[:, i, j, :].reshape(
-    #     #                 -1), c_para_vector)
-    #     #     cost = np.average(np.array([
-    #     #         np.mean((row - targets) ** 2) for row in cpp_output
-    #     #     ]), axis=0)
-    #     #     classical_params.append(c_para[0])
-    #     #     return cost
-    #
-    #     def to_optimize_(c_para):
-    #         # c_para_vector: 1D array conforms the multi-qubit single-shot
-    #         # readout
-    #         c_para_vector = np.array(
-    #             [1-c_para[0], c_para[0], 0, 1-c_para[0], c_para[0], 0]) * 1/2
-    #         data_batch_test = np.concatenate(
-    #             (data_batch[0], data_batch[1]), axis=-1)
-    #         data_batch_test = np.average(data_batch_test, axis=0)
-    #         cpp_output = np.matmul(data_batch_test,
-    #                                c_para_vector.T).reshape(-1)
-    #         cost = np.mean((cpp_output - targets) ** 2)
-    #         classical_params.append(c_para[0])
-    #         return cost
-    #     result = self.classical_optimizer_function(to_optimize_,
-    #                                             **self.classical_optimizer_kw)
-    #     optimized_cost = result.fun
-    #     classical_param = result.x
-    #     return optimized_cost, classical_params, classical_param
 
     def get_batch_params(self, trainable_params_values):
         """
