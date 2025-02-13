@@ -511,7 +511,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     for d, sp in zip([task['pulse_modifs'], modifs], params):
                         d.update({
                             f'op_code=X180 {qb.name}, attr=mod_frequency':
-                                ParametricValue(sp, func=func)})
+                                ParametricValue(
+                                    sp, func_for_pulse_param=func)})
                 self.cal_points.pulse_modifs = modifs
 
         # If applicable, configure drive amplitude adaptation based on the
@@ -864,7 +865,7 @@ class FluxPulseScope(ParallelLOSweepExperiment):
             return -(x+o)
 
         fp['pulse_delay'] = ParametricValue(
-            'delay', func=fp_delay)
+            'delay', func_for_pulse_param=fp_delay)
 
         fp_length_function = lambda x: fp['pulse_length']
 
@@ -881,7 +882,7 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                 max(min((x + o), opl), 0) if (x>np.min(trunc) and x<np.max(trunc)) else opl
 
             fp['pulse_length'] = ParametricValue(
-                'delay', func=fp_length_function)
+                'delay', func_for_pulse_param=fp_length_function)
             if fp_compensation:
                 cp = b.pulses[2]
                 cp['name'] = 'FPS_FPC'
@@ -900,7 +901,8 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                     v_c_fp = v_c(tau, fp_length, fp_amp, v_c_start=0)
                     return -np.log(cp_amp / (cp_amp - v_c_fp)) * tau
 
-                cp['pulse_length'] = ParametricValue('delay', func=t_trunc)
+                cp['pulse_length'] = ParametricValue(
+                    'delay', func_for_pulse_param=t_trunc)
 
         # assumes a unipolar flux-pulse for the calculation of the
         # amplitude decay.
@@ -924,8 +926,10 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                     return fp_amp * (1 - np.exp(-fp_length / tau))
 
             rfp['pulse_length'] = fp_during_ro_length
-            rfp['pulse_delay'] = ParametricValue('delay', func=rfp_delay)
-            rfp['amplitude'] = ParametricValue('delay', func=rfp_amp)
+            rfp['pulse_delay'] = ParametricValue(
+                'delay', func_for_pulse_param=rfp_delay)
+            rfp['amplitude'] = ParametricValue(
+                'delay', func_for_pulse_param=rfp_amp)
             rfp['buffer_length_start'] = fp_during_ro_buffer
 
         if ro_pulse_delay == 'auto':
@@ -2342,7 +2346,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
             if param_name == 'pulse_delay':
                 # PrametricValue for the phase to be calculated from each delay
                 ramsey_block.pulses[-1]['phase'] = ParametricValue(
-                    'pulse_delay', func=lambda x, o=first_delay_point:
+                    'pulse_delay',
+                    func_for_pulse_param=lambda x, o=first_delay_point:
                     ((x-o)*art_det*360) % 360)
 
         delays = sweep_points.get_sweep_params_property('values', 0,
