@@ -155,9 +155,23 @@ def add_letter_to_subplots(fig, axes, xoffset=0.0, yoffset=0.0,
 
 
 def get_axes_geometry_from_figure(fig):
-    return fig.axes[0].get_subplotspec().get_topmost_subplotspec().\
-        get_gridspec().get_geometry()
+    """Gets the geometry (rows, cols) of the subplot grid from a matplotlib figure.
 
+    Args:
+        fig: A matplotlib figure object to get the geometry from.
+
+    Returns:
+        tuple: A tuple of (rows, columns) representing the subplot grid geometry.
+            Returns (1,1) if the figure has no axes.
+    """
+    if len(fig.axes) != 0:
+        outer_gs = fig.axes[0].get_subplotspec().get_gridspec()
+        geometry = outer_gs.get_topmost_subplotspec().get_geometry()
+        return geometry
+    else:
+        log.warning(f"Figure {fig} has no axes.")
+        print(f"Figure {fig} has no axes.")
+        return (1, 1)
 
 def default_figure_title(data_dict, meas_obj_name, **params):
     timestamps = hlp_mod.get_param('timestamps', data_dict, raise_error=True,
@@ -985,6 +999,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
     """
     Fits based on the information in proc_dat_dict[pipe_name]['fit_dicts']
     for each pipe_name, if 'fit_dicts' exists.
+
     Goes over the plots defined in the plot_dicts in
     proc_dat_dict[pipe_name]['fit_dicts'] for each pipe_name,
     if 'fit_dicts' exists, and creates the desired figures.
@@ -992,87 +1007,112 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
     axs = OrderedDict()
     figs = OrderedDict()
     plot_dicts = data_dict['plot_dicts']
+    plot_dicts_keys=keys_in # keeping the interface stable
     no_label = params.get('no_label', False)
     if axs_dict is not None:
         for key, val in list(axs_dict.items()):
             axs[key] = val
-    if keys_in == 'all':
-        keys_in = plot_dicts.keys()
-    if type(keys_in) is str:
-        keys_in = [keys_in]
 
-    for key in keys_in:
+    # FIXME: plot_dicts_keys / key_in absorbs multiple types
+    if plot_dicts_keys == 'all':
+        plot_dicts_keys = plot_dicts.keys()
+    if type(plot_dicts_keys) is str:
+        plot_dicts_keys = [plot_dicts_keys]
+
+    for key in plot_dicts_keys:
         # go over all the plot_dicts
-        pdict = plot_dicts[key]
-        pdict['no_label'] = no_label
+        axes_pdict = plot_dicts[key]
+        axes_pdict['no_label'] = no_label
+
         # Use the key of the plot_dict if no ax_id is specified
-        pdict['fig_id'] = pdict.get('fig_id', key)
-        pdict['ax_id'] = pdict.get('ax_id', None)
+        axes_pdict['fig_id'] = axes_pdict.get('fig_id', key)
+        axes_pdict['ax_id'] = axes_pdict.get('ax_id', None)
 
-        if isinstance(pdict['ax_id'], str):
-            pdict['fig_id'] = pdict['ax_id']
-            pdict['ax_id'] = None
+        # FIXME: fig_id and ax_ id are mixed here
+        if isinstance(axes_pdict['ax_id'], str):
+            axes_pdict['fig_id'] = axes_pdict['ax_id']
+            axes_pdict['ax_id'] = None
 
-        if pdict['fig_id'] not in axs:
+        if axes_pdict['fig_id'] not in axs:
             # This fig variable should perhaps be a different
             # variable for each plot!!
             # This might fix a bug.
-            figs[pdict['fig_id']], axs[pdict['fig_id']] = \
-                plt.subplots(pdict.get('numplotsy', 1),
-                             pdict.get('numplotsx', 1),
-                             sharex=pdict.get('sharex', False),
-                             sharey=pdict.get('sharey', False),
-                             figsize=pdict.get('plotsize', None))
-            if pdict.get('3d', False):
-                axs[pdict['fig_id']].remove()
-                axs[pdict['fig_id']] = Axes3D(
-                    figs[pdict['fig_id']],
-                    azim=pdict.get('3d_azim', -35),
-                    elev=pdict.get('3d_elev', 35))
-                axs[pdict['fig_id']].patch.set_alpha(0)
+
+            # HINT: This line actually draws the figure.
+            # Turn on the `Qt5Agg` backend to see the
+            # figure when debugging.
+            figs[axes_pdict['fig_id']], axs[axes_pdict['fig_id']] = \
+                plt.subplots(axes_pdict.get('numplotsy', 1),
+                             axes_pdict.get('numplotsx', 1),
+                             sharex=axes_pdict.get('sharex', False),
+                             sharey=axes_pdict.get('sharey', False),
+                             figsize=axes_pdict.get('plotsize', None),
+                             num=axes_pdict['fig_id']) # window title
+
+            if axes_pdict.get('3d', False):
+                axs[axes_pdict['fig_id']].remove()
+                ax = plt.axes(projection='3d')
+                ax.view_init(azim=axes_pdict.get('3d_azim', -35), elev=axes_pdict.get('3d_elev', 35))
+
+                # Get labels closer to ticks
+                ax.tick_params(axis='x', pad=-3)
+                ax.tick_params(axis='y', pad=-3)
+                ax.tick_params(axis='z', pad=-2)
+
+                axs[axes_pdict['fig_id']] = ax
 
             # transparent background around axes for presenting data
-            figs[pdict['fig_id']].patch.set_alpha(0)
+            # FIXME: !692 will solve this with a flag, remove before un-drafting this MR
+            #figs[axes_pdict['fig_id']].patch.set_alpha(0)
 
-    for fig_name in figs:
-        figs[fig_name].tight_layout()
+            if axes_pdict.get('tight_layout', True):
+                figs[axes_pdict['fig_id']].tight_layout()
 
-    for key in keys_in:
-        pdict = plot_dicts[key]
-        plot_touching = pdict.get('touching', False)
+            # Generally all figures are also cutting the bottom off
+            # making x-labels invisible at times. This compensates this.
+            figs[axes_pdict['fig_id']].subplots_adjust(bottom=0.2)
 
-        if type(pdict['plotfn']) is str:
-            plotfn = getattr(this_module, pdict['plotfn'])
+    # After figs and axes exist, fill them with data
+    for key in plot_dicts_keys:
+        axes_pdict = plot_dicts[key]
+        plot_touching = axes_pdict.get('touching', False)
+
+        if type(axes_pdict['plotfn']) is str:
+            plotfn = getattr(this_module, axes_pdict['plotfn'])
         else:
-            plotfn = pdict['plotfn']
+            plotfn = axes_pdict['plotfn']
 
         # used to ensure axes are touching
         if plot_touching:
-            axs[pdict['fig_id']].figure.subplots_adjust(
+            axs[axes_pdict['fig_id']].figure.subplots_adjust(
                 wspace=0, hspace=0)
 
         try:
-            pdict['ax_geom'] = get_axes_geometry_from_figure(
-                figs[pdict['fig_id']])
+            axes_pdict['ax_geom'] = get_axes_geometry_from_figure(
+                figs[axes_pdict['fig_id']])
         except AttributeError:
             pass
 
         # Check if pdict is one of the accepted arguments,
         # these are the plotting functions in this module.
+        # 
+        # This thing makes sure that the plotfn is called with
+        # the correct arguments and pdict
+        # This is a hack but works for matplotlib < 3.7.2
         if 'pdict' in signature(plotfn).parameters:
-            if pdict['ax_id'] is None:
-                plotfn(pdict=pdict, axs=axs[pdict['fig_id']])
+            if axes_pdict['ax_id'] is None:
+                plotfn(pdict=axes_pdict, axs=axs[axes_pdict['fig_id']])
             else:
-                plotfn(pdict=pdict,
-                       axs=axs[pdict['fig_id']].flatten()[
-                           pdict['ax_id']])
+                plotfn(pdict=axes_pdict,
+                       axs=axs[axes_pdict['fig_id']].flatten()[
+                           axes_pdict['ax_id']])
                 # FIXME forcing subplots_adjust after the plotting in
                 #  plotfn (which possibly calls tight_layout()) is bad
                 #  design, but many analyses currently rely on this (e.g.
                 #  raw data plots) and should be cleaned if removing it
-                if pdict.get('force_subplots_adjust', True):
-                    axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
+                if axes_pdict.get('force_subplots_adjust', True):
+                    axs[axes_pdict['fig_id']].flatten()[
+                        axes_pdict['ax_id']].figure.subplots_adjust(
                         hspace=0.4, wspace=0.25)
 
         # most normal plot functions also work, it is required
@@ -1082,25 +1122,25 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
         elif 'ax' in signature(plotfn).parameters:
             # Calling the function passing along anything
             # defined in the specific plot dict as kwargs
-            if pdict['ax_id'] is None:
-                plotfn(ax=axs[pdict['fig_id']], **pdict)
+            if axes_pdict['ax_id'] is None:
+                plotfn(ax=axs[axes_pdict['fig_id']], **axes_pdict)
             else:
-                plotfn(pdict=pdict,
-                       axs=axs[pdict['fig_id']].flatten()[
-                           pdict['ax_id']])
+                plotfn(pdict=axes_pdict,
+                       axs=axs[axes_pdict['fig_id']].flatten()[
+                           axes_pdict['ax_id']])
                 # FIXME forcing subplots_adjust after the plotting in
                 #  plotfn (which possibly calls tight_layout()) is bad
                 #  design, but many analyses currently rely on this (e.g.
                 #  raw data plots) and should be cleaned if removing it
-                if pdict.get('force_subplots_adjust', True):
-                    axs[pdict['fig_id']].flatten()[
-                        pdict['ax_id']].figure.subplots_adjust(
+                if axes_pdict.get('force_subplots_adjust', True):
+                    axs[axes_pdict['fig_id']].flatten()[
+                        axes_pdict['ax_id']].figure.subplots_adjust(
                         hspace=0.4, wspace=0.25)
         else:
             raise ValueError(
                 f'"{plotfn}" is not a valid plot function')
 
-    format_datetime_xaxes(data_dict, keys_in, axs)
+    format_datetime_xaxes(data_dict, plot_dicts_keys, axs)
 
     # add_letter_to_subplots
     for plot_name, axes in axs.items():
@@ -1156,6 +1196,8 @@ def format_datetime_xaxes(data_dict, key_list, axs):
         
 def plot_bar(pdict, axs, tight_fig=True):
     pfunc = getattr(axs, pdict.get('func', 'bar'))
+
+    # Configure how bars are plotted
     # xvals interpreted as edges for a bar plot
     plot_xedges = pdict.get('xvals', None)
     if plot_xedges is None:
@@ -1185,6 +1227,7 @@ def plot_bar(pdict, axs, tight_fig=True):
     dataset_label = pdict.get('setlabel', list(range(len(plot_yvals))))
     do_legend = pdict.get('do_legend', False)
     plot_touching = pdict.get('touching', False)
+    axs.linewidth = 2
 
     if plot_multiple:
         p_out = []
@@ -1207,10 +1250,18 @@ def plot_bar(pdict, axs, tight_fig=True):
         set_axis_label('x', axs, plot_xlabel, plot_xunit)
     if plot_ylabel is not None:
         set_axis_label('y', axs, plot_ylabel, plot_yunit)
+
     if plot_xtick_labels is not None:
-        axs.xaxis.set_ticklabels(plot_xtick_labels)
+        if plot_xtick_loc is None:
+            plot_xtick_loc = np.arange(len(plot_xtick_labels))
+        axs.xaxis.set_major_locator(plt.FixedLocator(plot_xtick_loc))
+        axs.xaxis.set_major_formatter(plt.FixedFormatter(plot_xtick_labels))
     if plot_ytick_labels is not None:
-        axs.yaxis.set_ticklabels(plot_ytick_labels)
+        if plot_ytick_loc is None:
+            plot_ytick_loc = np.arange(len(plot_ytick_labels))
+        axs.yaxis.set_major_locator(plt.FixedLocator(plot_ytick_loc))
+        axs.yaxis.set_major_formatter(plt.FixedFormatter(plot_ytick_labels))
+
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
@@ -1323,9 +1374,16 @@ def plot_bar3D(pdict, axs, tight_fig=True):
                   zsort=zsort, **plot_barkws)
 
     if plot_xtick_labels is not None:
-        axs.xaxis.set_ticklabels(plot_xtick_labels)
+        if plot_xtick_loc is None:
+            plot_xtick_loc = np.arange(len(plot_xtick_labels))
+        axs.xaxis.set_major_locator(plt.FixedLocator(plot_xtick_loc))
+        axs.xaxis.set_major_formatter(plt.FixedFormatter(plot_xtick_labels))
     if plot_ytick_labels is not None:
-        axs.yaxis.set_ticklabels(plot_ytick_labels)
+        if plot_ytick_loc is None:
+            plot_ytick_loc = np.arange(len(plot_ytick_labels))
+        axs.yaxis.set_major_locator(plt.FixedLocator(plot_ytick_loc))
+        axs.yaxis.set_major_formatter(plt.FixedFormatter(plot_ytick_labels))
+
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
@@ -1657,8 +1715,36 @@ def plot_color2D_grid(pdict, axs):
 
 
 def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
-    """
+    """Plots a 2D color plot using the specified plotting function.
 
+    Args:
+        pfunc (callable): Function used to create the 2D color plot
+        pdict (dict): Dictionary containing plot parameters including:
+            - xvals (array-like): X-axis values
+            - yvals (array-like): Y-axis values
+            - zvals (array-like): Z-axis values (colors)
+            - plotcbar (bool, optional): Whether to show colorbar. Defaults to True
+            - cmap (str, optional): Colormap name. Defaults to 'viridis'
+            - aspect (float, optional): Aspect ratio of plot
+            - zrange (tuple, optional): Range for z-axis values
+            - yrange (tuple, optional): Range for y-axis values
+            - xrange (tuple, optional): Range for x-axis values
+            - xwidth (array-like, optional): Width of x bins
+            - xtick_labels (array-like, optional): Labels for x-axis ticks
+            - ytick_labels (array-like, optional): Labels for y-axis ticks
+            - xtick_loc (array-like, optional): Locations of x-axis ticks
+            - ytick_loc (array-like, optional): Locations of y-axis ticks
+            - transpose (bool, optional): Whether to transpose plot. Defaults to False
+            - no_label (bool, optional): Whether to hide labels. Defaults to False
+            - normalize (bool, optional): Whether to normalize values. Defaults to False
+            - logzscale (bool/float, optional): Log scale factor for z values. Defaults to False
+            - origin (str, optional): Plot origin location. Defaults to 'lower'
+        axs (matplotlib.axes.Axes): The axes object to plot on
+        verbose (bool, optional): Whether to print debug info. Defaults to False
+        do_individual_traces (bool, optional): Whether to plot traces individually. Defaults to False
+
+    Returns:
+        None
     """
     plot_xvals = pdict['xvals']
     plot_yvals = pdict['yvals']
@@ -1715,10 +1801,11 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     block['yvals'] = [trace['yvals']]
     block['zvals'] = [trace['zvals']]
 
-    for ii in range(len(block['zvals'])):
+    # Draw the content in the 2D plot
+    for zval in range(len(block['zvals'])):
         traces = {}
         for key, vals in block.items():
-            traces[key] = vals[ii]
+            traces[key] = vals[zval]
         for tt in range(len(traces['zvals'])):
             if verbose:
                 (print(t_vals[tt].shape) for key, t_vals in traces.items())
@@ -1735,6 +1822,7 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
                         transpose=plot_transpose,
                         normalize=plot_normalize)
 
+    # Set limits for figure
     if plot_xrange is None:
         if plot_xwidth is not None:
             xmin, xmax = min([min(xvals) - plot_xwidth[tt] / 2
@@ -1773,20 +1861,37 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     else:
         axs.set_ylim(ymin, ymax)
 
+    # Add ticks to figure
     # FIXME Ignores thranspose option. Is it ok?
     if plot_xtick_labels is not None:
-        axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
+        if plot_xtick_loc is None:
+            plot_xtick_loc = np.arange(len(plot_xtick_labels))
+        axs.xaxis.set_major_locator(plt.FixedLocator(plot_xtick_loc))
+        axs.xaxis.set_major_formatter(plt.FixedFormatter(plot_xtick_labels))
+        for tick in axs.get_xticklabels():
+            tick.set_rotation(90)
+            
     if plot_ytick_labels is not None:
-        axs.yaxis.set_ticklabels(plot_ytick_labels)
+        if plot_ytick_loc is None:
+            plot_ytick_loc = np.arange(len(plot_ytick_labels))
+        axs.yaxis.set_major_locator(plt.FixedLocator(plot_ytick_loc))
+        axs.yaxis.set_major_formatter(plt.FixedFormatter(plot_ytick_labels))
+
+#    if plot_xtick_labels is not None:
+#        axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
+#    if plot_ytick_labels is not None:
+#        axs.yaxis.set_ticklabels(plot_ytick_labels)
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
         axs.yaxis.set_ticks(plot_ytick_loc)
-    if plot_origin == 'upper':
-        axs.invert_yaxis()
 
-    if plot_aspect is not None:
-        axs.set_aspect(plot_aspect)
+    # FIXME: Breaks the plot - what is the intention here?
+    #if plot_origin == 'upper':
+    #    axs.invert_yaxis()
+
+    #if plot_aspect is not None:
+    #    axs.set_aspect(plot_aspect)
 
     if not plot_nolabel:
         label_color2D(pdict, axs)
@@ -1794,7 +1899,6 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     axs.cmap = out['cmap']
     if plot_cbar:
         plot_colorbar(axs=axs, pdict=pdict)
-
 
 def label_color2D(pdict, axs):
     plot_transpose = pdict.get('transpose', False)
@@ -1818,44 +1922,79 @@ def label_color2D(pdict, axs):
         # axs.set_title(plot_title)
 
 
-def plot_colorbar(pdict=None, axs=None, cax=None,
-                  orientation='vertical', tight_fig=True):
+def plot_colorbar(
+    pdict=None, axs=None, cax=None, orientation="vertical", tight_fig=False
+):
+# FIXME: If tight_fig is True here, other axes get shifted under the colorbar.
+    """Plots a colorbar for a matplotlib plot.
+
+    Args:
+        pdict (dict, optional): Dictionary containing plot parameters. Must include:
+            - no_label (bool): Whether to hide labels
+            - clabel (str): Label for the colorbar
+            - cbarwidth (str): Width of colorbar as percentage e.g. '10%'
+            - cbarpad (str): Padding of colorbar as percentage e.g. '5%'
+            - ctick_loc (array-like, optional): Locations of colorbar ticks
+            - ctick_labels (array-like, optional): Labels for colorbar ticks
+            - colormap (matplotlib colormap, optional): For 3D axes only
+        axs (matplotlib.axes.Axes): The axes object to add colorbar to
+        cax (matplotlib.axes.Axes, optional): Pre-existing colorbar axes
+        orientation (str, optional): Orientation of colorbar. Defaults to 'vertical'
+        tight_fig (bool, optional): Whether to apply tight_layout. Defaults to True
+
+    Raises:
+        ValueError: If pdict or axs are not specified
+
+    Returns:
+        None
+    """
     if pdict is None or axs is None:
         raise ValueError('pdict and axs must be specified'
                          ' when no key is specified.')
     plot_nolabel = pdict.get('no_label', False)
     plot_clabel = pdict.get('clabel', None)
     plot_cbarwidth = pdict.get('cbarwidth', '10%')
-    plot_cbarpad = pdict.get('cbarpad', '5%')
+    plot_cbarpad = pdict.get('cbarpad', '10%')
     plot_ctick_loc = pdict.get('ctick_loc', None)
     plot_ctick_labels = pdict.get('ctick_labels', None)
+
     if cax is None:
         if not isinstance(axs, Axes3D):
             axs.ax_divider = make_axes_locatable(axs)
             axs.cax = axs.ax_divider.append_axes(
-                'right', size=plot_cbarwidth, pad=plot_cbarpad)
+                "right", size=plot_cbarwidth, pad=plot_cbarpad
+            )
             cmap = axs.cmap
         else:
             plot_cbarwidth = str_to_float(plot_cbarwidth)
             plot_cbarpad = str_to_float(plot_cbarpad)
             axs.cax, _ = mpl.colorbar.make_axes(
-                axs, shrink=1-plot_cbarwidth-plot_cbarpad, pad=plot_cbarpad,
-                orientation=orientation)
-            cmap = pdict.get('colormap')
+                axs,
+                shrink=1 - plot_cbarwidth - plot_cbarpad,
+                pad=plot_cbarpad,
+                orientation=orientation,
+            )
+            cmap = pdict.get("colormap")
     else:
         axs.cax = cax
-    if hasattr(cmap, 'autoscale_None'):
+
+    # Create or adapt colorbar
+    if hasattr(cmap, "autoscale_None"):
         axs.cbar = plt.colorbar(cmap, cax=axs.cax, orientation=orientation)
     else:
-        norm = mpl.colors.Normalize(0, 1)
-        axs.cbar = mpl.colorbar.ColorbarBase(axs.cax, cmap=cmap, norm=norm)
+        axs.cbar = mpl.colorbar.ColorbarBase(
+            axs.cax, cmap=cmap, norm=mpl.colors.Normalize(0, 1)
+        )
+
     if plot_ctick_loc is not None:
         axs.cbar.set_ticks(plot_ctick_loc)
     if plot_ctick_labels is not None:
         axs.cbar.set_ticklabels(plot_ctick_labels)
-    if not plot_nolabel and plot_clabel is not None:
-        axs.cbar.set_label(plot_clabel)
+    if plot_clabel is not None and not plot_nolabel:
+        axs.cbar.set_label(plot_clabel)    
 
+    # Adjust tight layout at the end of creation
+    # else we draw outside of the viewport.
     if tight_fig:
         axs.figure.tight_layout()
 
