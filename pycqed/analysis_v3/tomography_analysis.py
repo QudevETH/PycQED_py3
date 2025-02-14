@@ -440,6 +440,34 @@ def density_matrices(data_dict,
                 hlp_mod.get_param('basis_rots', data_dict))
             hlp_mod.add_param(f'{keys_out_container}.pauli_values.rho',
                               rho_pauli, data_dict, **params)
+        elif estimation_type == 'convex_mle':
+            rho_guess = hlp_mod.get_param('rho_guess', data_dict,
+                                          default_value = None, **params)
+            # least_squares is not used as a guess because it does not meet
+            # the physicality constraints, and cvxpy does not like problems
+            # in which the guess does not meet the constraints
+            # if rho_guess is None:
+            #     rho_guess = hlp_mod.get_param(
+            #         f'{keys_out_container}.least_squares.rho',
+            #         data_dict, default_value = None, **params)
+            rho_cvx = tomo.convex_mle(
+                mus = all_measurement_results,
+                Fs = all_measurement_operators,
+                Omega = all_cov_matrix_meas_obs if hlp_mod.get_param(
+                    'use_covariance_matrix', data_dict,
+                    default_value=True, **params) else None,
+                rho_guess = rho_guess,
+                solver = hlp_mod.get_param('solver', data_dict,
+                                           default_value = 'SCS', **params),
+                solveropt = hlp_mod.get_param('solveropt', data_dict,
+                                           default_value = {'':None}, **params),
+                cov_threshold = hlp_mod.get_param('cov_threshold', data_dict,
+                                           default_value = 1e-12, **params),
+                verbose = hlp_mod.get_param('verbose', data_dict,
+                                           default_value = False, **params)
+            )
+            hlp_mod.add_param(f'{keys_out_container}.convex_mle.rho',
+                              rho_cvx, data_dict, **params)
         else:
             raise ValueError(f'Unknown estimation_type "{estimation_type}."')
 
@@ -605,7 +633,7 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
         'xtick_labels': list(np.array(list(observables.keys()))[obs_filter]),
         'origin': 'upper',
         'cmap': cm,
-        'aspect': 'equal'
+        'aspect': 'auto'
     }
 
     hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,

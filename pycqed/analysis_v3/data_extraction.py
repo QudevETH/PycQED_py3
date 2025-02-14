@@ -318,7 +318,7 @@ def add_measured_data_dict(data_dict, **params):
     if 'measured_data' in data_dict and 'value_names' in metadata:
         value_names = metadata['value_names']
         rev_movnm = hlp_mod.get_measurement_properties(
-            data_dict, props_to_extract=['rev_movnm'])
+            data_dict, props_to_extract=['rev_movnm'], **params)
 
         if rev_movnm is not None:
             data_key = lambda ro_ch, rev_movnm=rev_movnm: f'{rev_movnm[ro_ch]}.{ro_ch}'
