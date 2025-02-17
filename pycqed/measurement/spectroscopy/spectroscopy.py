@@ -2,14 +2,12 @@ import numpy as np
 from collections import OrderedDict
 from copy import copy
 import traceback
-from pycqed.utilities.general import assert_not_none, \
-    configure_qubit_mux_readout
+from pycqed.utilities.general import assert_not_none
 from pycqed.utilities.math import dbm_to_vp
 from pycqed.measurement.calibration import two_qubit_gates as twoqbcal
 from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.sweep_functions as swf
-import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.spectroscopy_analysis as spa
 from pycqed.utilities.general import temporary_value
 import logging
@@ -1063,8 +1061,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 # experiments (output pulse has the programmed pulse
                 # amplitude).
                 if sweep_points.find_parameter('spec_power') is not None:
-                    amp = ParametricValue('spec_power',
-                                          func=lambda x: 2 * dbm_to_vp(x))
+                    amp = ParametricValue(
+                        'spec_power',
+                        func_for_pulse_param=lambda x: 2 * dbm_to_vp(x))
                 else:
                     amp = 2 * dbm_to_vp(qubit.spec_power())
                 pulse_modifs['op_code=Spec']['amplitude'] = amp

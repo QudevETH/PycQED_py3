@@ -1,5 +1,4 @@
 import time
-import numpy as np
 import qcodes as qc
 from qcodes import validators as vals
 from pycqed.instrument_drivers.instrument import Instrument

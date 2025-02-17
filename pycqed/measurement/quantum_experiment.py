@@ -1,6 +1,4 @@
-import traceback
 
-import time
 
 import numpy as np
 from pycqed.analysis import analysis_toolbox as a_tools
@@ -13,7 +11,6 @@ from pycqed.measurement import sweep_functions as swf
 import pycqed.measurement.awg_sweep_functions as awg_swf
 from pycqed.measurement import multi_qubit_module as mqm
 import pycqed.analysis_v2.base_analysis as ba
-import pycqed.utilities.general as general
 from copy import copy, deepcopy
 from collections import OrderedDict as odict
 from pycqed.measurement.sweep_points import SweepPoints
@@ -524,6 +521,12 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         """
         # ensure measurement control is set
         self._set_MC(MC)
+
+        # check whether the number of readouts is the same for all sequences
+        assert len(np.unique([s.n_acq_elements() for s in self.sequences])) == 1, \
+            "All sequences must have the same n_acq_elements (number of ROs)."
+        # if not, then the definition of the mc_points and the compression
+        # would need to be changed
 
         # configure mc_points
         if len(self.mc_points[0]) == 0: # first dimension mc_points not yet set

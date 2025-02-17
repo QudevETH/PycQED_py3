@@ -115,7 +115,7 @@ class Sequence:
                                 and not self.is_resolved):
             for seg in self.segments.values():
                 seg.resolve_segment()
-                seg.gen_elements_on_awg()
+                seg.gen_elements_on_awg(return_sorted=True)
 
         if trigger_groups is None:
             trigger_groups = set()
@@ -150,13 +150,7 @@ class Sequence:
                 # Take element metadata from the resolved segments.
                 element_metadata = seg.element_metadata
                 elnames = seg.elements_on_awg.get(group, [])
-                # Determine when each element starts in the current group
-                el_start_times = {
-                    elname: seg.element_start_length(elname, group)[0]
-                    for elname in elnames}
-                # Loop through elements in the order of their start time
-                for i in np.argsort(list(el_start_times.values())):
-                    elname = elnames[i]
+                for elname in elnames:
                     # uelname = element name unique within the AWG
                     # If elements are shared between trigger groups of an AWG,
                     # this ensures that the following logic correctly orders
@@ -248,7 +242,7 @@ class Sequence:
             seq_groups.append(set())
             for seg in seq.segments.values():
                 seg.resolve_segment()
-                seg.gen_elements_on_awg()
+                seg.gen_elements_on_awg(return_sorted=False)
             seq_groups[i] |= set(
                 [group for group in seg.elements_on_awg
                  if seq.pulsar.get_awg_from_trigger_group(group) in awgs])

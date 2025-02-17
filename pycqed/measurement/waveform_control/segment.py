@@ -23,6 +23,7 @@ from collections import OrderedDict as odict
 import re
 from pycqed.utilities.general import temporary_value
 import functools
+from collections import defaultdict
 
 
 def _with_pulsar_tmp_vals(f):
@@ -1132,7 +1133,7 @@ class Segment:
 
         return pulses
 
-    def gen_elements_on_awg(self):
+    def gen_elements_on_awg(self, return_sorted=True):
         """
         Updates the self.elements_on_AWG dictionary
         """
@@ -1153,6 +1154,21 @@ class Segment:
                         self.elements_on_awg[group] = [element]
                     elif element not in self.elements_on_awg[group]:
                         self.elements_on_awg[group].append(element)
+
+        # sort elements on awg according to start time
+        if not return_sorted:
+            return
+
+        for group in self.elements_on_awg.keys():
+            def get_element_start(element, group):
+                try:
+                    return self.get_element_start(element, group)
+                except KeyError:
+                    # self.element_start_length hasn't been called yet
+                    self.element_start_length(element, group)
+                return self.get_element_start(element, group)
+            self.elements_on_awg[group] = sorted(self.elements_on_awg[group],
+                        key=lambda element: get_element_start(element, group))
 
     def find_trigger_group_hierarchy(self):
         masters = {group for group in self.pulsar.trigger_groups
@@ -1293,7 +1309,7 @@ class Segment:
 
         # Generate the dictionary elements_on_awg, that for each AWG contains
         # a list of the elements on that AWG
-        self.gen_elements_on_awg()
+        self.gen_elements_on_awg(return_sorted=True)
 
         # First, add trigger pulses that are requested in pulse parameters
         # FIXME We need to test and possibly debug the case where multiple
@@ -1378,8 +1394,15 @@ class Segment:
         element to which the trigger pulse is closest.
         """
 
-        time_distance = []
+        if trigger_pulse_time == float('-inf'):
+            el_starts = []
+            for element in self.elements_on_awg[trigger_group]:
+                el_starts.append(self.element_start_length(element, trigger_group)[0])
+            return self.elements_on_awg[trigger_group][np.argmin(el_starts)]
+        elif np.isinf(trigger_pulse_time):
+            NotImplementedError('Non-finite trigger_pulse_time other than -inf are not implemented')
 
+        time_distance = []
         for element in self.elements_on_awg[trigger_group]:
             [el_start, samples] = self.element_start_length(
                 element, trigger_group)
@@ -1453,7 +1476,7 @@ class Segment:
             elements by adding them to self.overlapping_elements
         """
 
-        self.gen_elements_on_awg()
+        self.gen_elements_on_awg(return_sorted=False)
         overlapping_elements = []
 
         for group in self.elements_on_awg:
@@ -1525,40 +1548,50 @@ class Segment:
         one another. At the end the code combines all elements of each
         list into a new element.
         """
-        self.gen_elements_on_awg()
+        self.gen_elements_on_awg(return_sorted=False)
         overlapping_elements = self._test_overlap(track_and_ignore=True)
 
         if len(overlapping_elements) == 0:
             return
 
-        # add first two overlapping elements to list
-        joint_overlapping_elements = [overlapping_elements[0]]
+        def find_connected_components(edges):
+            """
+            Merges overlapping_elements into lists of sets.
+            """
+            node_connections = defaultdict(list)
+            sets = []
+            traversed = list()
+            for node1, node2 in edges:
+                node_connections[node1].append(node2)
+                node_connections[node2].append(node1)
 
-        new_cluster = True
-        for i in range(len(overlapping_elements) - 1):
-            # making use of overlapping elements being sorted
-            # check whether the next set of elements from
-            # overlapping_elements shares an element name with
-            # the previous entry in joint_overlapping_elements
-            if len(joint_overlapping_elements[-1] & \
-                   overlapping_elements[i + 1]) != 0:
-                joint_overlapping_elements[-1] = \
-                    joint_overlapping_elements[-1] | \
-                    overlapping_elements[i + 1]
-                new_cluster = False
+            for node in node_connections.keys():
+                # iterate over nodes
+                if node not in traversed:
+                    # we found new subset! let's go BFS
+                    sets.append(list())
+                    traversed.append(node)
+                    sets[-1].append(node)
+                    node_stack = list(node_connections[node])
+                    stack_pointer = 0
+                    while stack_pointer < len(node_stack):
+                        # iterate over stack
+                        node2 = node_stack[stack_pointer]
+                        if node2 in traversed:
+                            stack_pointer += 1
+                            continue
+                        traversed.append(node2)
+                        sets[-1].append(node2)
+                        node_stack.extend(node_connections[node2])
+                        stack_pointer += 1
+            sets = [set(s) for s in sets]
+            return sets
 
-            # if the new element from overlapping_elements overlaps
-            # with none of the previously added elements in
-            # joint_overlapping_elements (i.e. if new_cluster=True)
-            # add it as a new cluster.
-            if new_cluster:
-                joint_overlapping_elements.append(overlapping_elements[i + 1])
-            new_cluster = True
+        joint_overlapping_elements = find_connected_components(overlapping_elements)
 
         for i in range(len(joint_overlapping_elements)):
             self._combine_elements(joint_overlapping_elements[i],
                                    'overlapping_el_{}_{}'.format(i, self.name))
-
 
     def _combine_elements(self, elements, combined_el_name):
         """
@@ -1581,7 +1614,7 @@ class Segment:
         # add new element
         self.elements[combined_el_name] = new_pulse_list
         # update new elements_on_awg
-        self.gen_elements_on_awg()
+        self.gen_elements_on_awg(return_sorted=False)
 
         # update element_start_end
         for group in self.pulsar.trigger_groups:
@@ -1691,9 +1724,9 @@ class Segment:
 
             # Avoid creating repetitive waveforms due to small rounding errors
             if hasattr(pulse.pulse_obj, "phase"):
-                pulse.pulse_obj.phase = round(
-                    round(pulse.pulse_obj.phase,
-                          self.PHASE_ROUNDING_DIGITS) % 360.0,
+                pulse.pulse_obj.phase = np.round(
+                    np.round(pulse.pulse_obj.phase,
+                             self.PHASE_ROUNDING_DIGITS) % 360.0,
                     self.PHASE_ROUNDING_DIGITS)
 
     def add_pulse_to_element(self, element, pulse):
@@ -2493,7 +2526,8 @@ class Segment:
                         num_single_qb += 1
         qb_output = ''
         for qb, qb_name in enumerate(qb_names):
-            qb_output += rf'\draw ({tmin / tscale:.4f},-{qb}) node[left] {{{qb_name}}} -- ({tmax / tscale:.4f},-{qb});\n'
+            qb_output += (f'\\draw ({tmin / tscale:.4f},-{qb}) node[left] '
+                          f'{{{qb_name}}} -- ({tmax / tscale:.4f},-{qb});\n')
         output = start_output + qb_output + output + z_output
         axis_ycoord = -len(qb_names) + .4
         output += f'\\foreach\\x in {{{tmin / tscale},{tmin / tscale + .2},...,{tmax / tscale}}} \\pgfmathprintnumberto[fixed]{{\\x}}{{\\tmp}} \\draw (\\x,{axis_ycoord})--++(0,-.1) node[below] {{\\tmp}} ;\n'

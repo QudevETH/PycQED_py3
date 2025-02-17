@@ -1,5 +1,3 @@
-import contextlib
-import io
 
 import numpy as np
 import pycqed.instrument_drivers.physical_instruments.ZurichInstruments.UHFQA_core as UHF

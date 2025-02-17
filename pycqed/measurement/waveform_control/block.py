@@ -1,5 +1,4 @@
 import logging
-import numpy as np
 from copy import deepcopy
 
 log = logging.getLogger(__name__)
@@ -307,22 +306,21 @@ class ParametricValue:
     by Block.pulses_sweepcopy).
 
     :param param: a string specifying the name of the parameter.
-    :param func: (optional) a function applied to the value of the sweep
-        parameter to yield the value of the physical parameter, e.g. amplitude
-    :param func_op_code: (optional) a function applied to the value of the
-        sweep parameter to yield the value to store in the op_code (gate angle)
-    :param op_split: (optional) cache a splitted version of the op_code of
-        the pulse to allow for correct op_code resolution in cases of spaces
-        in a mathematical expression in an op_code.
+    :param func_for_pulse_param: (optional) a function which, applied to the
+        value of the sweep parameter, yields the value of the physical
+        parameter, e.g. amplitude
+    :param func_for_op_code: (optional) a function which, when applied to the
+        value of the sweep parameter, yields the string representation of
+        the pulse parameter (e.g. gate angle) to write in the resolved op_code
 
     """
     _is_parametric_value = True
 
-    def __init__(self, param, func=None, func_op_code=None, op_split=None):
+    def __init__(self, param, func_for_pulse_param=None,
+        func_for_op_code=None):
         self.param = param
-        self.func = func
-        self.op_split = op_split
-        self.func_op_code = func_op_code
+        self.func_for_pulse_param = func_for_pulse_param
+        self.func_for_op_code = func_for_op_code
 
     def resolve(self, sweep_dict, ind=None, op_code=None):
         """
@@ -348,82 +346,87 @@ class ParametricValue:
         elif isinstance(sweep_dict[self.param], dict) and 'values' in \
                 sweep_dict[self.param]:  # convention in old sweep_dicts
             v = d['values'][ind]
-        else: # convention in SweepPoints class
+        else:  # convention in SweepPoints class
             v = d[0][ind]
-        v_processed = v if self.func is None else self.func(v)
+        v_pulse_param = self.func_for_pulse_param(v) \
+            if self.func_for_pulse_param else v
+        if op_code is not None and ':' in op_code:
+            # op_code resolution in case of a mathematical expression
+            # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
+            op_split = op_code.split(' ')
+            op_type = op_split[0].split(':')[0]
+            v_op_code = self.func_for_op_code(v) \
+                if self.func_for_op_code else v
+            op_split[0] = f"{op_type}{v_op_code}"
+            op_code = ' '.join(op_split)
         if op_code is not None:
-            if f'[{self.param}]' in op_code:
-                # if there is a cached splitted version, use that one instead
-                # in order to allow for correct op_code resolution in cases
-                # of in a mathematical expression in an op_code.
-                # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
-                # TODO op_split might not be needed anymore after introducing
-                #  func_op_code
-                # FIXME: remove op_code caching as soon as a new op_code
-                #  concept (e.g. tuples instead of space-separated strings)
-                #  makes it obsolete
-                op_split = [s for s in self.op_split] if self.op_split is not \
-                            None else op_code.split(' ')
-                param_start = op_split[0].find(':')
-                v_code = v if not self.func_op_code else self.func_op_code(v)
-                op_split[0] = f"{op_split[0][:param_start]}{v_code}"
-                op_code = ' '.join(op_split)
-            else:
-                op_code = op_code.replace(f':{self.param} ', f"{v} ")
-            return v_processed, op_code
+            return v_pulse_param, op_code
         else:
-            return v_processed
+            return v_pulse_param
 
     def _copy_self(self):
         """
-        Returns a copy of self, ensuring that self.func exists
+        Returns a copy of self, ensuring that self.func_for_pulse_param exists
 
         Note that this might be inefficient, since this makes use of a
         deepcopy, and creates a lambda function which is itself wrapped in a
         lambda function in the methods below, e.g. self.__add__.
         """
         new_parametric_value = deepcopy(self)
-        if new_parametric_value.func is None:
-            new_parametric_value.func = lambda x: x
+        if new_parametric_value.func_for_pulse_param is None:
+            new_parametric_value.func_for_pulse_param = lambda x: x
         return new_parametric_value
 
     def __add__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: f(x) + other
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+                f(x) + other
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: f(x) + other
         return pv
 
     __radd__ = __add__
 
     def __sub__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: f(x) - other
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+            f(x) - other
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: f(x) - other
         return pv
 
     def __rsub__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: other - f(x)
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+                other - f(x)
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: other - f(x)
         return pv
 
     def __neg__(self):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: -f(x)
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: -f(x)
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: -f(x)
         return pv
 
     def __mul__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: f(x) * other
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+            f(x) * other
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: f(x) * other
         return pv
 
     __rmul__ = __mul__
 
     def __truediv__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: f(x) / other
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+            f(x) / other
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: f(x) / other
         return pv
 
     def __rtruediv__(self, other):
         pv = self._copy_self()
-        pv.func = lambda x, f=pv.func: other / f(x)
+        pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
+            other / f(x)
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: other / f(x)
         return pv
 
     def __repr__(self):

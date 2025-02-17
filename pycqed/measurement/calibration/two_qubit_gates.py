@@ -14,7 +14,6 @@ from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.measurement.sweep_functions as swf
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
@@ -1515,8 +1514,8 @@ class DynamicPhase(CalibBuilder):
                 p['ref_point_new'] = 'end'
             # switch off the new initial rotations if the flux pulse is on
             for p in ir2.pulses:
-                p['pulse_off'] = ParametricValue('flux_pulse_off',
-                                                 func=lambda x : not x)
+                p['pulse_off'] = ParametricValue(
+                    'flux_pulse_off', func_for_pulse_param=lambda x : not x)
             # put the two sets of initial rotations in parallel (noting
             # that only one of them will be active at a time)
             ir = self.simultaneous_blocks('initial_rots', [ir, ir2],

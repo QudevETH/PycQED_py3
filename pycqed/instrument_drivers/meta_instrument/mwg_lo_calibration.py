@@ -1,7 +1,8 @@
 import scipy as sp
 
 from qcodes import validators as vals
-from qcodes.instrument.parameter import ManualParameter
+from qcodes.instrument.parameter import (
+    ManualParameter, InstrumentRefParameter)
 
 
 def mwg_with_lo_calibration_template(mwg_class):
@@ -36,6 +37,8 @@ def mwg_with_lo_calibration_template(mwg_class):
                                vals=vals.Dict(),
                                parameter_class=ManualParameter,
                                initial_value=dict())
+            self.add_parameter('instr_pulsar',
+                               parameter_class=InstrumentRefParameter)
             self.add_parameter('lo_cal_interp_kind',
                                vals=vals.Enum(
                                    'linear', 'nearest', 'zero', 'slinear',
@@ -43,16 +46,13 @@ def mwg_with_lo_calibration_template(mwg_class):
                                parameter_class=ManualParameter,
                                initial_value='linear')
 
-            self.frequency.set_parser = \
-                lambda val, lo_cal_data=self.lo_cal_data, \
-                       lo_cal_interp_kind=self.lo_cal_interp_kind: \
-                   self.lo_calib(val, lo_cal_data, lo_cal_interp_kind)
+            self.frequency.set_parser = self.lo_calib
 
-        @staticmethod
-        def lo_calib(val, lo_cal_data, lo_cal_interp_kind):
-            for par, freqs, cal_vals in lo_cal_data().values():
+        def lo_calib(self, val):
+            for par_name, freqs, cal_vals in self.lo_cal_data().values():
+                par = self.instr_pulsar.get_instr().get_component(par_name)
                 par(float(sp.interpolate.interp1d(
-                    freqs, cal_vals, kind=lo_cal_interp_kind(),
+                    freqs, cal_vals, kind=self.lo_cal_interp_kind(),
                     fill_value=(min(cal_vals), max(cal_vals)),
                     bounds_error=False)(val)))
             return val
