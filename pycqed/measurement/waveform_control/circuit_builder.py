@@ -413,10 +413,13 @@ class CircuitBuilder:
                         func_for_op_code = eval('lambda x, cb=self : ' + angle)
                     else:
                         func_for_op_code = None
-                    # sign * means that func_for_pulse_param
-                    # will be -func_for_op_code
-                    cphase = sign * ParametricValue(
-                        param, func_for_pulse_param=func_for_op_code,
+                    # Only include - sign in func_for_pulse_param (responsible
+                    # for the pulse parameter), since in the op_code this
+                    # sign is already indicated by 'm'.
+                    func_for_pulse_param = \
+                        lambda x, sign=sign, f=func_for_op_code: sign * f(x)
+                    cphase = ParametricValue(
+                        param, func_for_pulse_param=func_for_pulse_param,
                         func_for_op_code=func_for_op_code)
                 # op_name = "NameVal" (e.g. "Z100", see docstring)
                 elif angle:

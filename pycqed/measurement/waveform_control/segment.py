@@ -2526,7 +2526,8 @@ class Segment:
                         num_single_qb += 1
         qb_output = ''
         for qb, qb_name in enumerate(qb_names):
-            qb_output += rf'\draw ({tmin / tscale:.4f},-{qb}) node[left] {{{qb_name}}} -- ({tmax / tscale:.4f},-{qb});\n'
+            qb_output += (f'\\draw ({tmin / tscale:.4f},-{qb}) node[left] '
+                          f'{{{qb_name}}} -- ({tmax / tscale:.4f},-{qb});\n')
         output = start_output + qb_output + output + z_output
         axis_ycoord = -len(qb_names) + .4
         output += f'\\foreach\\x in {{{tmin / tscale},{tmin / tscale + .2},...,{tmax / tscale}}} \\pgfmathprintnumberto[fixed]{{\\x}}{{\\tmp}} \\draw (\\x,{axis_ycoord})--++(0,-.1) node[below] {{\\tmp}} ;\n'

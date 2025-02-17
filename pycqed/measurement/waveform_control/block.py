@@ -350,21 +350,16 @@ class ParametricValue:
             v = d[0][ind]
         v_pulse_param = self.func_for_pulse_param(v) \
             if self.func_for_pulse_param else v
+        if op_code is not None and ':' in op_code:
+            # op_code resolution in case of a mathematical expression
+            # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
+            op_split = op_code.split(' ')
+            op_type = op_split[0].split(':')[0]
+            v_op_code = self.func_for_op_code(v) \
+                if self.func_for_op_code else v
+            op_split[0] = f"{op_type}{v_op_code}"
+            op_code = ' '.join(op_split)
         if op_code is not None:
-            if ':' in op_code:
-                # op_code resolution in case of a mathematical expression
-                # Example: op_code = "Y:2*[v] qb1" -> "Y:90 qb1"
-                op_split = op_code.split(' ')
-                op_type = op_split[0].split(':')[0]
-                # Note for example that op_type might include an 'm' prefactor.
-                # This indicates a - sign in v_physical: op_code = "mY:90 qb1"
-                # yields the pulse amp v_physical corresponding to a -90 angle.
-                # In this case, func_for_op_code should not also contain
-                # this - sign, else the op_code would become "mY:-90 qb1".
-                v_op_code = self.func_for_op_code(v) \
-                    if self.func_for_op_code else v
-                op_split[0] = f"{op_type}{v_op_code}"
-                op_code = ' '.join(op_split)
             return v_pulse_param, op_code
         else:
             return v_pulse_param
@@ -386,6 +381,7 @@ class ParametricValue:
         pv = self._copy_self()
         pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
                 f(x) + other
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: f(x) + other
         return pv
 
     __radd__ = __add__
@@ -394,23 +390,27 @@ class ParametricValue:
         pv = self._copy_self()
         pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
             f(x) - other
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: f(x) - other
         return pv
 
     def __rsub__(self, other):
         pv = self._copy_self()
         pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
                 other - f(x)
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: other - f(x)
         return pv
 
     def __neg__(self):
         pv = self._copy_self()
         pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: -f(x)
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: -f(x)
         return pv
 
     def __mul__(self, other):
         pv = self._copy_self()
         pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
             f(x) * other
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: f(x) * other
         return pv
 
     __rmul__ = __mul__
@@ -419,12 +419,14 @@ class ParametricValue:
         pv = self._copy_self()
         pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
             f(x) / other
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: f(x) / other
         return pv
 
     def __rtruediv__(self, other):
         pv = self._copy_self()
         pv.func_for_pulse_param = lambda x, f=pv.func_for_pulse_param: \
             other / f(x)
+        pv.func_for_op_code = lambda x, f=pv.func_for_op_code: other / f(x)
         return pv
 
     def __repr__(self):
