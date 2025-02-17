@@ -1514,8 +1514,8 @@ class DynamicPhase(CalibBuilder):
                 p['ref_point_new'] = 'end'
             # switch off the new initial rotations if the flux pulse is on
             for p in ir2.pulses:
-                p['pulse_off'] = ParametricValue('flux_pulse_off',
-                                                 func=lambda x : not x)
+                p['pulse_off'] = ParametricValue(
+                    'flux_pulse_off', func_for_pulse_param=lambda x : not x)
             # put the two sets of initial rotations in parallel (noting
             # that only one of them will be active at a time)
             ir = self.simultaneous_blocks('initial_rots', [ir, ir2],
