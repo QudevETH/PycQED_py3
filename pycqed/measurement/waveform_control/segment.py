@@ -2549,39 +2549,40 @@ class Segment:
         else:
             op_codes = [p.get('op_code') for p in pulses]
         for op_code in op_codes:
-            if op_code:
-                op_code = op_code.split(' ')
-                op_name = op_code[0]
-                qb_inds = [qb_names.index(qbn) for qbn in op_code[1:]]
-                if op_name[0] == 's':
-                    op_name = op_name[1:]
-                if 'CZ' in op_name:
-                    op_type = op_name.split(':')[0].rstrip('0123456789.e-')
-                    val = op_name[len(op_type):]
-                    val = float(val) if val else 180
-                    val = val / 180 * np.pi
-                    q.add_gate("CPHASE", controls=qb_inds[0],
-                               targets=qb_inds[1], arg_value=val)
-                elif op_name == 'RO':
-                    if skip_RO:
-                        # Remove RO, to use the circuit to run a simulation
-                        continue
-                    q.add_measurement(measurement='M0', targets=qb_inds[0])
-                elif op_name[0] == 'I':
+            if not op_code:
+                continue
+            op_code = op_code.split(' ')
+            op_name = op_code[0]
+            qb_inds = [qb_names.index(qbn) for qbn in op_code[1:]]
+            if op_name[0] == 's':
+                op_name = op_name[1:]
+            if 'CZ' in op_name:
+                op_type = op_name.split(':')[0].rstrip('0123456789.e-')
+                val = op_name[len(op_type):]
+                val = float(val) if val else 180
+                val = val / 180 * np.pi
+                q.add_gate("CPHASE", controls=qb_inds[0],
+                           targets=qb_inds[1], arg_value=val)
+            elif op_name == 'RO':
+                if skip_RO:
+                    # Remove RO, to use the circuit to run a simulation
                     continue
+                q.add_measurement(measurement='M0', targets=qb_inds[0])
+            elif op_name[0] == 'I':
+                continue
+            else:
+                if op_name[0] == 'm':
+                    factor = -1
+                    op_name = op_name[1:]
                 else:
-                    if op_name[0] == 'm':
-                        factor = -1
-                        op_name = op_name[1:]
-                    else:
-                        factor = 1
-                    gate_type = 'R' + op_name[:1]
-                    val = float(op_name[1:])
-                    arg_label = int(
-                        factor * val) if factor * val % 1 < 1e-6 else factor * val
-                    q.add_gate(gate_type, targets=qb_inds[0],
-                               arg_value=factor * val / 180 * np.pi,
-                               arg_label=arg_label)
+                    factor = 1
+                gate_type = 'R' + op_name[:1]
+                val = float(op_name[1:])
+                arg_label = int(
+                    factor * val) if factor * val % 1 < 1e-6 else factor * val
+                q.add_gate(gate_type, targets=qb_inds[0],
+                           arg_value=factor * val / 180 * np.pi,
+                           arg_label=arg_label)
         return q
 
     def export_stim(self, qubit_coords=None,
