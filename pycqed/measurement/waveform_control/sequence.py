@@ -436,8 +436,9 @@ class Sequence:
 
         Returns:
             number of acquisition elements (list (if per_segment) or int)
-            ordered (bool, optionally): checks if non-logged acquisitions
-                always precede logged acquisitions
+            non_logged_acqs_preceed_logged_acqs (bool): checks if non-logged
+                acquisitions precede logged acquisitions in all segments of
+                the sequence.
         """
         # e.g. [[False, False, True...]]  where True indicates a logged acq
         acqs_per_seg = [
@@ -445,15 +446,16 @@ class Sequence:
              for e in seg.acquisition_elements
              ] for seg in self.segments.values()
         ]
-        ordered = all([[acqs[i]<=acqs[i+1] for i in range(len(acqs)-1)]
-                       for acqs in acqs_per_seg])
+        non_logged_acqs_preceed_logged_acqs = all(
+            [[acqs[i]<=acqs[i+1] for i in range(len(acqs)-1)]
+             for acqs in acqs_per_seg])
         n_acqs = [len(
             [acq or include_non_logged_acquisitions for acq in acqs]
         ) for acqs in acqs_per_seg]
         if not per_segment:
             n_acqs = np.sum(n_acqs)
         if include_non_logged_acquisitions:
-            return n_acqs, ordered
+            return n_acqs, non_logged_acqs_preceed_logged_acqs
         else:
             return n_acqs
 
@@ -497,7 +499,7 @@ class Sequence:
         :return:
         """
 
-        n_acq_per_seg, ordered = self.n_acq_elements(
+        n_acq_per_seg, non_logged_preceed_logged = self.n_acq_elements(
             per_segment=True, include_non_logged_acquisitions=True)
         n_logged_acq_per_seg = self.n_acq_elements(per_segment=True)
         n_non_logged_acq_per_seg = \
@@ -510,7 +512,7 @@ class Sequence:
                     "non-logged acquisitions, as well as logged acquisitions, "
                     "when using repeat readout patterns, but currently"
                     f"{n_non_logged_acq_per_seg=} and {n_logged_acq_per_seg=}")
-            if not ordered:
+            if not non_logged_preceed_logged:
                 raise NotImplementedError(
                     "All non-logged acquisitions should happen before "
                     "logged acquisitions in a segment when using repeat "
