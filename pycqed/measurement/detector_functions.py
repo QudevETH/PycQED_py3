@@ -14,6 +14,7 @@ from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
 from pycqed.utilities.errors import NoProgressError
 from pycqed.measurement.waveform_control import pulsar as ps
+import pycqed.utilities.qutip_compat as qtp
 import logging
 log = logging.getLogger(__name__)
 
@@ -594,6 +595,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
     the poll method of an acquisition device.
     """
     TIMED_METHODS = ["prepare"]
+    simulation = False
 
     def __init__(self, acq_dev=None, detectors=None,
                  prepare_and_finish_pulsar=False,
@@ -676,6 +678,9 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
 
     def get_awgs(self):
         return [self.AWG]
+
+    def setattr(self, name, val):
+        setattr(self, name, val)
 
     def set_acq_length(self, val):
         """Set the acquisition length (overwrite value given in init).
@@ -932,6 +937,8 @@ class MultiPollDetector(PollDetector):
                     raise Exception('Not all AWG instances in '
                                     'MultiPollDetector are the same.')
             d.AWG = None
+            if any([d.simulation for d in self.detectors]):
+                self.simulation = True
 
         # disable live plotting if any of the detectors requests it
         self.live_plot_allowed = all(self.live_plot_allowed)
@@ -985,6 +992,10 @@ class MultiPollDetector(PollDetector):
         if isinstance(self.AWG, self.MultiAWGWrapper):
             return [self.AWG.master_awg] + self.AWG.awgs
         return [self.AWG]
+
+    def setattr(self, name, val):
+        for d in self.detectors:
+            d.setattr(name, val)
 
     def set_acq_length(self, val):
         for d in self.detectors:
