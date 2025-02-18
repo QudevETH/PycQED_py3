@@ -2647,8 +2647,8 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                 offset_list += [('ge_I_channel', 'ge_I_offset'),
                                 ('ge_Q_channel', 'ge_Q_offset')]
                 if hasattr(ge_lo.get_instr(), 'lo_cal_data'):
-                    ge_lo.get_instr().lo_cal_data.pop(self.name + '_I', None)
-                    ge_lo.get_instr().lo_cal_data.pop(self.name + '_Q', None)
+                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
+                    ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
             else:
                 # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
