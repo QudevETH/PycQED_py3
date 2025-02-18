@@ -460,10 +460,6 @@ def density_matrices(data_dict,
             # least_squares is not used as a guess because it does not meet
             # the physicality constraints, and cvxpy does not like problems
             # in which the guess does not meet the constraints
-            # if rho_guess is None:
-            #     rho_guess = hlp_mod.get_param(
-            #         f'{keys_out_container}.least_squares.rho',
-            #         data_dict, default_value = None, **params)
             rho_cvx = tomo.convex_mle(
                 mus = all_measurement_results,
                 Fs = all_measurement_operators,
