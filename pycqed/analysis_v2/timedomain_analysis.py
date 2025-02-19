@@ -3374,9 +3374,14 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         shots = np.array([
             shots[key] for key in shots.keys()
         ])
+        shape = shots.shape
+        # Flatten and allow None values
+        shots = shots.reshape(-1, shape[-1]).astype('float64')
+        # Mask shots outside the computational subspace
+        shots[np.where((shots[:,0] + shots[:,1])==0)] = None
         # Take the e state probability (now array contains 0s and 1s)
         shots = shots[..., 1]
-        shots = shots.reshape((shots.shape[0], -1, *self.sp.length()))
+        shots = shots.reshape((shape[0], -1, *self.sp.length()))
         # shape (n_qb, n_shots, hard_sweep, soft_sweep)
         return shots
 
@@ -3540,8 +3545,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # count histogram# relative frequencies of samples
             b = bitstrings[:, j]
             values, counts = np.unique(b, return_counts=True)
+            assert str(values[-1])=="nan"
+            values = values[:-1]
+            counts = counts[:-1]
+            values = values.astype('int')
             # calculate relative frequencies
-            freqs[values, j] = counts / shape[1]
+            freqs[values, j] = counts / np.sum(counts)
 
         # freqs shape: (n_state, ...)
         freqs = freqs.reshape((2 ** shape[0], *shape[2:]))
