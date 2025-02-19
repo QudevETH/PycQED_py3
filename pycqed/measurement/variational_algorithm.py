@@ -88,7 +88,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 self.MC.set_adaptive_function_parameters(dict(
                     adaptive_function=self.optimizer,
                     data_processing_function=self._data_processing_function,
-                    indexed_sweep=True,  # TODO what is this??
                 ))
                 self.exp_metadata.update({
                     'training_settings': optimizer.training_settings,
@@ -194,17 +193,12 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         tda.MultiQubit_TimeDomain_Analysis._process_single_shots(
             pdd=self.pdd,
             n_shots=self.meas_objs[0].acq_shots(),
-            qb_names=list(movnm),
             predict_proba=True,
             classifier_params=classifier_params,
-            states_map=None,
             thresholding=True,
             preselection_qbs=None,
             preselection=False,
             twoD=True,
-            n_seqs=1,  # 1 training iteration
-            classified_ro=False,
-            correlate_proba=False,
         )
         return self.pdd
 
