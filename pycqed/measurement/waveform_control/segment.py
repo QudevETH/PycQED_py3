@@ -2537,11 +2537,17 @@ class Segment:
         return output
 
     @staticmethod
-    def export_qutip(qb_names, seg=None, pulses=None, q=None, skip_RO=True):
+    def export_qutip(
+            qb_names, seg=None, pulses=None, q=None, skip_RO=False, **kw
+    ):
         import pycqed.utilities.qutip_compat as qtp
         if q is None:
-            q = qtp.qip.circuit.QubitCircuit(
-                len(qb_names), reverse_states=False)
+            kw.setdefault('reverse_states', False)
+            # bug in qutip==5.1.1 plotting: if there are measurements,
+            # rendering the circuit will try to assign measurement results
+            # to a classical bit (classical_store), which cannot be None
+            kw.setdefault('num_cbits', 0 if skip_RO else 1)
+            q = qtp.qip.circuit.QubitCircuit(len(qb_names), **kw)
         if seg:  # Pass either a segment or directly pulses
             assert pulses is None
             seg.resolve_segment()
