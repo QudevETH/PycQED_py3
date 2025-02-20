@@ -6,6 +6,7 @@ import os
 from copy import copy
 
 
+from pycqed.utilities import general as gen
 from pycqed.measurement import quantum_experiment as qe_mod
 from pycqed.measurement import awg_sweep_functions as awg_swf
 from pycqed.analysis_v2 import timedomain_analysis as tda
@@ -41,10 +42,26 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     default_experiment_name = 'VariationalAlgorithm'
 
     def __init__(self, optimize=True, optimizer=None, fixed_params_values=None,
-                 classified=False, df_name='int_log_det', fast_mode=True,
+                 df_name='int_log_det',
                  sweep_points=None, **kw):
-        self.default_experiment_name += '_opt' if optimize else ''
         try:
+            self.default_experiment_name += '_opt' if optimize else ''
+            # Options for simulated experiment
+            if df_name=='sim_int_avg_classif_det':
+                default_kw = dict(
+                    fast_mode=False,
+                    df_kwargs=dict(
+                        qutrit=False,
+                        det_get_values_kws=dict(
+                            classified=True,
+                            correlated=True,
+                            thresholded=True,
+                            averaged=True,
+                        ),
+                    ),
+                )
+                gen.setdefault_nested(kw, default_kw)
+            kw.setdefault('fast_mode', True)
             self.optimize = optimize
             if self.optimize:
                 sweep_points = None
@@ -55,7 +72,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                     raise ValueError('No sweep points')
 
             super().__init__(
-                classified=classified, df_name=df_name, fast_mode=fast_mode,
+                df_name=df_name,
                 sequence_kwargs=dict(sweep_points=sweep_points), **kw
             )
             self.set_block_and_params()
