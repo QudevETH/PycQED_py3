@@ -50,6 +50,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             if df_name=='sim_int_avg_classif_det':
                 default_kw = dict(
                     fast_mode=False,
+                    temporary_values=[],  # Ensure that exists, to fill below
                     df_kwargs=dict(
                         qutrit=False,
                         det_get_values_kws=dict(
@@ -61,6 +62,12 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                     ),
                 )
                 gen.setdefault_nested(kw, default_kw)
+                if kw['df_kwargs']['det_get_values_kws']['averaged']:
+                    # Avoid measuring unneeded shots since the detector
+                    # anyway overwrites the data with a simulation. If not
+                    # averaged, keep the number of shots (might not be
+                    # needed for data shapes, but allows the det to know it)
+                    kw['temporary_values'].append((kw['dev'].acq_shots, 1))
             kw.setdefault('fast_mode', True)
             self.optimize = optimize
             if self.optimize:
