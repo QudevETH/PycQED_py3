@@ -1876,10 +1876,6 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
         axs.yaxis.set_major_locator(plt.FixedLocator(plot_ytick_loc))
         axs.yaxis.set_major_formatter(plt.FixedFormatter(plot_ytick_labels))
 
-#    if plot_xtick_labels is not None:
-#        axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
-#    if plot_ytick_labels is not None:
-#        axs.yaxis.set_ticklabels(plot_ytick_labels)
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
