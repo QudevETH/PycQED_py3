@@ -1886,12 +1886,11 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
     if plot_ytick_loc is not None:
         axs.yaxis.set_ticks(plot_ytick_loc)
 
-    # FIXME: Breaks the plot - what is the intention here?
-    #if plot_origin == 'upper':
-    #    axs.invert_yaxis()
+    if plot_origin == 'upper':
+        axs.invert_yaxis()
 
-    #if plot_aspect is not None:
-    #    axs.set_aspect(plot_aspect)
+    if plot_aspect is not None:
+        axs.set_aspect(plot_aspect)
 
     if not plot_nolabel:
         label_color2D(pdict, axs)
