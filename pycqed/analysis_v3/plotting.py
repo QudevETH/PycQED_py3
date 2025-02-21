@@ -1862,7 +1862,7 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
         axs.set_ylim(ymin, ymax)
 
     # Add ticks to figure
-    # FIXME Ignores thranspose option. Is it ok?
+    # FIXME Ignores transpose option. Is it ok?
     if plot_xtick_labels is not None:
         if plot_xtick_loc is None:
             plot_xtick_loc = np.arange(len(plot_xtick_labels))
