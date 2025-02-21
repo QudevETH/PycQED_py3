@@ -1,7 +1,5 @@
 import time
 import numpy as np
-from typing import Union, Tuple, List
-from copy import copy, deepcopy
 from collections import OrderedDict
 
 import qcodes as qc

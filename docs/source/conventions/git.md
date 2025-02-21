@@ -1,4 +1,4 @@
-# Git conventions
+# Git and GitLab Conventions
 
 ## Branches
 
@@ -119,12 +119,25 @@ semantically related commits.
 commit message with a tag `[f/<feature_branch_name>]`. This will facilitate the
 effort to find the relevant commits to cherry-pick into the feature branch.
 
-## Merge requests
+## Merge Requests
+
+### Checklist
+
+- [ ] Add a descriptive title and description to your merge request.
+- [ ] Assign an assignee who will be working on an underlying branch (usually you).
+- [ ] Assign a _main_ reviewer as reviewer who will be responsible for the review. 
+Ideally someone who knows the corner of `pycqed` well (expert).
+- [ ] You can set it as `Draft:` (checkbox) if you want it to be ignored for a while.
+- [ ] Once you are ready, uncheck the `Draft:` checkbox and add a comment starting
+`/WAITINGFOR @<username> <optional-msg>` to indicate who has to move next with
+some context. Please be concise and precise.
+
+A more in depth explanation follows.
 
 ### Concept
 
 Once you are satisfied with the changes you have made on your branch, you can
-open a merge request on GitLab, to signal that you would like it to be merged
+open a merge request (MR) on GitLab, to signal that you would like it to be merged
 in `qudev_master` (or another branch if applicable).
 
 The merge requests are an opportunity to receive/give feedback on the changes
@@ -134,9 +147,9 @@ modifications to be made before the merge request is accepted.
 
 ### Guidelines
 
-* Create and review merge requests ASAP, so as to:
-  1. Have less branches, resulting in a cleaner repository.
-  2. Reduce the likelihood and seriouness of merge conflicts.
+* Create and review merge requests ASAP, to:
+  1. Have fewer branches, resulting in a cleaner repository.
+  2. Reduce the likelihood and seriousness of merge conflicts.
 * Keep the scope of the merge request as small as possible, to make it easier
 to review:
   * 1 bugfix per MR, instead of multiple bugfixes (unless all related).
@@ -147,15 +160,15 @@ irrelevant sections.
 * Provide background when necessary to facilitate the review, e.g. justify some
 implementation choices, or document the limitations of your implementation.
 * Reference related GitLab merge requests (e.g. `!3`) and issues (e.g. `#7`).
-* Mention people (e.g. `@thhavy`) in discussion if you need feedback from them.
+* Mention people in discussion if you need feedback from them.
 * Delete the source branch after it is merged, unless there is a reason to keep
 it alive (e.g. for archiving purposes).
 
-## Issues tracking
+## Issues Tracking
 
 * When encountering problems with PycQED, make sure to open an issue on GitLab,
 so that it can be properly tracked and eventually resolved.
-* Issues may be reopenned later if the problem reoccurs or if a bug is
+* Issues may be reopened later if the problem reoccurs or if a bug is
 re-introduced.
 * Fill in the template on GitLab (see [Issue template](./issue_template.md)).
 You may remove irrelevant sections.

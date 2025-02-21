@@ -1,4 +1,3 @@
-import logging
 import numpy as np
 from pycqed.measurement.randomized_benchmarking.clifford_group import(
     clifford_lookuptable)

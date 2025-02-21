@@ -268,7 +268,7 @@ class WaveformViewerMainWindow(TriggerResizeEventMixin, qt.QtWidgets.QWidget):
                     qt.QtCore.Qt.CheckState.Checked)
 
         self.get_current_segment().resolve_segment(allow_overlap=True)
-        self.get_current_segment().gen_elements_on_awg()
+        self.get_current_segment().gen_elements_on_awg(return_sorted=False)
         self.instrument_list = set(self.get_current_segment().elements_on_awg)
         self.selectbox_instruments = CheckableComboBox()
         self.selectbox_instruments.default_display_text = 'Select...'
@@ -477,7 +477,7 @@ class WaveformViewerMainWindow(TriggerResizeEventMixin, qt.QtWidgets.QWidget):
         selected_instruments = self.selectbox_instruments.currentData()
         self.selectbox_instruments.blockSignals(True)
         self.selectbox_instruments.clear()
-        self.get_current_segment().gen_elements_on_awg()
+        self.get_current_segment().gen_elements_on_awg(return_sorted=False)
         self.instrument_list = set(self.get_current_segment().elements_on_awg)
         active_channel_map = self.get_active_channel_map()
         if active_channel_map is not None:

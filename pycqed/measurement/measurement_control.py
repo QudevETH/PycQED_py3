@@ -1,4 +1,3 @@
-import types
 import logging
 
 from pycqed.utilities.timer import Timer
@@ -29,7 +28,6 @@ from pycqed.measurement.calibration import calibration_points as cp_mod
 
 # Used for auto qcodes parameter wrapping
 from pycqed.measurement import sweep_functions as swf
-from pycqed.measurement import awg_sweep_functions as awg_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_swf
 from pycqed.measurement.mc_parameter_wrapper import wrap_par_to_det
 from pycqed.analysis.tools.data_manipulation import get_generation_means
@@ -861,8 +859,6 @@ class MeasurementControl(Instrument):
         else:
             # Transpose since detectors return [len(value_names), num_points],
             # to get shape [num_points, len(value_names)]
-            # TODO confirm that all det.acquire_data_point can be deleted,
-            #  see comment in Multi_Detector.acquire_data_point
             vals = np.array(self.detector_function.get_values()).T
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving

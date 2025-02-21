@@ -18,8 +18,8 @@ import logging
 from typing import IO, Optional
 
 # Do not remove, used inside eval()
-from numpy import array
-from collections import OrderedDict
+from numpy import array  # noqa: F401
+from collections import OrderedDict  # noqa: F401
 
 from pycqed.utilities.io.base_io import Loader, file_extensions, \
     DateTimeGenerator
