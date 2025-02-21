@@ -1924,7 +1924,6 @@ def label_color2D(pdict, axs):
 def plot_colorbar(
     pdict=None, axs=None, cax=None, orientation="vertical", tight_fig=False
 ):
-# FIXME: If tight_fig is True here, other axes get shifted under the colorbar.
     """Plots a colorbar for a matplotlib plot.
 
     Args:
