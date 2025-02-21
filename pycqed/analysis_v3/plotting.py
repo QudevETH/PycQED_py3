@@ -1037,7 +1037,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
             # variable for each plot!!
             # This might fix a bug.
 
-            # HINT: This line actually draws the figure.
+            # HINT: This line creates the figure.
             # Turn on the `Qt5Agg` backend to see the
             # figure when debugging.
             figs[axes_pdict['fig_id']], axs[axes_pdict['fig_id']] = \
