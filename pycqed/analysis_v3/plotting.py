@@ -1032,7 +1032,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 axs[pdict['fig_id']].patch.set_alpha(0)
 
             # transparent background around axes for presenting data
-            pdict['transparent_bg'] = pdict.get('transparent_bg', False)
+            pdict['transparent_bg'] = pdict.get('transparent_bg', True)
             if pdict['transparent_bg']:
                 axs[pdict['fig_id']].patch.set_alpha(0)
 
