@@ -11,17 +11,15 @@ fractions.gcd = math.gcd  # fractions.gcd (for neupy) is removed in python 3.9
 
 log = logging.getLogger(__name__)
 
-# These libraries might not be available. Please check pypproject.toml
+# Pass if these libraries are not available, as this module is unused as of now
 try:
     from neupy.algorithms import GRNN as grnn
-except Exception:
-    log.warning('Could not import neupy. This is OK as long as you do not '
-                'use machine learning features that rely on neupy.')
+except ModuleNotFoundError:
+    pass
 try:
     import tensorflow as tf
-except Exception:
-    log.warning('Could not import tensorflow. This is OK as long as you do '
-                'not use machine learning features that rely on tensorflow.')
+except ModuleNotFoundError:
+    pass
 
 
 class Estimator(metaclass=ABCMeta):
