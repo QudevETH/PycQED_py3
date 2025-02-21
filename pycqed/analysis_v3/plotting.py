@@ -1060,10 +1060,6 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
 
                 axs[axes_pdict['fig_id']] = ax
 
-            # transparent background around axes for presenting data
-            # FIXME: !692 will solve this with a flag, remove before un-drafting this MR
-            #figs[axes_pdict['fig_id']].patch.set_alpha(0)
-
             if axes_pdict.get('tight_layout', True):
                 figs[axes_pdict['fig_id']].tight_layout()
 
