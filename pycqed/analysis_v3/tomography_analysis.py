@@ -713,6 +713,9 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
                 'bar_kws': dict(zorder=1),
                 'set_edgecolor': True
             }
+    elif rho_target is None:
+        target_shape = rho_meas.full().shape
+        rho_target = qtp.Qobj(np.zeros(target_shape))
 
     keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
                                            default_value='state_tomo', **params)
@@ -733,7 +736,6 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
     legend_entries = get_legend_artists_labels(data_dict,
                                                estimation_type=estimation_type,
                                                **params)
-
     title = base_title + plot_mod.default_figure_title(
         data_dict, ','.join(meas_obj_names))
     zvals = np.concatenate((np.abs(rho_target.full()),
