@@ -1,11 +1,9 @@
 import numpy as np
 import pycqed.utilities.qutip_compat as qtp
-from pycqed.analysis import analysis_toolbox as a_tools
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pycqed.analysis.tools.plotting import *
 import time
-import os
 
 rotation_matrixes = [qtp.qeye(2).full(),
                      qtp.sigmax().full(),

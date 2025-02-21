@@ -1,7 +1,6 @@
 import pathlib
 
 import pycycle.utils as pycycle
-import pytest
 
 # Going down 3 levels because of our odd project layout!
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent
