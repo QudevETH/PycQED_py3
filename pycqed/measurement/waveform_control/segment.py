@@ -2559,7 +2559,11 @@ class Segment:
                 continue
             op_code = op_code.split(' ')
             op_name = op_code[0]
-            qb_inds = [qb_names.index(qbn) for qbn in op_code[1:]]
+            # test if qubit names have been provided, see CB.get_qubits
+            try:
+                qb_inds = [qb_names.index(qbn) for qbn in op_code[1:]]
+            except ValueError:
+                qb_inds = [int(i) for i in qb_names]
             if op_name[0] == 's':
                 op_name = op_name[1:]
             if 'CZ' in op_name:
