@@ -38,6 +38,9 @@ class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
         ACQ_N_RESULTS_MAX (int): Maximum number of acquisition results
           per hardware run.
     """
+    # Center frequency can only be placed in 200 MHz increments in
+    # LabOne 24.10
+    acq_default_fixed_lo_freq = {"step": 200e6, "min": 1e9, "max": 8e9 + 1}
     acq_length_granularity = 16
 
     # acq_sampling_rate is the effective sampling rate provided by the SHFQA,

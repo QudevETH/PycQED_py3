@@ -1047,6 +1047,10 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                              sharey=axes_pdict.get('sharey', False),
                              figsize=axes_pdict.get('plotsize', None),
                              num=axes_pdict['fig_id']) # window title
+            # transparent background around axes for presenting data
+            pdict['transparent_bg'] = pdict.get('transparent_bg', True)
+            if pdict['transparent_bg']:
+                axs[pdict['fig_id']].patch.set_alpha(0)
 
             if axes_pdict.get('3d', False):
                 axs[axes_pdict['fig_id']].remove()

@@ -310,7 +310,7 @@ def cal_two_qubit_gates(
                                 dev,
                                 spectator_map,
                                 gate_list,
-                                include_spec_of_data_qubits=\
+                                include_spectators_which_are_lss=\
                                     include_spec_of_data_qubits
                             ),
                             opcode=spectator_pulse_opcode,

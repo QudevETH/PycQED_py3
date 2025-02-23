@@ -2631,25 +2631,31 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         :param set_ge_offsets: whether to set offsets for drive channels
         :param offset_list: additional offsets to set
         """
-        pulsar = self.instr_pulsar.get_instr()
         if offset_list is None:
             offset_list = []
 
-        if set_ge_offsets:
+        if set_ge_offsets and self.instr_ge_lo() is not None:
             ge_lo = self.instr_ge_lo
+
+            # Here we configure the instrument reference parameter
+            # MWG.instr_pulsar, so the MWG (MWGWithLOCalibration) can update
+            # the LO-leakage calibration as its frequency is changed.
+            if param := ge_lo.get_instr().parameters.get('instr_pulsar'):
+                param(self.instr_pulsar())
+
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
                 offset_list += [('ge_I_channel', 'ge_I_offset'),
                                 ('ge_Q_channel', 'ge_Q_offset')]
-                if ge_lo() is not None and 'lo_cal_data' in ge_lo.get_instr().parameters:
+                if hasattr(ge_lo.get_instr(), 'lo_cal_data'):
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
-            elif ge_lo() is not None:
+            else:
                 # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
                 lo_cal = ge_lo.get_instr().lo_cal_data()
                 qb_lo_cal = self.ge_lo_leakage_cal()
-                i_par = pulsar.parameters[self.get('ge_I_channel') + '_offset']
-                q_par = pulsar.parameters[self.get('ge_Q_channel') + '_offset']
+                i_par = self.get('ge_I_channel') + '_offset'
+                q_par = self.get('ge_Q_channel') + '_offset'
                 lo_cal[self.name + '_I'] = (i_par, qb_lo_cal['freqs'],
                                             qb_lo_cal['I_offsets'])
                 lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],
