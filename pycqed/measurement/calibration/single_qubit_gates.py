@@ -96,9 +96,6 @@ class T1FrequencySweep(CalibBuilder):
             self.data_to_fit = {
                 task['qb']: trans_to_pop[task.get('transition_name', 'ge')]
                 for task in self.preprocessed_task_list}
-            if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
-                self.sweep_points.reduce_dim(1, inplace=True)
-                self._num_sweep_dims = 1
             self.sequences, self.mc_points = \
                 self.parallel_sweep(self.preprocessed_task_list,
                                     self.t1_flux_pulse_block, **kw)
@@ -146,16 +143,18 @@ class T1FrequencySweep(CalibBuilder):
                 self.sweep_points.add_sweep_dimension()
             for i in range(len(sweep_points)):
                 sweep_points[i].update(self.sweep_points[i])
-            if 'qubit_freqs' in sweep_points[1]:
+            if 'qubit_freqs' in sweep_points.get_parameters():
                 qubit_freqs = sweep_points['qubit_freqs']
             else:
                 qubit_freqs = None
 
             # Fetch amplitudes from sweep_points
             amplitudes = None
-            for key in sweep_points[1]:
-                if 'amplitude' in key:  # Detect e.g. amplitude2 from 2qb gates
-                    amplitudes = sweep_points[key]
+            for amplitude_key in sweep_points.get_parameters():
+                # Detect e.g. amplitude2 from 2qb gates
+                if 'amplitude' in amplitude_key:
+                    amplitudes = sweep_points[amplitude_key]
+                    break
 
             # Computing either qubit_freqs or amplitudes, if not passed.
             # Both can also be passed, e.g. to cache or use a different model.
@@ -171,9 +170,11 @@ class T1FrequencySweep(CalibBuilder):
                     amplitude=amplitudes,
                     **kw.get('vfc_kwargs', {})
                 )
-                freq_sweep_points = SweepPoints('qubit_freqs', qubit_freqs,
-                                                'Hz', 'Qubit frequency')
-                sweep_points.update([{}] + freq_sweep_points)
+                # amplitude_key should be valid if amplitudes was not None
+                sweep_points.add_sweep_parameter(
+                    'qubit_freqs', qubit_freqs, 'Hz', 'Qubit frequency',
+                    dimension=sweep_points.find_parameter(amplitude_key)
+                )
 
             if amplitudes is None:
                 if qb is None:
@@ -191,9 +192,10 @@ class T1FrequencySweep(CalibBuilder):
                 if np.any(np.isnan(amplitudes)):
                     raise ValueError('Specified frequencies resulted in nan '
                                      'amplitude. Check frequency range!')
-                amp_sweep_points = SweepPoints('amplitude', amplitudes,
-                                               'V', 'Flux pulse amplitude')
-                sweep_points.update([{}] + amp_sweep_points)
+                sweep_points.add_sweep_parameter(
+                    'amplitude', amplitudes, 'V', 'Flux pulse amplitude',
+                    dimension=sweep_points.find_parameter('qubit_freqs')
+                )
 
             # Check if LO_freq is in range of the qubit of interest
             if qb is not None:
@@ -265,9 +267,6 @@ class T1FrequencySweep(CalibBuilder):
             all_fits (bool, default: True): whether to do all fits
         """
 
-        if len(self.sweep_points) == 1:
-            self.analysis = tda.MultiQubit_TimeDomain_Analysis()
-            return
         self.all_fits = kw.get('all_fits', True)
         self.do_fitting = kw.get('do_fitting', True)
         self.analysis = tda.T1FrequencySweepAnalysis(

@@ -412,7 +412,7 @@ class CircuitBuilder:
                     if param_start > 0:
                         func_for_op_code = eval('lambda x, cb=self : ' + angle)
                     else:
-                        func_for_op_code = None
+                        func_for_op_code = lambda x: x
                     # Only include - sign in func_for_pulse_param (responsible
                     # for the pulse parameter), since in the op_code this
                     # sign is already indicated by 'm'.
