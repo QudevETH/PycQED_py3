@@ -827,10 +827,8 @@ class HamiltonianFittingAnalysis:
                     + r" - f_{\mathrm{meas}}$ "
                     + f"({frequency_prefix})"
                 )
-
-        if plot_residuals:
-            ax1.legend()
-            plt.show()
+                ax1.legend()
+                plt.show()
 
         return residuals
 
