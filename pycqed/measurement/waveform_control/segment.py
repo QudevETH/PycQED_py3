@@ -233,6 +233,10 @@ class Segment:
             # add element to dict of acquisition elements
             self.acquisition_elements.setdefault(elname + suffix, [])
             self.acquisition_elements[elname + suffix].append(mobj)
+            # Indicates if acquired data should be returned by the acq dev
+            self.element_metadata.setdefault(elname + suffix, {})
+            self.element_metadata[elname + suffix]['log_acquisition'] = \
+                pars_copy['log_acquisition']
         elif pars_copy.get('element_name') is None:
             pars_copy['element_name'] = 'default'
         pars_copy['element_name'] += suffix
@@ -670,8 +674,6 @@ class Segment:
         # Update dictionary {channel: element_name} to attribute
         # self.elements_on_channel
         self.update_channel_elements()
-        # Create metadata dictionary entries for all element in this segment
-        self._initialize_element_metadata()
 
         for channel in self.elements_on_channel.keys():
             # Only look at I channel internal modulation configurations. Q
@@ -880,6 +882,9 @@ class Segment:
                     pulse.alpha = 1
                     pulse.phi_skew = 0
 
+            # Ensures that these dictionaries exist before adding mod_config
+            self.element_metadata.setdefault(elname, {})
+            self.element_metadata[elname].setdefault("mod_config", {})
             self.element_metadata[elname]["mod_config"][channel] = \
                 channel_metadata
 
@@ -943,13 +948,6 @@ class Segment:
                     else:
                         frequency_bin[rounded_freq] = 1
         return max(frequency_bin.keys())
-
-    def _initialize_element_metadata(self):
-        """Create metadata dictionary entries for all elements in this
-        segment."""
-
-        for elname in self.elements.keys():
-            self.element_metadata[elname] = {"mod_config": {}}
 
     def add_charge_compensation(self):
         """

@@ -1926,7 +1926,9 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             self.value_units = [self.value_units[0]] * len(self.value_names)
 
             # update the mapping from the measurement object to the
-            # classified channels.
+            # classified channels. Names of the measured values should have
+            # the format {meas_device_name}_0_p{g/e/f} w{integration_channels} {
+            # meas_device_name}
             meas_obj_channel_map_new = dict()
             for mobj, chs in self.meas_obj_channel_map.items():
                 meas_obj_channel_map_new[mobj] = list()

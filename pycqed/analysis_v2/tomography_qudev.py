@@ -907,17 +907,6 @@ def meas_to_pauli(nr_qubits, mus, Fs,
                           enumerate(projs_rot)]).T
         meas_to_proj[(i // 2) * 2 ** nr_qubits:(i // 2 + 1) * 2 ** nr_qubits,
         i * 2 ** nr_qubits:(i + 1) * 2 ** nr_qubits] = diags.real
-    print(meas_to_proj)
-    # meas_to_proj = np.zeros((6, 12))
-    # for i in range(3):
-    #     if i in (0, 2):
-    #         meas_to_proj[2 * i:2 * i + 2, 4 * i:4 * i + 4] = np.array(
-    #             [[1, 0, 0, 1, ],
-    #              [0, 1, 1, 0, ]]) / 2
-    #     else:
-    #         meas_to_proj[2 * i:2 * i + 2, 4 * i:4 * i + 4] = np.array(
-    #             [[0, 1, 1, 0, ],
-    #              [1, 0, 0, 1, ]]) / 2
     
     base_conv_n = proj_to_pauli_n @ meas_to_proj
     

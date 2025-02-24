@@ -170,7 +170,6 @@ def get_axes_geometry_from_figure(fig):
         return geometry
     else:
         log.warning(f"Figure {fig} has no axes.")
-        print(f"Figure {fig} has no axes.")
         return (1, 1)
 
 def default_figure_title(data_dict, meas_obj_name, **params):
@@ -1038,7 +1037,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
             # variable for each plot!!
             # This might fix a bug.
 
-            # HINT: This line actually draws the figure.
+            # HINT: This line creates the figure.
             # Turn on the `Qt5Agg` backend to see the
             # figure when debugging.
             figs[axes_pdict['fig_id']], axs[axes_pdict['fig_id']] = \
@@ -1048,6 +1047,10 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                              sharey=axes_pdict.get('sharey', False),
                              figsize=axes_pdict.get('plotsize', None),
                              num=axes_pdict['fig_id']) # window title
+            # transparent background around axes for presenting data
+            pdict['transparent_bg'] = pdict.get('transparent_bg', True)
+            if pdict['transparent_bg']:
+                axs[pdict['fig_id']].patch.set_alpha(0)
 
             if axes_pdict.get('3d', False):
                 axs[axes_pdict['fig_id']].remove()
@@ -1060,10 +1063,6 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
                 ax.tick_params(axis='z', pad=-2)
 
                 axs[axes_pdict['fig_id']] = ax
-
-            # transparent background around axes for presenting data
-            # FIXME: !692 will solve this with a flag, remove before un-drafting this MR
-            #figs[axes_pdict['fig_id']].patch.set_alpha(0)
 
             if axes_pdict.get('tight_layout', True):
                 figs[axes_pdict['fig_id']].tight_layout()
@@ -1862,7 +1861,7 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
         axs.set_ylim(ymin, ymax)
 
     # Add ticks to figure
-    # FIXME Ignores thranspose option. Is it ok?
+    # FIXME Ignores transpose option. Is it ok?
     if plot_xtick_labels is not None:
         if plot_xtick_loc is None:
             plot_xtick_loc = np.arange(len(plot_xtick_labels))
@@ -1877,21 +1876,16 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
         axs.yaxis.set_major_locator(plt.FixedLocator(plot_ytick_loc))
         axs.yaxis.set_major_formatter(plt.FixedFormatter(plot_ytick_labels))
 
-#    if plot_xtick_labels is not None:
-#        axs.xaxis.set_ticklabels(plot_xtick_labels, rotation=90)
-#    if plot_ytick_labels is not None:
-#        axs.yaxis.set_ticklabels(plot_ytick_labels)
     if plot_xtick_loc is not None:
         axs.xaxis.set_ticks(plot_xtick_loc)
     if plot_ytick_loc is not None:
         axs.yaxis.set_ticks(plot_ytick_loc)
 
-    # FIXME: Breaks the plot - what is the intention here?
-    #if plot_origin == 'upper':
-    #    axs.invert_yaxis()
+    if plot_origin == 'upper':
+        axs.invert_yaxis()
 
-    #if plot_aspect is not None:
-    #    axs.set_aspect(plot_aspect)
+    if plot_aspect is not None:
+        axs.set_aspect(plot_aspect)
 
     if not plot_nolabel:
         label_color2D(pdict, axs)
@@ -1925,7 +1919,6 @@ def label_color2D(pdict, axs):
 def plot_colorbar(
     pdict=None, axs=None, cax=None, orientation="vertical", tight_fig=False
 ):
-# FIXME: If tight_fig is True here, other axes get shifted under the colorbar.
     """Plots a colorbar for a matplotlib plot.
 
     Args:
