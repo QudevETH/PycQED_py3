@@ -830,6 +830,7 @@ class HamiltonianFittingAnalysis:
 
         if plot_residuals:
             ax1.legend()
+            plt.show()
 
         return residuals
 
