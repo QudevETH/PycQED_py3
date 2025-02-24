@@ -208,7 +208,23 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             wave_definitions += self.zi_wave_definition(wave,
                                                         defined_waves)
 
+            # FIXME this should be cleaned up such that
+            #  - acq has a known format (always a dict, and created in Segment)
+            #  - log_acquisition is contained in acq (in Segment)
             acq = metadata.get('acq', False)
+            log_acquisition = metadata.get('log_acquisition', True)
+            if not log_acquisition:
+                from packaging import version
+                from pycqed.utilities import general as gen
+                core_ver = gen.get_zhinst_modules_versions()[0]['zhinst-core']
+                if version.parse(core_ver) < version.parse('24.7'):
+                    raise NotImplementedError(
+                        'UHFQA sequencer does not support *not* returning '
+                        f'acquired data with version {core_ver} < {24.7}!')
+                if getattr(self.awg.daq, 'server', None) == 'emulator':
+                    raise NotImplementedError(
+                        'UHFQA sequencer does not support *not* returning '
+                        f'acquired data with a virtual server!')
             # Remark on allow_filter in the call to _zi_playback_string:
             # the element may be skipped via segment filtering only if
             # play_element was called with allow_filter=True *and* the
@@ -217,6 +233,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             # see below.)
             playback_strings += self.zi_playback_string(
                 name=self.awg.name, device='uhf', wave=wave, acq=acq,
+                log_acquisition=log_acquisition,
                 allow_filter=(
                         allow_filter and metadata.get('allow_filter', False)))
             # The following line only has an effect if the metadata specifies
