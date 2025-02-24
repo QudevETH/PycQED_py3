@@ -843,7 +843,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 fluxline(voltage)
 
                 # Finding frequency
-                ff = FindFrequency([qubit], dev=kw.get('dev'), update=True)
+                ff = FindFrequency(dev=kw.get('dev'), qubits=[qubit],
+                                   update=True)
 
                 # Storing experimental result
                 experimental_values[voltage] = {"ge": qubit.ge_freq()}
