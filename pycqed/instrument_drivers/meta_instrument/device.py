@@ -628,6 +628,9 @@ class Device(Instrument):
             self.set_interaction_frequency(qbi, qbj, int_freq, cz_pulse_name,
                                            update)
 
+    # FIXME this method could be shared with a mock device object to make it
+    #  available in the analysis. See an example in
+    #  pycqed/instrument_drivers/mock_qcodes_special_classes.
     def get_interactions_for_plotting(
             self, involved_qubits=None, cz_pulse_name=None,
     ):

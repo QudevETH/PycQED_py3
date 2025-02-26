@@ -5317,7 +5317,7 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
         init_state = kw.get('init_state')
         # Need to set transition_name here since it is used to determine the
         # calibration points
-        kw['transition_name'] = '' if init_state == 'g' else (
+        kw['transition_name'] = 'ge' if init_state == 'g' else (
             'ge' if init_state == 'e' else (
                 'ef' if init_state == 'f' else 'fh'))
         try:
@@ -5373,6 +5373,9 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
         # add modulation pulse
         modulation_block = self.block_from_ops(f'modulation_pulses_{qb}',
                                                 lru_opcodes)
+        # add ge suffix if op code is just 'PFM' for ge pulse
+        if lru_opcodes[-1] == f'PFM {qb}':
+            lru_opcodes[-1] = f'PFM_ge {qb}'
         # create ParametricValues from param_name in sweep_points
         for sweep_dict in sweep_points:
             for param_name in sweep_dict:
@@ -5386,8 +5389,13 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
                 suffix = suffix if suffix in ['ge', 'ef', 'fh'] else \
                     lru_opcodes[-1].split('_')[-1].split(' ')[0]
                 for pulse_dict in modulation_block.pulses:
+                    # add ge suffix if op code is just 'PFM' for ge pulse
+                    if pulse_dict['op_code'] == f'PFM {qb}':
+                        op_code = f'PFM_ge {qb}'
+                    else:
+                        op_code = pulse_dict['op_code']
                     if (pulse_param in pulse_dict) and \
-                            (suffix in pulse_dict['op_code']):
+                            (suffix in op_code):
                         pulse_dict[pulse_param] = ParametricValue(
                             param_name)
         modulation_block = [modulation_block] * num_LRUs
