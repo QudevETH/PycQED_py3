@@ -1,10 +1,13 @@
 import pytest
+import importlib
 
-import pycqed.measurement.waveform_control.pulse_library as pl_mod
 import pycqed.measurement.waveform_control.circuit_builder as cb_mod
 
+if not importlib.util.find_spec("pycqedscripts"):
+    pytest.skip("Skipping tests requiring pycqedscripts! "
+                "FIXME: Move to integration tests.",
+                allow_module_level=True)
 
-@pytest.mark.skip(reason="FIXME: Move to integration tests")
 @pytest.fixture(scope="module", autouse=True)
 def virtual_setup():
     from pycqedscripts.init.xld.ATC264_M191_S17V3P4_A1 import initialize_setup
