@@ -2492,7 +2492,7 @@ class Segment:
                     num_two_qb += 1
                     pulse_name = op_code.rstrip('0123456789. ')
                     gate_type = 'CZ'
-                    if len(val := op_code[len(pulse_name):]):
+                    if len(val := op_code[len(pulse_name):].rstrip(' ')):
                         gate_formatted = f'{gate_type}{(factor * float(val)):.1f}'.replace(
                             '.0', '')
                         output += f'\\draw({t / tscale:.4f},-{qb})  node[CZdot] {{}} -- ({t / tscale:.4f},-{qbt}) node[gate, minimum height={l / tscale * 100:.4f}mm] {{\\tiny {gate_formatted}}};\n'
