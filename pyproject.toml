@@ -20,6 +20,7 @@ classifiers = [
 
 # FIXME: Pin versions
 dependencies = [
+    "cvxpy",
     "h5py",
     "lmfit",
     "matplotlib",
