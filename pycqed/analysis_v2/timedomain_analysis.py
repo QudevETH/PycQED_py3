@@ -7893,7 +7893,8 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
                     df = []
                     prev_df = 0
                     # In cases of large frequency changes between two truncation times
-                    # unwrapping mistakes can occur, these can corrected manually
+                    # unwrapping mistakes can occur, these can be corrected by manually
+                    # subracting a whole number of the sampling rate (determined by delta_tau)
                     # {'indices': [list of indices], 'applied_shift': [correction applied at these indices]}
                     shift_unwrapped_freqs = self.get_param_value(
                         'shift_unwrapped_freqs') or {'indices': [], 'applied_shift':[]}
