@@ -7899,7 +7899,9 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
                         'shift_unwrapped_freqs') or {'indices': [], 'applied_shift':[]}
                     for dp, dt in zip(delta_phases_vals, delta_tau):
                         df.append(dp / (2 * np.pi * dt))
-                        df[-1] += np.round((prev_df - df[-1]) * dt) / dt
+                        # Subtract multiples of the sampling rate (determined by delta_tau
+                        # at this index) to stay in the same frequency band
+                        df[-1] -= np.round((df[-1] - prev_df) * dt) / dt
                         if len(df) in shift_unwrapped_freqs['indices']:
                             print(f'Manually shifted unwrapped frequency at index {len(df)}')
                             freq_shift = shift_unwrapped_freqs['applied_shift'] \
