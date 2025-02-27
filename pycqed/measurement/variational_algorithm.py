@@ -276,17 +276,17 @@ class QCNNExperiment(VariationalAlgorithm):
         h_index = int(round(h_index))
         if h_index >= 21:
             test_prep_params = np.zeros((8, 44))
-            # test_prep_params[0] is all-zero to prepare 0000
-            test_prep_params[1][0:9] = 180  # all 1
-            test_prep_params[2][0:9] = 90  # all +
-            test_prep_params[3][0:9] = -90  # all -
-            test_prep_params[4][[1, 3, 5, 7]] = 180  # 010101010
-            test_prep_params[5][[0, 2, 4, 6, 8]] = 180  # 101010101
+            # h_index = 21, test_prep_params[0] is all-zero to prepare 0000
+            test_prep_params[1][0:9] = 180  # 22, |111111111>
+            test_prep_params[2][0:9] = 90  # 23, |+++++++++>
+            test_prep_params[3][0:9] = -90  # 24, |--------->
+            test_prep_params[4][[1, 3, 5, 7]] = 180  # 25, |010101010>
+            test_prep_params[5][[0, 2, 4, 6, 8]] = 180  # 26, |101010101>
             pm = np.empty(9)
             pm[::2] = 90
             pm[1::2] = -90
-            test_prep_params[6][0:9] = pm  # +-+-+-+-+
-            test_prep_params[7][0:9] = -pm  # -+-+-+-+-
+            test_prep_params[6][0:9] = pm  # 27, |+-+-+-+-+>
+            test_prep_params[7][0:9] = -pm  # 28, |-+-+-+-+->
             return test_prep_params[h_index - 21][param_index]
         if not hasattr(self, 'prep_params_vs_h'):
             if self.prep_params_filename is None:
@@ -334,14 +334,16 @@ class QCNNExperiment(VariationalAlgorithm):
             return test_prep_params[param_index]
         elif h_index >= 21:
             test_prep_params = np.zeros((8, 15))
-            # test_prep_params[0] is all zero for 0000
-            test_prep_params[1][0:4] = 180  # 1111
-            test_prep_params[2][0:4] = 90  # ++++
-            test_prep_params[3][0:4] = -90  # ----
-            test_prep_params[4][0:4] = np.array([0, 180, 0, 180])  # 0101
-            test_prep_params[5][0:4] = np.array([180, 0, 180, 0])  # 1010
-            test_prep_params[6][0:4] = np.array([90, -90, 90, -90])  # +-+-
-            test_prep_params[7][0:4] = np.array([-90, 90, -90, 90])  # -+-+
+            # h_index = 21, test_prep_params[0] is all zero for 0000
+            test_prep_params[1][0:4] = 180  # 22, |1111>
+            test_prep_params[2][0:4] = 90  # 23, |++++>
+            test_prep_params[3][0:4] = -90  # 24, |---->
+            test_prep_params[4][0:4] = np.array([0, 180, 0, 180])  # 25, |0101>
+            test_prep_params[5][0:4] = np.array([180, 0, 180, 0])  # 26, |1010>
+            test_prep_params[6][0:4] = \
+                np.array([90, -90, 90, -90])  # 27, |+-+->
+            test_prep_params[7][0:4] = \
+                np.array([-90, 90, -90, 90])  # 28, |-+-+>
             return test_prep_params[h_index - 21][param_index]
         if not hasattr(self, 'prep_params_vs_h'):
             if self.prep_params_filename is None:
