@@ -3270,27 +3270,33 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # Using the fact that targets has the same shape as freqs
             freqs[targets == 0] = 1 / shape[state_axis]  # Uniform probs
 
+
         # main data processing
-        # TODO add a case to set weights to ones, for stabilizer measurements?
         weights = self.get_param_value('weights')
-        if weights is None:
-            assert targets is not None, 'Pass at least weights or targets'
+        if weights is None and targets is not None:
             weights = self.cpp_opt_bxe_weights(
                 freqs, targets, targets_axis=targets_axis)
-        output, cost, training_set_cost = self.cpp_bxe_output(
-            freqs, weights,
-            targets=targets, targets_axis=targets_axis,
-            keepdims=(not self.get_param_value('optimize')),
-        )
-
-        output = output.reshape(virtual_sp.length())
-        if cost is not None:
-            cost = cost.reshape(virtual_sp.length())
-
-        self.cpp_results.update({
-            # FIXME: output dimension
-            'output': (output, virtual_sp)})
+        # Computing the output requires weights
+        if weights is not None:
+            assert isinstance(weights, np.ndarray)
+            if len(weights.shape) == 1:
+                weights = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
+                    weights, freqs.shape, current_axes=[state_axis])
+            # Equivalent to 1D weights dot ND freqs -> ND output, but also
+            # works with ND weights (swept over all dims>0), see previous if
+            output = np.sum(weights * freqs, axis=state_axis)
+            output = output.reshape(virtual_sp.length())
+            self.cpp_results.update({
+                # output shape: (hard sweep, soft sweep)
+                'output': (output, virtual_sp)})
+        # Computing the cost requires weights and targets
         if targets is not None:
+            cost, training_set_cost = self.cpp_bxe_cost(
+                freqs, weights,
+                targets=targets, targets_axis=targets_axis,
+                keepdims=(not self.get_param_value('optimize')),
+            )
+            cost = cost.reshape(virtual_sp.length())
             self.cpp_results.update({
                 'cost': (cost, virtual_sp),
                 'training_set_cost': (training_set_cost,
@@ -3545,9 +3551,9 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # count histogram# relative frequencies of samples
             b = bitstrings[:, j]
             values, counts = np.unique(b, return_counts=True)
-            assert str(values[-1])=="nan"
-            values = values[:-1]
-            counts = counts[:-1]
+            if str(values[-1]) == "nan":
+                values = values[:-1]
+                counts = counts[:-1]
             values = values.astype('int')
             # calculate relative frequencies
             freqs[values, j] = counts / np.sum(counts)
@@ -3575,44 +3581,24 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return weights_opt
 
     @staticmethod
-    def cpp_bxe_output(freqs, weights, state_axis=0,
+    def cpp_bxe_cost(freqs, weights, state_axis=0,
                        targets=None, targets_axis=None,  # optional
                        keepdims=False):
-
-        # Basic idea: 1D weights dot ND freqs -> ND output
-        # This method additionally allows ND weights (swept over all dims>0)
-        assert isinstance(state_axis, int)
-        # use weights extraction function in jupyter notebook
-        assert isinstance(weights, np.ndarray)
-        if len(weights.shape) == 1:
-            weights = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
-                weights, freqs.shape, current_axes=[state_axis])
-        output = np.sum(weights * freqs, axis=state_axis)  # dot products
-
-        # JS_divergence = np.log(2) * np.ones(shape[1:])  # (hard, soft)
-        # JS_divergence[i] += 0.5 * np.log(
-        #     weights_opt[i] + epsilon_stable) @ freqs[:, i, :]
-        # JS_divergence[i] += 0.5 * np.log(
-        #     1 - weights_opt[i] + epsilon_stable) @ freq0
-        if targets is not None:
-            epsilon_stable = 1e-10  # small parameter to avoid division by zero
-            freq1 = freqs * targets  # Don't sum over targets here
-            freq0 = freqs * (1 - targets)
-            cost = -(
-                np.log(weights + epsilon_stable) * freq1 +
-                np.log(1 - weights + epsilon_stable) * freq0
-            )
-            cost = np.sum(cost, axis=state_axis)
-            # Average over targets
-            training_set_cost = np.mean(cost, axis=targets_axis-1,
-                                        keepdims=keepdims)
-        else:
-            cost = None
-            training_set_cost = None
-        return output, cost, training_set_cost
+        epsilon_stable = 1e-10  # small parameter to avoid division by zero
+        freq1 = freqs * targets  # Don't sum over targets here
+        freq0 = freqs * (1 - targets)
+        cost = -(
+            np.log(weights + epsilon_stable) * freq1 +
+            np.log(1 - weights + epsilon_stable) * freq0
+        )
+        cost = np.sum(cost, axis=state_axis)
+        # Average over targets
+        training_set_cost = np.mean(cost, axis=targets_axis-1,
+                                    keepdims=keepdims)
+        return cost, training_set_cost
 
     @staticmethod
-    def cpp_bxe_cost_function(shots, targets, fms=False):
+    def cpp_bxe_cost_function_training(shots, targets, fms=False):
         freqs, _ = VariationalAlgorithmAnalysis.cpp_histogram(shots)
         # targets_axis: the axis of targets in freqs
         # TODO currently only used during training, unify with process_data
@@ -3649,7 +3635,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             freqs, targets=targets, targets_axis=targets_axis)
         # TODO the only difference with the other call to this method is
         #  taking the mean. Unify this?
-        _, _, training_set_cost = VariationalAlgorithmAnalysis.cpp_bxe_output(
+        _, training_set_cost = VariationalAlgorithmAnalysis.cpp_bxe_cost(
             freqs, weights=weights, targets=targets, targets_axis=targets_axis)
         return training_set_cost
 

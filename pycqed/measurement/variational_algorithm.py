@@ -804,7 +804,7 @@ class VQAOptimizer:
         if callable(cost_function):
             self.cost_function = cost_function
         elif cost_function == 'binary_cross_entropy':
-            self.cost_function = vaa.cpp_bxe_cost_function
+            self.cost_function = vaa.cpp_bxe_cost_function_training
         elif isinstance(cost_function, str):
             self.cost_function = getattr(self, cost_function)
         else:
