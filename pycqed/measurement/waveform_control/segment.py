@@ -2575,9 +2575,9 @@ class Segment:
                 op_type = op_name.split(':')[0].rstrip('0123456789.e-')
                 val = op_name[len(op_type):]
                 val = float(val) if val else 180
-                val = val / 180 * np.pi
-                q.add_gate("CPHASE", controls=qb_inds[0],
-                           targets=qb_inds[1], arg_value=val)
+                q.add_gate(
+                    "CPHASE", controls=qb_inds[0], targets=qb_inds[1],
+                    arg_value=val / 180 * np.pi, arg_label=f"CZ{val}")
             elif op_name == 'RO':
                 if skip_RO:
                     # Remove RO, to use the circuit to run a simulation
@@ -2595,13 +2595,11 @@ class Segment:
                     op_name = op_name[1:]
                 else:
                     factor = 1
-                gate_type = 'R' + op_name[:1]
+                gate_type = op_name[:1]
                 val = float(op_name[1:])
-                arg_label = int(
-                    factor * val) if factor * val % 1 < 1e-6 else factor * val
-                q.add_gate(gate_type, targets=qb_inds[0],
+                q.add_gate('R' + gate_type, targets=qb_inds[0],
                            arg_value=factor * val / 180 * np.pi,
-                           arg_label=arg_label)
+                           arg_label=f"{gate_type}{val}")
         return q
 
     def export_stim(self, qubit_coords=None,
