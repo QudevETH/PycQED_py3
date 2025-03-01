@@ -3270,6 +3270,20 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # Using the fact that targets has the same shape as freqs
             freqs[targets == 0] = 1 / shape[state_axis]  # Uniform probs
 
+        # stabilizer analysis
+        if self.get_param_value('do_stabilizer_analysis'):
+            # state preparation analysis (stabilizer analysis)
+            print('tda: doing stabilizer analysis')
+            if shots.shape[0] == 4:
+                stab_dict = self.cpp_stabilizers_4(shots)
+            elif shots.shape[0] == 9:
+                stab_dict = self.cpp_stabilizers_9(shots)
+            else:
+                raise Exception('Stabilizer analysis only for 4 and 9 qbs')
+            for k, v in stab_dict.items():
+                self.cpp_results.update({
+                    k: (v, self.sp)
+                })
 
         # main data processing
         weights = self.get_param_value('weights')
@@ -3322,20 +3336,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                     p_name, [(':', 'smcol')]
                 )
-
-        # FIXME one could add an option to calculate stabilizers
-        # state preparation analysis (stabilizer analysis)
-        # print('tda: doing stabilizer analysis')
-        # if shots.shape[0] == 4:
-        # stab_dict = self.cpp_stabilizers_4(shots)
-        # elif shots.shape[0] == 9:
-        # stab_dict = self.cpp_stabilizers_9(shots)
-        # else:
-        # raise Exception('Stabilizer analysis only for 4 and 9 qbs')
-        # for k, v in stab_dict.items():
-        #     self.cpp_results.update({
-        #         k: (v, self.sp)
-        #     })
 
         for key, (values, sp) in self.cpp_results.items():
             self.add_dummy_qb_data(key, values, sp)
@@ -3438,8 +3438,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def cpp_stabilizers_4(shots, **kw):
         # Should return {'dummy_qbn': values}
-        shape = shots.shape
-        assert shape[0] == 4, "Only implemented for 4 qubits!"
         # Z stabilizer
         def stabz(shots):
             shape = shots.shape
@@ -3477,8 +3475,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def cpp_stabilizers_9(shots, **kw):
         # Should return {'dummy_qbn': values}
-        shape = shots.shape
-        assert shape[0] == 9, "Only implemented for 4 qubits!"
 
         # Z stabilizer
         def stabz(shots):
