@@ -1020,98 +1020,112 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
 
     for key in plot_dicts_keys:
         # go over all the plot_dicts
-        axes_pdict = plot_dicts[key]
-        axes_pdict['no_label'] = no_label
+        pdict = plot_dicts[key]
+        pdict['no_label'] = no_label
 
         # Use the key of the plot_dict if no ax_id is specified
-        axes_pdict['fig_id'] = axes_pdict.get('fig_id', key)
-        axes_pdict['ax_id'] = axes_pdict.get('ax_id', None)
+        pdict['fig_id'] = pdict.get('fig_id', key)
+        pdict['ax_id'] = pdict.get('ax_id', None)
 
         # FIXME: fig_id and ax_ id are mixed here
-        if isinstance(axes_pdict['ax_id'], str):
-            axes_pdict['fig_id'] = axes_pdict['ax_id']
-            axes_pdict['ax_id'] = None
+        if isinstance(pdict['ax_id'], str):
+            pdict['fig_id'] = pdict['ax_id']
+            pdict['ax_id'] = None
 
-        if axes_pdict['fig_id'] not in axs:
+        if pdict['fig_id'] not in axs:
             # This fig variable should perhaps be a different
             # variable for each plot!!
             # This might fix a bug.
+            figs[pdict['fig_id']], axs[pdict['fig_id']] = \
+                plt.subplots(pdict.get('numplotsy', 1),
+                             pdict.get('numplotsx', 1),
+                             sharex=pdict.get('sharex', False),
+                             sharey=pdict.get('sharey', False),
+                             figsize=pdict.get('plotsize', None))
+            if pdict.get('3d', False):
+                axs[pdict['fig_id']].remove()
+                axs[pdict['fig_id']] = Axes3D(
+                    figs[pdict['fig_id']],
+                    azim=pdict.get('3d_azim', -35),
+                    elev=pdict.get('3d_elev', 35))
+                axs[pdict['fig_id']].patch.set_alpha(0)
 
-            # HINT: This line creates the figure.
-            # Turn on the `Qt5Agg` backend to see the
-            # figure when debugging.
-            figs[axes_pdict['fig_id']], axs[axes_pdict['fig_id']] = \
-                plt.subplots(axes_pdict.get('numplotsy', 1),
-                             axes_pdict.get('numplotsx', 1),
-                             sharex=axes_pdict.get('sharex', False),
-                             sharey=axes_pdict.get('sharey', False),
-                             figsize=axes_pdict.get('plotsize', None),
-                             num=axes_pdict['fig_id']) # window title
             # transparent background around axes for presenting data
             pdict['transparent_bg'] = pdict.get('transparent_bg', True)
             if pdict['transparent_bg']:
                 axs[pdict['fig_id']].patch.set_alpha(0)
 
-            if axes_pdict.get('3d', False):
-                axs[axes_pdict['fig_id']].remove()
+            # HINT: This line creates the figure.
+            # Turn on the `Qt5Agg` backend to see the
+            # figure when debugging.
+            figs[pdict['fig_id']], axs[pdict['fig_id']] = \
+                plt.subplots(pdict.get('numplotsy', 1),
+                             pdict.get('numplotsx', 1),
+                             sharex=pdict.get('sharex', False),
+                             sharey=pdict.get('sharey', False),
+                             figsize=pdict.get('plotsize', None),
+                             num=pdict['fig_id']) # window title
+
+            if pdict.get('3d', False):
+                axs[pdict['fig_id']].remove()
                 ax = plt.axes(projection='3d')
-                ax.view_init(azim=axes_pdict.get('3d_azim', -35), elev=axes_pdict.get('3d_elev', 35))
+                ax.view_init(azim=pdict.get('3d_azim', -35), elev=pdict.get('3d_elev', 35))
 
                 # Get labels closer to ticks
                 ax.tick_params(axis='x', pad=-3)
                 ax.tick_params(axis='y', pad=-3)
                 ax.tick_params(axis='z', pad=-2)
 
-                axs[axes_pdict['fig_id']] = ax
+                axs[pdict['fig_id']] = ax
 
-            if axes_pdict.get('tight_layout', True):
-                figs[axes_pdict['fig_id']].tight_layout()
+            if pdict.get('tight_layout', True):
+                figs[pdict['fig_id']].tight_layout()
 
             # Generally all figures are also cutting the bottom off
             # making x-labels invisible at times. This compensates this.
-            figs[axes_pdict['fig_id']].subplots_adjust(bottom=0.2)
+            figs[pdict['fig_id']].subplots_adjust(bottom=0.2)
 
     # After figs and axes exist, fill them with data
     for key in plot_dicts_keys:
-        axes_pdict = plot_dicts[key]
-        plot_touching = axes_pdict.get('touching', False)
+        pdict = plot_dicts[key]
+        plot_touching = pdict.get('touching', False)
 
-        if type(axes_pdict['plotfn']) is str:
-            plotfn = getattr(this_module, axes_pdict['plotfn'])
+        if type(pdict['plotfn']) is str:
+            plotfn = getattr(this_module, pdict['plotfn'])
         else:
-            plotfn = axes_pdict['plotfn']
+            plotfn = pdict['plotfn']
 
         # used to ensure axes are touching
         if plot_touching:
-            axs[axes_pdict['fig_id']].figure.subplots_adjust(
+            axs[pdict['fig_id']].figure.subplots_adjust(
                 wspace=0, hspace=0)
 
         try:
-            axes_pdict['ax_geom'] = get_axes_geometry_from_figure(
-                figs[axes_pdict['fig_id']])
+            pdict['ax_geom'] = get_axes_geometry_from_figure(
+                figs[pdict['fig_id']])
         except AttributeError:
             pass
 
         # Check if pdict is one of the accepted arguments,
         # these are the plotting functions in this module.
-        # 
+        #
         # This thing makes sure that the plotfn is called with
         # the correct arguments and pdict
         # This is a hack but works for matplotlib < 3.7.2
         if 'pdict' in signature(plotfn).parameters:
-            if axes_pdict['ax_id'] is None:
-                plotfn(pdict=axes_pdict, axs=axs[axes_pdict['fig_id']])
+            if pdict['ax_id'] is None:
+                plotfn(pdict=pdict, axs=axs[pdict['fig_id']])
             else:
-                plotfn(pdict=axes_pdict,
-                       axs=axs[axes_pdict['fig_id']].flatten()[
-                           axes_pdict['ax_id']])
+                plotfn(pdict=pdict,
+                       axs=axs[pdict['fig_id']].flatten()[
+                           pdict['ax_id']])
                 # FIXME forcing subplots_adjust after the plotting in
                 #  plotfn (which possibly calls tight_layout()) is bad
                 #  design, but many analyses currently rely on this (e.g.
                 #  raw data plots) and should be cleaned if removing it
-                if axes_pdict.get('force_subplots_adjust', True):
-                    axs[axes_pdict['fig_id']].flatten()[
-                        axes_pdict['ax_id']].figure.subplots_adjust(
+                if pdict.get('force_subplots_adjust', True):
+                    axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
                         hspace=0.4, wspace=0.25)
 
         # most normal plot functions also work, it is required
@@ -1121,19 +1135,19 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
         elif 'ax' in signature(plotfn).parameters:
             # Calling the function passing along anything
             # defined in the specific plot dict as kwargs
-            if axes_pdict['ax_id'] is None:
-                plotfn(ax=axs[axes_pdict['fig_id']], **axes_pdict)
+            if pdict['ax_id'] is None:
+                plotfn(ax=axs[pdict['fig_id']], **pdict)
             else:
-                plotfn(pdict=axes_pdict,
-                       axs=axs[axes_pdict['fig_id']].flatten()[
-                           axes_pdict['ax_id']])
+                plotfn(pdict=pdict,
+                       axs=axs[pdict['fig_id']].flatten()[
+                           pdict['ax_id']])
                 # FIXME forcing subplots_adjust after the plotting in
                 #  plotfn (which possibly calls tight_layout()) is bad
                 #  design, but many analyses currently rely on this (e.g.
                 #  raw data plots) and should be cleaned if removing it
-                if axes_pdict.get('force_subplots_adjust', True):
-                    axs[axes_pdict['fig_id']].flatten()[
-                        axes_pdict['ax_id']].figure.subplots_adjust(
+                if pdict.get('force_subplots_adjust', True):
+                    axs[pdict['fig_id']].flatten()[
+                        pdict['ax_id']].figure.subplots_adjust(
                         hspace=0.4, wspace=0.25)
         else:
             raise ValueError(
@@ -1192,7 +1206,7 @@ def format_datetime_xaxes(data_dict, key_list, axs):
                     key in axs.keys()):
                 axs[key].figure.autofmt_xdate()
 
-        
+
 def plot_bar(pdict, axs, tight_fig=True):
     pfunc = getattr(axs, pdict.get('func', 'bar'))
 
@@ -1869,7 +1883,7 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
         axs.xaxis.set_major_formatter(plt.FixedFormatter(plot_xtick_labels))
         for tick in axs.get_xticklabels():
             tick.set_rotation(90)
-            
+
     if plot_ytick_labels is not None:
         if plot_ytick_loc is None:
             plot_ytick_loc = np.arange(len(plot_ytick_labels))
@@ -1984,7 +1998,7 @@ def plot_colorbar(
     if plot_ctick_labels is not None:
         axs.cbar.set_ticklabels(plot_ctick_labels)
     if plot_clabel is not None and not plot_nolabel:
-        axs.cbar.set_label(plot_clabel)    
+        axs.cbar.set_label(plot_clabel)
 
     # Adjust tight layout at the end of creation
     # else we draw outside of the viewport.

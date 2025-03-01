@@ -275,7 +275,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # objects
             self.df_kwargs.update({'nr_averages': max(
                 qb.acq_averages() for qb in self.meas_objs)})
-            
+
             # determine data type
             if "log" in self.df_name or not \
                     self.df_kwargs.get("det_get_values_kws",
