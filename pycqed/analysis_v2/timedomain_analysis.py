@@ -3200,6 +3200,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         pdd = self.proc_data_dict
         freqs = pdd['meas_results_per_qb']['all_qubits']
         # Turn into list and keep qubit subspace only
+        labels = list(freqs)
         freqs = np.array([
             val for key, val in freqs.items() if not 'f' in key])
         # shape: (n_states, hard sweep, soft sweep)
@@ -3279,11 +3280,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # stabilizer analysis
         if self.get_param_value('do_stabilizer_analysis'):
             # state preparation analysis (stabilizer analysis)
-            print('tda: doing stabilizer analysis')
-            if shots.shape[0] == 4:
-                stab_dict = self.cpp_stabilizers_4(shots)
-            elif shots.shape[0] == 9:
-                stab_dict = self.cpp_stabilizers_9(shots)
+            if len(self.qb_names) == 4:
+                stab_dict = self.cpp_stabilizers_4(freqs, labels)
+            elif len(self.qb_names) == 9:
+                stab_dict = self.cpp_stabilizers_9(freqs, labels)
             else:
                 raise Exception('Stabilizer analysis only for 4 and 9 qbs')
             for k, v in stab_dict.items():
@@ -3442,93 +3442,80 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         self.proc_data_dict['projected_data_dict'][key] = values
 
     @staticmethod
-    def cpp_stabilizers_4(shots, **kw):
+    def cpp_stabilizers_4(freqs, labels, **kw):
         # Should return {'dummy_qbn': values}
         # Z stabilizer
-        def stabz(shots):
-            shape = shots.shape
-            shots_flat = shots.reshape([shape[0], shape[1], -1])
-            parity = np.sum(shots_flat, axis=0) % 2
-            parity = np.mean(parity, axis=0)
+        def stabz(freqs, labels):
+            stab = np.zeros(freqs.shape[1:])
+            for i in range(len(labels)):
+                label = labels[i][1:]
+                parity = label.count('e') % 2
+                stab += parity * freqs[i]
             # even parity -> stab = 1, odd parity -> stab = -1
-            stab = 1 - 2 * parity
-
-            return stab.reshape(shape[2:])
+            stab = 1 - 2 * stab
+            return stab
 
         # x stabilizer
-        def stabx(shots):
-            shape = shots.shape
-            shots_flat = shots.reshape([shape[0], shape[1], -1])
-            parity = np.zeros(shots_flat.shape)
-            for index in np.arange(4):
-                parity[index] = np.sum(shots_flat[[index, (index + 1) % 4]],
-                                       axis=0) % 2
-
-            parity = np.mean(parity, axis=1)
-
-            stab = 1 - 2 * parity
-
-            return stab.reshape(-1, *shape[2:])
+        def stabx(freqs, labels):
+            stab = np.zeros([4] + list(freqs.shape[1:]))
+            for i in range(len(labels)):
+                for i_stab in np.arange(4):
+                    label = labels[i][1:]
+                    parity = (label[i_stab % 4] + label[(i_stab+1) % 4]
+                              ).count('e') % 2
+                    stab[i_stab] += parity * freqs[i]
+            # even parity -> stab = 1, odd parity -> stab = -1
+            stab = 1 - 2 * stab
+            return stab
 
         return {
-            'stabz': stabz(shots),
-            'stabx0': stabx(shots)[0],
-            'stabx1': stabx(shots)[1],
-            'stabx2': stabx(shots)[2],
-            'stabx3': stabx(shots)[3]
+            'stabz': stabz(freqs, labels),
+            'stabx0': stabx(freqs, labels)[0],
+            'stabx1': stabx(freqs, labels)[1],
+            'stabx2': stabx(freqs, labels)[2],
+            'stabx3': stabx(freqs, labels)[3]
         }
 
     @staticmethod
-    def cpp_stabilizers_9(shots, **kw):
+    def cpp_stabilizers_9(freqs, labels, **kw):
         # Should return {'dummy_qbn': values}
 
-        # Z stabilizer
-        def stabz(shots):
-            shape = shots.shape
-            shots_flat = shots.reshape([shape[0], shape[1], -1])
-            parity = np.zeros([4] + list(shots_flat.shape[1:]))
-            # compute 4 Z stabilizers
-            parity[0] = (shots_flat[2] + shots_flat[3]) % 2
-            parity[1] = (shots_flat[0] + shots_flat[1] + shots_flat[4] +
-                         shots_flat[5]) % 2
-            parity[2] = (shots_flat[3] + shots_flat[4] + shots_flat[7] +
-                         shots_flat[8]) % 2
-            parity[3] = (shots_flat[5] + shots_flat[6]) % 2
+        ops_z = [
+            [2, 3],
+            [0, 1, 4, 5],
+            [3, 4, 7, 8],
+            [5, 6],
+        ]
+        ops_x = [
+            [0, 1],
+            [1, 2, 3, 4],
+            [4, 5, 6, 7],
+            [7, 8],
+        ]
+        def stab(freqs, labels, ops):
+            stab = np.zeros([4] + list(freqs.shape[1:]))
+            for i in range(len(labels)):
+                label = labels[i][1:]
+                # FIXME I just want label[ops[i_stab]].count('e') %2 in the for
+                label = np.array([1 if l=='e' else 0 for l in label])
+                for i_stab in np.arange(len(ops)):
+                    parity = np.sum(label[ops[i_stab]]) % 2
+                    stab[i_stab] += parity * freqs[i]
+            # even parity -> stab = 1, odd parity -> stab = -1
+            stab = 1 - 2 * stab
+            return stab
 
-            parity = np.mean(parity, axis=1)
-
-            stab = 1 - 2 * parity
-
-            return stab.reshape(-1, *shape[2:])
-
-        # x stabilizer
-        def stabx(shots):
-            shape = shots.shape
-            shots_flat = shots.reshape([shape[0], shape[1], -1])
-            parity = np.zeros([4] + list(shots_flat.shape[1:]))
-            # compute 4 X stabilizers
-            parity[0] = (shots_flat[0] + shots_flat[1]) % 2
-            parity[1] = (shots_flat[1] + shots_flat[2] + shots_flat[3] +
-                         shots_flat[4]) % 2
-            parity[2] = (shots_flat[4] + shots_flat[5] + shots_flat[6] +
-                         shots_flat[7]) % 2
-            parity[3] = (shots_flat[7] + shots_flat[8]) % 2
-
-            parity = np.mean(parity, axis=1)
-
-            stab = 1 - 2 * parity
-
-            return stab.reshape(-1, *shape[2:])
-
+        stabz = stab(freqs, labels, ops_z)
+        stabx = stab(freqs, labels, ops_x)
         return {
-            'stabz0': stabz(shots)[0],
-            'stabz1': stabz(shots)[1],
-            'stabz2': stabz(shots)[2],
-            'stabz3': stabz(shots)[3],
-            'stabx0': stabx(shots)[0],
-            'stabx1': stabx(shots)[1],
-            'stabx2': stabx(shots)[2],
-            'stabx3': stabx(shots)[3]
+            'stabz0': stabz[0],
+            'stabz1': stabz[1],
+            'stabz2': stabz[2],
+            'stabz3': stabz[3],
+            'stabx0': stabx[0],
+            'stabx1': stabx[1],
+            'stabx2': stabx[2],
+            'stabx3': stabx[3]
         }
 
     # shot to freq
