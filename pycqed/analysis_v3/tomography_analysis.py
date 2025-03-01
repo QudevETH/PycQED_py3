@@ -55,7 +55,7 @@ def standard_qubit_pulses_to_rotations(pulse_list):
 
 
 def state_tomography_analysis(
-    data_dict, keys_in, 
+    data_dict, keys_in,
     estimation_types=("least_squares", "max_likelihood"),
     **params
 ):
@@ -230,7 +230,7 @@ def state_tomography_analysis(
     # Probability table
     plot_prob_table = hlp_mod.pop_param('plot_prob_table', data_dict,
                                         default_value=True, node_params=params)
-                                      
+
     # Target density matrix
     plot_rho_target = hlp_mod.pop_param('plot_rho_target', data_dict,
                                         default_value=True, node_params=params)

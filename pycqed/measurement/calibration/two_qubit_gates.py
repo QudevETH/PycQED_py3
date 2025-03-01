@@ -723,7 +723,7 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # search in all tasks
         append_qbs(found_qubits, task_list)
-        
+
         return found_qubits
 
     def create_meas_objs_list(self, task_list=None, **kw):

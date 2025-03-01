@@ -546,7 +546,7 @@ class BaseDataAnalysis(object):
         'preparation_params' and suggests using 'reset_params' instead. The
         method assumes that the provided 'preparation_params' are in the
         adequate format (legacy format) for the analysis and returns
-        'preparation_params' in this case.  
+        'preparation_params' in this case.
         - If 'reset_params' is provided, the method calls the
         'translate_reset_to_prep_params' method to translate the reset
         parameters to preparation parameters required by the analysis framework.
@@ -887,8 +887,8 @@ class BaseDataAnalysis(object):
             # run in 1D mode (so only 1 column of sweep points in hdf5 file)
             # CURRENTLY ONLY WORKS WITH SweepPoints CLASS INSTANCES
             hybrid_measurement = False
-            # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of 
-            # entries in mc_points[0] and mc_points[1] makes up one measurement 
+            # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of
+            # entries in mc_points[0] and mc_points[1] makes up one measurement
             # point.
             tuple_measurement = False
             raw_data_dict['hard_sweep_points'] = np.unique(mc_points[0])
@@ -912,7 +912,7 @@ class BaseDataAnalysis(object):
                     else:
                         log.warning(f"Tuple measurement does not support "
                                     f"compression_factor and it will be ignored.")
-                    
+
                 raw_data_dict['hard_sweep_points'] = hsp
                 raw_data_dict['soft_sweep_points'] = ssp
             elif sweep_points is not None:
@@ -1368,9 +1368,9 @@ class BaseDataAnalysis(object):
     def save_processed_data(self, key=None, overwrite=True):
         """
         Saves data from the processed data dictionary to the hdf5 file
-        
+
         Args:
-            key: key of the data to save. All processed data is saved by 
+            key: key of the data to save. All processed data is saved by
                  default.
         """
         # default: get all keys from proc_data_dict
