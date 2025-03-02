@@ -783,6 +783,54 @@ class QCNNExperiment_old(VariationalAlgorithm):
         self.params += [f'theta{i}' for i in range(2)]
 
 
+class StatePrepExperiment(QCNNExperiment):  # TODO
+
+    def set_block_and_params(self):
+        self._blocks = []
+        self.params = []
+
+        if len(self.qubits) == 1:
+            self._add_rxy_block('RY0', range(len(self.qubits)),
+                                [90]*9)
+        elif len(self.qubits) == 4:
+            op_code = "cb.pp([h_index],{i})"
+            self._add_rxy_block('RYp1', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in [0, 1, 2, 3]])
+            self._add_cz_block('CZp1', [[1, 2]],
+                               [op_code.format(i=4)])
+            self._add_rxy_block('RYp2', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in [5, 6, 7, 8]])
+            self._add_cz_block('CZp2', [[2, 3], [0, 1]],
+                               [op_code.format(i=i) for i in [9, 10]])
+            self._add_rxy_block('RYp3', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in [11, 12, 13, 14]])
+        elif len(self.qubits) == 9:
+            op_code = "cb.pp9([h_index],{i})"
+            self._add_rxy_block('RYp1', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in range(0, 9)])
+            self._add_cz_block('CZp1', [[2, 3], [5, 6]],
+                               [op_code.format(i=i) for i in range(9, 11)])
+            self._add_rxy_block('RYp2', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in range(11, 20)])
+            self._add_cz_block('CZp2', [[1, 2], [4, 5], [7, 8]],
+                               [op_code.format(i=i) for i in range(20, 23)])
+            self._add_rxy_block('RYp3', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in range(23, 32)])
+            self._add_cz_block('CZp3', [[0, 1], [3, 4], [6, 7]],
+                               [op_code.format(i=i) for i in range(32, 35)])
+            self._add_rxy_block('RYp4', range(len(self.qubits)),
+                               [op_code.format(i=i) for i in range(35, 44)])
+        else:
+            raise ValueError("Only 4 or 9 qubits are supported!")
+        self._add_rxy_block('RYb', range(len(self.qubits)),
+                            ['theta_b']*9)
+        self._extract_variational_param_names()
+        self.block = self.sequential_blocks('StatePrep',
+                                            self._blocks,
+                                            set_end_after_all_pulses=True,
+                                            destroy=True)
+
+
 class VQAOptimizer:
     """
     Wrapper for an optimiser, to be used by MeasurementControl in adaptive mode
