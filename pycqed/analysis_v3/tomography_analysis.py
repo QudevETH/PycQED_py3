@@ -458,6 +458,8 @@ def density_matrices(data_dict,
             # FIXME: only supports readout correction so far.
             #  When there is no readout correction the covariance matrix
             #  is not square and I dont know how to interpret it.
+            log.warning('Convex MLE only supports tomography with readout '
+                        'correction so far.')
             
             rho_guess = hlp_mod.get_param('rho_guess', data_dict,
                                           default_value = None, **params)
