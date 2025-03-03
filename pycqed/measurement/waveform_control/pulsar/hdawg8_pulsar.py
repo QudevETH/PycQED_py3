@@ -689,7 +689,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         # TODO: this attribute is used only when using the old internal
         #  modulation implementation on HDAWG. Remove this attribute once the
         #  new implementation is deployed.
-        """Flag that indicates whether internal modulation is turned on for 
+        """Flag that indicates whether internal modulation is turned on for
         this device."""
 
         self._device_type = 'hdawg'

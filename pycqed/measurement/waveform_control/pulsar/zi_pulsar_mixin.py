@@ -424,17 +424,17 @@ class MultiCoreCompilerZhinstToolkit:
         """Session of the active ZI LabOne server."""
 
         self.sequencer_code_mcc = dict()
-        """Sequencer strings to be compiled and uploaded by the multicore 
-        compiler. This variable is a dictionary {module_name: 
+        """Sequencer strings to be compiled and uploaded by the multicore
+        compiler. This variable is a dictionary {module_name:
         (awg_core, kw)}, where awg_core is a ZI API node for
         operating the corresponding AWG module and kw is a dict
         containing kwargs for load_sequencer_program from zhinst.qcodes."""
 
         self.post_sequencer_code_upload = dict()
-        """Upload functions to be executed after programming the sequencer 
-        code. This variable is a dictionary {module_name: (upload_function, 
-        parameter_list)}, where upload_function is the function 
-        to be called after programming the sequencer code and parameter_list 
+        """Upload functions to be executed after programming the sequencer
+        code. This variable is a dictionary {module_name: (upload_function,
+        parameter_list)}, where upload_function is the function
+        to be called after programming the sequencer code and parameter_list
         is a dictionary provided to upload_function."""
 
     def reset_upload_cache(self):
@@ -505,10 +505,10 @@ class ZIGeneratorModule:
     COMMAND_TABLE_MAX_SIZE = None  # Should be defined in child classes
     """Specifies the maximum size of the command tables of the generator
     module."""
-    
-    #NOTE: the internal shift is limited to 1024, thus the commands for reset, 
-    ## ff and decoder need to be in the first 1024 command table entries. 
-    FEEDBACK_ENTRIES_START_INDEX = 0  
+
+    #NOTE: the internal shift is limited to 1024, thus the commands for reset,
+    ## ff and decoder need to be in the first 1024 command table entries.
+    FEEDBACK_ENTRIES_START_INDEX = 0
     NORMAL_ENTRIES_START_INDEX = 4
     """Specifies the first command table entry for saving the decoder waveforms."""
 
@@ -525,7 +525,7 @@ class ZIGeneratorModule:
         """Cached name of the parent device (since qcodes .name is slow)."""
 
         self._device_type = "none"
-        """Device type of this generator. This parameter should be rewritten 
+        """Device type of this generator. This parameter should be rewritten
         in the child classes."""
 
         self._awg_interface = awg_interface
@@ -571,7 +571,7 @@ class ZIGeneratorModule:
         """Command table for pulse sequencing."""
 
         self._command_table_lookup = {}
-        """Dict that records mapping element, codeword (keys) and command 
+        """Dict that records mapping element, codeword (keys) and command
         table entry index (value)."""
 
         self._playback_strings = []
@@ -587,7 +587,7 @@ class ZIGeneratorModule:
         """Sinusoidal wave generation configuration."""
 
         self.has_waveforms = {}
-        """Dictionary of flags indicating whether this channel has waveform 
+        """Dictionary of flags indicating whether this channel has waveform
         to play in the current programming round."""
 
         self._use_placeholder_waves = False
@@ -605,7 +605,7 @@ class ZIGeneratorModule:
 
         self._divisor = {}
         # TODO: check if this docstring is correct
-        """A dictionary that records down-sampling ratio (divisor) for each 
+        """A dictionary that records down-sampling ratio (divisor) for each
         channel ID."""
 
         self._negate_q = False
@@ -863,8 +863,8 @@ class ZIGeneratorModule:
             config_name: str,
             excluded_keys: tuple = tuple(),
     ):
-        """Collects and combines a specific configuration setting in 
-        awg_sequence. If settings from different elements are coherent with 
+        """Collects and combines a specific configuration setting in
+        awg_sequence. If settings from different elements are coherent with
         each other, the combined setting will be programmed to the channel.
 
         Args:
@@ -1101,7 +1101,7 @@ class ZIGeneratorModule:
                 # Update (and thus activate) command table if specified.
                 if self._use_command_table:
                     scaling_factor = metadata.get("scaling_factor", dict())
-                    
+
                     amplitude = self._extract_command_table_amplitude(
                         scaling_factor=scaling_factor
                     )
@@ -1161,7 +1161,7 @@ class ZIGeneratorModule:
                     entry["index"] = entry_index
                     if update_entry:
                         self._command_table.append(entry)
-                
+
                 if self._use_placeholder_waves:
                     # No need to add new definitions when reusing old ones
                     if reuse_definition:
@@ -1176,7 +1176,7 @@ class ZIGeneratorModule:
                         log.warning(f"Waveforms of unequal length on"
                                     f"{self._awg.name}, vawg{self._awg_nr},"
                                     f" {current_segment}, {element}.")
-                
+
                     placeholder_wave_length =  max(placeholder_wave_lengths)
                 else:
                     # No indices will be assigned when not using placeholder
@@ -1187,7 +1187,7 @@ class ZIGeneratorModule:
                             wave[i] = self._with_divisor(h, self.channel_ids[i])
                     wave = tuple(wave)
                     placeholder_wave_length = None
-                    
+
                 self._wave_definitions += \
                     self._awg_interface.zi_wave_definition(
                         wave=wave,

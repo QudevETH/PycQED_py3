@@ -4,7 +4,7 @@ from qcodes.utils.validators import Numbers, Enum, MultiType
 
 log = logging.getLogger(__name__)
 
-class Virtual_Agilent_33250A(Instrument):  
+class Virtual_Agilent_33250A(Instrument):
     """
     Driver code for virtual Agilent 33250A trigger.
     Based on Agilent_33250A class
@@ -82,14 +82,14 @@ class Virtual_Agilent_33250A(Instrument):
 						   label='Load impedance',
 						   unit='Ohm',
                            get_cmd=None,
-                           set_cmd=None,	
+                           set_cmd=None,
                            get_parser=float,
                            set_parser=float,
                            vals=MultiType(Numbers(min_value=1, max_value=10e3), Enum('INF')),
-                           docstring=("Command for setting the load impedance in Ohms. Min value: 1 Ohm, Max value: 10 kOhm or 'INF'"))						   
-        
+                           docstring=("Command for setting the load impedance in Ohms. Min value: 1 Ohm, Max value: 10 kOhm or 'INF'"))
+
         self.connect_message()
-    
+
     def reset(self):
         """
         pass
@@ -102,7 +102,6 @@ class Virtual_Agilent_33250A(Instrument):
             instruments that accept kwargs in start().
         """
         self.output('ON')
-    
+
     def stop(self):
         self.output('OFF')
-    

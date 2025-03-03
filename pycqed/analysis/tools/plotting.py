@@ -399,7 +399,7 @@ def contourf_plot(xvals, yvals, zvals, ax=None,
     # various plot options
     clim = kw.pop('clim', [None, None])
 
-    colormap = ax.contourf(xvals, yvals, zvals, levels=levels, cmap=cmap, 
+    colormap = ax.contourf(xvals, yvals, zvals, levels=levels, cmap=cmap,
                            vmin=clim[0], vmax=clim[1])
 
     return {'fig': ax.figure, 'ax': ax, 'cmap': colormap}

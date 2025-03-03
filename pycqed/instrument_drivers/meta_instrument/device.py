@@ -1166,7 +1166,7 @@ class Device(Instrument):
         if self.qubit_coordinates:
             kw.setdefault('qubit_to_coord',
                           lambda qbn: self.qubit_coordinates[qbn])
-        
+
         if aggregator is None:
             # when no aggregator is used, call directly the underlying
             # plot on qubit grid function.

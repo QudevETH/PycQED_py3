@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 class ZI_PQSC(zibase.ZI_base_instrument):
     """
-    This is the frist version of the PycQED driver for the Zurich Instruments 
+    This is the frist version of the PycQED driver for the Zurich Instruments
     PQSC.
     """
 
@@ -52,9 +52,9 @@ class ZI_PQSC(zibase.ZI_base_instrument):
         Input arguments:
             name:           (str) name of the instrument
             device          (str) the name of the device e.g., "dev8008"
-            interface       (str) the name of the interface to use 
+            interface       (str) the name of the interface to use
                                   ('1GbE' or 'USB')
-            port            (int) the port to connect to for the ziDataServer 
+            port            (int) the port to connect to for the ziDataServer
                                   (don't change)
             server:         (str) the host where the ziDataServer is running
         """
@@ -205,13 +205,13 @@ class ZI_PQSC(zibase.ZI_base_instrument):
         self.set('execution_repetitions', num_reps)
 
     def set_holdoff(self, holdoff: float):
-        '''Sets the interval between triggers in seconds. Set to 1e-3 for 
+        '''Sets the interval between triggers in seconds. Set to 1e-3 for
         generating triggers at 1kHz, etc.'''
 
         self.set('execution_holdoff', holdoff)
 
     def get_progress(self):
-        '''Returns a value between 0.0 and 1.0 indicating the progress as 
+        '''Returns a value between 0.0 and 1.0 indicating the progress as
         triggers are generated.'''
 
         return self.get('execution_progress')
@@ -227,7 +227,7 @@ class ZI_PQSC(zibase.ZI_base_instrument):
 
         # Start the execution unit
         self.set('execution_enable', 1)
-        
+
         log.info(f"{self.devname}: Started '{self.name}'")
 
     def stop(self):
@@ -237,6 +237,6 @@ class ZI_PQSC(zibase.ZI_base_instrument):
         self.set('execution_enable', 0)
 
         self.check_errors()
-        
+
     def clear_errors(self):
         self.seti('raw/error/clear', 1)

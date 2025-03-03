@@ -14,7 +14,7 @@ from qcodes.utils.validators import Numbers, Enum
 
 
 def virtual_instrument_patch(return_value):
-    """Decorator to bypass a method and return another value when instrument is 
+    """Decorator to bypass a method and return another value when instrument is
     virtual.
 
     This can be use to decorate methods of :class:`NGE100Channel` or
