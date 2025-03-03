@@ -1108,7 +1108,7 @@ def plot(data_dict, keys_in='all', axs_dict=None, **params):
 
         # Check if pdict is one of the accepted arguments,
         # these are the plotting functions in this module.
-        # 
+        #
         # This thing makes sure that the plotfn is called with
         # the correct arguments and pdict
         # This is a hack but works for matplotlib < 3.7.2
@@ -1206,7 +1206,7 @@ def format_datetime_xaxes(data_dict, key_list, axs):
                     key in axs.keys()):
                 axs[key].figure.autofmt_xdate()
 
-        
+
 def plot_bar(pdict, axs, tight_fig=True):
     pfunc = getattr(axs, pdict.get('func', 'bar'))
 
@@ -1883,7 +1883,7 @@ def plot_color2D(pfunc, pdict, axs, verbose=False, do_individual_traces=False):
         axs.xaxis.set_major_formatter(plt.FixedFormatter(plot_xtick_labels))
         for tick in axs.get_xticklabels():
             tick.set_rotation(90)
-            
+
     if plot_ytick_labels is not None:
         if plot_ytick_loc is None:
             plot_ytick_loc = np.arange(len(plot_ytick_labels))
@@ -1998,7 +1998,7 @@ def plot_colorbar(
     if plot_ctick_labels is not None:
         axs.cbar.set_ticklabels(plot_ctick_labels)
     if plot_clabel is not None and not plot_nolabel:
-        axs.cbar.set_label(plot_clabel)    
+        axs.cbar.set_label(plot_clabel)
 
     # Adjust tight layout at the end of creation
     # else we draw outside of the viewport.

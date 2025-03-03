@@ -212,7 +212,7 @@ class MeasureSSRO(CalibBuilder):
                                          acq_length_sweep_auto_margin=200e-9,
                                          **kw):
         """Creates and resolves the acquisition length sweeps
-        
+
         Implements the logic to ensure that the acq_length is swept with the
         ro_length and that the acq_lengths per instr_acq are identical. It
         also ensures, that the maximal acquisition length is not surpassed.
@@ -325,7 +325,7 @@ class MeasureSSRO(CalibBuilder):
                     sweep_preselection_ro_pulses=True,
                     sweep_feedback_ro_pulses=True, **kw):
         """Creates the SSRO sweep block.
-        
+
         Creates the sweep block with one RO pulse and replaces the RO pulse
         parameters with ParametricValues.
         """
@@ -417,8 +417,8 @@ class MeasureSSRO(CalibBuilder):
 
 
 class OptimalWeights(CalibBuilder):
-    """Measures time traces and finds optimal integration weights. 
-    
+    """Measures time traces and finds optimal integration weights.
+
     Applies filters to optimal integration weights if specified.
 
     For convenience, this class accepts the ``qubits`` argument in which case
@@ -535,7 +535,7 @@ class OptimalWeights(CalibBuilder):
 
         Uses the properties of the acquisition device of the first qubit in the
         task list to calculate the sampling times.
-        
+
         Populates the fields
          - self.acq_sampling_rate
          - self.acq_length

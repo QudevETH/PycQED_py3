@@ -9894,7 +9894,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'legend_pos': 'upper right',
             'grid': True,
         }
-        
+
         textstr = f'best fidelity: {best_fidelity * 100:.2f}%'
 
         self.plot_dicts[vline_key] = {
@@ -11339,8 +11339,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         if len(hsp) * len(ssp) == len(LO_dBm.flatten()):
             # sweep points are aligned on grid
 
-            # The arrays hsp and ssp define the edges of a grid of measured 
-            # points. We reshape the arrays such that each data point 
+            # The arrays hsp and ssp define the edges of a grid of measured
+            # points. We reshape the arrays such that each data point
             # LO_dBm[i] corresponds to the sweep point VI[i], VQ[i]
             self.proc_data_dict['sweeppoints_are_grid'] = True
             # save raw format of data for plotting with plot_colorxy
@@ -11351,7 +11351,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             VI, VQ = np.meshgrid(hsp, ssp)
             VI = VI.flatten()
             VQ = VQ.flatten()
-            LO_dBm = LO_dBm.T.flatten()            
+            LO_dBm = LO_dBm.T.flatten()
         else:
             # sweep points are random
             self.proc_data_dict['sweeppoints_are_grid'] = False
@@ -11411,7 +11411,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         timestamp = self.timestamps[0]
 
         leakage = pdict['LO_leakage']
-        leakage_dBm_amp_zrange = [1.1*np.min(leakage), 
+        leakage_dBm_amp_zrange = [1.1*np.min(leakage),
                                   0.9*np.max(leakage)]
 
         if pdict['sweeppoints_are_grid']:
@@ -11456,7 +11456,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'legend_frameon': True
             }
 
-        plot_name_dict = {ch: f'V_{ch}_vs_LO_magn' for ch in ['I', 'Q']} 
+        plot_name_dict = {ch: f'V_{ch}_vs_LO_magn' for ch in ['I', 'Q']}
         for ch in ['I', 'Q']:
             self.plot_dicts[f'raw_V_{ch}_vs_LO_magn'] = {
                 'fig_id': plot_name_dict[ch],
@@ -11553,7 +11553,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'setlabel': '$V_\\mathrm{I}$' + rf' ={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
-       
+
             self.plot_dicts[f'fit_V_I_vs_LO_magn'] = {
                 'fig_id': plot_name_dict['I'],
                 'plotfn': self.plot_line,
@@ -11595,8 +11595,6 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                             rf'={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
-            
-                
 
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -11701,7 +11699,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         phase = pdict['phase']
 
         sideband_dBm_amp = pdict['sideband_dBm_amp']
-        sideband_dBm_amp_zrange = [1.1*np.min(sideband_dBm_amp), 
+        sideband_dBm_amp_zrange = [1.1*np.min(sideband_dBm_amp),
                                    0.9*np.max(sideband_dBm_amp)]
 
         timestamp = self.timestamps[0]
@@ -11804,9 +11802,9 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             # and make it 10 % larger in both axes
             size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
             size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
-            alpha_edge = np.linspace(np.min(alpha) - size_offset_alpha, 
+            alpha_edge = np.linspace(np.min(alpha) - size_offset_alpha,
                             np.max(alpha) + size_offset_alpha, 250)
-            phase_edge = np.linspace(np.min(phase) - size_offset_phase, 
+            phase_edge = np.linspace(np.min(phase) - size_offset_phase,
                             np.max(phase) + size_offset_phase, 250)
             alpha_plot, phase_plot = np.meshgrid(alpha_edge, phase_edge)
 
