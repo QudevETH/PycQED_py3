@@ -72,7 +72,7 @@ code_quality_slim:
     - CHANGED_FILES=$(git diff --name-only origin/$CI_DEFAULT_BRANCH)
     - CHANGED_PY_FILES=$(echo "$CHANGED_FILES" | grep '\.py$')
     - echo $CHANGED_PY_FILES
-    - touch gl-code-quality-report2.json  # TODO
+    - touch gl-code-quality-report.json  # TODO
     - gitlab-cq --output gl-code-quality-report.json ruff check $CHANGED_PY_FILES
   # FIXME: pyright - too verbose right now / we have too many problems
   #    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
