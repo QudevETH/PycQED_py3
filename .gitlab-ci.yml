@@ -72,8 +72,8 @@ code_quality_slim:
     - CHANGED_FILES=$(git diff --name-only origin/$CI_DEFAULT_BRANCH)
     # Create empty iff $CHANGED_FILES doesn't contain py files:
     - CHANGED_PY_FILES=$(echo "$CHANGED_FILES" | grep '\.py$') || touch gl-code-quality-report.json
-    - echo $CHANGED_PY_FILES
-    - gitlab-cq --output gl-code-quality-report.json ruff check $CHANGED_PY_FILES
+    # NOTE: In case we do code quality on more than py files only, this needs to be adapted in the future.
+    - if [ -n "CHANGED_PY_FILES" ]; then gitlab-cq --output gl-code-quality-report.json ruff check $CHANGED_PY_FILES; fi
   # FIXME: pyright - too verbose right now / we have too many problems
   #    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
   # FIXME: mypy's report is too massive right now - enable later
