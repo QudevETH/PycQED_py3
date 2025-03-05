@@ -70,9 +70,9 @@ code_quality_slim:
     - git fetch origin $CI_DEFAULT_BRANCH # Fetch the target branch
     - git diff --name-only origin/$CI_DEFAULT_BRANCH # Compare against the fetched branch
     - CHANGED_FILES=$(git diff --name-only origin/$CI_DEFAULT_BRANCH)
-    - CHANGED_PY_FILES=$(echo "$CHANGED_FILES" | grep '\.py$')
+    # Create empty iff $CHANGED_FILES doesn't contain py files:
+    - CHANGED_PY_FILES=$(echo "$CHANGED_FILES" | grep '\.py$') || touch gl-code-quality-report.json
     - echo $CHANGED_PY_FILES
-    - touch gl-code-quality-report.json  # TODO
     - gitlab-cq --output gl-code-quality-report.json ruff check $CHANGED_PY_FILES
   # FIXME: pyright - too verbose right now / we have too many problems
   #    - gitlab-cq --output gl-code-quality-report.json --merge pyright .
