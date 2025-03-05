@@ -141,8 +141,9 @@ class T1FrequencySweep(CalibBuilder):
                 sweep_points.add_sweep_dimension()
             if len(self.sweep_points) == 1:
                 self.sweep_points.add_sweep_dimension()
-            for i in range(len(sweep_points)):
-                sweep_points[i].update(self.sweep_points[i])
+            if len(self.sweep_points):
+                for i in range(len(sweep_points)):
+                    sweep_points[i].update(self.sweep_points[i])
             if 'qubit_freqs' in sweep_points.get_parameters():
                 qubit_freqs = sweep_points['qubit_freqs']
             else:
