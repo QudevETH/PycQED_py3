@@ -989,7 +989,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                              f"length 2.")
 
         hdawg_command_table_entry = {
-            "index": entry_index,
+            "index": int(entry_index),
             "waveform": {"index": wave_index},
             "amplitude0": {"value": amplitude[0]},
             "amplitude1": {"value": amplitude[1]},
