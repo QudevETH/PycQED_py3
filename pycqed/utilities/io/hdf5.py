@@ -157,12 +157,12 @@ def write_dict_to_hdf5(data_dict: dict, entry_point, overwrite=False):
                     if isinstance(item[0], (int, float,
                                             np.int32, np.int64)):
                         try:
-                            entry_point.create_dataset(key, 
+                            entry_point.create_dataset(key,
                                                        data=np.array(item))
                         except RuntimeError:
                             if overwrite:
                                 del entry_point[key]
-                                entry_point.create_dataset(key, 
+                                entry_point.create_dataset(key,
                                                            data=np.array(item))
                             else:
                                 raise

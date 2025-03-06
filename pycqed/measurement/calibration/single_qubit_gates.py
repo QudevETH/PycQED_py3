@@ -96,9 +96,6 @@ class T1FrequencySweep(CalibBuilder):
             self.data_to_fit = {
                 task['qb']: trans_to_pop[task.get('transition_name', 'ge')]
                 for task in self.preprocessed_task_list}
-            if not self.force_2D_sweep and self.sweep_points.length(0) <= 1:
-                self.sweep_points.reduce_dim(1, inplace=True)
-                self._num_sweep_dims = 1
             self.sequences, self.mc_points = \
                 self.parallel_sweep(self.preprocessed_task_list,
                                     self.t1_flux_pulse_block, **kw)
@@ -146,16 +143,18 @@ class T1FrequencySweep(CalibBuilder):
                 self.sweep_points.add_sweep_dimension()
             for i in range(len(sweep_points)):
                 sweep_points[i].update(self.sweep_points[i])
-            if 'qubit_freqs' in sweep_points[1]:
+            if 'qubit_freqs' in sweep_points.get_parameters():
                 qubit_freqs = sweep_points['qubit_freqs']
             else:
                 qubit_freqs = None
 
             # Fetch amplitudes from sweep_points
             amplitudes = None
-            for key in sweep_points[1]:
-                if 'amplitude' in key:  # Detect e.g. amplitude2 from 2qb gates
-                    amplitudes = sweep_points[key]
+            for amplitude_key in sweep_points.get_parameters():
+                # Detect e.g. amplitude2 from 2qb gates
+                if 'amplitude' in amplitude_key:
+                    amplitudes = sweep_points[amplitude_key]
+                    break
 
             # Computing either qubit_freqs or amplitudes, if not passed.
             # Both can also be passed, e.g. to cache or use a different model.
@@ -171,9 +170,11 @@ class T1FrequencySweep(CalibBuilder):
                     amplitude=amplitudes,
                     **kw.get('vfc_kwargs', {})
                 )
-                freq_sweep_points = SweepPoints('qubit_freqs', qubit_freqs,
-                                                'Hz', 'Qubit frequency')
-                sweep_points.update([{}] + freq_sweep_points)
+                # amplitude_key should be valid if amplitudes was not None
+                sweep_points.add_sweep_parameter(
+                    'qubit_freqs', qubit_freqs, 'Hz', 'Qubit frequency',
+                    dimension=sweep_points.find_parameter(amplitude_key)
+                )
 
             if amplitudes is None:
                 if qb is None:
@@ -191,9 +192,10 @@ class T1FrequencySweep(CalibBuilder):
                 if np.any(np.isnan(amplitudes)):
                     raise ValueError('Specified frequencies resulted in nan '
                                      'amplitude. Check frequency range!')
-                amp_sweep_points = SweepPoints('amplitude', amplitudes,
-                                               'V', 'Flux pulse amplitude')
-                sweep_points.update([{}] + amp_sweep_points)
+                sweep_points.add_sweep_parameter(
+                    'amplitude', amplitudes, 'V', 'Flux pulse amplitude',
+                    dimension=sweep_points.find_parameter('qubit_freqs')
+                )
 
             # Check if LO_freq is in range of the qubit of interest
             if qb is not None:
@@ -265,9 +267,6 @@ class T1FrequencySweep(CalibBuilder):
             all_fits (bool, default: True): whether to do all fits
         """
 
-        if len(self.sweep_points) == 1:
-            self.analysis = tda.MultiQubit_TimeDomain_Analysis()
-            return
         self.all_fits = kw.get('all_fits', True)
         self.do_fitting = kw.get('do_fitting', True)
         self.analysis = tda.T1FrequencySweepAnalysis(
@@ -511,7 +510,8 @@ class ParallelLOSweepExperiment(CalibBuilder):
                     for d, sp in zip([task['pulse_modifs'], modifs], params):
                         d.update({
                             f'op_code=X180 {qb.name}, attr=mod_frequency':
-                                ParametricValue(sp, func=func)})
+                                ParametricValue(
+                                    sp, func_for_pulse_param=func)})
                 self.cal_points.pulse_modifs = modifs
 
         # If applicable, configure drive amplitude adaptation based on the
@@ -864,7 +864,7 @@ class FluxPulseScope(ParallelLOSweepExperiment):
             return -(x+o)
 
         fp['pulse_delay'] = ParametricValue(
-            'delay', func=fp_delay)
+            'delay', func_for_pulse_param=fp_delay)
 
         fp_length_function = lambda x: fp['pulse_length']
 
@@ -881,7 +881,7 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                 max(min((x + o), opl), 0) if (x>np.min(trunc) and x<np.max(trunc)) else opl
 
             fp['pulse_length'] = ParametricValue(
-                'delay', func=fp_length_function)
+                'delay', func_for_pulse_param=fp_length_function)
             if fp_compensation:
                 cp = b.pulses[2]
                 cp['name'] = 'FPS_FPC'
@@ -900,7 +900,8 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                     v_c_fp = v_c(tau, fp_length, fp_amp, v_c_start=0)
                     return -np.log(cp_amp / (cp_amp - v_c_fp)) * tau
 
-                cp['pulse_length'] = ParametricValue('delay', func=t_trunc)
+                cp['pulse_length'] = ParametricValue(
+                    'delay', func_for_pulse_param=t_trunc)
 
         # assumes a unipolar flux-pulse for the calculation of the
         # amplitude decay.
@@ -924,8 +925,10 @@ class FluxPulseScope(ParallelLOSweepExperiment):
                     return fp_amp * (1 - np.exp(-fp_length / tau))
 
             rfp['pulse_length'] = fp_during_ro_length
-            rfp['pulse_delay'] = ParametricValue('delay', func=rfp_delay)
-            rfp['amplitude'] = ParametricValue('delay', func=rfp_amp)
+            rfp['pulse_delay'] = ParametricValue(
+                'delay', func_for_pulse_param=rfp_delay)
+            rfp['amplitude'] = ParametricValue(
+                'delay', func_for_pulse_param=rfp_amp)
             rfp['buffer_length_start'] = fp_during_ro_buffer
 
         if ro_pulse_delay == 'auto':
@@ -2342,7 +2345,8 @@ class Ramsey(SingleQubitGateCalibExperiment):
             if param_name == 'pulse_delay':
                 # PrametricValue for the phase to be calculated from each delay
                 ramsey_block.pulses[-1]['phase'] = ParametricValue(
-                    'pulse_delay', func=lambda x, o=first_delay_point:
+                    'pulse_delay',
+                    func_for_pulse_param=lambda x, o=first_delay_point:
                     ((x-o)*art_det*360) % 360)
 
         delays = sweep_points.get_sweep_params_property('values', 0,
@@ -5318,7 +5322,7 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
         init_state = kw.get('init_state')
         # Need to set transition_name here since it is used to determine the
         # calibration points
-        kw['transition_name'] = '' if init_state == 'g' else (
+        kw['transition_name'] = 'ge' if init_state == 'g' else (
             'ge' if init_state == 'e' else (
                 'ef' if init_state == 'f' else 'fh'))
         try:
@@ -5374,6 +5378,9 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
         # add modulation pulse
         modulation_block = self.block_from_ops(f'modulation_pulses_{qb}',
                                                 lru_opcodes)
+        # add ge suffix if op code is just 'PFM' for ge pulse
+        if lru_opcodes[-1] == f'PFM {qb}':
+            lru_opcodes[-1] = f'PFM_ge {qb}'
         # create ParametricValues from param_name in sweep_points
         for sweep_dict in sweep_points:
             for param_name in sweep_dict:
@@ -5387,8 +5394,13 @@ class LeakageReductionUnit(SingleQubitGateCalibExperiment):
                 suffix = suffix if suffix in ['ge', 'ef', 'fh'] else \
                     lru_opcodes[-1].split('_')[-1].split(' ')[0]
                 for pulse_dict in modulation_block.pulses:
+                    # add ge suffix if op code is just 'PFM' for ge pulse
+                    if pulse_dict['op_code'] == f'PFM {qb}':
+                        op_code = f'PFM_ge {qb}'
+                    else:
+                        op_code = pulse_dict['op_code']
                     if (pulse_param in pulse_dict) and \
-                            (suffix in pulse_dict['op_code']):
+                            (suffix in op_code):
                         pulse_dict[pulse_param] = ParametricValue(
                             param_name)
         modulation_block = [modulation_block] * num_LRUs

@@ -1410,7 +1410,7 @@ class OptimizationAnalysis(MeasurementAnalysis):
         savename3 = self.timestamp_string + '_' + base_figname + '_' + \
                     fig3_type
 
-        cm = plt.cm.get_cmap('RdYlBu')
+        cm = matplotlib.cm.get_cmap('RdYlBu')
         if len(self.parameter_names) != 1:
             axarray[0].set_title(self.timestamp_string + ' ' + figname3)
             for i in range(len(self.parameter_names)):
@@ -2693,7 +2693,7 @@ class QScale_Analysis(TD_Analysis):
                          (b_vals2['slope'] - b_vals1['slope'])
 
         # Warning if Xpi/2Xpi line is not within +/-threshold of 0.5
-        if (b_vals0['c'] > (0.5 + threshold)) or (b_vals0['c'] < 
+        if (b_vals0['c'] > (0.5 + threshold)) or (b_vals0['c'] <
                                                   (0.5 - threshold)):
             log.warning('The trace from the X90-X180 pulses is NOT within '
                             '+/-%s of the expected value of 0.5.' % threshold)
@@ -3895,7 +3895,7 @@ class Ramsey_Analysis(TD_Analysis):
                 except KeyError:
                     self.qubit_freq_spec = \
                         eval(instr_set[self.qb_name].attrs['freq_qubit'])
-                    
+
         except (TypeError, KeyError, ValueError):
             log.warning('qb_name is unknown. Setting previously measured '
                             'value of the qubit frequency to 0. New qubit '
@@ -6406,7 +6406,7 @@ class Dynamic_phase_Analysis(MeasurementAnalysis):
         super().run_default_analysis(close_file=False,
                                      close_main_fig=True,
                                      save_fig=False, **kw)
-            
+
         self.NoCalPoints = kw.pop('NoCalPoints', 2)
         self.phases = {}
         self.fit_res = {}

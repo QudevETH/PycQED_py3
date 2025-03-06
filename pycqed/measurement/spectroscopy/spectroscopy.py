@@ -1061,8 +1061,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 # experiments (output pulse has the programmed pulse
                 # amplitude).
                 if sweep_points.find_parameter('spec_power') is not None:
-                    amp = ParametricValue('spec_power',
-                                          func=lambda x: 2 * dbm_to_vp(x))
+                    amp = ParametricValue(
+                        'spec_power',
+                        func_for_pulse_param=lambda x: 2 * dbm_to_vp(x))
                 else:
                     amp = 2 * dbm_to_vp(qubit.spec_power())
                 pulse_modifs['op_code=Spec']['amplitude'] = amp

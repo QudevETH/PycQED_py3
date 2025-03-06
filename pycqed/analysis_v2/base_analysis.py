@@ -292,7 +292,11 @@ class BaseDataAnalysis(object):
                     self.prepare_plots()  # specify default plots
                     if not self.extract_only:
                         # make the plots
-                        self.plot(key_list='auto')
+                        self.plot(
+                            key_list='auto',
+                            save_figs=self.options_dict['save_figs'],
+                            close_figs=self.options_dict['close_figs'],
+                        )
 
             self._raise_warning()
         except Exception as e:
@@ -542,7 +546,7 @@ class BaseDataAnalysis(object):
         'preparation_params' and suggests using 'reset_params' instead. The
         method assumes that the provided 'preparation_params' are in the
         adequate format (legacy format) for the analysis and returns
-        'preparation_params' in this case.  
+        'preparation_params' in this case.
         - If 'reset_params' is provided, the method calls the
         'translate_reset_to_prep_params' method to translate the reset
         parameters to preparation parameters required by the analysis framework.
@@ -883,8 +887,8 @@ class BaseDataAnalysis(object):
             # run in 1D mode (so only 1 column of sweep points in hdf5 file)
             # CURRENTLY ONLY WORKS WITH SweepPoints CLASS INSTANCES
             hybrid_measurement = False
-            # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of 
-            # entries in mc_points[0] and mc_points[1] makes up one measurement 
+            # tuple measurement: 1D sweep over a list of 2D tuples. Each pair of
+            # entries in mc_points[0] and mc_points[1] makes up one measurement
             # point.
             tuple_measurement = False
             raw_data_dict['hard_sweep_points'] = np.unique(mc_points[0])
@@ -908,7 +912,7 @@ class BaseDataAnalysis(object):
                     else:
                         log.warning(f"Tuple measurement does not support "
                                     f"compression_factor and it will be ignored.")
-                    
+
                 raw_data_dict['hard_sweep_points'] = hsp
                 raw_data_dict['soft_sweep_points'] = ssp
             elif sweep_points is not None:
@@ -1364,9 +1368,9 @@ class BaseDataAnalysis(object):
     def save_processed_data(self, key=None, overwrite=True):
         """
         Saves data from the processed data dictionary to the hdf5 file
-        
+
         Args:
-            key: key of the data to save. All processed data is saved by 
+            key: key of the data to save. All processed data is saved by
                  default.
         """
         # default: get all keys from proc_data_dict
@@ -1443,7 +1447,8 @@ class BaseDataAnalysis(object):
         return dic
 
     def plot(self, key_list=None, axs_dict=None, presentation_mode=None,
-             transparent_background=None, no_label=False, fig_id=None):
+             transparent_background=None, no_label=False, fig_id=None,
+             save_figs=False, close_figs=False):
         """Plot figures defined in self.plot_dict.
 
         Args.
@@ -1455,6 +1460,10 @@ class BaseDataAnalysis(object):
             no_label (bool): whether figure should have a label.
             fig_id (str): figure id from `self.plot_dicts`. If passed only
                 specified figure will be plotted.
+            save_figs (bool): Whether to save the figures (defaults to False).
+            close_figs (bool): Whether to close the figures at the end. They
+                are not closed by default, useful e.g. if this method is
+                called manually by the user to further use the figures.
         """
 
         key_list = self._get_key_list(key_list)
@@ -1473,9 +1482,9 @@ class BaseDataAnalysis(object):
             self._prepare_for_plot(fig_key_list, axs_dict, no_label,
                                    presentation_mode)
             self._plot(fig_key_list, transparent_background, fig_id=fig_id)
-            if self.options_dict['save_figs']:
+            if save_figs:
                 self.save_figures(key_list=[unique_fig_name])
-            if self.options_dict['close_figs']:
+            if close_figs:
                 self.close_figs(key_list=[unique_fig_name])
 
     def plot_for_gui(self, fig_id: str) -> Tuple[Figure, Union[Axes, np.array]]:

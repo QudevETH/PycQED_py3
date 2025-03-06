@@ -981,14 +981,16 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         else:
             # this assumes data obtained with classifier detector!
             # ie pg, pe, pf are expected to be in the value_names
+            # TODO Could extend to allow processing correlated states (gg, ...)
             self.proc_data_dict['projected_data_dict'] = OrderedDict()
 
             for qbn, data_dict in self.proc_data_dict[
                     'meas_results_per_qb'].items():
                 self.proc_data_dict['projected_data_dict'][qbn] = OrderedDict()
                 for state_prob in ['pg', 'pe', 'pf']:
+                    # Transpose: see FIXME of self.proc_data_dict
                     self.proc_data_dict['projected_data_dict'][qbn].update(
-                        {state_prob: data for key, data in data_dict.items()
+                        {state_prob: data.T for key, data in data_dict.items()
                          if state_prob in key})
 
             # correct probabilities given calibration matrix
@@ -1025,6 +1027,10 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         for qbn, prob_data in self.proc_data_dict[
                 'projected_data_dict' + suffix].items():
             if len(prob_data) and qbn in self.data_to_fit:
+                # In the case predict_proba = True,
+                # rotate = False and self.data_to_fit[qbn] is therefore empty
+                if not self.data_to_fit[qbn]:
+                    continue
                 self.proc_data_dict['data_to_fit'][qbn] = prob_data[
                     self.data_to_fit[qbn]]
 
@@ -1879,43 +1885,35 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                 unit = unit[0]
         return label, unit
 
-    def _get_single_shots_per_qb(self, raw=False, qb_names=None):
+    @staticmethod
+    def _obfuscate_single_shots_per_qb(meas_res, qb_names, twoD=True):
         """
         Gets single shots from the proc_data_dict and arranges
-        them as arrays per qubit
+        them as arrays per qubit, in a very unclear way, for easier processing
         Args:
-            raw (bool): whether or not to return raw shots (before
-            data filtering)
-            qb_names (list): Qubits for which to extract the data. If None
-            (default): uses self.qb_names. This can be useful if extracting
-            data for qubits which are not in self.qb_names.
-            E.g.: Doing an experiment on qb1 (self.qb_names = ['qb1']) but
+            meas_res (dict): shots in the form {'mobjn': {'val_name': array}},
+            e.g. as in proc_data_dict['meas_results_per_qb(_raw)']
+            qb_names (list): Qubits for which to extract the data. This can be
+            useful if extracting data for qubits not in analysis.qb_names
+            E.g.: Doing an experiment on qb1 (analysis.qb_names = ['qb1']) but
             preselecting on qb2, meaning that we need the data from both.
-        Returns: shots_per_qb: dict where keys are qb_names and
-            values are arrays of shape (n_shots, n_value_names) for
-            1D measurements and (n_shots*n_soft_sp, n_value_names) for
-            2D measurements
+        Returns: shots_per_qb: dict where keys are qb_names and values are
+            arrays of shape (n_shots * n_hard_sp * n_soft_sp, n_value_names).
 
         """
         # prepare data in convenient format, i.e. arrays per qubit
         shots_per_qb = dict()        # store shots per qb and per state
-        pdd = self.proc_data_dict    # for convenience of notation
-        key = 'meas_results_per_qb'
-        if raw:
-            key += "_raw"
-        if qb_names is None:
-            qb_names = self.qb_names
         for qbn in qb_names:
             shots_per_qb[qbn] = \
                 np.asarray(list(
-                    pdd[key][qbn].values())).T
+                    meas_res[qbn].values())).T
             # If 1D measurement, shape at this point is (n_shots*n_sp, n_vn)
             #  i.e. one column for each value_name (often equal to n_ro_ch).
             # If 2D measurement, the following reshapes from
             #  (n_soft_sp, n_shots * n_hard_sp, n_vn)
             #  to a 1D-like format (n_shots * n_hard_sp * n_soft_sp, n_ro_ch).
             if np.ndim(shots_per_qb[qbn]) == 3:
-                assert self.get_param_value("TwoD", False), \
+                assert twoD, \
                     "'TwoD' is False but single shot data seems to be 2D"
                 n_vn = shots_per_qb[qbn].shape[-1]
                 # put softsweep as inner most loop for easier processing
@@ -2043,8 +2041,6 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         Returns:
 
         """
-        if states_map is None:
-            states_map = {0: "g", 1: "e", 2: "f", 3: "h"}
 
         # get preselection information
         prep_params_presel = self.prep_params.get('preparation_type', "wait") \
@@ -2053,63 +2049,114 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
         # activate preselection flag only if preselection is in prep_params
         # and the user wants to use the preselection readouts
         preselection = prep_params_presel and use_preselection
-
-        # returns for each qb: (n_shots, n_ch) or (n_soft_sp* n_shots, n_ch)
-        # where n_soft_sp is the inner most loop i.e. the first dim is ordered as
-        # (shot0_ssp0, shot0_ssp1, ... , shot1_ssp0, shot1_ssp1, ...)
-        shots_per_qb = self._get_single_shots_per_qb()
-
-        # save single shots in proc_data_dict, as they will be overwritten in
-        # 'meas_results_per_qb' with their averaged values for the rest of the
-        # analysis to work.
-        self.proc_data_dict['single_shots_per_qb'] = deepcopy(shots_per_qb)
+        pdd = self.proc_data_dict  # will be filled by _process_single_shots
 
         # determine number of shots
         n_shots = self.get_param_value(
             "nr_shots", self._extract_param_from_det("nr_shots"))
 
         # determine number of readouts per sequence
-        if self.get_param_value("TwoD", False):
+        twoD = self.get_param_value("TwoD", False)
+        if twoD:
             n_seqs = self.sp.length(1)  # corresponds to number of soft sweep points
         else:
             n_seqs = 1
+
+        # get qubits for which data should be extracted
+        preselection_qbs = self.get_param_value("preselection_qbs")
+
+        # get classification parameters
+        if classifier_params is None:
+            classifier_params = self.get_data_from_timestamp_list({
+                f'{qbn}': f"Instrument settings.{qbn}.acq_classifier_params"
+                for qbn in self.qb_names})
+
+        correlate_proba = self.get_param_value('correlate_proba', False)
+        if correlate_proba:
+            # TODO This could be used to plot readout-corrected correlated
+            #  data, see the case self.rotate = False in self.process_data.
+            self.default_options['plot_proj_data'] = False
+
+        self._process_single_shots(
+            pdd=pdd,
+            n_shots=n_shots,
+            qb_names=self.qb_names,
+            predict_proba=predict_proba,
+            classifier_params=classifier_params,
+            states_map=states_map,
+            thresholding=thresholding,
+            preselection_qbs=preselection_qbs,
+            preselection=preselection,
+            twoD=twoD,
+            n_seqs=n_seqs,
+            classified_ro=self.get_param_value('classified_ro', False),
+            correlate_proba=correlate_proba,
+        )
+
+    @staticmethod
+    def _process_single_shots(
+            pdd,
+            n_shots,
+            qb_names,
+            predict_proba=False,
+            classifier_params=None,
+            states_map=None,
+            thresholding=False,
+            preselection_qbs=None,
+            preselection=False,
+            twoD=True,
+            n_seqs=1,
+            classified_ro=False,
+            correlate_proba=False,
+    ):
+        if states_map is None:
+            states_map = {0: "g", 1: "e", 2: "f", 3: "h"}
+
+        # returns for each qb: (n_shots * n_hard_sp * n_soft_sp, n_ro_ch)
+        # where n_soft_sp is the inner most loop i.e. the first dim is ordered as
+        # (shot0_hsp0_ssp0, shot0_hsp0_ssp1, ...,
+        #  shot0_hsp1_ssp0, shot0_hsp1_ssp1, ...)
+        key = 'meas_results_per_qb'
+        shots_per_qb = \
+            MultiQubit_TimeDomain_Analysis._obfuscate_single_shots_per_qb(
+                pdd[key], qb_names=qb_names, twoD=twoD)
+
+        # save single shots in proc_data_dict, as they will be overwritten in
+        # 'meas_results_per_qb' with their averaged values for the rest of the
+        # analysis to work.
+        pdd['single_shots_per_qb'] = deepcopy(shots_per_qb)
+
         # n_readouts refers to the number of readouts per sequence after
         # filtering out e.g. preselection readouts
         n_readouts = list(shots_per_qb.values())[0].shape[0] // (n_shots *
                                                                  n_seqs)
 
-        # get qubits for which data should be extracted
-        preselection_qbs = self.get_param_value("preselection_qbs")
         if preselection_qbs is None:
-            # by default, extract data for all qubits in self.qb_names
-            qb_names_to_extract = self.qb_names
+            # by default, extract data for all qubits in qb_names
+            qb_names_to_extract = qb_names
         else:
-            # Data should be extracted both for qubits in self.qb_names
+            # Data should be extracted both for qubits in qb_names
             # (qubits on which the experiment is performed), and for qubits
             # used in preselection. These two sets may or not be distinct.
             # Preselection will not work if data is not extracted for the
             # preselection qubits as well.
-            # E.g. self.qb_names = ['qb1'] (only qubit to analyse) and
+            # E.g. qb_names = ['qb1'] (only qubit to analyse) and
             # preselection_qbs = {"qb1": ["qb1", "qb2"]},
             # i.e. preselection is done for qb1 using ['qb1', 'qb2'] so we
             # should exctract data no only for qb1 but also qb2.
             qb_names_to_extract = [qbn for qbns in list(
                 preselection_qbs.values()) for qbn in qbns]
             qb_names_to_extract = qb_names_to_extract + [
-                qbn for qbn in self.qb_names if qbn not in qb_names_to_extract]
-
-        # get classification parameters
-        if classifier_params is None:
-            classifier_params = self.get_data_from_timestamp_list({
-                f'{qbn}': f"Instrument settings.{qbn}.acq_classifier_params"
-                for qbn in qb_names_to_extract})
+                qbn for qbn in qb_names if qbn not in qb_names_to_extract]
 
         # prepare preselection mask
         if preselection:
 
             # get preselection readouts for selected qubits
-            shots_per_qb_before_filtering = self._get_single_shots_per_qb(
-                raw=True, qb_names=qb_names_to_extract)
+            key = 'meas_results_per_qb_raw'
+            shots_per_qb_before_filtering = \
+                MultiQubit_TimeDomain_Analysis._obfuscate_single_shots_per_qb(
+                    pdd[key], qb_names=qb_names_to_extract, twoD=twoD)
 
             n_ro_before_filtering = \
                 list(shots_per_qb_before_filtering.values())[0].shape[0] // \
@@ -2135,25 +2182,26 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # create boolean array of shots to keep.
             # each time ro is the ground state --> true otherwise false
             g_state_int = [k for k, v in states_map.items() if v == "g"][0]
-            preselection_masks = self._get_preselection_masks(
-                presel_shots_per_qb,
-                preselection_qbs=self.get_param_value("preselection_qbs"),
-                predict_proba=not self.get_param_value('classified_ro', False),
-                classifier_params=classifier_params,
-                preselection_state_int=g_state_int)
-            self.proc_data_dict['percent_data_after_presel'] = {} #initialize
+            preselection_masks = \
+                MultiQubit_TimeDomain_Analysis._get_preselection_masks(
+                    presel_shots_per_qb,
+                    preselection_qbs=preselection_qbs,
+                    predict_proba=not classified_ro,
+                    classifier_params=classifier_params,
+                    preselection_state_int=g_state_int)
+            pdd['percent_data_after_presel'] = {} #initialize
         else:
             # keep all shots
             preselection_masks = {qbn: np.ones(len(shots), dtype=bool)
                                   for qbn, shots in shots_per_qb.items()}
-        self.proc_data_dict['preselection_masks'] = preselection_masks
+        pdd['preselection_masks'] = preselection_masks
 
         # process single shots per qubit
-        for qbn, shots in shots_per_qb.items():
-            if predict_proba:
+        if predict_proba:
+            for qbn, shots in shots_per_qb.items():
                 # shots become probabilities with shape (n_shots, n_states)
                 try:
-                    shots = a_tools.predict_gm_proba_from_clf(
+                    shots_per_qb[qbn] = a_tools.predict_gm_proba_from_clf(
                         shots, classifier_params[qbn])
                 except ValueError as e:
                     log.error(f'If the following error relates to number'
@@ -2163,17 +2211,26 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                               ' than in the current measurement): {e}')
                     raise e
 
-            if thresholding:
+        if thresholding:
+            for qbn, shots in shots_per_qb.items():
                 # shots become one-hot encoded arrays with length n_states
                 # shots has shape (n_shots, n_states)
-
                 shots = a_tools.threshold_shots(shots)
+                if 'single_shots_per_qb_thresholded' not in pdd:
+                    pdd['single_shots_per_qb_thresholded'] = {}
+                pdd['single_shots_per_qb_thresholded'][qbn] = shots
+                shots_per_qb[qbn] = shots
 
-                if 'single_shots_per_qb_thresholded' not in self.proc_data_dict:
-                    self.proc_data_dict['single_shots_per_qb_thresholded'] = {}
-                self.proc_data_dict['single_shots_per_qb_thresholded'][qbn] = \
-                    shots
+        if correlate_proba:
+            # Note that this assumes that shots are thresholded.
+            shots_correlated, states_map = \
+                MultiQubit_TimeDomain_Analysis._correlate_single_shots(
+                shots_per_qb, states_map)
+            # FIXME this duplication is a hack, so that all the processing
+            #  and plotting based on qubit names still works
+            shots_per_qb = {qbn: shots_correlated for qbn in shots_per_qb}
 
+        for qbn, shots in shots_per_qb.items():
             averaged_shots = [] # either raw voltage shots or probas
             preselection_percentages = []
             # Note: shots has been re-ordered in _get_single_shots_per_qb,
@@ -2185,7 +2242,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
                                                 len(presel_mask_single_ro))
                 averaged_shots.append(
                     np.mean(shots_single_ro[presel_mask_single_ro], axis=0))
-            if self.get_param_value("TwoD", False):
+            if twoD:
                 # Shape: (n_readouts*n_seqs, n), with n = n_prob or n_ch or 1
                 averaged_shots = np.reshape(averaged_shots, (n_readouts, n_seqs, -1))
                 # Shape: (n_readouts, n_seqs, n)
@@ -2195,21 +2252,93 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             # Shape: (n, n_readouts) if 1d, or (n, n_readouts, n_ssp) if 2d
 
             if preselection:
-                self.proc_data_dict['percent_data_after_presel'][qbn] = \
+                pdd['percent_data_after_presel'][qbn] = \
                     f"{np.mean(preselection_percentages):.2f} $\\pm$ " \
                     f"{np.std(preselection_percentages):.2f}%"
             if predict_proba:
                 # value names are different from what was previously in
                 # meas_results_per_qb and therefore "artificial" values
                 # are made based on states
-                self.proc_data_dict['meas_results_per_qb'][qbn] = \
+                pdd['meas_results_per_qb'][qbn] = \
                     {"p" + states_map[i]: p for i, p in enumerate(averaged_shots)}
             else:
                 # reuse value names that were already there if did not classify
                 for i, k in enumerate(
-                        self.proc_data_dict['meas_results_per_qb'][qbn]):
-                    self.proc_data_dict['meas_results_per_qb'][qbn][k] = \
+                        pdd['meas_results_per_qb'][qbn]):
+                    pdd['meas_results_per_qb'][qbn][k] = \
                         averaged_shots[i]
+
+    @staticmethod
+    def _correlate_single_shots(shots_per_qb, states_map):
+        """
+        Correlates single-shot measurement results
+
+        Args:
+            shots_per_qb: dict of the form {
+                'qb_name': np.array(other dims..., n_states)}
+                where n_states is the number of states measured and
+                classified, e.g. 3 for the g, e and f states.
+            states_map: dict of the form {i: 'state_name'} to order states,
+                e.g. {0: "g", 1: "e", 2: "f"} for g, e, f states
+        Returns:
+            shots: correlated shots, of the form
+                np.array(other dims..., n_corr_states)
+            new_states_map: corresponding map, e.g. {0: 'ggg', 1: 'gge', ...}
+        """
+
+        # Convert dict to array, with shape = (n_qb, other dims..., n_states):
+        shots = np.array([
+            shots_per_qb[key] for key in shots_per_qb.keys()
+        ])
+        assert issubclass(shots.dtype.type, np.integer),\
+            "Shots correlation assumes thresholded (int) values!"
+        shape = shots.shape
+        n_qb, n_states = shape[0], shape[-1]
+        n_corr_states = n_states ** n_qb
+        shape = shape[1:-1]  # To recover the original dims at the end
+
+        # One-hot encoded states, with shape = (n_qb, -1, n_states):
+        shots = shots.reshape([n_qb, -1, n_states])
+
+        # Convert to numerical (0, 1, 2... indicating the state per qubit),
+        # with shape = (n_qb, -1):
+        convrt = np.arange(n_states)  # [0, 1, 2] if n_states = 3
+        shots = np.tensordot(shots, convrt, axes=1)  # 1 means summing one axis
+
+        # Convert to numerical (0, 1, ..., n_states**n_qb-1) indicating the
+        # state, with shape = (-1)
+        # Conversion matrix: [n_states**n_qb, n_states**(n_qb-1), ... 1]
+        # Decreasing order, such that the first qubit corresponds to the
+        # highest value (most significant, on the left of the bitstring)
+        convrt = n_states ** np.arange(n_qb)[::-1]
+        shots = np.tensordot(convrt, shots, axes=1)  # 1 means summing one axis
+
+        # Convert back to a one-hot encoding,
+        # with shape = (-1, n_corr_states):
+        convrt = np.eye(n_corr_states)
+        shots = convrt[shots]
+
+        # Recover original shape, shape = (other dims..., n_corr_states)
+        shots = np.reshape(shots, (*shape, n_corr_states))
+
+        # Create new state map for each possible correlated state state_val
+        # - digit = e.g. '20' for a gfg state
+        # - join() returns e.g. 'fg' for a gfg state
+        new_states_map = {
+            state_val: ''.join([
+                states_map[int(digit)]
+                for digit in np.base_repr(state_val, n_states)
+            ])
+            for state_val in np.arange(0, n_corr_states)
+        }
+        # Pad with the correct number of states_map[0]
+        # e.g. add 'g'*1 to 'fg' for a gfg state
+        new_states_map = {
+            k: states_map[0] * (n_qb - len(s)) + s
+            for k, s in new_states_map.items()
+        }
+
+        return shots, new_states_map
 
     def prepare_plots(self):
         """
@@ -3765,6 +3894,8 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
     def process_data(self):
+        self.default_options['plot_raw_data'] = False
+        self.default_options['plot_proj_data'] = False
         super().process_data()
 
         pdd = self.proc_data_dict
@@ -3773,35 +3904,52 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         self.amps = OrderedDict()
         self.freqs = OrderedDict()
         for qbn in self.qb_names:
+            # Extract sweep parameter names corresponding to typical
+            # parameters which get swept, e.g. pulse length. In case several
+            # parameters are found, take the first one.
             len_key = [pn for pn in self.mospm[qbn] if 'length' in pn]
             if len(len_key) == 0:
                 raise KeyError('Couldn"t find sweep points corresponding to '
                                'flux pulse length.')
+            len_key = len_key[0]
             self.lengths[qbn] = self.sp.get_sweep_params_property(
-                'values', 0, len_key[0])
+                'values', 'all', len_key)
 
             amp_key = [pn for pn in self.mospm[qbn] if 'amp' in pn]
-            if len(len_key) == 0:
+            if len(amp_key) == 0:
                 raise KeyError('Couldn"t find sweep points corresponding to '
                                'flux pulse amplitude.')
+            amp_key = amp_key[0]
             self.amps[qbn] = self.sp.get_sweep_params_property(
-                'values', 1, amp_key[0])
+                'values', 'all', amp_key)
 
             freq_key = [pn for pn in self.mospm[qbn] if 'freq' in pn]
             if len(freq_key) == 0:
                 self.freqs[qbn] = None
             else:
+                freq_key = freq_key[0]
                 self.freqs[qbn] =self.sp.get_sweep_params_property(
-                    'values', 1, freq_key[0])
-
+                    'values', 'all', freq_key)
         nr_amps = len(self.amps[self.qb_names[0]])
         nr_lengths = len(self.lengths[self.qb_names[0]])
 
-        # make matrix out of vector
-        data_reshaped_no_cp = {qb: np.reshape(deepcopy(
-                pdd['data_to_fit'][qb][
-                :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]).flatten(),
-                (nr_amps, nr_lengths)) for qb in self.qb_names}
+        data_reshaped_no_cp = {
+            qb: pdd['data_to_fit'][qb][
+                :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]
+            for qb in self.qb_names}
+
+        if self.sp.find_parameter(len_key)==1:
+            # Transpose from (amp, len) to (len, amp) in terms of sweep points.
+            # Note that data_to_fit is transposed w.r.t. sweep points,
+            # so the final shape of the data is (amp, len), see FIXME of
+            # self.proc_data_dict
+            data_reshaped_no_cp = {
+                k: v.T for k, v in data_reshaped_no_cp.items()
+            }
+
+        if nr_lengths==1:
+            # Cannot fit T1 decay in this case
+            self.do_fitting = False
 
         pdd['data_reshaped_no_cp'] = data_reshaped_no_cp
 
@@ -3843,6 +3991,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     pdd['mask'][qb][i] = False
 
     def prepare_plots(self):
+        super().prepare_plots()
         pdd = self.proc_data_dict
         rdd = self.raw_data_dict
 
@@ -3852,8 +4001,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     continue
                 suffix = '_amp' if p == 0 else '_freq'
                 mask = pdd['mask'][qb]
-                xlabel = r'Flux pulse amplitude' if p == 0 else \
-                    r'Derived qubit ge frequency'
+                xlabel = f'{qb} flux pulse amplitude' if p == 0 else \
+                    f'Derived {qb} ge frequency'
 
                 if self.do_fitting:
                     # Plot T1 vs flux pulse amplitude
@@ -3872,32 +4021,34 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         'color': 'blue',
                     }
 
-                # Plot rotated integrated average in dependece of flux pulse
-                # amplitude and length
-                label = f'T1_color_plot_{qb}{suffix}_{self.data_to_fit[qb]}'
-                self.plot_dicts[label] = {
-                    'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
-                    'plotfn': self.plot_colorxy,
-                    'linestyle': '-',
-                    'xvals': param_values[qb][mask],
-                    'yvals': self.lengths[qb],
-                    'zvals': np.transpose(pdd['data_reshaped_no_cp'][qb][mask]),
-                    'xlabel': xlabel,
-                    'xunit': 'V' if p == 0 else 'Hz',
-                    'ylabel': r'Flux pulse length',
-                    'yunit': 's',
-                    'clabel': self.get_yaxis_label(qb)
-                }
-
+                if len(self.lengths[qb])>1:
+                    # Plot rotated integrated average in dependece of flux pulse
+                    # amplitude and length
+                    label = f'T1_color_plot_{qb}{suffix}_{self.data_to_fit[qb]}'
+                    self.plot_dicts[label] = {
+                        'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
+                        'plotfn': self.plot_colorxy,
+                        'linestyle': '-',
+                        'xvals': param_values[qb][mask],
+                        'yvals': self.lengths[qb],
+                        'zvals': np.transpose(pdd['data_reshaped_no_cp'][qb][mask]),
+                        'xlabel': xlabel,
+                        'xunit': 'V' if p == 0 else 'Hz',
+                        'ylabel': r'Flux pulse length',
+                        'yunit': 's',
+                        'clabel': self.get_yaxis_label(qb)
+                    }
                 # Plot population loss for the first flux pulse length as a
                 # function of flux pulse amplitude
                 label = f'Pop_loss_{qb}{suffix}_{self.data_to_fit[qb]}'
+                yvals = 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask]
                 self.plot_dicts[label] = {
+                    'fig_id': label,
                     'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
                     'plotfn': self.plot_line,
                     'linestyle': '-',
                     'xvals': param_values[qb][mask],
-                    'yvals': 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask],
+                    'yvals': yvals,
                     'xlabel': xlabel,
                     'xunit': 'V' if p == 0 else 'Hz',
                     'ylabel': r'Pop. loss {} @ {:.0f} ns'.format(
@@ -3905,7 +4056,27 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         self.lengths[qb][0]/1e-9
                     ),
                     'yunit': '',
+                    'setlabel': 'Pop. loss',
                 }
+                # interaction_freqs/_amps
+                int_vals = self.get_param_value('interaction'+suffix+'s', {})
+                int_vals_qb = int_vals.get(qb, {})
+                for i, (int_qb, int_val) in enumerate(int_vals_qb.items()):
+                    self.plot_dicts[label + '_vline_' + int_qb] = {
+                        'fig_id': label,
+                        'plotfn': self.plot_vlines,
+                        'x': int_val[0],
+                        'ymin': np.min(yvals),
+                        'ymax': np.max(yvals),
+                        'colors': f'C{i}',
+                        'line_kws': {'alpha': 0.5},
+                        'linestyles': '--',
+                        # When using get_interactions_for_plotting from the device object,
+                        # int_val[1] is currently either 'ge' or 'ef', depending on the
+                        # qubit, see the fixme there
+                        'setlabel': int_val[1] + ' <-> ' + int_qb,
+                        'do_legend': True,
+                    }
 
             # Plot all fits in single figure
             if self.get_param_value('all_fits', False) and self.do_fitting:
@@ -4173,9 +4344,9 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 xvals = self.metadata['amplitudes'][mask] if \
                     self.metadata['frequencies'] is None else \
                     self.metadata['frequencies'][mask]
-                xlabel = r'Flux pulse amplitude' if \
+                xlabel = f'{qb} flux pulse amplitude' if \
                     self.metadata['frequencies'] is None else \
-                    r'Derived qubit ge frequency'
+                    f'Derived {qb} ge frequency'
                 # Final T2(freq or amp) plot
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
@@ -4201,8 +4372,12 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
         pdd = self.proc_data_dict
 
         try: # Extract data
+            amp_keys = {
+                qbn: [k for k in self.mospm[qbn] if 'amp' in k][0]
+                for qbn in self.qb_names
+            }
             pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
-                'amplitude'] for qbn in self.qb_names}
+                amp_keys[qbn]] for qbn in self.qb_names}
             pdd['phases_reshaped'] = [pdd['sweep_points_dict'][
                 self.qb_names[0]]['msmt_sweep_points']] * len(pdd[
                     'amps_reshaped'][self.qb_names[0]])
@@ -6469,8 +6644,12 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
                 # As a workaround for a weird bug letting crash the analysis
                 # every second time, we do not use lmfit.models.ConstantModel
                 # and lmfit.models.LinearModel, but create custom models.
+                # FIXME this float is apparently needed to avoid an np.float64.
+                #  With a np.float64, in lmfit hasattr(x,'__array__')
+                #  detects it incorrectly as an array, and model.fit then
+                #  fails when trying to access its length
                 if msmt_label == '_xx':
-                    model = lmfit.Model(lambda x, c: c)
+                    model = lmfit.Model(lambda x, c: float(c))
                     guess_pars = model.make_params(c=np.mean(data))
                 else:
                     model = lmfit.Model(lambda x, slope, intercept:
@@ -9719,7 +9898,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'legend_pos': 'upper right',
             'grid': True,
         }
-        
+
         textstr = f'best fidelity: {best_fidelity * 100:.2f}%'
 
         self.plot_dicts[vline_key] = {
@@ -11164,8 +11343,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         if len(hsp) * len(ssp) == len(LO_dBm.flatten()):
             # sweep points are aligned on grid
 
-            # The arrays hsp and ssp define the edges of a grid of measured 
-            # points. We reshape the arrays such that each data point 
+            # The arrays hsp and ssp define the edges of a grid of measured
+            # points. We reshape the arrays such that each data point
             # LO_dBm[i] corresponds to the sweep point VI[i], VQ[i]
             self.proc_data_dict['sweeppoints_are_grid'] = True
             # save raw format of data for plotting with plot_colorxy
@@ -11176,7 +11355,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             VI, VQ = np.meshgrid(hsp, ssp)
             VI = VI.flatten()
             VQ = VQ.flatten()
-            LO_dBm = LO_dBm.T.flatten()            
+            LO_dBm = LO_dBm.T.flatten()
         else:
             # sweep points are random
             self.proc_data_dict['sweeppoints_are_grid'] = False
@@ -11236,7 +11415,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         timestamp = self.timestamps[0]
 
         leakage = pdict['LO_leakage']
-        leakage_dBm_amp_zrange = [1.1*np.min(leakage), 
+        leakage_dBm_amp_zrange = [1.1*np.min(leakage),
                                   0.9*np.max(leakage)]
 
         if pdict['sweeppoints_are_grid']:
@@ -11281,7 +11460,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'legend_frameon': True
             }
 
-        plot_name_dict = {ch: f'V_{ch}_vs_LO_magn' for ch in ['I', 'Q']} 
+        plot_name_dict = {ch: f'V_{ch}_vs_LO_magn' for ch in ['I', 'Q']}
         for ch in ['I', 'Q']:
             self.plot_dicts[f'raw_V_{ch}_vs_LO_magn'] = {
                 'fig_id': plot_name_dict[ch],
@@ -11378,7 +11557,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'setlabel': '$V_\\mathrm{I}$' + rf' ={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
-       
+
             self.plot_dicts[f'fit_V_I_vs_LO_magn'] = {
                 'fig_id': plot_name_dict['I'],
                 'plotfn': self.plot_line,
@@ -11420,8 +11599,6 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                             rf'={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
-            
-                
 
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -11526,7 +11703,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         phase = pdict['phase']
 
         sideband_dBm_amp = pdict['sideband_dBm_amp']
-        sideband_dBm_amp_zrange = [1.1*np.min(sideband_dBm_amp), 
+        sideband_dBm_amp_zrange = [1.1*np.min(sideband_dBm_amp),
                                    0.9*np.max(sideband_dBm_amp)]
 
         timestamp = self.timestamps[0]
@@ -11629,9 +11806,9 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             # and make it 10 % larger in both axes
             size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
             size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
-            alpha_edge = np.linspace(np.min(alpha) - size_offset_alpha, 
+            alpha_edge = np.linspace(np.min(alpha) - size_offset_alpha,
                             np.max(alpha) + size_offset_alpha, 250)
-            phase_edge = np.linspace(np.min(phase) - size_offset_phase, 
+            phase_edge = np.linspace(np.min(phase) - size_offset_phase,
                             np.max(phase) + size_offset_phase, 250)
             alpha_plot, phase_plot = np.meshgrid(alpha_edge, phase_edge)
 
@@ -14695,7 +14872,6 @@ class ChevronAnalysis(MultiQubit_TimeDomain_Analysis):
     def extract_data(self):
         super().extract_data()
         self.task_list = self.get_param_value('task_list')
-        self.qb_names = self.get_param_value('qb_names', self.get_qbs_from_task_list(self.task_list))
 
     def get_qubit_objects_from_names(self, qb_names):
         # as soon as any instrument setting of a qubit is accessed,

@@ -53,16 +53,16 @@ class Pulse:
     """
 
     HASHABLE_TIME_ROUNDING_DIGITS = 12
-    """Specifies the precision of rounding when generating the hash entry for 
-    the difference between algorithm time and t_start. If this parameter has 
-    value n, then all differences will be rounded to the n-th decimal of 
+    """Specifies the precision of rounding when generating the hash entry for
+    the difference between algorithm time and t_start. If this parameter has
+    value n, then all differences will be rounded to the n-th decimal of
     s (second)."""
 
     # This parameter is set to False by default for the robustness of the
     # code. Individual pulse types that support internal modulation should
     # rewrite this class parameter to True.
     SUPPORT_INTERNAL_MOD = False
-    """Indicating whether this pulse is supposed to use hardware 
+    """Indicating whether this pulse is supposed to use hardware
     modulation of generator AWGs. """
 
     # This parameter is set to False by default for the robustness of the
@@ -71,7 +71,7 @@ class Pulse:
     # pulse.amplitude parameter. Developers can rewrite this parameter for
     # individual pulses in pulse_library.py to True if needed.
     SUPPORT_HARMONIZING_AMPLITUDE = False
-    """Indicating whether this pulse allows re-scaling its amplitude during 
+    """Indicating whether this pulse allows re-scaling its amplitude during
     upload and retrieve the original amplitude with AWG hardware commands."""
 
     def __init__(self, name, element_name, **kw):

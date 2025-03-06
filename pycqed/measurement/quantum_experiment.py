@@ -275,7 +275,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             # objects
             self.df_kwargs.update({'nr_averages': max(
                 qb.acq_averages() for qb in self.meas_objs)})
-            
+
             # determine data type
             if "log" in self.df_name or not \
                     self.df_kwargs.get("det_get_values_kws",
@@ -521,6 +521,12 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         """
         # ensure measurement control is set
         self._set_MC(MC)
+
+        # check whether the number of readouts is the same for all sequences
+        assert len(np.unique([s.n_acq_elements() for s in self.sequences])) == 1, \
+            "All sequences must have the same n_acq_elements (number of ROs)."
+        # if not, then the definition of the mc_points and the compression
+        # would need to be changed
 
         # configure mc_points
         if len(self.mc_points[0]) == 0: # first dimension mc_points not yet set

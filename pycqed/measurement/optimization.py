@@ -518,13 +518,13 @@ def gradient(fun,x,grid_spacing):
 def gradient_descent(fun, x_ini,grid_spacing,lamb_ini=1, max_iter=500 ):
     """
     :param fun: function to be minimized
-    :param x_ini: initial point for the iteration 
-    :param grid_spacing: spacing between points on the discretized evaluation 
+    :param x_ini: initial point for the iteration
+    :param grid_spacing: spacing between points on the discretized evaluation
                          grid. has to provide a spacing for every feature in x_ini.
-    :param lamb_ini: initial learning rate. 
-    :param tol: tolerance to determine convergence. 
+    :param lamb_ini: initial learning rate.
+    :param tol: tolerance to determine convergence.
     :param max_iter: maximum iterations permitted until gradient descent fails
-    
+
     :return: input values that minimizes fun()
 
     Note: using Barzilai-Borwein adaptive step lengths for second derivative approx.

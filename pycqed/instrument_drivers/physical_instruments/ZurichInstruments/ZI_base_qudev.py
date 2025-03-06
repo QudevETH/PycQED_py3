@@ -49,7 +49,7 @@ class ZI_base_instrument_qudev(zibase.ZI_base_instrument):
 
 class MockDAQServer(zibase.MockDAQServer):
     _instances = {}
-    """Dict of existing instances, keys are tuples of host (str) and 
+    """Dict of existing instances, keys are tuples of host (str) and
     port (int)."""
 
     @classmethod
