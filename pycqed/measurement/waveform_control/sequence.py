@@ -449,7 +449,7 @@ class Sequence:
         non_logged_acqs_preceed_logged_acqs = all(
             [[acqs[i]<=acqs[i+1] for i in range(len(acqs)-1)]
              for acqs in acqs_per_seg])
-        n_acqs = [len(
+        n_acqs = [sum(
             [acq or include_non_logged_acquisitions for acq in acqs]
         ) for acqs in acqs_per_seg]
         if not per_segment:
