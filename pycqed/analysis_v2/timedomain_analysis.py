@@ -1923,7 +1923,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         return shots_per_qb
 
-    def _get_preselection_masks(self, presel_shots_per_qb, preselection_qbs=None,
+    @staticmethod
+    def _get_preselection_masks(presel_shots_per_qb, preselection_qbs=None,
                                 predict_proba=True,
                                 classifier_params=None,
                                 preselection_state_int=0):
