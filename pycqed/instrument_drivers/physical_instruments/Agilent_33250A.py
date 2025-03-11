@@ -85,14 +85,14 @@ class Agilent_33250A(VisaInstrument):
 						   label='Load impedance',
 						   unit='Ohm',
 						   get_cmd='OUTP:LOAD?',
-						   set_cmd='OUTP:LOAD {}',	
+						   set_cmd='OUTP:LOAD {}',
                            get_parser=float,
                            set_parser=float,
                            vals=MultiType(Numbers(min_value=1, max_value=10e3), Enum('INF')),
-                           docstring=("Command for setting the load impedance in Ohms. Min value: 1 Ohm, Max value: 10 kOhm or 'INF'"))						   
-        
+                           docstring=("Command for setting the load impedance in Ohms. Min value: 1 Ohm, Max value: 10 kOhm or 'INF'"))
+
         self.connect_message()
-    
+
     def reset(self):
         self.write('*RST')
 
@@ -114,7 +114,6 @@ class Agilent_33250A(VisaInstrument):
         self.write('BURS:STAT ON')
         self.write('OUTP ON')
         self.write('TRIG')
-    
+
     def stop(self):
         self.write('OUTP OFF')
-    

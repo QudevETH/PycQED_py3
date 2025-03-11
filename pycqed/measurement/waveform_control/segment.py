@@ -43,8 +43,8 @@ def _with_pulsar_tmp_vals(f):
 
 class Segment:
     """
-    Consists of a list of UnresolvedPulses, each of which contains information 
-    about in which element the pulse is played and when it is played 
+    Consists of a list of UnresolvedPulses, each of which contains information
+    about in which element the pulse is played and when it is played
     (reference point + delay) as well as an instance of class Pulse.
 
     Property distortion_dicts: a key of the form {AWG}_{channel} specifies
@@ -64,13 +64,13 @@ class Segment:
     ]
 
     PHASE_ROUNDING_DIGITS = 5
-    """Specifies the rounding precision when processing phases 
-    in resolve_Z_gates method. If this parameter has value n, then the 
+    """Specifies the rounding precision when processing phases
+    in resolve_Z_gates method. If this parameter has value n, then the
     waveform phase will be rounded to the n-th digit of degree."""
 
     FREQUENCY_ROUNDING_DIGITS = 3
-    """Specifies the rounding precision when processing frequencies 
-    in _internal_mod_update_params method. If this parameter has value n, then 
+    """Specifies the rounding precision when processing frequencies
+    in _internal_mod_update_params method. If this parameter has value n, then
     the waveform frequency will be rounded to the n-th digit of Hz."""
 
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
@@ -2492,7 +2492,7 @@ class Segment:
                     num_two_qb += 1
                     pulse_name = op_code.rstrip('0123456789. ')
                     gate_type = 'CZ'
-                    if len(val := op_code[len(pulse_name):]):
+                    if len(val := op_code[len(pulse_name):].rstrip(' ')):
                         gate_formatted = f'{gate_type}{(factor * float(val)):.1f}'.replace(
                             '.0', '')
                         output += f'\\draw({t / tscale:.4f},-{qb})  node[CZdot] {{}} -- ({t / tscale:.4f},-{qbt}) node[gate, minimum height={l / tscale * 100:.4f}mm] {{\\tiny {gate_formatted}}};\n'

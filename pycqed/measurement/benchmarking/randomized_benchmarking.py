@@ -26,15 +26,15 @@ class RandomCircuitBenchmarkingMixin:
     """
 
     seq_lengths_name = 'cliffords'
-    """Name of the parameter specifying the sequence lengths 
-    
+    """Name of the parameter specifying the sequence lengths
+
     'cliffords' for RB, 'cycles' for XEB
     """
 
     randomizations_name = 'seeds'
-    """Name of the parameter specifying the number of times to randomize each 
-    sequence length. 
-    
+    """Name of the parameter specifying the number of times to randomize each
+    sequence length.
+
     'seeds' for RB, 'seqs' for XEB
     """
 
