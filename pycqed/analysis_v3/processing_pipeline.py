@@ -44,7 +44,7 @@ Instructions for use:
          ProcessingPipeline(node_name, **node_params), where node_name is
          the name of the node, and **node_params all the parameters
          required by the node including the necessary keys described above
-        ! Specify the keyword argument global_keys_out_container to prepend it 
+        ! Specify the keyword argument global_keys_out_container to prepend it
             to all the keys_out as global_keys_out_container.keyo.
         ! For ease of use, keys_in can also be specified as
             - 'raw': the raw data corresponding to the measured object
@@ -57,8 +57,8 @@ Instructions for use:
         ! keys_out do not need to be specified by the user as they will be
          automatically constructed from the measured object name and the
          keys_in
-        ! use keys_out_container in the **node_params to prepend it to the 
-         keys_out of that node 
+        ! use keys_out_container in the **node_params to prepend it to the
+         keys_out of that node
 
 
             Examples:
@@ -74,14 +74,14 @@ Instructions for use:
         - to add more node dictionaries to the pipeline, call the "add_node"
          method with the same "node_name" and **node_params arguments as
          described above under "Initialization."
-         
-            Example: same as above but replace ProcessingPipeline with 
+
+            Example: same as above but replace ProcessingPipeline with
             ProcessingPipeline_instance.add_node
-    
+
     Up to now, the pipeline is just a list of dictionaries with the
     key-value pairs as provided by the user:
-        
-        Example of a "raw" pipeline: 
+
+        Example of a "raw" pipeline:
             [{'keys_in': 'raw',
               'shape': (80, 10),
               'meas_obj_names': ['qb2'],
@@ -97,26 +97,26 @@ Instructions for use:
               'keys_in': 'previous qb2.average_data1',
               'std_keys': 'previous qb2.get_std_deviation1',
               'node_name': 'SingleQubitRBAnalysis'}]
-    
+
     Creating the pipeline:
-        - the analysis framework always expects keys_in to be a list of 
+        - the analysis framework always expects keys_in to be a list of
          keys in the data_dict, and most functions expect keys_out
-        - to create the pipeline that will be used by the analysis 
-         framework, the user can call: 
-         ProcessingPipeline_instance(meas_obj_value_names_map), where 
+        - to create the pipeline that will be used by the analysis
+         framework, the user can call:
+         ProcessingPipeline_instance(meas_obj_value_names_map), where
          meas_obj_value_names_map is a dictionary with measured objects as keys
          and list of their corresponding readout channels as values.
-         However, the analysis supports an precompiled pipeline as well, in 
+         However, the analysis supports an precompiled pipeline as well, in
          which case it will call ProcessingPipeline_instance(
          meas_obj_value_names_map).
-        
+
         The final pipeline corresponding to the"raw" pipeline above:
-             meas_obj_value_names_map = {'qb2': ['UHF1_pg w23 UHF1', 
-                                                 'UHF1_pe w23 UHF1', 
+             meas_obj_value_names_map = {'qb2': ['UHF1_pg w23 UHF1',
+                                                 'UHF1_pe w23 UHF1',
                                                  'UHF1_pf w23 UHF1']}
-             
+
              Final pipeline:
-                 [{'keys_in': ['UHF1_pg w23 UHF1', 'UHF1_pe w23 UHF1', 
+                 [{'keys_in': ['UHF1_pg w23 UHF1', 'UHF1_pe w23 UHF1',
                                'UHF1_pf w23 UHF1'],
                   'shape': (80, 10),
                   'meas_obj_names': ['qb2'],
@@ -141,10 +141,10 @@ Instructions for use:
                    'qb2.average_data1 UHF1_pf w23 UHF1',
                    'qb2.average_data1 UHF1_pg w23 UHF1'],
                   'std_keys': 'previous qb2.get_std_deviation1',
-                  'node_name': 'SingleQubitRBAnalysis'}]     
-                  
-                  
-                  
+                  'node_name': 'SingleQubitRBAnalysis'}]
+
+
+
 Final example where some meas_obj_names are lists: multi-file 2QB RB
 
 meas_obj_value_names_map = {
@@ -154,27 +154,27 @@ meas_obj_value_names_map = {
 nr_files = 10
 nr_cliffs = 8
 nr_seeds_per_file = 10
- 
+
 pp = pp_mod.ProcessingPipeline()
 # average data for all measued objects
 pp.add_node('average_data', keys_in='raw',
-            shape=(nr_files*nr_cliffs, nr_seeds_per_file), 
+            shape=(nr_files*nr_cliffs, nr_seeds_per_file),
             meas_obj_names=list(movnm)))
 # average data again for all measued objects
-pp.add_node('average_data', 
+pp.add_node('average_data',
             keys_in=[f'previous {mobj}.average_data' for mobj in movnm],
-            shape=(nr_files, nr_cliffs), 
-            averaging_axis=0, 
-            meas_obj_names=list(movnm))                    
+            shape=(nr_files, nr_cliffs),
+            averaging_axis=0,
+            meas_obj_names=list(movnm))
 # RB only for qubit2
-mobj = 'qb2' 
-pp.add_node('SingleQubitRBAnalysis', 
+mobj = 'qb2'
+pp.add_node('SingleQubitRBAnalysis',
             keys_in=f'previous {mobj}.average_data1',
             std_keys=f'previous {mobj}.get_std_deviation1'
             keys_out=None, # no keys out
             meas_obj_names=mobj)
-   
-   
+
+
 "Raw" pipeline:
     [{'keys_in': 'raw',
       'shape': (80, 10),
@@ -191,8 +191,8 @@ pp.add_node('SingleQubitRBAnalysis',
       'keys_out': None,
       'keys_in': 'previous qb2.average_data1',
       'std_keys': 'previous qb2.get_std_deviation1',
-      'node_name': 'SingleQubitRBAnalysis'}]  
-      
+      'node_name': 'SingleQubitRBAnalysis'}]
+
 Final pipeline:
     call pp(movnm):
     [{'keys_in': ['UHF1_pe w23 UHF1', 'UHF1_pe w45 UHF1', 'UHF1_pf w23 UHF1',
@@ -208,7 +208,7 @@ Final pipeline:
                    'qb2.average_data UHF1_pg w23 UHF1',
                    'qb4.average_data UHF1_pg w45 UHF1',
                    'correlation.average_data correlation']
-     },              
+     },
      {'keys_in': ['correlation.average_data correlation',
                   'qb2.average_data UHF1_pe w23 UHF1',
                   'qb2.average_data UHF1_pf w23 UHF1',
@@ -235,7 +235,7 @@ Final pipeline:
                   'qb2.average_data1 UHF1_pg w23 UHF1'],
       'std_keys': 'previous qb2.get_std_deviation1',
       'node_name': 'SingleQubitRBAnalysis'
-     }]                             
+     }]
 """
 
 

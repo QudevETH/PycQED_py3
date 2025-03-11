@@ -415,7 +415,7 @@ class AutomaticCalibrationRoutine(Step):
             12) SubRoutine.settings["subroutine_label"]["experiment_label"]
 
         The dictionary of settings that were merged according to the
-        hierarchy specified in the lookups can be used to update 
+        hierarchy specified in the lookups can be used to update
         :obj:`Step.settings`.
 
         Arguments:
@@ -448,8 +448,8 @@ class AutomaticCalibrationRoutine(Step):
             if sublookup in self.settings:
                 update_nested_dictionary(settings, self.settings[sublookup])
 
-        # Look for the entries settings[lookup][sublookup] (if both the lookup 
-        # and the sublookup entries exist) or settings[lookup] (if only the 
+        # Look for the entries settings[lookup][sublookup] (if both the lookup
+        # and the sublookup entries exist) or settings[lookup] (if only the
         # lookup entry exist, but not the sublookup one)
         for lookup in reversed(lookups):
             if lookup in self.settings:

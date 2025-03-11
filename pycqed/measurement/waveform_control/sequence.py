@@ -16,14 +16,14 @@ log = logging.getLogger(__name__)
 
 class Sequence:
     """
-    A Sequence consists of several segments, which can be played back on the 
+    A Sequence consists of several segments, which can be played back on the
     AWGs sequentially.
     """
 
     RENAMING_SEPARATOR = "+"
     AMPLITUDE_ROUNDING_DIGITS = 7
-    """Specifies the rounding precision when processing waveform amplitudes 
-    in harmonize_amplitude method. If this parameter has value n, then the 
+    """Specifies the rounding precision when processing waveform amplitudes
+    in harmonize_amplitude method. If this parameter has value n, then the
     waveform amplitudes will be rounded to the n-th digit of V (volt)."""
 
     def __init__(self, name, segments=()):
@@ -42,7 +42,7 @@ class Sequence:
         self.extend(segments)
         self.is_resolved = False
         self.awg_scaling_factors = dict()
-        """A list of AWG names whose pulse amplitudes has processed with 
+        """A list of AWG names whose pulse amplitudes has processed with
         method 'self.harmonize_amplitude'."""
 
     def add(self, segment):
@@ -80,7 +80,7 @@ class Sequence:
                                      trigger_groups=None,
                                      awg_sequences=None):
         """
-        Calculates and returns 
+        Calculates and returns
             * waveforms: a dictionary of waveforms used in the sequence,
                 indexed by their hash value
             * sequences: For each awg, a list of elements, each element
@@ -276,14 +276,14 @@ class Sequence:
 
     def harmonize_amplitude(self, awg):
         """Rescale waveform amplitudes such that the largest pulse amplitude
-        in an element is the same as the largest in that sequence. The 
-        scaling factor is saved in the dictionary scaling_factors and 
-        passed to element metadata, such that the original waveform can be 
-        retrieved when generating command table entries. This allows reusing 
-        waveforms to the largest extent based on wave hashes. Note that 
-        the rescaling will be skipped on the target AWG modules where command 
+        in an element is the same as the largest in that sequence. The
+        scaling factor is saved in the dictionary scaling_factors and
+        passed to element metadata, such that the original waveform can be
+        retrieved when generating command table entries. This allows reusing
+        waveforms to the largest extent based on wave hashes. Note that
+        the rescaling will be skipped on the target AWG modules where command
         table is not activated.
-        
+
         Args:
             awg: (str) AWG name to be processed.
 
@@ -449,7 +449,7 @@ class Sequence:
         non_logged_acqs_preceed_logged_acqs = all(
             [[acqs[i]<=acqs[i+1] for i in range(len(acqs)-1)]
              for acqs in acqs_per_seg])
-        n_acqs = [len(
+        n_acqs = [sum(
             [acq or include_non_logged_acquisitions for acq in acqs]
         ) for acqs in acqs_per_seg]
         if not per_segment:
@@ -767,7 +767,7 @@ class Sequence:
         for seg_name, seg in self.segments.items():
             string_repr += str(seg) + "\n"
         return string_repr
-    
+
     def __deepcopy__(self, memo):
         cls = self.__class__
         new_seq = cls.__new__(cls)

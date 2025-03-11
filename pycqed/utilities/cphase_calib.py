@@ -148,30 +148,30 @@ def get_spectators(dev, uss_lss_qb_map, gate_list,
 
     This function finds "spectator qubits," which are qubits outside of the current gate operations but are
     mapped to the qubits involved in the gate operations (either USS or LSS qubits). Spectator qubits are
-    determined based on a mapping (`uss_lss_qb_map`) and gate qubits (`gate_list`). 
+    determined based on a mapping (`uss_lss_qb_map`) and gate qubits (`gate_list`).
 
     Parameters:
-        dev: 
+        dev:
             Device object that provides access to qubit information via `get_qubits()`.
-        uss_lss_qb_map (dict or list): 
+        uss_lss_qb_map (dict or list):
             Mapping of USS qubits to LSS qubits.
             If a list is provided, this list is returned without modification.
             FIXME: Could be extracted from the connectivity graph.
-        gate_list (list): 
-            List of qubit pairs representing gate operations. Each entry is a pair (tuple) where the first 
+        gate_list (list):
+            List of qubit pairs representing gate operations. Each entry is a pair (tuple) where the first
             element is a USS qubit and the second is an LSS qubit.
-        include_spectators_which_are_uss (bool, optional): 
+        include_spectators_which_are_uss (bool, optional):
             If `True`, include USS qubits that are spectators. Defaults to `True`.
-        include_spectators_which_are_lss (bool, optional): 
+        include_spectators_which_are_lss (bool, optional):
             If `True`, include LSS qubits that are spectators. Defaults to `True`.
 
     Returns:
-        list: 
+        list:
             A list of spectator qubit objects retrieved using `dev.get_qubits()`.
-            The list is based on the inclusion flags and the spectators determined 
+            The list is based on the inclusion flags and the spectators determined
             from the gate list and USS-LSS mapping.
     """
- 
+
     if isinstance(uss_lss_qb_map, list):
         return dev.get_qubits(uss_lss_qb_map, 'obj')
     gate_list_uss_qb = [qb[0].name for qb in gate_list]
