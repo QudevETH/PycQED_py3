@@ -136,7 +136,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
     def _extract_variational_param_names(self):
         """Extracts the actual sweep parameters from the parameterised angles
 
-        e.g. ["cb.pp9([h_index],{i})", ...] -> ["h_index", ...]
+        e.g. ["cb.pp([h_index],{i})", ...] -> ["h_index", ...]
         """
         self.params = [self._parse_param(p)[0] for p in self.params]
         _, idx = np.unique(self.params, return_index=True)
@@ -270,93 +270,6 @@ class QCNNExperiment(VariationalAlgorithm):
         self.do_qcnn = do_qcnn
         super().__init__(*args, **kw)
 
-    def pp9(self, h_index, param_index):
-        # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 1
-        # h_index = 21, ..., 28, validation set
-        h_index = int(round(h_index))
-        if h_index >= 21:
-            test_prep_params = np.zeros((8, 44))
-            # h_index = 21, test_prep_params[0] is all-zero to prepare 0000
-            test_prep_params[1][0:9] = 180  # 22, |111111111>
-            test_prep_params[2][0:9] = 90  # 23, |+++++++++>
-            test_prep_params[3][0:9] = -90  # 24, |--------->
-            test_prep_params[4][[1, 3, 5, 7]] = 180  # 25, |010101010>
-            test_prep_params[5][[0, 2, 4, 6, 8]] = 180  # 26, |101010101>
-            pm = np.empty(9)
-            pm[::2] = 90
-            pm[1::2] = -90
-            test_prep_params[6][0:9] = pm  # 27, |+-+-+-+-+>
-            test_prep_params[7][0:9] = -pm  # 28, |-+-+-+-+->
-            return test_prep_params[h_index - 21][param_index]
-        if not hasattr(self, 'prep_params_vs_h'):
-            if self.prep_params_filename is None:
-                raise ValueError("self.prep_params_filename is None!")
-            try:
-                with h5py.File(self.prep_params_filename,
-                               'r') as fileObject:
-                    # parameters are not saved as a 2D array of 21*44
-                    theta_opt = fileObject['THETAS_opt']
-                    phi_opt = fileObject['phi_opt']
-                    self.prep_params_vs_h = np.zeros((21, 44))
-                    for i in range(21):
-                        self.prep_params_vs_h[i][0:9] = theta_opt[i][0]
-                        self.prep_params_vs_h[i][9:11] = phi_opt[i][0:2]
-                        self.prep_params_vs_h[i][11:20] = theta_opt[i][1]
-                        self.prep_params_vs_h[i][20:23] = phi_opt[i][2:5]
-                        self.prep_params_vs_h[i][23:32] = theta_opt[i][2]
-                        self.prep_params_vs_h[i][32:35] = phi_opt[i][5:8]
-                        self.prep_params_vs_h[i][35:44] = theta_opt[i][3]
-                    self.prep_params_vs_h *= 180 / np.pi
-            except FileNotFoundError:
-                log.warning(
-                    "Can't find prep params file! Using zeros instead")
-                self.prep_params_vs_h = np.zeros((21, 44))
-        return self.prep_params_vs_h[h_index, param_index]
-
-    def pp(self, h_index, param_index):
-        """Get a preparation parameter
-
-        Short name for convenience when using in an op code
-        """
-        # TODO h_index is a misnomer, should rename/clean up
-        # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 2
-        # h_index = 21, ..., 28, validation set
-        h_index = int(round(h_index))
-        if h_index == 29:
-            test_prep_params = np.array(
-                [0, np.pi / 2, np.pi / 2, 0,
-                 np.pi,
-                 -np.pi / 2, 0, np.pi / 2,
-                 -np.pi / 2,
-                 np.pi,
-                 np.pi,
-                 -np.pi, np.pi / 2, -np.pi / 2, 0]) * 180 / np.pi
-            return test_prep_params[param_index]
-        elif h_index >= 21:
-            test_prep_params = np.zeros((8, 15))
-            # h_index = 21, test_prep_params[0] is all zero for 0000
-            test_prep_params[1][0:4] = 180  # 22, |1111>
-            test_prep_params[2][0:4] = 90  # 23, |++++>
-            test_prep_params[3][0:4] = -90  # 24, |---->
-            test_prep_params[4][0:4] = np.array([0, 180, 0, 180])  # 25, |0101>
-            test_prep_params[5][0:4] = np.array([180, 0, 180, 0])  # 26, |1010>
-            test_prep_params[6][0:4] = \
-                np.array([90, -90, 90, -90])  # 27, |+-+->
-            test_prep_params[7][0:4] = \
-                np.array([-90, 90, -90, 90])  # 28, |-+-+>
-            return test_prep_params[h_index - 21][param_index]
-        if not hasattr(self, 'prep_params_vs_h'):
-            if self.prep_params_filename is None:
-                raise ValueError("self.prep_params_filename is None!")
-            try:
-                with h5py.File(self.prep_params_filename, 'r') as fileObject:
-                    self.prep_params_vs_h = np.array(fileObject['angles_opt'])*180/np.pi
-            except FileNotFoundError:
-                log.warning("Can't find prep params file! Using zeros instead")
-                self.prep_params_vs_h = np.zeros((21, 15))  #TODO
-        param_index = [3,0,1,2,4,8,5,6,7,9,10,14,11,12,13][param_index]
-        return self.prep_params_vs_h[h_index, param_index]
-
     def _add_rxy_block(self, prefix, qbns, params=None, rot='Y'):
         # FIXME this kind of functionality could be moved to CircuitBuilder,
         #  e.g. by extending get_pulses.
@@ -440,7 +353,7 @@ class QCNNExperiment(VariationalAlgorithm):
                 self._add_rxy_block('RYb', range(len(self.qubits)),
                                     ['theta_b']*4)
         elif len(self.qubits) == 9:
-            op_code = "cb.pp9([h_index],{i})"
+            op_code = "cb.pp([h_index],{i})"
             self._add_rxy_block('RYp1', range(len(self.qubits)),
                                [op_code.format(i=i) for i in range(0, 9)])
             self._add_cz_block('CZp1', [[2, 3], [5, 6]],
@@ -482,6 +395,59 @@ class QCNNExperiment(VariationalAlgorithm):
                                             self._blocks,
                                             set_end_after_all_pulses=True,
                                             destroy=True)
+        self.create_pp_vals()
+
+    def create_pp_vals(self):
+        """Creates the array containing state preparation parameters
+
+        pp_vals.shape = (n_indices = 28, n_params (depends on n_qubits))
+        where the first 21 indices correspond to a sweep over h and 21 to 28
+        correspond to trivial states
+        TODO maybe find a smart way to remove unused 0 gates in the circuit
+
+        """
+        if hasattr(self, 'pp_vals'):
+            return
+        n_qubits = len(self.qubits)
+        # Has to be hardcoded, to allow fallback to 0s if no file below
+        n_params = {
+            4: 15,
+            9: 44,
+        }[n_qubits]
+        # h_index = 0 ~ 20: parameters from h5 file.
+        # For n_qubits = 4 and 9, h = 0 ~ 2 and 0 ~ 1 respectively
+        try:
+            if self.prep_params_filename is None:
+                raise FileNotFoundError
+            with h5py.File(self.prep_params_filename, 'r') as fileObject:
+                self.pp_vals = np.array(
+                    fileObject['angles_opt']) * 180 / np.pi
+        except FileNotFoundError:
+            log.warning("No prep params file! Using zeros for the h sweep.")
+            self.pp_vals = np.zeros((21, n_params))
+        # Create the trivial state preparation parameters and append them
+        # to self.pp_vals
+        # h_index = 21, ..., 28: validation set
+        self.pp_vals = np.concatenate((self.pp_vals, np.zeros((8, n_params))))
+        # self.pp_vals[21] = 0  # h_index = 21, |0000...>
+        self.pp_vals[22][0:n_qubits] = 180  # |1111...>
+        self.pp_vals[23][0:n_qubits] = 90  # |++++...>
+        self.pp_vals[24][0:n_qubits] = -90  # |----...>
+        self.pp_vals[25][1:n_qubits:2] = 180  # |0101...>
+        self.pp_vals[26][0:n_qubits:2] = 180  # |1010...>
+        self.pp_vals[27][0:n_qubits] = \
+            - 2 * (np.arange(n_qubits) % 2 - 1 / 2) * 90  # |+-+-...>
+        self.pp_vals[28][0:n_qubits] = \
+            2 * (np.arange(n_qubits) % 2 - 1 / 2) * 90  # |-+-+...>
+
+    def pp(self, h_index, param_index):
+        """Get a preparation parameter
+
+        Short name for convenience when using in an op code
+        """
+        # TODO h_index is a misnomer, should rename/clean up
+        h_index = int(round(h_index))
+        return self.pp_vals[h_index, param_index]
 
 
 class QCNNExperiment_old(VariationalAlgorithm):
