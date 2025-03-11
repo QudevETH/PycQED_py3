@@ -1924,7 +1924,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         return shots_per_qb
 
-    def _get_preselection_masks(self, presel_shots_per_qb, preselection_qbs=None,
+    @staticmethod
+    def _get_preselection_masks(presel_shots_per_qb, preselection_qbs=None,
                                 predict_proba=True,
                                 classifier_params=None,
                                 preselection_state_int=0):
@@ -7121,8 +7122,12 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
                 # As a workaround for a weird bug letting crash the analysis
                 # every second time, we do not use lmfit.models.ConstantModel
                 # and lmfit.models.LinearModel, but create custom models.
+                # FIXME this float is apparently needed to avoid an np.float64.
+                #  With a np.float64, in lmfit hasattr(x,'__array__')
+                #  detects it incorrectly as an array, and model.fit then
+                #  fails when trying to access its length
                 if msmt_label == '_xx':
-                    model = lmfit.Model(lambda x, c: c)
+                    model = lmfit.Model(lambda x, c: float(c))
                     guess_pars = model.make_params(c=np.mean(data))
                 else:
                     model = lmfit.Model(lambda x, slope, intercept:
@@ -12072,8 +12077,6 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                             rf'={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
-
-
 
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):

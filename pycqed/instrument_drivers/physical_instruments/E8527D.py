@@ -36,7 +36,7 @@ class Agilent_E8527D(mwg_class):
             frequency_option: Useful only if ``virtual=True``, this
                 corresponds to the model variant (possible values: see
                 :attr:`FREQUENCY_OPTIONS`).
-            args, kwargs: Same arguments as the parent class, see 
+            args, kwargs: Same arguments as the parent class, see
                 :class:`qcodes.instrument_drivers.agilent.E8527D.Agilent_E8527D`.
         """
 

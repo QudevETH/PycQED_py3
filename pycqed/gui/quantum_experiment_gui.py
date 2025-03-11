@@ -37,7 +37,7 @@ class ExperimentTypes(Enum):
 
 
 def get_members_by_experiment_class_name(experiment_class_name):
-    return [ExperimentType for ExperimentType in ExperimentTypes 
+    return [ExperimentType for ExperimentType in ExperimentTypes
             if ExperimentType.value.__name__ == experiment_class_name]
 
 
@@ -409,7 +409,7 @@ class QuantumExperimentGUIMainWindow(qt.QtWidgets.QMainWindow):
         input_field_dict = exp.gui_kwargs(self.device)["kwargs"]
         # automatically add global fields for task fields that are listed in
         # kw_for_task_keys
-        # 
+        #
         # if hierarchy of classes is out of order in gui, most likely it's
         # because there's a keyword in kw_for_task_keys that corresponds to
         # a keyword argument of a parent class of the selected experiment which
@@ -1221,7 +1221,7 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
             "row_3": qt.QtWidgets.QHBoxLayout(),
         }
         self.layout = qt.QtWidgets.QVBoxLayout()
-        [self.layout.addLayout(row_layout) 
+        [self.layout.addLayout(row_layout)
             for row_layout in self.row_layouts.values()]
         self.values_layout = qt.QtWidgets.QHBoxLayout()
         self.setLayout(self.layout)
@@ -1295,8 +1295,8 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
             if "label" in self.previous_choice["kwargs"].keys():
                 self.label_lineedit.setText(
                     self.previous_choice["kwargs"]["label"])
-            else: 
-                # if label is not in the saved kwargs, it must have been empty 
+            else:
+                # if label is not in the saved kwargs, it must have been empty
                 # when the configuration was saved
                 self.label_lineedit.setText('')
             self._configure_values_selection_field(set_previous_choice=True)
@@ -1357,7 +1357,7 @@ class SweepPointsForm(qt.QtWidgets.QGroupBox):
                 "values_selection_type"]
             self.values_selection_type_cbox.setCurrentText(values_selection_type)
             self.values_selection_type_cbox.blockSignals(False)
-        
+
         fields = []
         if values_selection_type == SweepPointsValueSelectionTypes.LINSPACE.value:
             self.values_start_value = QLineEditDouble()
