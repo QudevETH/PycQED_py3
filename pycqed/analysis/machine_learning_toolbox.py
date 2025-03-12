@@ -52,6 +52,12 @@ class Estimator(metaclass=ABCMeta):
     -- _type: General type of the estimator. E.g Regression, classification
     """
     def __init__(self,name='estimator',pre_proc_dict=None,type=None):
+        try:
+            tf
+            grnn
+        except NameError:
+            raise Exception("neupy.algorithms and tensorflow are needed to "
+                            "run the machine_learnging_toolbox module!")
         self.pre_proc_dict = pre_proc_dict
         self.score = None
         self._name = name
