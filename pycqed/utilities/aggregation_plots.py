@@ -360,7 +360,7 @@ def fig_from_measurement_plot_func(
     ax, fig_info: dict, fig_name="", extension="png", ignore_missing: bool = True
 ):
     """Searches & plots figure file matching `fig_name` in the folder.
-    
+
     Associated with `timestamp`, then plots it onto the provided `ax`.
 
     Args:
@@ -510,7 +510,7 @@ class PlotAggregator:
     @staticmethod
     def discover_qubit_names(file_names: list[str]) -> set[str]:
         """Finds all occurrences of 'qbX' in a list of strings.
-        
+
         Where X is one or more digits. Each string's results are returned
         as a set of unique qubit names.
 
@@ -548,7 +548,7 @@ class PlotAggregator:
         **plot_kwargs,
     ):
         """Plots figures on a grid based on the qubit names.
-        
+
         And figure information. Uses fig_from_measurement_plot_func
 
         Args:

@@ -628,6 +628,82 @@ class Device(Instrument):
             self.set_interaction_frequency(qbi, qbj, int_freq, cz_pulse_name,
                                            update)
 
+    # FIXME this method could be shared with a mock device object to make it
+    #  available in the analysis. See an example in
+    #  pycqed/instrument_drivers/mock_qcodes_special_classes.
+    def get_interactions_for_plotting(
+            self, involved_qubits=None, cz_pulse_name=None,
+    ):
+        """
+        Gets the interaction points between qubits and their direct neighbors.
+
+        This can be useful e.g. to indicate in defect mode spectroscopy plots.
+
+        Args:
+            cz_pulse_name: CZ gate type to consider
+            involved_qubits: Set of qubits to consider. Specifying a strict
+                subset of self.qubits allows to ignore qubits, e.g. if they
+                are not involved in the CZ gates of a particular experiment
+
+        Returns: a dict of the form: {
+                'interaction_freqs': {
+                    {
+                        'qb3': {'qb4': (5262961708.784315, 'ge'), ...},
+                        'qb4': {'qb3': (5262961708.784315, 'ef'), ...},
+                        ...
+                    },
+                'interaction_amps': # same with amplitudes instead of freqs
+            }
+            The second entry of each tuple indicates the transition whose
+            frequency is indicated as first entry.
+            FIXME Currently interaction_freqs contains ge frequencies for
+             high- and ef for low-frequency qubits, while interaction_amps
+             arbitrarily labels the corresponding amplitudes as ge,
+             since this was the easiest way to implement this method.
+        """
+        if cz_pulse_name is None:
+            cz_pulse_name = self.default_cz_gate_name()
+        if involved_qubits is None:
+            involved_qubits = self.qubits
+
+        int_freqs = {}
+        int_amps = {}
+
+        for qbm in involved_qubits:
+            # Get all gates involving qbm and a qubit in involved_qubits
+            int_freqs_qbm = self.get_interaction_frequencies(
+                qubit_pairs=[
+                    (qba, qbb) for qba in involved_qubits for qbb in
+                    involved_qubits
+                    if [qba.name, qbb.name] in self.connectivity_graph()
+                       or [qbb.name, qba.name] in self.connectivity_graph()
+                ])
+
+            int_freqs_qbm = {
+                [qbg for qbg in gate if qbg.name != qbm.name][0]: v
+                for gate, v in int_freqs_qbm.items() if qbm in gate}
+            int_neighbors = list(int_freqs_qbm)  # qb objects are needed below
+            int_freqs[qbm.name] = {
+                qb.name: (
+                    v,
+                    'ef' if qbm.ge_freq() > qb.ge_freq() else 'ge'
+                ) for qb, v in int_freqs_qbm.items()}
+
+            # Assumes that high/low qubit <-> amplitude/amplitude2
+            int_amps[qbm.name] = {
+                qb.name: (
+                    self.get_pulse_par(
+                        cz_pulse_name, qbm.name, qb, 'amplitude' if
+                        qbm.ge_freq() > qb.ge_freq() else 'amplitude2')(),
+                    'ge',
+                )
+                for qb in int_neighbors
+            }
+        return {
+            'interaction_freqs': int_freqs,
+            'interaction_amps': int_amps,
+        }
+
     def set_pulse_par(self, gate_name, qb1, qb2, param, value):
         """
         Sets a value to a two qubit gate parameter.
@@ -1090,7 +1166,7 @@ class Device(Instrument):
         if self.qubit_coordinates:
             kw.setdefault('qubit_to_coord',
                           lambda qbn: self.qubit_coordinates[qbn])
-        
+
         if aggregator is None:
             # when no aggregator is used, call directly the underlying
             # plot on qubit grid function.

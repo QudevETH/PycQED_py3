@@ -161,7 +161,7 @@ class Singleshot_Readout_Analysis(ba.BaseDataAnalysis):
                                               **guess0)
                 fitres1 = gauss2D_model_1.fit(data=H1.transpose(),  x=x2d, y=y2d,
                                               **guess1)
-                
+
                 fr0 = fitres0.best_values
                 fr1 = fitres1.best_values
                 x0 = fr0['center_x']
@@ -1997,7 +1997,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
                 list(self.channel_map.keys())
             )
         self.proc_data_dict['cal_points_list'] = cal_points_list
-        
+
         means = np.zeros((len(cal_points_list), len(observables)))
         cal_readouts = set()
         for i, cal_point in enumerate(cal_points_list):
@@ -2425,7 +2425,7 @@ class SingleQubitResetAnalysis(ba.BaseDataAnalysis):
         qubit_idx = self.options_dict.get('qubit_idx')
         nr_qubits = len(self.raw_data_dict['value_names'])
         nr_bins = self.options_dict.get('nr_bins', 100)
-        
+
         ######################################
         # extract shots to individual arrays #
         ######################################
@@ -2438,7 +2438,7 @@ class SingleQubitResetAnalysis(ba.BaseDataAnalysis):
         self.proc_data_dict['channel_idx'] = self.raw_data_dict['value_names'] \
             .index(self.options_dict['channel_name'])
         channel_idx = self.proc_data_dict['channel_idx']
-        
+
         readout_idxs = np.arange(len(self.raw_data_dict['measured_values'][0]))
         for i in range(nr_readout):
             mask0 = (readout_idxs % nr_readout == i)
@@ -2573,7 +2573,7 @@ class SingleQubitResetAnalysis(ba.BaseDataAnalysis):
         nr_reset = self.options_dict.get('nr_reset')
         nr_readout = nr_reset + 1
         qubit_idx = self.options_dict.get('qubit_idx')
-        
+
         # readout histograms
         for i in range(nr_readout):
             self.plot_dicts['ro_{}_hist_qb_idx{}'.format(i+1, qubit_idx)] = {

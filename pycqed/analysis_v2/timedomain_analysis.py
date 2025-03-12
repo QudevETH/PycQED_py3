@@ -1923,7 +1923,8 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
 
         return shots_per_qb
 
-    def _get_preselection_masks(self, presel_shots_per_qb, preselection_qbs=None,
+    @staticmethod
+    def _get_preselection_masks(presel_shots_per_qb, preselection_qbs=None,
                                 predict_proba=True,
                                 classifier_params=None,
                                 preselection_state_int=0):
@@ -3894,6 +3895,8 @@ class FluxAmplitudeSweepAnalysis(MultiQubit_TimeDomain_Analysis):
 
 class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
     def process_data(self):
+        self.default_options['plot_raw_data'] = False
+        self.default_options['plot_proj_data'] = False
         super().process_data()
 
         pdd = self.proc_data_dict
@@ -3902,35 +3905,52 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
         self.amps = OrderedDict()
         self.freqs = OrderedDict()
         for qbn in self.qb_names:
+            # Extract sweep parameter names corresponding to typical
+            # parameters which get swept, e.g. pulse length. In case several
+            # parameters are found, take the first one.
             len_key = [pn for pn in self.mospm[qbn] if 'length' in pn]
             if len(len_key) == 0:
                 raise KeyError('Couldn"t find sweep points corresponding to '
                                'flux pulse length.')
+            len_key = len_key[0]
             self.lengths[qbn] = self.sp.get_sweep_params_property(
-                'values', 0, len_key[0])
+                'values', 'all', len_key)
 
             amp_key = [pn for pn in self.mospm[qbn] if 'amp' in pn]
-            if len(len_key) == 0:
+            if len(amp_key) == 0:
                 raise KeyError('Couldn"t find sweep points corresponding to '
                                'flux pulse amplitude.')
+            amp_key = amp_key[0]
             self.amps[qbn] = self.sp.get_sweep_params_property(
-                'values', 1, amp_key[0])
+                'values', 'all', amp_key)
 
             freq_key = [pn for pn in self.mospm[qbn] if 'freq' in pn]
             if len(freq_key) == 0:
                 self.freqs[qbn] = None
             else:
+                freq_key = freq_key[0]
                 self.freqs[qbn] =self.sp.get_sweep_params_property(
-                    'values', 1, freq_key[0])
-
+                    'values', 'all', freq_key)
         nr_amps = len(self.amps[self.qb_names[0]])
         nr_lengths = len(self.lengths[self.qb_names[0]])
 
-        # make matrix out of vector
-        data_reshaped_no_cp = {qb: np.reshape(deepcopy(
-                pdd['data_to_fit'][qb][
-                :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]).flatten(),
-                (nr_amps, nr_lengths)) for qb in self.qb_names}
+        data_reshaped_no_cp = {
+            qb: pdd['data_to_fit'][qb][
+                :, :pdd['data_to_fit'][qb].shape[1]-nr_cp]
+            for qb in self.qb_names}
+
+        if self.sp.find_parameter(len_key)==1:
+            # Transpose from (amp, len) to (len, amp) in terms of sweep points.
+            # Note that data_to_fit is transposed w.r.t. sweep points,
+            # so the final shape of the data is (amp, len), see FIXME of
+            # self.proc_data_dict
+            data_reshaped_no_cp = {
+                k: v.T for k, v in data_reshaped_no_cp.items()
+            }
+
+        if nr_lengths==1:
+            # Cannot fit T1 decay in this case
+            self.do_fitting = False
 
         pdd['data_reshaped_no_cp'] = data_reshaped_no_cp
 
@@ -3972,6 +3992,7 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     pdd['mask'][qb][i] = False
 
     def prepare_plots(self):
+        super().prepare_plots()
         pdd = self.proc_data_dict
         rdd = self.raw_data_dict
 
@@ -3981,8 +4002,8 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                     continue
                 suffix = '_amp' if p == 0 else '_freq'
                 mask = pdd['mask'][qb]
-                xlabel = r'Flux pulse amplitude' if p == 0 else \
-                    r'Derived qubit ge frequency'
+                xlabel = f'{qb} flux pulse amplitude' if p == 0 else \
+                    f'Derived {qb} ge frequency'
 
                 if self.do_fitting:
                     # Plot T1 vs flux pulse amplitude
@@ -4001,32 +4022,34 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         'color': 'blue',
                     }
 
-                # Plot rotated integrated average in dependece of flux pulse
-                # amplitude and length
-                label = f'T1_color_plot_{qb}{suffix}_{self.data_to_fit[qb]}'
-                self.plot_dicts[label] = {
-                    'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
-                    'plotfn': self.plot_colorxy,
-                    'linestyle': '-',
-                    'xvals': param_values[qb][mask],
-                    'yvals': self.lengths[qb],
-                    'zvals': np.transpose(pdd['data_reshaped_no_cp'][qb][mask]),
-                    'xlabel': xlabel,
-                    'xunit': 'V' if p == 0 else 'Hz',
-                    'ylabel': r'Flux pulse length',
-                    'yunit': 's',
-                    'clabel': self.get_yaxis_label(qb)
-                }
-
+                if len(self.lengths[qb])>1:
+                    # Plot rotated integrated average in dependece of flux pulse
+                    # amplitude and length
+                    label = f'T1_color_plot_{qb}{suffix}_{self.data_to_fit[qb]}'
+                    self.plot_dicts[label] = {
+                        'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
+                        'plotfn': self.plot_colorxy,
+                        'linestyle': '-',
+                        'xvals': param_values[qb][mask],
+                        'yvals': self.lengths[qb],
+                        'zvals': np.transpose(pdd['data_reshaped_no_cp'][qb][mask]),
+                        'xlabel': xlabel,
+                        'xunit': 'V' if p == 0 else 'Hz',
+                        'ylabel': r'Flux pulse length',
+                        'yunit': 's',
+                        'clabel': self.get_yaxis_label(qb)
+                    }
                 # Plot population loss for the first flux pulse length as a
                 # function of flux pulse amplitude
                 label = f'Pop_loss_{qb}{suffix}_{self.data_to_fit[qb]}'
+                yvals = 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask]
                 self.plot_dicts[label] = {
+                    'fig_id': label,
                     'title': rdd['measurementstring'] + '\n' + rdd['timestamp'],
                     'plotfn': self.plot_line,
                     'linestyle': '-',
                     'xvals': param_values[qb][mask],
-                    'yvals': 1 - pdd['data_reshaped_no_cp'][qb][:, 0][mask],
+                    'yvals': yvals,
                     'xlabel': xlabel,
                     'xunit': 'V' if p == 0 else 'Hz',
                     'ylabel': r'Pop. loss {} @ {:.0f} ns'.format(
@@ -4034,7 +4057,27 @@ class T1FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                         self.lengths[qb][0]/1e-9
                     ),
                     'yunit': '',
+                    'setlabel': 'Pop. loss',
                 }
+                # interaction_freqs/_amps
+                int_vals = self.get_param_value('interaction'+suffix+'s', {})
+                int_vals_qb = int_vals.get(qb, {})
+                for i, (int_qb, int_val) in enumerate(int_vals_qb.items()):
+                    self.plot_dicts[label + '_vline_' + int_qb] = {
+                        'fig_id': label,
+                        'plotfn': self.plot_vlines,
+                        'x': int_val[0],
+                        'ymin': np.min(yvals),
+                        'ymax': np.max(yvals),
+                        'colors': f'C{i}',
+                        'line_kws': {'alpha': 0.5},
+                        'linestyles': '--',
+                        # When using get_interactions_for_plotting from the device object,
+                        # int_val[1] is currently either 'ge' or 'ef', depending on the
+                        # qubit, see the fixme there
+                        'setlabel': int_val[1] + ' <-> ' + int_qb,
+                        'do_legend': True,
+                    }
 
             # Plot all fits in single figure
             if self.get_param_value('all_fits', False) and self.do_fitting:
@@ -4302,9 +4345,9 @@ class T2FrequencySweepAnalysis(MultiQubit_TimeDomain_Analysis):
                 xvals = self.metadata['amplitudes'][mask] if \
                     self.metadata['frequencies'] is None else \
                     self.metadata['frequencies'][mask]
-                xlabel = r'Flux pulse amplitude' if \
+                xlabel = f'{qb} flux pulse amplitude' if \
                     self.metadata['frequencies'] is None else \
-                    r'Derived qubit ge frequency'
+                    f'Derived {qb} ge frequency'
                 # Final T2(freq or amp) plot
                 self.plot_dicts[label] = {
                     'title': rdd['measurementstring'] +
@@ -4330,8 +4373,12 @@ class MeasurementInducedDephasingAnalysis(MultiQubit_TimeDomain_Analysis):
         pdd = self.proc_data_dict
 
         try: # Extract data
+            amp_keys = {
+                qbn: [k for k in self.mospm[qbn] if 'amp' in k][0]
+                for qbn in self.qb_names
+            }
             pdd['amps_reshaped'] = {qbn: pdd['sweep_points_2D_dict'][qbn][
-                'amplitude'] for qbn in self.qb_names}
+                amp_keys[qbn]] for qbn in self.qb_names}
             pdd['phases_reshaped'] = [pdd['sweep_points_dict'][
                 self.qb_names[0]]['msmt_sweep_points']] * len(pdd[
                     'amps_reshaped'][self.qb_names[0]])
@@ -6598,8 +6645,12 @@ class QScaleAnalysis(MultiQubit_TimeDomain_Analysis, PhaseErrorsAnalysisMixin):
                 # As a workaround for a weird bug letting crash the analysis
                 # every second time, we do not use lmfit.models.ConstantModel
                 # and lmfit.models.LinearModel, but create custom models.
+                # FIXME this float is apparently needed to avoid an np.float64.
+                #  With a np.float64, in lmfit hasattr(x,'__array__')
+                #  detects it incorrectly as an array, and model.fit then
+                #  fails when trying to access its length
                 if msmt_label == '_xx':
-                    model = lmfit.Model(lambda x, c: c)
+                    model = lmfit.Model(lambda x, c: float(c))
                     guess_pars = model.make_params(c=np.mean(data))
                 else:
                     model = lmfit.Model(lambda x, slope, intercept:
@@ -9848,7 +9899,7 @@ class MultiQutrit_Singleshot_Readout_Analysis(MultiQubit_TimeDomain_Analysis):
             'legend_pos': 'upper right',
             'grid': True,
         }
-        
+
         textstr = f'best fidelity: {best_fidelity * 100:.2f}%'
 
         self.plot_dicts[vline_key] = {
@@ -11293,8 +11344,8 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         if len(hsp) * len(ssp) == len(LO_dBm.flatten()):
             # sweep points are aligned on grid
 
-            # The arrays hsp and ssp define the edges of a grid of measured 
-            # points. We reshape the arrays such that each data point 
+            # The arrays hsp and ssp define the edges of a grid of measured
+            # points. We reshape the arrays such that each data point
             # LO_dBm[i] corresponds to the sweep point VI[i], VQ[i]
             self.proc_data_dict['sweeppoints_are_grid'] = True
             # save raw format of data for plotting with plot_colorxy
@@ -11305,7 +11356,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
             VI, VQ = np.meshgrid(hsp, ssp)
             VI = VI.flatten()
             VQ = VQ.flatten()
-            LO_dBm = LO_dBm.T.flatten()            
+            LO_dBm = LO_dBm.T.flatten()
         else:
             # sweep points are random
             self.proc_data_dict['sweeppoints_are_grid'] = False
@@ -11365,7 +11416,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
         timestamp = self.timestamps[0]
 
         leakage = pdict['LO_leakage']
-        leakage_dBm_amp_zrange = [1.1*np.min(leakage), 
+        leakage_dBm_amp_zrange = [1.1*np.min(leakage),
                                   0.9*np.max(leakage)]
 
         if pdict['sweeppoints_are_grid']:
@@ -11410,7 +11461,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'legend_frameon': True
             }
 
-        plot_name_dict = {ch: f'V_{ch}_vs_LO_magn' for ch in ['I', 'Q']} 
+        plot_name_dict = {ch: f'V_{ch}_vs_LO_magn' for ch in ['I', 'Q']}
         for ch in ['I', 'Q']:
             self.plot_dicts[f'raw_V_{ch}_vs_LO_magn'] = {
                 'fig_id': plot_name_dict[ch],
@@ -11507,7 +11558,7 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                 'setlabel': '$V_\\mathrm{I}$' + rf' ={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
-       
+
             self.plot_dicts[f'fit_V_I_vs_LO_magn'] = {
                 'fig_id': plot_name_dict['I'],
                 'plotfn': self.plot_line,
@@ -11549,8 +11600,6 @@ class MixerCarrierAnalysis(MultiQubit_TimeDomain_Analysis):
                             rf'={V_I_opt*1e3:.1f}$\,$mV',
                 'do_legend': True,
             }
-            
-                
 
 
 class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
@@ -11655,7 +11704,7 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
         phase = pdict['phase']
 
         sideband_dBm_amp = pdict['sideband_dBm_amp']
-        sideband_dBm_amp_zrange = [1.1*np.min(sideband_dBm_amp), 
+        sideband_dBm_amp_zrange = [1.1*np.min(sideband_dBm_amp),
                                    0.9*np.max(sideband_dBm_amp)]
 
         timestamp = self.timestamps[0]
@@ -11758,9 +11807,9 @@ class MixerSkewnessAnalysis(MultiQubit_TimeDomain_Analysis):
             # and make it 10 % larger in both axes
             size_offset_alpha = 0.05*(np.max(alpha)-np.min(alpha))
             size_offset_phase = 0.05*(np.max(phase)-np.min(phase))
-            alpha_edge = np.linspace(np.min(alpha) - size_offset_alpha, 
+            alpha_edge = np.linspace(np.min(alpha) - size_offset_alpha,
                             np.max(alpha) + size_offset_alpha, 250)
-            phase_edge = np.linspace(np.min(phase) - size_offset_phase, 
+            phase_edge = np.linspace(np.min(phase) - size_offset_phase,
                             np.max(phase) + size_offset_phase, 250)
             alpha_plot, phase_plot = np.meshgrid(alpha_edge, phase_edge)
 

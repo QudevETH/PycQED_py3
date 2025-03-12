@@ -16,14 +16,14 @@ log = logging.getLogger(__name__)
 
 class Sequence:
     """
-    A Sequence consists of several segments, which can be played back on the 
+    A Sequence consists of several segments, which can be played back on the
     AWGs sequentially.
     """
 
     RENAMING_SEPARATOR = "+"
     AMPLITUDE_ROUNDING_DIGITS = 7
-    """Specifies the rounding precision when processing waveform amplitudes 
-    in harmonize_amplitude method. If this parameter has value n, then the 
+    """Specifies the rounding precision when processing waveform amplitudes
+    in harmonize_amplitude method. If this parameter has value n, then the
     waveform amplitudes will be rounded to the n-th digit of V (volt)."""
 
     def __init__(self, name, segments=()):
@@ -42,7 +42,7 @@ class Sequence:
         self.extend(segments)
         self.is_resolved = False
         self.awg_scaling_factors = dict()
-        """A list of AWG names whose pulse amplitudes has processed with 
+        """A list of AWG names whose pulse amplitudes has processed with
         method 'self.harmonize_amplitude'."""
 
     def add(self, segment):
@@ -80,7 +80,7 @@ class Sequence:
                                      trigger_groups=None,
                                      awg_sequences=None):
         """
-        Calculates and returns 
+        Calculates and returns
             * waveforms: a dictionary of waveforms used in the sequence,
                 indexed by their hash value
             * sequences: For each awg, a list of elements, each element
@@ -183,8 +183,11 @@ class Sequence:
                                         codewords={cw})
                                     waveforms[h] = wf.popitem()[1].popitem()[1]\
                                                      .popitem()[1].popitem()[1]
+                    # FIXME this should rather happen in Segment
                     if elname in seg.acquisition_elements:
                         metadata['acq'] = seg.acquisition_mode
+                        metadata['log_acquisition'] = element_metadata.get(
+                            elname, {}).get('log_acquisition', True)
                     else:
                         metadata['acq'] = False
                     metadata['allow_filter'] = seg.allow_filter
@@ -273,14 +276,14 @@ class Sequence:
 
     def harmonize_amplitude(self, awg):
         """Rescale waveform amplitudes such that the largest pulse amplitude
-        in an element is the same as the largest in that sequence. The 
-        scaling factor is saved in the dictionary scaling_factors and 
-        passed to element metadata, such that the original waveform can be 
-        retrieved when generating command table entries. This allows reusing 
-        waveforms to the largest extent based on wave hashes. Note that 
-        the rescaling will be skipped on the target AWG modules where command 
+        in an element is the same as the largest in that sequence. The
+        scaling factor is saved in the dictionary scaling_factors and
+        passed to element metadata, such that the original waveform can be
+        retrieved when generating command table entries. This allows reusing
+        waveforms to the largest extent based on wave hashes. Note that
+        the rescaling will be skipped on the target AWG modules where command
         table is not activated.
-        
+
         Args:
             awg: (str) AWG name to be processed.
 
@@ -420,22 +423,41 @@ class Sequence:
 
         return scaling_factors
 
-    def n_acq_elements(self, per_segment=False):
+    def n_acq_elements(self, per_segment=False,
+                       include_non_logged_acquisitions=False):
         """
         Gets the number of acquisition elements in the sequence.
         Args:
             per_segment (bool): Whether or not to return the number of
                 acquisition elements per segment. Defaults to False.
+            include_non_logged_acquisitions (bool): If True, returns the
+                total number of acquisitions including those which are not
+                logged in the data returned by the acquisition device
 
         Returns:
             number of acquisition elements (list (if per_segment) or int)
-
+            non_logged_acqs_preceed_logged_acqs (bool): checks if non-logged
+                acquisitions precede logged acquisitions in all segments of
+                the sequence.
         """
-        n_readouts = [len(seg.acquisition_elements)
-                      for seg in self.segments.values()]
+        # e.g. [[False, False, True...]]  where True indicates a logged acq
+        acqs_per_seg = [
+            [seg.element_metadata.get(e, {}).get('log_acquisition',True)
+             for e in seg.acquisition_elements
+             ] for seg in self.segments.values()
+        ]
+        non_logged_acqs_preceed_logged_acqs = all(
+            [[acqs[i]<=acqs[i+1] for i in range(len(acqs)-1)]
+             for acqs in acqs_per_seg])
+        n_acqs = [sum(
+            [acq or include_non_logged_acquisitions for acq in acqs]
+        ) for acqs in acqs_per_seg]
         if not per_segment:
-            n_readouts = np.sum(n_readouts)
-        return n_readouts
+            n_acqs = np.sum(n_acqs)
+        if include_non_logged_acquisitions:
+            return n_acqs, non_logged_acqs_preceed_logged_acqs
+        else:
+            return n_acqs
 
     def n_segments(self):
         """
@@ -474,11 +496,33 @@ class Sequence:
         Wrapper for repeated readout
         :param pulse_name:
         :param operation_dict:
-        :param sequence:
         :return:
         """
-        return self.repeat(pulse_name, operation_dict,
-                           (self.n_acq_elements(), 1))
+
+        n_acq_per_seg, non_logged_preceed_logged = self.n_acq_elements(
+            per_segment=True, include_non_logged_acquisitions=True)
+        n_logged_acq_per_seg = self.n_acq_elements(per_segment=True)
+        n_non_logged_acq_per_seg = \
+            np.array(n_acq_per_seg) - np.array(n_logged_acq_per_seg)
+        if sum(n_non_logged_acq_per_seg):  # If there are non logged acqs
+            if np.unique(n_non_logged_acq_per_seg).size > 1 or\
+                    np.unique(n_logged_acq_per_seg).size > 1:
+                raise ValueError(
+                    "All segments in sequence must have the same number of"
+                    "non-logged acquisitions, as well as logged acquisitions, "
+                    "when using repeat readout patterns, but currently"
+                    f"{n_non_logged_acq_per_seg=} and {n_logged_acq_per_seg=}")
+            if not non_logged_preceed_logged:
+                raise NotImplementedError(
+                    "All non-logged acquisitions should happen before "
+                    "logged acquisitions in a segment when using repeat "
+                    "readout patterns!")
+            pattern = (self.n_acq_elements(),
+                       (n_non_logged_acq_per_seg[0], 1),
+                       (n_logged_acq_per_seg[0], 1))
+        else:
+            pattern = (self.n_acq_elements(), 1)
+        return self.repeat(pulse_name, operation_dict, pattern)
 
 
     @staticmethod
@@ -723,7 +767,7 @@ class Sequence:
         for seg_name, seg in self.segments.items():
             string_repr += str(seg) + "\n"
         return string_repr
-    
+
     def __deepcopy__(self, memo):
         cls = self.__class__
         new_seq = cls.__new__(cls)

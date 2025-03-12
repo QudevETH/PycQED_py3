@@ -330,6 +330,11 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 chid_to_hash = awg_sequence_element['no_codeword']
 
                 acq = metadata.get('acq', False)
+                log_acquisition = metadata.get('log_acquisition', True)
+                if not log_acquisition:
+                    raise NotImplementedError(
+                        'SHFQA sequencer currently does not support *not* '
+                        'returning acquired data!')
                 h = tuple([chid_to_hash.get(chid, None) for chid in chids])
                 wave_idx = hash_to_index_map.get(h, None)
                 wave_mask = f'QA_GEN_{wave_idx}' if wave_idx is not None \

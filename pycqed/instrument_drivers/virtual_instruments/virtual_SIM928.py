@@ -97,7 +97,7 @@ class VirtualSIM928(Instrument):
         """
         Query the SIM900 mainframe for which slots have a SIM928 module present.
         In the virtual version, all modules are present.
-    
+
         Returns:
              A list of slot numbers where a SIM928 module is present (starting
                  from 1)

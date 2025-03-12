@@ -43,8 +43,8 @@ def _with_pulsar_tmp_vals(f):
 
 class Segment:
     """
-    Consists of a list of UnresolvedPulses, each of which contains information 
-    about in which element the pulse is played and when it is played 
+    Consists of a list of UnresolvedPulses, each of which contains information
+    about in which element the pulse is played and when it is played
     (reference point + delay) as well as an instance of class Pulse.
 
     Property distortion_dicts: a key of the form {AWG}_{channel} specifies
@@ -64,13 +64,13 @@ class Segment:
     ]
 
     PHASE_ROUNDING_DIGITS = 5
-    """Specifies the rounding precision when processing phases 
-    in resolve_Z_gates method. If this parameter has value n, then the 
+    """Specifies the rounding precision when processing phases
+    in resolve_Z_gates method. If this parameter has value n, then the
     waveform phase will be rounded to the n-th digit of degree."""
 
     FREQUENCY_ROUNDING_DIGITS = 3
-    """Specifies the rounding precision when processing frequencies 
-    in _internal_mod_update_params method. If this parameter has value n, then 
+    """Specifies the rounding precision when processing frequencies
+    in _internal_mod_update_params method. If this parameter has value n, then
     the waveform frequency will be rounded to the n-th digit of Hz."""
 
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
@@ -233,6 +233,10 @@ class Segment:
             # add element to dict of acquisition elements
             self.acquisition_elements.setdefault(elname + suffix, [])
             self.acquisition_elements[elname + suffix].append(mobj)
+            # Indicates if acquired data should be returned by the acq dev
+            self.element_metadata.setdefault(elname + suffix, {})
+            self.element_metadata[elname + suffix]['log_acquisition'] = \
+                pars_copy['log_acquisition']
         elif pars_copy.get('element_name') is None:
             pars_copy['element_name'] = 'default'
         pars_copy['element_name'] += suffix
@@ -670,8 +674,6 @@ class Segment:
         # Update dictionary {channel: element_name} to attribute
         # self.elements_on_channel
         self.update_channel_elements()
-        # Create metadata dictionary entries for all element in this segment
-        self._initialize_element_metadata()
 
         for channel in self.elements_on_channel.keys():
             # Only look at I channel internal modulation configurations. Q
@@ -880,6 +882,9 @@ class Segment:
                     pulse.alpha = 1
                     pulse.phi_skew = 0
 
+            # Ensures that these dictionaries exist before adding mod_config
+            self.element_metadata.setdefault(elname, {})
+            self.element_metadata[elname].setdefault("mod_config", {})
             self.element_metadata[elname]["mod_config"][channel] = \
                 channel_metadata
 
@@ -943,13 +948,6 @@ class Segment:
                     else:
                         frequency_bin[rounded_freq] = 1
         return max(frequency_bin.keys())
-
-    def _initialize_element_metadata(self):
-        """Create metadata dictionary entries for all elements in this
-        segment."""
-
-        for elname in self.elements.keys():
-            self.element_metadata[elname] = {"mod_config": {}}
 
     def add_charge_compensation(self):
         """
@@ -2494,7 +2492,7 @@ class Segment:
                     num_two_qb += 1
                     pulse_name = op_code.rstrip('0123456789. ')
                     gate_type = 'CZ'
-                    if len(val := op_code[len(pulse_name):]):
+                    if len(val := op_code[len(pulse_name):].rstrip(' ')):
                         gate_formatted = f'{gate_type}{(factor * float(val)):.1f}'.replace(
                             '.0', '')
                         output += f'\\draw({t / tscale:.4f},-{qb})  node[CZdot] {{}} -- ({t / tscale:.4f},-{qbt}) node[gate, minimum height={l / tscale * 100:.4f}mm] {{\\tiny {gate_formatted}}};\n'
@@ -2526,7 +2524,8 @@ class Segment:
                         num_single_qb += 1
         qb_output = ''
         for qb, qb_name in enumerate(qb_names):
-            qb_output += rf'\draw ({tmin / tscale:.4f},-{qb}) node[left] {{{qb_name}}} -- ({tmax / tscale:.4f},-{qb});\n'
+            qb_output += (f'\\draw ({tmin / tscale:.4f},-{qb}) node[left] '
+                          f'{{{qb_name}}} -- ({tmax / tscale:.4f},-{qb});\n')
         output = start_output + qb_output + output + z_output
         axis_ycoord = -len(qb_names) + .4
         output += f'\\foreach\\x in {{{tmin / tscale},{tmin / tscale + .2},...,{tmax / tscale}}} \\pgfmathprintnumberto[fixed]{{\\x}}{{\\tmp}} \\draw (\\x,{axis_ycoord})--++(0,-.1) node[below] {{\\tmp}} ;\n'
