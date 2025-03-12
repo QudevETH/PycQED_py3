@@ -1346,6 +1346,8 @@ def get_multi_xeb_results_from_dd(dd2, dd1=None, interleaved_CZ=False, **kw):
     if interleaved_CZ:
         # Extracting the error for one double cycle. Since the pulse sequence:
         # 1qb - CZ180 - 1qb - CZphi is implemented as two consecutive cycles m.
+        # This assumes that errors are independent in each cycle and don't
+        # cancel out
         mto2m = lambda e: 1-(1-e)**2
         results = {
             tp: {
