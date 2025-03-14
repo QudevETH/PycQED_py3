@@ -40,14 +40,14 @@ class PycqedInstrumentMixin(ABC):
         >>> instr.get('nonexistent_parameter')
         """
         if len(args) > 1:
-            raise ValueError(f'Pulsar.get accepts 1 or 2 arguments, but '
+            raise ValueError(f'{self.name}.get accepts 1 or 2 arguments, but '
                              f'{len(args) + 1} were provided.')
         if param_name not in self.parameters and len(args) == 1:
             return args[0] # interpret second argument as default value
         else:
             # qcodes 0.49 deprecated self.get()/self.set() for params;
             # use the form below instead
-            return self.parameters[param_name].get(*args)
+            return self.parameters[param_name].get()
 
     def set(self, param_name, value):
         """Shortcut for setting a parameter from its name.
@@ -93,6 +93,13 @@ class Instrument(PycqedInstrumentMixin, QcodesInstrument,
 
 
 class InstrumentModule(PycqedInstrumentMixin, QcodesInstrumentModule):
+    """
+    Extends QcodesInstrumentModule to use the compatibility fixes in
+    PycqedInstrumentMixin
+
+    FIXME: this is currently only used in
+     measurement.waveform_control.reset_schemes, is this needed?
+    """
     pass
 
 

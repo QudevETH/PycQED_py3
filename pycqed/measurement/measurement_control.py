@@ -14,7 +14,6 @@ import numbers
 import pycqed.version
 from pycqed.utilities import general
 from pycqed.utilities.io import hdf5 as h5d
-from pycqed.utilities.get_default_datadir import get_default_datadir
 
 # used for saving instrument settings
 from pycqed.instrument_drivers import instrument as pycqedins
@@ -70,7 +69,7 @@ class MeasurementControl(Instrument):
 
     def __init__(self, name: str,
                  plotting_interval: float=3,
-                 datadir: str=get_default_datadir(),
+                 datadir: str=None,
                  live_plot_enabled: bool=True, verbose: bool=True):
         super().__init__(name=name)
 
@@ -271,9 +270,16 @@ class MeasurementControl(Instrument):
         :param label: (optional str) a label to be used in the filename
             (will be appended to the default label Instrument_settings)
         '''
+
+        if self.datadir() is None:
+            log.error('datadir is None. Please set it.')
+            return None
+
         label = '' if label is None else '_' + label
+
         self.set_measurement_name('Instrument_settings' + label)
         self.last_timestamp(self.get_datetimestamp())
+
         if self.settings_file_format() == 'hdf5':
             with h5d.Data(name=self.get_measurement_name(),
                           datadir=self.datadir(),
@@ -327,6 +333,10 @@ class MeasurementControl(Instrument):
                 self.detector_function.finish()
             except Exception:
                 pass  # no need to raise an exception if cleanup fails
+
+        if self.datadir() is None:
+            log.error('datadir is None. Please set it.')
+            return None
 
         self.timer = Timer("MeasurementControl")
         # reset properties that are used by get_percdone
@@ -1833,6 +1843,10 @@ class MeasurementControl(Instrument):
             Default 'xb' creates the file and returns error if file exist
             'wb' to overwrite existing file
         '''
+
+        if self.datadir() is None:
+            log.error('datadir is None. Please set it.')
+            return None
 
         if self.settings_file_format() == 'hdf5':
             if not hasattr(self, 'station'):

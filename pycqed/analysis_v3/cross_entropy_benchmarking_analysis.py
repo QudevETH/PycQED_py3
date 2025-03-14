@@ -1306,20 +1306,27 @@ def get_2qb_xeb_dd(timestamp, clear_some_memory=True, timer=None,
     return dd2
 
 
-def get_multi_xeb_results_from_dd(dd2, dd1=None, **kw):
+def get_multi_xeb_results_from_dd(dd2, dd1=None, interleaved_CZ=False, **kw):
     """
     Helper method to extract various error rates from analysed XEB measurements
 
     Args:
         dd2 (dict): Previously analysed two-qubit multi-cphase XEB data dict
         dd1 (dict): Previously analysed single-qubit XEB data dict
+        interleaved_CZ (bool): Indicates that the measurement has been
+            performed by setting every second CZphi gate to a fixed CZ180 gate,
+            to improve randomization in case of weakly entangling CZphi gates.
     """
-    results = {}
+    results = {
+        'error': {},
+        'leakage': {},
+    }
     for meas_obj_names, dd2_task in dd2.items():
-        results[meas_obj_names] = {}
+        results['error'][meas_obj_names] = {}
+        results['leakage'][meas_obj_names] = {}
         for dd in dd2_task:
             cphase = dd['exp_metadata']['cphase']
-            results[meas_obj_names][cphase] = res = {}
+            results['error'][meas_obj_names][cphase] = res = {}
             res['tot'] = calculate_cz_error(
                 dd, dd1, meas_obj_names=meas_obj_names,
                 metric='fidelity', error_type='average', **kw)
@@ -1331,6 +1338,50 @@ def get_multi_xeb_results_from_dd(dd2, dd1=None, **kw):
                 'stderr': np.linalg.norm(
                     [res['tot']['stderr'], res['inc']['stderr']], 2),
             }
+            results['leakage'][meas_obj_names][cphase] = res = {}
+            for key in ['any'] + list(meas_obj_names):
+                p = dd[','.join(meas_obj_names)]['fit_res_leakage'][
+                    f'{key}_leaked'].params['pu']
+                res[key] = {'value': p.value, 'stderr': p.stderr}
+    if interleaved_CZ:
+        # Extracting the error for one double cycle. Since the pulse sequence:
+        # 1qb - CZ180 - 1qb - CZphi is implemented as two consecutive cycles m.
+        # This assumes that errors are independent in each cycle and don't
+        # cancel out
+        mto2m = lambda e: 1-(1-e)**2
+        results = {
+            tp: {
+                mobjn: {
+                    cp: {
+                        k: {
+                            'value': mto2m(res[k]['value']),
+                            'stderr': mto2m(res[k]['stderr']),
+                        } for k in res
+                    } for cp, res in res_mobjn.items()
+                } for mobjn, res_mobjn in res_type.items()
+            } for tp, res_type in results.items()
+        }
+        if 'nogate' in list(list(results.values())[0].values())[0]:
+            # Extracting the CZphi error from the difference with the
+            # reference measurement (cphase='nogate' skips the CZphi gate)
+            # res_nogate = results_xeb.pop('nogate')
+            results = {
+                tp: {
+                    mobjn: {
+                        cp: {
+                            k: {
+                                'value': res[k]['value']
+                                    - res_mobjn['nogate'][k]['value'],
+                                'stderr': np.sqrt(res[k]['stderr']**2
+                                    + res_mobjn['nogate'][k]['stderr']**2),
+                            } for k in res
+                        } for cp, res in res_mobjn.items()
+                    } for mobjn, res_mobjn in res_type.items()
+                } for tp, res_type in results.items()
+            }
+            for tp in results:
+                for mobjn in results[tp]:
+                    results[tp][mobjn].pop('nogate')
     return results
 
 

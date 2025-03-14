@@ -624,6 +624,29 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             ]
             qb.set(f'ro_freq', ro_freq)
 
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        Sets defaults for analysis kwargs in the case a 2D power sweep
+        was done.
+        Args:
+            analysis_kwargs (dict): keyword arguments for analysis
+            **kw: currently ignored
+
+        Returns: the MultiQubit_Spectroscopy_Analysis instance
+        """
+
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        if 'options_dict' not in analysis_kwargs:
+            analysis_kwargs['options_dict'] = {}
+        if np.any(['ro_amp' in task for task in self.task_list]):
+            analysis_kwargs['options_dict'].setdefault("plot_TwoD_as_curves",
+                                                       True)
+            analysis_kwargs['options_dict'].setdefault("logzscale", True)
+            analysis_kwargs['options_dict'].setdefault("logyscale", True)
+        return super().run_analysis(analysis_kwargs, **kw)
+
     @classmethod
     def gui_kwargs(cls, device):
         d = super().gui_kwargs(device)

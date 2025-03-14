@@ -1,3 +1,21 @@
+"""
+A tooblox for data analysis and processing in quantum experiments.
+
+This module provides various utility functions for data analysis, file handling,
+plotting, and data processing in the context of quantum experiments.
+
+The module includes functions for:
+- Data & file handling and data retrieval/storage
+- Peak and dip finding in datasets
+- Gaussian mixture probability prediction, normalization, and rotation
+- Datetime and timestamp conversions
+- Various plotting functions
+
+Many functions in this module are designed to work with PycQED's data structures
+and experiment workflows. We assume `datadir` will be set in an init script or a
+jupyter notebook cell.
+"""
+
 import logging
 log = logging.getLogger(__name__)
 
@@ -12,7 +30,6 @@ from copy import deepcopy
 from matplotlib.colors import LogNorm
 from matplotlib.colors import LinearSegmentedColormap as lscmap
 from sklearn.mixture import GaussianMixture as GM
-from pycqed.utilities.get_default_datadir import get_default_datadir
 from pycqed.utilities.io import hdf5 as h5d
 from scipy.interpolate import griddata
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -21,7 +38,7 @@ from pycqed.analysis.tools.plotting import *
 from matplotlib import cm
 
 latest_data_match_whole_words = False
-datadir = get_default_datadir()
+datadir = None
 fetch_data_dir = None
 ignore_delegate_plotting = False
 
@@ -145,6 +162,7 @@ def get_all_daystamps(data_folder: str) -> list:
             day_directories.append(verify_daystamp(directory))
         except ValueError:
             pass
+
     if len(day_directories) == 0:
         log.warning('No data found in datadir')
     return day_directories
@@ -195,10 +213,11 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
     assert return_timestamp or return_path, \
         'No return value chosen (return_timestamp=return_path=False).'
 
-    if folder is None:
-        search_dir = datadir
-    else:
-        search_dir = folder
+    search_dir = folder or datadir
+
+    if search_dir is None:
+        log.error('Both folder and datadir are not set. Please set at least one.')
+        return None
 
     daydirs = os.listdir(search_dir)
     if len(daydirs) == 0:
@@ -313,10 +332,16 @@ def data_from_time(timestamp, folder=None, auto_fetch=None):
     returns the full path of the data specified by its timestamp in the
     form YYYYmmddHHMMSS.
     '''
+
+    folder = folder or datadir
+
     if folder is None:
-        folder = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
+
     if auto_fetch is None:
         auto_fetch = (fetch_data_dir is not None)
+
     daydirs = os.listdir(folder)
     if len(daydirs) == 0 and not auto_fetch:
         raise Exception('No data in the data directory specified')
@@ -596,8 +621,10 @@ compare_instrument_settings_timestamp = compare_instrument_settings
 def get_timestamps_in_range(timestamp_start, timestamp_end=None,
                             label=None, exact_label_match=False, folder=None,
                             auto_fetch=None, **kw):
+    folder = folder or datadir
     if folder is None:
-        folder = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
     if auto_fetch is None:
         auto_fetch = (fetch_data_dir is not None)
     if not isinstance(label, list):
@@ -695,6 +722,8 @@ def get_timestamps_in_range(timestamp_start, timestamp_end=None,
 
 def get_folder(timestamp=None, older_than=None, label='',
                suppress_printing=True, folder=None, **kw):
+    # NOTE: **kw are used to catch keyword arguments in 
+    # case more are passed than neeeded. We ignore them. :)
     if timestamp is not None:
         folder_ts = data_from_time(timestamp, folder=folder)
         if not suppress_printing:
@@ -710,6 +739,7 @@ def get_folder(timestamp=None, older_than=None, label='',
         if not suppress_printing:
             print('loaded file from folder "%s" using label "%s"' % (
                 folder_ts, label))
+
     return folder_ts
 
 
@@ -1919,8 +1949,12 @@ def copy_data(timestamp, source_dir=None, target_dir=None,
             copy_data(t, source_dir, target_dir=target_dir,
                       delete_if_exists=delete_if_exists)
         return
+
+    target_dir = target_dir or datadir
     if target_dir is None:
-        target_dir = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
+
     f_src = data_from_time(timestamp, folder=source_dir, auto_fetch=False)
     daystamp, tstamp = verify_timestamp(timestamp)
     daydir = os.path.join(target_dir, daystamp)
