@@ -852,7 +852,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         for mobj, chs in self.meas_obj_channel_map.items():
             movnm[mobj] = []
             for ch, vns in self._channels_value_names_map.items():
-                if not isinstance(vns, tuple):
+                if not isinstance(vns, tuple) and not isinstance(vns, list):
                     vns = (vns,)
                 for vn in vns:
                     if ch in chs and vn not in movnm[mobj]:
@@ -1912,12 +1912,35 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             self.value_names = ['']*(
                     len(self.state_labels) * len(self.channel_str_mobj))
             idx = 0
+            self._channels_value_names_map = dict()
             for ch_pair in self.channel_str_mobj:
+                self._channels_value_names_map[ch_pair] = list()
                 for state in self.state_labels:
                     self.value_names[idx] = \
                         f'{acq_dev.name}_{ch_pair[0]}_{state} w{ch_pair[1]}'
+                    # update the thresholded channel names to
+                    # self._channels_value_names_map
+                    self._channels_value_names_map[ch_pair].append(
+                        self.value_names[idx])
                     idx += 1
             self.value_units = [self.value_units[0]] * len(self.value_names)
+
+            # update the mapping from the measurement object to the
+            # classified channels. Names of the measured values should have
+            # the format {meas_device_name}_0_p{g/e/f} w{integration_channels} {
+            # meas_device_name}
+            meas_obj_channel_map_new = dict()
+            for mobj, chs in self.meas_obj_channel_map.items():
+                meas_obj_channel_map_new[mobj] = list()
+                for ch in chs:
+                    for dev, channel_processed in self.channel_str_mobj:
+                        if str(ch[1]) in channel_processed and \
+                                len(channel_processed) == 2 * len(str(ch[1]))\
+                                and (dev, channel_processed) not in \
+                                meas_obj_channel_map_new[mobj]:
+                            meas_obj_channel_map_new[mobj].append(
+                                (dev, channel_processed))
+            self.meas_obj_channel_map = meas_obj_channel_map_new
 
         if self.get_values_function_kwargs.get('averaged', True):
             self.acq_data_len_scaling = 1

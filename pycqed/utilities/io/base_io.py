@@ -325,18 +325,20 @@ class DateTimeGenerator:
     def __init__(self):
         pass
 
-    def create_data_dir(self, datadir: str, name: str=None, ts=None,
-                        datesubdir: bool=True, timesubdir: bool=True,
-                        auto_increase: bool = True):
-        """
-        Create and return a new data directory.
+    def create_data_dir_name(
+        self,
+        datadir: str,
+        name: str = None,
+        ts=None,
+        auto_increase: bool = True,
+    ):
+        """Create and return the name of a new data directory.
 
         Input:
             datadir (string): base directory
             name (string): optional name of measurement
             ts (time.localtime()): timestamp which will be used
                 if timesubdir=True
-            datesubdir (bool): whether to create a subdirectory for the date
             timesubdir (bool): whether to create a subdirectory for the time
             auto_increase (bool): ensures that timestamp is unique and if not
                 increases by 1s until it is.
@@ -345,55 +347,49 @@ class DateTimeGenerator:
             The directory to place the new file in
         """
 
-        path = datadir
         if ts is None:
             ts = time.localtime()
-        if datesubdir:
-            path = os.path.join(path, time.strftime('%Y%m%d', ts))
-        if timesubdir:
-            tsd = time.strftime('%H%M%S', ts)
-            timestamp_verified = False
-            counter = 0
-            # Verify if timestamp is unique by seeing if the folder exists
-            while not timestamp_verified and auto_increase:
-                counter += 1
-                try:
-                    measdirs = [d for d in os.listdir(path)
-                                if d[:6] == tsd]
-                    if len(measdirs) == 0:
-                        timestamp_verified = True
-                    else:
-                        # if timestamp not unique, add one second
-                        # This is quite a hack
-                        # FIXME: Could add a time.sleep(1) instead of
-                        #  artificially increasing the timestamp by 1.
-                        #  Like this, timestamps in the future are avoided.
-                        #  This does not solve the problem if a data directory
-                        #  for a custom timestamp is requested but this
-                        #  timestamp already exists.
-                        ts = time.localtime((time.mktime(ts)+1))
-                        tsd = time.strftime('%H%M%S', ts)
-                    if counter >= 3600:
-                        raise Exception()
-                except OSError as err:
-                    if 'cannot find the path specified' in str(err):
-                        timestamp_verified = True
-                    elif 'No such file or directory' in str(err):
-                        timestamp_verified = True
-                    else:
-                        raise err
-            if name is not None:
-                path = os.path.join(path, tsd+'_'+name)
-            else:
-                path = os.path.join(path, tsd)
+        path = os.path.join(datadir, time.strftime('%Y%m%d', ts))
+        ts_string = time.strftime("%H%M%S", ts)
 
-        return path, tsd
+        timestamp_unique = False
+        counter = 0
+
+        # Verify if timestamp is unique by checking if the folder exists
+        while not timestamp_unique and auto_increase:
+            counter += 1
+            if not os.path.exists(path):
+                timestamp_unique = True
+                continue
+
+            measdirs = [d for d in os.listdir(path) if d.startswith(ts_string)]
+            if not measdirs:
+                timestamp_unique = True
+            else:
+                # Add one second to timestamp until we find a unique one
+                ts = time.localtime(time.mktime(ts) + 1)
+                ts_string = time.strftime("%H%M%S", ts)
+
+            if counter >= 3:
+                raise TimeoutError(
+                    "Could not find a unique timestamp after"
+                    "moving 3 sec into the future.\n"
+                    "Please check this machine or its filesystem."
+                )
+
+        if name is not None:
+            path = os.path.join(path, ts_string + "_" + name)
+        else:
+            path = os.path.join(path, ts_string)
+
+        return path, ts_string
 
     def new_filename(self, data_obj, folder, auto_increase: bool = True):
         """Return a new filename, based on name and timestamp."""
-        path, tstr = self.create_data_dir(folder,
-                                          name=data_obj._name,
-                                          ts=data_obj._localtime,
-                                          auto_increase=auto_increase)
+        path, tstr = self.create_data_dir_name(
+            folder,
+            name=data_obj._name,
+            ts=data_obj._localtime,
+            auto_increase=auto_increase)
         filename = '%s_%s.hdf5' % (tstr, data_obj._name)
         return os.path.join(path, filename)

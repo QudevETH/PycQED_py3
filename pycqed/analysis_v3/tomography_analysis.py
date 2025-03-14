@@ -454,6 +454,56 @@ def density_matrices(data_dict,
                 hlp_mod.get_param('basis_rots', data_dict))
             hlp_mod.add_param(f'{keys_out_container}.pauli_values.rho',
                               rho_pauli, data_dict, **params)
+        elif estimation_type == 'convex_mle':
+            # FIXME: only supports readout correction so far.
+            #  When there is no readout correction the covariance matrix
+            #  is not square and I dont know how to interpret it.
+            log.warning('Convex MLE only supports tomography with readout '
+                        'correction so far.')
+            
+            rho_guess = hlp_mod.get_param('rho_guess', data_dict,
+                                          default_value = None, **params)
+            """
+            Various comments about this:
+            
+            - The least_squares DM is not used as a guess because it does
+            not meet the physicality constraints, and cvxpy does not like
+            problems in which the guess does not meet the constraints
+            
+            - Fs is a list of measurement operators with shape
+            2**nqubits x 2**nqubits
+            
+            - mus is an array with the expectation values of the Fs
+            
+            - The length of this array and that list is 2**nqubits * NR**nqubits
+            where NR is the number of different rotations applied per qubit
+            to extract the tomographic information. For instance, if we do
+            complete tomography of a 2-qubit state by applying 6 rotations
+            per qubit ([I, X180, X90, mX90, Y90, mY90]) there will be 6**2
+            measurement settings, and for each of them we extract four
+            probabilities (Pgg, Pge, Peg, Pee), so the number of Fs and mus is
+            2**2 * 6**2 = 144. For full tomography of a 4-qubit state we have
+            2**4 * 6**4 = 20736 operators to be taken into account for the
+            convex MLE (a lot!!).
+            """
+            rho_cvx = tomo.convex_mle(
+                mus = all_measurement_results,
+                Fs = all_measurement_operators,
+                Omega = all_cov_matrix_meas_obs if hlp_mod.get_param(
+                    'use_covariance_matrix', data_dict,
+                    default_value=True, **params) else None,
+                rho_guess = rho_guess,
+                solver = hlp_mod.get_param('solver', data_dict,
+                                           default_value = 'SCS', **params),
+                solveropt = hlp_mod.get_param('solveropt', data_dict,
+                                           default_value = {'':None}, **params),
+                cov_threshold = hlp_mod.get_param('cov_threshold', data_dict,
+                                           default_value = 1e-12, **params),
+                verbose = hlp_mod.get_param('verbose', data_dict,
+                                           default_value = False, **params)
+            )
+            hlp_mod.add_param(f'{keys_out_container}.convex_mle.rho',
+                              rho_cvx, data_dict, **params)
         else:
             raise ValueError(f'Unknown estimation_type "{estimation_type}."')
 
@@ -619,7 +669,7 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
         'xtick_labels': list(np.array(list(observables.keys()))[obs_filter]),
         'origin': 'upper',
         'cmap': cm,
-        'aspect': 'equal',
+        'aspect': 'auto',
         'tight_layout': False,
     }
 
