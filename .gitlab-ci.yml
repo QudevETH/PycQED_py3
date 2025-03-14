@@ -1,6 +1,6 @@
 stages:
-  - unittest_and_qualiy
-  - test_integration
+  - unit_testing_and_quality
+  - integration_testing
   - build_and_deploy
 
 variables:
@@ -34,7 +34,7 @@ cache:
 
 pytest:
   extends: .base_setup
-  stage: unittest_and_qualiy
+  stage: unit_testing_and_quality
   except:
     - /^doc\/.*$/
   script:
@@ -57,7 +57,7 @@ pytest:
   coverage: '/(?i)total.*? (100(?:\.0+)?|\d{1,2}(?:\.\d+)?)%/'
 
 code_quality_slim:
-  stage: unittest_and_qualiy
+  stage: unit_testing_and_quality
   image: python:3.11-bookworm
   script:
     - pip install pipx
@@ -75,8 +75,9 @@ code_quality_slim:
   allow_failure: true
 
 integration_tests:
+  # Draft feature, does not run automatically (see when in rules)
   extends: .base_setup
-  stage: test_integration
+  stage: integration_testing
   script:
     # TODO:  - bash setup_via_ssh.sh
     - pip install git+https://gitlab-ci-token:${CI_JOB_TOKEN}@${PYCQED_SCRIPTS_REPOSITORY}
