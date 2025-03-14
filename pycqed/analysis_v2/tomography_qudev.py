@@ -1,7 +1,9 @@
 import logging
 import itertools
 import numpy as np
+import cvxpy as cp
 from numpy.linalg import inv
+from pycqed.utilities.math import kron
 from typing import List, Optional, Tuple
 import scipy as sp
 import pycqed.utilities.qutip_compat as qtp
@@ -219,6 +221,156 @@ def mle_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
     T = ltriag_matrix(params, d)
     return T * T.dag()
 
+def convex_mle(mus: np.ndarray, Fs: List[qtp.Qobj],
+               Omega: Optional[np.ndarray] = None,
+               rho_guess: Optional[qtp.Qobj] = None,
+               solver = 'SCS', solveropt = {'': None},
+               cov_threshold = 1e-12,
+               verbose = False):
+    """
+    Executes a maximum likelihood fit to the measured observables, respecting
+    the physicality constraints of the density matrix, using convex programming.
+
+    Args:
+        mus: 1-dimensional numpy ndarray containing the measured expectation
+             values for the measurement operators Fs.
+        Fs: A list of the measurement operators (as qutip operators) that
+            correspond to the expectation values in mus.
+        Omega: The covariance matrix of the expectation values mu.
+               If a 1-dimensional array is passed, the values are interpreted
+               as the variations of the mus and the correlations are assumed to
+               be zero.
+               If `None` is passed, then all measurements are assumed to have
+               equal variances.
+               If a rectangular matrix is passed, it is assumed to be a
+               sparse representation of a block-diagonal covariance matrix.
+               This last option is not currently working, but it is at least
+               handled in some way.
+        rho_guess: The initial value of the density matrix for the iterative
+                optimization algorithm.
+        solver: The algorithm used by cvxpy to do the optimization
+        solveropt: options for the solver, like max number of iterations or
+                step size.
+        cov_threshold: Covariance threshold. The target function is weighted
+                by the inverse of the covariance matrix, so tiny covariances
+                make this function diverge. This parameter diregards degrees of
+                freedom whose covariance is too small.
+    Returns: The found density matrix as a qutip operator.
+    
+    Documentation:
+    See https://arxiv.org/pdf/2202.11584.pdf for a very similar method.
+    Also, the author put the code on github, in the following notebook,
+    in section 'Convex optimization', they use the exact same methodology as
+    shown here, see
+    https://github.com/ingstra/cvx-tomography/blob/main/cvx_noisy_heterodyne
+    .ipynb
+    """
+    
+    # Define dimensionality of the problem
+    nqubits = int(np.log2(Fs[0].shape[0]))
+    d = 2 ** nqubits
+    
+    # Define variable as a hermitian matrix and reshape it into a vector
+    rho = cp.Variable((d,) * 2, hermitian = True)
+    rho_ = cp.reshape(rho, (d ** 2,), 'C')  # Flattening
+    
+    # Initial guess
+    if rho_guess is None:
+        # If no guess is used as an input, we use a maximally-mixed state
+        # by default
+        rho.value = np.identity(d, dtype = complex) / d
+    else:
+        rho.value = rho_guess
+    
+    # Computes expectation values based on the model. Equivalent to Tr(F @ rho)
+    Fs_flat = np.array([o.full().T.flatten() for o in Fs])
+    mus_model = Fs_flat @ rho_
+    delta = mus - mus_model  # The variable to minimize is the distance
+    # between experiment and model
+    
+    # Handling of various options for the covariance matrix input
+    if Omega is None:
+        Omega = np.identity(len(mus))
+    elif Omega.ndim == 1 or 1 in Omega.shape:
+        # If Omega is a 1D array, we assume it is the diagonal of the
+        # covariance matrix, and no correlation terms are to be considered
+        Omega = np.squeeze(np.array(Omega))
+        Omega = np.diag(Omega)
+    elif Omega.shape[0] != Omega.shape[1]:
+            """
+            This rectangular covariance matrix is something that appears
+            when readout_correction is disabled, and I still do not fully
+            understand. The covariance matrix has one dimension of the
+            expected length and one with 1/2**nqubits less entries. Here I
+            assume that this is an efficient way of expressing a
+            block-diagonal covariance matrix, and I expand the matrix for it
+            to be properly block-diagonal and square. But the convex
+            optimization problem then complains about it, about the problem
+            not being DCP.
+            """
+            assert Omega.shape[1] == Omega.shape[0] * 2**nqubits, \
+            f'shape = {Omega.shape}'
+            short = Omega.shape[0]
+            blocks = []
+            for i in range(2**nqubits):
+                blocks.append(Omega[:, i*short:(i+1)*short])
+            Omega = sp.linalg.block_diag(*blocks)
+    
+    # We will rewrite the problem in the eigenbasis of Omega
+    eigvals, eigvects = np.linalg.eigh(Omega)
+    
+    # Removal of covariances below a certain threshold value
+    above_threshold = np.where(
+        np.abs(eigvals.real) > np.abs(eigvals.real.max()) * cov_threshold)[0]
+    good_eigvals = eigvals.real[above_threshold]
+    
+    # Definition of diagonal weighting matrix and conversion matrix to the
+    # covariance eigenbasis
+    D = np.diag(1 / good_eigvals)
+    U = np.matrix(eigvects)
+    V = np.array(U[:, above_threshold].H)
+
+    # The function to be optimized is the quadratic form
+    # Q = delta.H @ W @ delta, where W = V.H @ D @ V
+    Q = cp.quad_form(V @ delta, D)
+    objective = cp.Minimize(Q)
+    
+    # Physicality constraints
+    constraints = [
+        rho >> 0,           # PSD
+        cp.trace(rho) == 1  # Unit trace
+    ]
+    
+    # Definition of the problem
+    problem = cp.Problem(objective, constraints)
+    
+    # Solver options for the optimization
+    max_iters = solveropt.get('max_iters', 2500)
+    eps = solveropt.get('eps', 1e-4)
+    alpha = solveropt.get('alpha', 1.8)
+    acceleration_lookback = solveropt.get('acceleration_lookback', 10)
+    scale = solveropt.get('scale', 5.0)
+    normalize = solveropt.get('normalize', True)
+    use_indirect = solveropt.get('use_indirect', True)
+    use_quad_obj = solveropt.get('use_quad_obj', True)
+    
+    # Solving the problem
+    problem.solve(warm_start = True, # Use of an initial guess
+                  solver = solver,
+                  max_iters = max_iters,
+                  eps = eps,
+                  alpha = alpha,
+                  acceleration_lookback = acceleration_lookback,
+                  scale = scale,
+                  normalize = normalize,
+                  use_indirect = use_indirect,
+                  use_quad_obj = use_quad_obj,
+                  verbose = verbose, # Set to True for numerical debugging
+                  )
+    result = qtp.Qobj(np.array(rho.value))
+
+    return result
+
 def pauli_values_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
                             basis_rots: List[str]) -> qtp.Qobj:
     """
@@ -278,6 +430,28 @@ def pauli_values_tomography(mus: np.ndarray, Fs: List[qtp.Qobj],
 
     return rho_pauli
 
+def dm_to_pauli_conversion_matrix(nr_qubits):
+    labels, paulis = generate_pauli_set(nr_qubits)
+    paulis = np.array([s.full() for s in paulis])
+    paulis_T = np.transpose(paulis, (0, 2, 1))
+    m = paulis_T.reshape((2 ** (2 * nr_qubits),) * 2)
+    return m
+
+def pauli_to_dm_conversion_matrix(nr_qubits):
+    dmtp = dm_to_pauli_conversion_matrix(nr_qubits)
+    return np.linalg.inv(dmtp)
+
+def pauli_to_dm(pauli, cov = None):
+    d = int(len(pauli)**0.5)
+    nr_qubits = int(np.log2(d))
+    mat = pauli_to_dm_conversion_matrix(nr_qubits)
+    dm_flat = mat @ pauli
+    dm = np.reshape(dm_flat, (d, d))
+    if not cov is None:
+        dm_cov = np.array(mat @ cov @ np.matrix(mat).H)
+        return dm, dm_cov
+    else:
+        return dm
 
 def ltriag_matrix(params: np.ndarray, d: int):
     """
@@ -561,20 +735,62 @@ def pauli_to_povm(nr_qubits,mus):
 
     return np.dot(full_conv,mus)
 
-def povm_to_pauli(nr_qubits,mus):
+def povm_to_pauli(nr_qubits, mus, Omega = None):
     """
     Converts expected values of the povm set generated by generate_povm_set to
     pauli expected values.
+    
+    Optional argument Omega (covariance matrix) can also be converted from
+    povm set to pauli expectation values
     """
-    base_conv = [[1/6,1/6,1/6,1/6,1/6,1/6],[3/6,-3/6,0,0,0,0],
-                    [0,0,3/6,-3/6,0,0],[0,0,0,0,3/6,-3/6]]
-    full_conv = [[1]]
-    for n in range(nr_qubits):
-        next_conv = []
-        for povm_ind_new in base_conv:
-            for povm_ind_prev in full_conv:
-                next_conv.append(np.array([ind*np.array(povm_ind_prev)
-                for ind in povm_ind_new]).flatten())
-        full_conv = next_conv
+    base_conv_1 = np.array([
+        [1/6,1/6,1/6,1/6,1/6,1/6],
+        [3/6,-3/6,0,0,0,0],
+        [0,0,3/6,-3/6,0,0],
+        [0,0,0,0,3/6,-3/6]
+    ])
+    base_conv_n_tuple = tuple([base_conv_1,] * nr_qubits)
+    base_conv_n = kron(*base_conv_n_tuple)
+    
+    if Omega is None:
+        return base_conv_n.dot(mus)
+    else:
+        return base_conv_n.dot(mus), base_conv_n.dot(Omega).dot(base_conv_n.T)
 
-    return np.dot(full_conv,mus)
+
+def meas_to_pauli(nr_qubits, mus, Fs,
+                  pulses = [('I',), ('X180',), ('mY90',), ('Y90',), ('mX90',),
+                            ('X90',)], Omega = None
+                  ):
+    """
+    Converts expected values of the povm set generated by generate_povm_set to
+    pauli expected values.
+
+    Optional argument Omega (covariance matrix) can also be converted from
+    povm set to pauli expectation values
+    """
+    proj_to_pauli_1 = np.array([
+        [1 / 3, 1 / 3, 1 / 3, 1 / 3, 1 / 3, 1 / 3],
+        [0, 0, 1, -1, 0, 0],
+        [0, 0, 0, 0, 1, -1],
+        [1, -1, 0, 0, 0, 0],
+    ])  # This will need to be tensored before multiplying by the meas_to_proj
+    proj_to_pauli_n = kron(*((proj_to_pauli_1,) * nr_qubits))
+    
+    meas_to_proj = np.zeros((6 ** nr_qubits, 12 ** nr_qubits))
+    rotations = standard_qubit_pulses_to_rotations(pulses)
+    for i, r in enumerate(rotations):
+        projs_rot = [r.dag() * F * r for F in
+                     Fs[i * 2 ** nr_qubits:(i + 1) * 2 ** nr_qubits]]
+        diags = np.array([(i % 2 == 0) * np.diagonal(p.full()) + (
+                    i % 2 == 1) * np.flip(np.diagonal(p.full())) for j, p in
+                          enumerate(projs_rot)]).T
+        meas_to_proj[(i // 2) * 2 ** nr_qubits:(i // 2 + 1) * 2 ** nr_qubits,
+        i * 2 ** nr_qubits:(i + 1) * 2 ** nr_qubits] = diags.real
+    
+    base_conv_n = proj_to_pauli_n @ meas_to_proj
+    
+    if Omega is None:
+        return base_conv_n.dot(mus)
+    else:
+        return base_conv_n.dot(mus), base_conv_n.dot(Omega).dot(base_conv_n.T)

@@ -1838,6 +1838,16 @@ def get_preparation_parameters(
         the 'preparation_params' key is also not found.
     """
 
+    if data_dict is None:  # If not provided: extract manually
+        assert 'timestamp' in params, 'Provide either data_dict or timestamp!'
+        timestamp = params['timestamp']
+        data_dict = {"exp_metadata": {}}
+        for key in ['preparation_params', 'reset_params']:
+            try:  # Try to get everything available from the measurement file
+                data_dict["exp_metadata"][key] = (
+                    get_param_from_metadata_group(timestamp, key))
+            except KeyError:
+                pass
     # New reset format or legacy?
     if "reset_params" in data_dict.get("exp_metadata", {}):
         prep_params = translate_reset_to_prep_params(
