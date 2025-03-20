@@ -805,7 +805,7 @@ class StatePrepExperiment(QCNNExperiment):  # TODO
             self._add_rxy_block('RYp3', range(len(self.qubits)),
                                [op_code.format(i=i) for i in [11, 12, 13, 14]])
         elif len(self.qubits) == 9:
-            op_code = "cb.pp9([h_index],{i})"
+            op_code = "cb.pp([h_index],{i})"
             self._add_rxy_block('RYp1', range(len(self.qubits)),
                                [op_code.format(i=i) for i in range(0, 9)])
             self._add_cz_block('CZp1', [[2, 3], [5, 6]],
@@ -829,6 +829,7 @@ class StatePrepExperiment(QCNNExperiment):  # TODO
                                             self._blocks,
                                             set_end_after_all_pulses=True,
                                             destroy=True)
+        self.create_pp_vals()
 
 
 class VQAOptimizer:
