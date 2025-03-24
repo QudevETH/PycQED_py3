@@ -3361,9 +3361,9 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 'cost', [(':', 'smcol')]
             )
         elif self.sp.find_parameter('targets') is not None:
-            # slice-plot output along the targets axis
+            # slice-plot output along the axis which is not the targets axis
             self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
-                'output', [(':', 'scol' if targets_sp_axis else 'srow')]
+                'output', [(':', 'srow' if targets_sp_axis else 'scol')]
             )
 
     def _adjust_sp_length(self, sp, axis=None, scale_mult=1, scale_div=1):
