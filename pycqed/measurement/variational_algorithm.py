@@ -276,11 +276,11 @@ class HNNExperiment(VariationalAlgorithm):
         #  e.g. by extending get_pulses.
         #  This would also allow replacing this unnecessary prefix with
         #  e.g. a simple counter.
-        # Add a rotation-X or -Y gate to the qubit specified by qbns.
+        # Add a rotation-X or -Y gate to the qubits specified by qbns.
         #
         # Input arguments
         #   prefix: name of the gate parameter
-        #   qbns: index of the qubit
+        #   qbns: index of the qubits
         #   params: values of the gate parameter or op_code
 
         if params is None:
@@ -301,12 +301,12 @@ class HNNExperiment(VariationalAlgorithm):
             ))
 
     def _add_cz_block(self, prefix, qubit_lists, params=None):
-        # Add an arbitrary-phase controlled-Z gate to the qubit pair specified
+        # Add an arbitrary-phase controlled-Z gate to the qubit pairs specified
         # by qubits_lists.
         #
         # Input arguments
         #   prefix: name of the gate parameter
-        #   qubits_lists: indices of the qubits
+        #   qubits_lists: indices or names of the qubits
         #   params: values of the gate parameter or op_code
 
         if params is None:
