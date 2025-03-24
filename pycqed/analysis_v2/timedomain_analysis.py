@@ -3208,20 +3208,20 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         targets = None
         targets_sp_axis = None
         targets_axis = None
-        targets_num = None
+        n_targets = None
+        # Should not change, so copy is enough here
         virtual_sp = copy(self.sp)
         if self.get_param_value('optimize'):
             # training mode
             targets = self.get_param_value(
                 'targets', self.raw_data_dict['optimizer']['targets'])
-            # In the training experiments, targets_sp_axis does not represent
-            # the targets axis in self.sp: self.sp has a shape of (n_targets *
-            # n_sets_trainable_pars, n_iter, where n_targets is intertwined
-            # with n_sets_trainable_pars). This is also the reason why a
-            # fractional scaling factor is used in self._adjust_sp_length
+            # In the training experiments, targets_sp_axis does not
+            # necessarily represent a dimension which only contains targets:
+            # in a training experiment, self.sp has shape (n_targets *
+            # n_sets_trainable_pars, n_iter).
             targets_sp_axis = 0
             targets_axis = 2
-            targets_num = len(targets)
+            n_targets = len(targets)
             # shape: (n_states, n_sets_trainable_pars * n_targets, n_iter)
             freqs = freqs.reshape(
                 [freqs.shape[0]] +
@@ -3234,7 +3234,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             # shape: (n_states, hard sweep, soft sweep)
             targets_sp_axis = self.sp.find_parameter('targets')
             targets_axis = targets_sp_axis + 1
-            targets_num = self.sp.length()[targets_sp_axis]
+            n_targets = self.sp.length()[targets_sp_axis]
             targets = self.get_param_value('targets', self.sp['targets'])
 
         # freqs.shape = (n_states, ..., n_targets, ...)
@@ -3266,9 +3266,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             targets = np.concatenate(
                 (targets, np.zeros(shape_fms)),
                 axis=targets_axis)
-            virtual_sp = self._adjust_sp_length(self.sp,
-                    axis=targets_sp_axis, scale=(targets_num+1)/targets_num)
-            targets_num += 1
+            virtual_sp = self._adjust_sp_length(virtual_sp,
+                    axis=targets_sp_axis,
+                    scale_mult=n_targets+1, scale_div=n_targets)
+            n_targets += 1
         elif self.get_param_value('fms', False):
             print('Replacing target-0 data with fms!')
             # Replace all states with target==0 by a mixed state
@@ -3320,7 +3321,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 'cost': (cost, virtual_sp),
                 'training_set_cost': (training_set_cost,
                     self._adjust_sp_length(virtual_sp, axis=targets_sp_axis,
-                                           scale=1/targets_num)),
+                                           scale_div=n_targets)),
                 'weights': (weights, 'noplot'),  # plotting won't work
             })
 
@@ -3337,7 +3338,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     p_name: (
                     optim_param_values[id_param],
                     self._adjust_sp_length(virtual_sp, axis=targets_sp_axis,
-                    scale=1/targets_num))
+                    scale_div=n_targets))
                 })
                 self.options_dict['slice_idxs_1d_proj_plot'].setdefault(
                     p_name, [(':', 'smcol')]
@@ -3365,16 +3366,17 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 'output', [(':', 'srow')]
             )
 
-    def _adjust_sp_length(self, sp, axis=None, scale=1):
+    def _adjust_sp_length(self, sp, axis=None, scale_mult=1, scale_div=1):
         # expand the sweep points size to suit the virtual fms population by
         # rescaling sp by scale
+        sp = copy(sp)
         if axis is None:
             return sp
-        old_shape = sp.length()
-        sp = copy(sp)
+        old_len = sp.length()[axis]
+        assert not old_len % scale_div
         # This could be generalised to e.g. create 1D sp if data is 1D
         sp[axis] = {
-            k: (np.arange(int(old_shape[axis]*scale)), v[1], v[2])
+            k: (np.arange(old_len * scale_mult // scale_div), v[1], v[2])
             for k, v in sp[axis].items()
         }
         return sp
