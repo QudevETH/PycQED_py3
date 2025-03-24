@@ -276,6 +276,13 @@ class QCNNExperiment(VariationalAlgorithm):
         #  e.g. by extending get_pulses.
         #  This would also allow replacing this unnecessary prefix with
         #  e.g. a simple counter.
+        # Add a rotation-X or -Y gate to the qubit specified by qbns.
+        #
+        # Input arguments
+        #   prefix: name of the gate parameter
+        #   qbns: index of the qubit
+        #   params: values of the gate parameter or op_code
+
         if params is None:
             params = [f"{prefix}_{qbn}" for qbn in qbns]
         qbns = [qbn if isinstance(qbn, str) else self.qubits[qbn].name
@@ -294,6 +301,14 @@ class QCNNExperiment(VariationalAlgorithm):
             ))
 
     def _add_cz_block(self, prefix, qubit_lists, params=None):
+        # Add an arbitrary-phase controlled-Z gate to the qubit pair specified
+        # by qubits_lists.
+        #
+        # Input arguments
+        #   prefix: name of the gate parameter
+        #   qubits_lists: indices of the qubits
+        #   params: values of the gate parameter or op_code
+
         if params is None:
             params = [f"{prefix}_{qbns[0]}_{qbns[1]}"
                        for i, qbns in enumerate(qubit_lists)]
@@ -748,9 +763,12 @@ class VQAOptimizer:
 
                     for i in range(Nsteps):
                         seed = sigma * np.random.randn(npop-1, length)
-                        # TODO comment
                         seed = np.concatenate((np.zeros((1, length)), seed),
                                               axis=0)
+                        # seed contains the random step taken by the
+                        # optimizer in a single iteration. The first entry
+                        # is set to zero to evaluate the current best guess
+                        # (angles_ev)
                         angles_try = angles_ev[i] + seed
 
                         # cost = Parallel(n_jobs = num_cores)(delayed(\

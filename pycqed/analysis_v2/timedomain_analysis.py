@@ -3209,12 +3209,16 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         targets_sp_axis = None
         targets_axis = None
         targets_num = None
-        virtual_sp = copy(self.sp)  # TODO check that this does not change
+        virtual_sp = copy(self.sp)
         if self.get_param_value('optimize'):
             # training mode
             targets = self.get_param_value(
                 'targets', self.raw_data_dict['optimizer']['targets'])
-            # this targets_sp_axis does not represent the targets axis in sp
+            # In the training experiments, targets_sp_axis does not represent
+            # the targets axis in self.sp: self.sp has a shape of (n_targets *
+            # n_sets_trainable_pars, n_iter, where n_targets is intertwined
+            # with n_sets_trainable_pars). This is also the reason why a
+            # fractional scaling factor is used in self._adjust_sp_length
             targets_sp_axis = 0
             targets_axis = 2
             targets_num = len(targets)
@@ -3236,7 +3240,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # freqs.shape = (n_states, ..., n_targets, ...)
         # n_states corresponds to dimension state_axis
         # n_targets corresponds to dimension targets_sp_axis among the other
-        # dims (meaning targets_sp_axis + 1 if state_axis < targets_sp_axis)
+        # dims (meaning targets_sp_axis + 1 if state_axis < targets_axis)
         shape = freqs.shape
         state_axis = 0  # Else the next line should be generalised
         if targets is not None:
@@ -3267,7 +3271,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             targets_num += 1
         elif self.get_param_value('fms', False):
             print('Replacing target-0 data with fms!')
-            # Replace all states (soft dim) with target==0 by a mixed state
+            # Replace all states with target==0 by a mixed state
             # Using the fact that targets has the same shape as freqs
             freqs[targets == 0] = 1 / shape[state_axis]  # Uniform probs
 
@@ -3369,13 +3373,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         old_shape = sp.length()
         sp = copy(sp)
         # This could be generalised to e.g. create 1D sp if data is 1D
-        for i, item in enumerate(sp):
-            if i == axis:
-                # if: to keep the x axis value unchanged in sweep mode
-                sp[i] = {
-                    k: (np.arange(int(old_shape[i]*scale)), v[1], v[2])
-                    for k, v in sp[i].items()
-                }
+        sp[axis] = {
+            k: (np.arange(int(old_shape[axis]*scale)), v[1], v[2])
+            for k, v in sp[axis].items()
+        }
         return sp
 
     def _get_binary_shots_array(self, shots):
