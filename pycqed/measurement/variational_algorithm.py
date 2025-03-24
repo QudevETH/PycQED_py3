@@ -90,7 +90,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                     data_processing_function=self._data_processing_function,
                 ))
                 self.exp_metadata.update({
-                    'training_settings': optimizer.training_settings,
+                    'batching_settings': optimizer.batching_settings,
                     'hybrid': self.optimizer.hybrid,
                     'plot_raw_data': False,
                     'optim_param_names': self.params,
@@ -528,17 +528,17 @@ class VQAOptimizer:
     Other args:
         optimizer_kw: passed to optimizer_function (some kwargs can be reserved
             to create optimizer_function, see _set_optimizer_function)
-        training_settings: settings, in a format understood by get_batch_params
+        batching_settings: settings, in a format understood by get_batch_params
         hybrid, classical_optimizer_function_name, classical_optimizer_kw: TODO
     """
 
     def __init__(self, optimizer_function, optimizer_kw, cost_function,
-                 training_settings, hybrid=False,
+                 batching_settings, hybrid=False,
                  classical_optimizer_function_name=None,
                  classical_optimizer_kw=None):
         self._set_optimizer_function(optimizer_function, optimizer_kw)
         self._set_cost_function(cost_function)
-        self.training_settings = training_settings
+        self.batching_settings = batching_settings
         self.measurement_wrapper = None
         self.sweep_points = None
         self.optim_param_values = []
@@ -637,12 +637,12 @@ class VQAOptimizer:
         """
 
         This is the only method which knows about the format/shape of both
-        training_settings and data
+        batching_settings and data
 
         Args:
             trainable_params_values: sweep values tried by the optimiser
 
-        training_settings = {  TODO should these belong to the QE?
+        batching_settings = {
             'params': [''],
             'trainable_params': int,  # Could be generalised to a list of
             bool of the same length as 'params'. For now, this method
@@ -658,11 +658,11 @@ class VQAOptimizer:
 
         """
         trainable_params_values = np.atleast_2d(trainable_params_values)
-        non_trainable_params_values = self.training_settings.get(
+        non_trainable_params_values = self.batching_settings.get(
             'non_trainable_params_values', [[]])
         non_trainable_params_values = np.atleast_2d(
             non_trainable_params_values)
-        targets = np.array(self.training_settings['targets'])
+        targets = np.array(self.batching_settings['targets'])
         assert len(targets.shape) == 1, "targets is expected to be 1D"
         assert targets.shape[0] == non_trainable_params_values.shape[0], \
             ("Inconsistent shape of targets and non_trainable_params_values! "
