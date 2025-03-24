@@ -237,7 +237,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
         self.pdd = {'meas_results_per_qb_raw': data_dict}
         tda.MultiQubit_TimeDomain_Analysis._process_single_shots(
-            qb_names=self.qb_names,
             pdd=self.pdd,
             n_shots=self.meas_objs[0].acq_shots(),
             predict_proba=self.predict_proba,
