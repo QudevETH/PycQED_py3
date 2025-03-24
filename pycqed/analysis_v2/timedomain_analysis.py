@@ -3271,7 +3271,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     scale_mult=n_targets+1, scale_div=n_targets)
             n_targets += 1
         elif self.get_param_value('fms', False):
-            print('Replacing target-0 data with fms!')
             # Replace all states with target==0 by a mixed state
             # Using the fact that targets has the same shape as freqs
             freqs[targets == 0] = 1 / shape[state_axis]  # Uniform probs
