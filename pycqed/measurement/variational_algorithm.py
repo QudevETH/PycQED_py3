@@ -256,7 +256,7 @@ class VariationalAlgorithmCZ(VariationalAlgorithm):
                                             destroy=True)
 
 
-class QCNNExperiment(VariationalAlgorithm):
+class HNNExperiment(VariationalAlgorithm):
     """Experiment to train a variational quantum algorithm.
 
     The blocks are hard coded at the moment because this was the easiest way to implement parallel
@@ -264,11 +264,11 @@ class QCNNExperiment(VariationalAlgorithm):
     parameterized quantum circuits. TODO
     """
 
-    default_experiment_name = 'QCNN_n_qubit'
+    default_experiment_name = 'HNN'
 
-    def __init__(self, prep_params_filename=None, do_qcnn=True, *args, **kw):
+    def __init__(self, prep_params_filename=None, do_hnn=True, *args, **kw):
         self.prep_params_filename = prep_params_filename
-        self.do_qcnn = do_qcnn
+        self.do_hnn = do_hnn
         super().__init__(*args, **kw)
 
     def _add_rxy_block(self, prefix, qbns, params=None, rot='Y'):
@@ -355,8 +355,8 @@ class QCNNExperiment(VariationalAlgorithm):
             # temporary X gate to switch measurement bases for state
             # preparation check
             # self._add_rxy_block('RY', range(len(self.qubits)), [90]*4)
-            if self.do_qcnn:
-                # QCNN. Each gate has an independent parameter.
+            if self.do_hnn:
+                # HNN. Each gate has an independent parameter.
                 self._add_rxy_block('RY1', range(len(self.qubits)),
                                    ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
                 self._add_cz_block('CZ1', [[0, 1], [2, 3]], ['CZ1', 'CZ2'])
@@ -387,8 +387,8 @@ class QCNNExperiment(VariationalAlgorithm):
             # temporary X gate to switch measurement bases for state
             # preparation check
             # self._add_rxy_block('RY', range(len(self.qubits)), [90]*9)
-            if self.do_qcnn:
-                # QCNN. Each gate has an independent parameter.
+            if self.do_hnn:
+                # HNN. Each gate has an independent parameter.
                 self._add_rxy_block('RY1', range(len(self.qubits)))
                 self._add_cz_block('CZ1', [[1, 2], [4, 5], [8, 7]])
                 self._add_rxy_block('RY2', range(len(self.qubits)))
@@ -407,7 +407,7 @@ class QCNNExperiment(VariationalAlgorithm):
         else:
             raise ValueError("Only 4 or 9 qubits are supported!")
         self._extract_variational_param_names()
-        self.block = self.sequential_blocks('QCNN',
+        self.block = self.sequential_blocks('HNN',
                                             self._blocks,
                                             set_end_after_all_pulses=True,
                                             destroy=True)
