@@ -3324,10 +3324,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         if self.get_param_value('optimize'):
             optim_param_values = self.raw_data_dict['optimizer'][
                 'optim_param_values']
+            n_trainable = len(optim_param_values)
             p_names = self.get_param_value('optim_param_names')
-            n_non_trainable = 1
+            p_names = p_names[-n_trainable:]  # Only keep trainable params
             for id_param in range(optim_param_values.shape[0]):
-                p_name = p_names[n_non_trainable + id_param]
+                p_name = p_names[id_param]
                 self.cpp_results.update({
                     p_name: (
                     optim_param_values[id_param],
