@@ -822,16 +822,15 @@ class BaseDataAnalysis(object):
         return raw_data_dict
 
     def _extract_param_from_det(self, param, default=None):
-        det_metadata = self.metadata.get("Detector Metadata", None)
-        val = None
-        if det_metadata is not None:
+        det_metadata = self.metadata.get("Detector Metadata", None) or {}
+        val = det_metadata.get(param, None)
+        if val is None:
             # multi detector function: look for child "detectors"
             # assumes at least 1 child and that all children have the same
             # number of averages
-            val = det_metadata.get(param, None)
-            if val is None:
-                det = list(det_metadata.get('detectors', {}).values())[0]
-                val = det.get(param, None)
+            dets = det_metadata.get('detectors', None)
+            det = list(dets.values())[0] if dets else {}
+            val = det.get(param, None)
         if val is None:
             val = default
         return val
