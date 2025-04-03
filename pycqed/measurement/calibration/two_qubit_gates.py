@@ -572,7 +572,11 @@ class MultiTaskingExperiment(QuantumExperiment):
         :param kw: keyword arguments are passed to sweep_n_dim, except:
             - 'ro_qubits'. This keyword argument is overwritten by the list
               of qubits in self.meas_obj_names for which there are no
-              readout pulses in the parallel blocks.
+              readout pulses in the parallel blocks, unless enforce_final_readout=True
+              in which case ro_qubits = self.meas_obj_names.
+            - 'enforce_final_readout': Allows to enforce adding a readout pulse
+            on all measurement objects independently of whether or not
+            they already have a RO or Acq in the body block.
         :return: see sweep_n_dim
         """
         parallel_blocks = []
@@ -641,9 +645,15 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Generate kw['ro_qubits'] as explained in the docstring
         op_codes = [p['op_code'] for p in self.all_main_blocks.pulses if
                     'op_code' in p]
-        kw['ro_qubits'] = [m for m in self.meas_obj_names
-                           if f'RO {m}' not in op_codes
-                           and f'Acq {m}' not in op_codes]
+
+        if kw.get('enforce_final_readout', False):
+            # enforce adding a readout pulse on all measurement objects independently
+            # of whether they already have a RO or Acq in the body block.
+            kw['ro_qubits'] = self.meas_obj_names
+        else:
+            kw['ro_qubits'] = [m for m in self.meas_obj_names
+                               if f'RO {m}' not in op_codes
+                               and f'Acq {m}' not in op_codes]
         # call sweep_n_dim to perform the actual sweep
         return self.sweep_n_dim(sweep_points,
                                 body_block=self.all_main_blocks,

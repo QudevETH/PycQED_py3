@@ -772,6 +772,7 @@ class CircuitBuilder:
                         reset_scheme.reset_block(
                             f"step_{i}_{qb.name}",
                             sweep_params=self._reset_sweep_params.get(qb.name, None),
+                            **kws,
                         )
                     )
 
