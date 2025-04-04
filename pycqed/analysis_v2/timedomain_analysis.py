@@ -3313,6 +3313,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             cost, training_set_cost = self.cpp_bxe_cost(
                 freqs, weights,
                 targets=targets, targets_axis=targets_axis,
+                # keepdims: see comments in self.cpp_bxe_cost
                 keepdims=(not self.get_param_value('optimize')),
             )
             cost = cost.reshape(virtual_sp.length())
@@ -3592,7 +3593,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             np.log(1 - weights + epsilon_stable) * freq0
         )
         cost = np.sum(cost, axis=state_axis)
-        # Average over targets
+        # Average over the axis of targets
+        # cost.shape =
+        #   (n_sets_trainable_pars, n_targets, n_iter) in training
+        #   {n_sweep_param, n_targets} (undetermined order) in sweep
+        # training_set_cost has to be 2D for plotting thus keepdims=True in
+        # sweep mode (optimize=False)
         training_set_cost = np.mean(cost, axis=targets_axis-1,
                                     keepdims=keepdims)
         return cost, training_set_cost
