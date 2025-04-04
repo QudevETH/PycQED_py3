@@ -2,6 +2,9 @@ import numpy as np
 import logging
 import h5py
 import traceback
+import os
+from copy import copy
+
 
 from pycqed.measurement import quantum_experiment as qe_mod
 from pycqed.measurement import awg_sweep_functions as awg_swf
@@ -9,6 +12,7 @@ from pycqed.analysis_v2 import timedomain_analysis as tda
 import pycqed.measurement.sweep_points as sp_mod
 from pycqed.analysis_v2.timedomain_analysis import (
     VariationalAlgorithmAnalysis as vaa)
+from pycqed.analysis import analysis_toolbox as a_tools
 
 log = logging.getLogger(__name__)
 
@@ -266,10 +270,130 @@ class HNNExperiment(VariationalAlgorithm):
 
     default_experiment_name = 'HNN'
 
-    def __init__(self, prep_params_filename=None, do_hnn=True, *args, **kw):
+    def __init__(self, prep_params_filename=None, do_hnn=True,
+                 timestamp=None, default_params_values=None, hard_sweep=None,
+                 soft_sweep=None, optimize=None, *args, **kw):
         self.prep_params_filename = prep_params_filename
         self.do_hnn = do_hnn
-        super().__init__(*args, **kw)
+        if not optimize:
+            # Read trained parameters from training data file in sweep mode
+            self.fixed_params_values, self.sweep_points, self.opt_weights = \
+                self._get_trained_parameters(timestamp, default_params_values,
+                                    hard_sweep, soft_sweep)
+            print("DEBUG INFORMATION")
+            print(f"self.fixed_params_values = {self.fixed_params_values}")
+            print(f"self.sweep_points = {self.sweep_points}")
+            print(f"self.opt_weights = {self.opt_weights}")
+            super().__init__(fixed_params_values=self.fixed_params_values,
+                             sweep_points=self.sweep_points,
+                             weights=self.opt_weights, optimize=optimize, *args,
+                             **kw)
+        else:
+            # In training mode, fixed_params_values has to be defined in
+            # jupyter notebook and passed to QCNNExperiment for flexibility,
+            # because training experiments need a wide variety of initial
+            # parameter values
+            super().__init__(optimize=optimize, *args, **kw)
+
+    def _get_h5_path(self, timestamp):
+        folder = a_tools.get_folder(timestamp)
+        h5_name = folder.split('\\')[-1] + '.hdf5'
+        return os.path.join(folder, h5_name)
+
+    def _get_opt_params(self, timestamp):
+        h5_path = self._get_h5_path(timestamp)
+        with h5py.File(h5_path, 'a') as h5_file:
+            cost_function_values = np.array(
+                h5_file['Optimization_result']['opt']['cost_function_values'])
+            params = np.array(
+                h5_file['Optimization_result']['opt']['optim_param_values'])
+        min_cost_index = np.unravel_index(
+            np.argmin(cost_function_values, axis=None),
+            cost_function_values.shape
+        )
+        return params[:, *min_cost_index]
+
+    def _get_opt_weights(self, timestamp):
+        h5_path = self._get_h5_path(timestamp)
+        with h5py.File(h5_path, 'a') as h5_file:
+            # Try to get weights_opt from the data file. Compute and save
+            # weights_opt if it not exists for backward compatibility
+            try:
+                weights_opt = np.array(h5_file['Analysis']['weights_opt'])
+            except:
+                ana = tda.VariationalAlgorithmAnalysis(
+                    t_start=timestamp,
+                    extract_only=True,
+                    options_dict={
+                        'delegate_plotting': False,
+                        'plot_raw_data': False,
+                        'plot_proj_data': False,
+                    },
+                    raise_exceptions=True,
+                )
+                min_cost_index = np.unravel_index(
+                    np.argmin(ana.cpp_results['training_set_cost'][0],
+                              axis=None),
+                    ana.cpp_results['training_set_cost'][0].shape
+                )
+                assert ana.get_param_value('optimize') == True
+                # ana.cpp_results['weights'] has one more dimension (for
+                # targets) than ana.cpp_results['training_set_cost'], thus the
+                # codes below add that dimension to min_cost_index
+                min_cost_index = list(min_cost_index)
+                min_cost_index.insert(1, 0)  # (index, value)
+                # min_cost_index.insert(0, Ellipsis)
+                min_cost_index = tuple(min_cost_index)
+                weights_opt = ana.cpp_results['weights'][0][:, *min_cost_index]
+
+                # save data to file
+                h5_file['Analysis'].create_dataset('weights_opt',
+                                                   weights_opt.shape,
+                                                   dtype='f',
+                                                   data=weights_opt)
+        # TODO discuss
+        # weights are optimal in terms of the wrong training_set_cost
+        return weights_opt
+
+    def _get_trained_parameters(self, timestamp, default_params_values,
+                                hard_sweep, soft_sweep):
+        # Read trained parameters from training experiment data file and
+        # configure sweep_points
+        # hard_sweep/soft_sweep: {param_name: [values]}
+        # opt_params_values: {param_name: value}
+        opt_params = self._get_opt_params(timestamp)
+        for i, param_name in enumerate(default_params_values.keys()):
+            default_params_values[param_name] = opt_params[i]
+        opt_weights = self._get_opt_weights(timestamp)
+
+        fixed_params_values = copy(default_params_values)
+
+        sweep_points = sp_mod.SweepPoints()
+
+        for i, sweep_param_name in enumerate(hard_sweep.keys()):
+            sweep_points.add_sweep_parameter(
+                param_name=sweep_param_name,
+                values=hard_sweep[sweep_param_name] +
+                       fixed_params_values.pop(sweep_param_name) if (
+                       sweep_param_name in fixed_params_values.keys())
+                       else hard_sweep[sweep_param_name],
+                unit='',
+                label=sweep_param_name  # will appear as plot axis label
+            )
+
+        sweep_points.add_sweep_dimension()
+
+        for i, sweep_param_name in enumerate(soft_sweep.keys()):
+            sweep_points.add_sweep_parameter(
+                param_name=sweep_param_name,
+                values=soft_sweep[sweep_param_name] +
+                       fixed_params_values.pop(sweep_param_name) if (
+                    sweep_param_name in fixed_params_values.keys())
+                else soft_sweep[sweep_param_name],
+                unit='',
+                label=sweep_param_name  # will appear as plot axis label
+            )
+        return fixed_params_values, sweep_points, opt_weights
 
     def _add_rxy_block(self, prefix, qbns, params=None, rot='Y'):
         # FIXME this kind of functionality could be moved to CircuitBuilder,
