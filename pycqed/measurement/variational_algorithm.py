@@ -60,13 +60,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             )
             self.set_block_and_params()
             self.resolve_fixed_block_params(fixed_params_values)
-            self.exp_metadata.update({
-                'predict_proba': True,
-                'rotate': False,
-                'thresholding': True,
-                'data_to_fit': {},  # FIXME remove after cleaning up tda
-                'optimize': self.optimize,
-            })
 
             if self.optimize:
                 # Sweep points will be stored at the end by MC from the
@@ -93,12 +86,6 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                     adaptive_function=self.optimizer,
                     data_processing_function=self._data_processing_function,
                 ))
-                self.exp_metadata.update({
-                    'batching_settings': optimizer.batching_settings,
-                    'hybrid': self.optimizer.hybrid,
-                    'plot_raw_data': False,
-                    'optim_param_names': self.params,
-                })
             else:
                 self.sequences, self.mc_points = self.sweep_n_dim(
                     self.sweep_points, body_block=self.block, **kw)
@@ -107,6 +94,25 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def update_metadata(self):
+        super().update_metadata()
+        # Assuming a MultiPollDetector. predict_proba if not classified
+        self.predict_proba = not getattr(
+            self.df.detectors[0], 'classified', False)
+        self.exp_metadata.update({
+            'predict_proba': self.predict_proba,
+            'rotate': False,
+            'thresholding': True,
+            'optimize': self.optimize,
+        })
+        if self.optimize:
+            self.exp_metadata.update({
+                'training_settings': self.optimizer.training_settings,
+                'hybrid': self.optimizer.hybrid,
+                'plot_raw_data': False,
+                'optim_param_names': self.params,
+            })
 
     def set_block_and_params(self):
         # Minimal basic example with 2 layers of Y gates
@@ -198,7 +204,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             qb_names=self.qb_names,
             pdd=self.pdd,
             n_shots=self.meas_objs[0].acq_shots(),
-            predict_proba=True,
+            predict_proba=self.predict_proba,
             classifier_params=classifier_params,
             thresholding=True,
             preselection_qbs=None,
