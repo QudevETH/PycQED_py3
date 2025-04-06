@@ -3349,10 +3349,10 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             self.save_processed_data(key='analysis_params_dict')
 
             # add parameters plots
-            for p_name, p_val in params_opt.items():
+            for i, p_name in enumerate(p_names_trainable):
                 self.cpp_results.update({
                     p_name: (
-                    p_val,
+                    optim_param_values[i],
                     self._adjust_sp_length(virtual_sp, axis=targets_sp_axis,
                     scale_div=n_targets))
                 })
