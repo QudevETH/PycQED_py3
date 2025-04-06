@@ -2552,8 +2552,15 @@ class Segment:
             op_codes = [p.op_code for p in seg.unresolved_pulses]
         else:
             op_codes = [p.get('op_code') for p in pulses]
+        warned_ef = False
         for op_code in op_codes:
             if not op_code:
+                continue
+            if 'ef' in op_code:
+                if not warned_ef:
+                    warned_ef = True
+                    log.warning("Skipping all ef pulses as export_qutip is "
+                                "only implemented for qubits...")
                 continue
             op_code = op_code.split(' ')
             op_name = op_code[0]
@@ -2575,7 +2582,11 @@ class Segment:
                 if skip_RO:
                     # Remove RO, to use the circuit to run a simulation
                     continue
-                q.add_measurement(measurement='M0', targets=qb_inds[0])
+                q.add_measurement(
+                    measurement='M0',
+                    targets=qb_inds[0],
+                    classical_store=0,
+                )
             elif op_name[0] == 'I':
                 continue
             else:
