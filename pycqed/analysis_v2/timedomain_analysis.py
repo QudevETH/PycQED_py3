@@ -2111,6 +2111,7 @@ class MultiQubit_TimeDomain_Analysis(ba.BaseDataAnalysis):
             classified_ro=False,
             correlate_proba=False,
     ):
+        states_map = pdd.get('states_map')
         if states_map is None:
             states_map = {0: "g", 1: "e", 2: "f", 3: "h"}
 
@@ -3196,11 +3197,11 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             self.options_dict['slice_idxs_1d_proj_plot'] = {}
 
         self.cpp_results = {}
-        shots = self.proc_data_dict['single_shots_per_qb_thresholded']
-        shots = self._get_binary_shots_array(shots=shots)
-        if self.get_param_value('save_shots_pk'):
-            self._save_shots_pk(shots)
-        freqs, bitstrings_labels = self.cpp_histogram(shots)
+        pdd = self.proc_data_dict
+        freqs = pdd['meas_results_per_qb']['all_qubits']
+        # Turn into list and keep qubit subspace only
+        freqs = np.array([
+            val for key, val in freqs.items() if not 'f' in key])
         # shape: (n_states, hard sweep, soft sweep)
 
         # targets_sp_axis is the dimension of targets in self.sp,
@@ -3604,8 +3605,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return cost, training_set_cost
 
     @staticmethod
-    def cpp_bxe_cost_function_training(shots, targets, fms=False):
-        freqs, _ = VariationalAlgorithmAnalysis.cpp_histogram(shots)
+    def cpp_bxe_cost_function_training(freqs, targets, fms=False):
         # targets_axis: the axis of targets in freqs
         # TODO currently only used during training, unify with process_data
         state_axis = 0

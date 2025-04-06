@@ -127,7 +127,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         self.exp_metadata.update({
             'predict_proba': self.predict_proba,
             'rotate': False,
-            'thresholding': True,
+            'thresholding': self.predict_proba,
             'optimize': self.optimize,
         })
         if self.optimize:
@@ -223,17 +223,18 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 data_dict[qbn] = {}
             data_dict[qbn][vn] = vals[:, i:i+1]
 
-        self.pdd = {'meas_results_per_qb': data_dict}
+        self.pdd = {'meas_results_per_qb_raw': data_dict}
         tda.MultiQubit_TimeDomain_Analysis._process_single_shots(
             qb_names=self.qb_names,
             pdd=self.pdd,
             n_shots=self.meas_objs[0].acq_shots(),
             predict_proba=self.predict_proba,
             classifier_params=classifier_params,
-            thresholding=True,
+            thresholding=self.predict_proba,
             preselection_qbs=None,
             preselection=False,
             twoD=True,
+            data_filter=lambda x: x,
         )
         return self.pdd
 
@@ -771,18 +772,12 @@ class VQAOptimizer:
         all_params, batch_shape, targets = self.get_batch_params(params)
         # Same format as analysis.proc_data_dict
         pdd = self.measurement_wrapper(all_params)
-        shots = pdd['single_shots_per_qb_thresholded']
-        # TODO use _get_binary_shots_array
-        #  the only difference now is that here there is no "soft sweep" dim,
-        #  and the hard sweep dim is trainable_pars * non_trainable_pars
-        shots = np.array([
-            shots[key] for key in shots.keys()
-        ])
-        # shape: (n_qb, n_shots * trainable_pars * non_trainable_pars, states)
-        # Take the e state probability (now array contains 0s and 1s)
-        shots = shots[..., 1]
-        shots = shots.reshape((shots.shape[0], -1, *batch_shape))
-        # shape: (n_qb, n_shots, sets of trainable params (batch size),
+        freqs = pdd['meas_results_per_qb']['all_qubits']
+        # Turn into list and keep qubit subspace only
+        freqs = np.array([
+            val for key, val in freqs.items() if not 'f' in key])
+        freqs = freqs.reshape((freqs.shape[0], *batch_shape))
+        # shape: (n_states, sets of trainable params (batch size),
         #   sets of non trainable params (prep circuit))
         # with batch_shape = (sets_trainable, sets_non_trainable)
 
@@ -794,7 +789,7 @@ class VQAOptimizer:
             self.classical_optim_param_values.append(cost)
             self.classical_cost_function_values.append(weights)
 
-        costs = self.cost_function(shots, targets)
+        costs = self.cost_function(freqs, targets)
         self.iterations += 1
         # shape: (sets of trainable params (batch size))
         self.optim_param_values.append(np.atleast_2d(params))
