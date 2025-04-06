@@ -15,7 +15,6 @@ from pycqed.utilities import timer as tm_mod
 from sklearn.mixture import GaussianMixture as GM
 from sklearn.tree import DecisionTreeClassifier as DTC
 
-# from pycqed.measurement.variational_algorithm import VariationalAlgorithm as va
 from pycqed.analysis import fitting_models as fit_mods
 from pycqed.analysis import analysis_toolbox as a_tools
 import pycqed.analysis_v2.base_analysis as ba
