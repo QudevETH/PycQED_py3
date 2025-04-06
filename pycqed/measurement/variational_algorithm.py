@@ -41,34 +41,18 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
 
     default_experiment_name = 'VariationalAlgorithm'
 
-    def __init__(self, optimize=True, optimizer=None, fixed_params_values=None,
-                 df_name='int_log_det',
-                 sweep_points=None, **kw):
+    def __init__(
+            self,
+            optimize=False,
+            optimizer=None,
+            fixed_params_values=None,
+            df_name='int_log_det',
+            sweep_points=None,
+            **kw
+    ):
         try:
             self.default_experiment_name += '_opt' if optimize else ''
-            # Options for simulated experiment
-            if df_name=='sim_int_avg_classif_det':
-                default_kw = dict(
-                    fast_mode=False,
-                    temporary_values=[],  # Ensure that exists, to fill below
-                    df_kwargs=dict(
-                        qutrit=False,
-                        det_get_values_kws=dict(
-                            classified=True,
-                            correlated=True,
-                            thresholded=True,
-                            averaged=True,
-                        ),
-                    ),
-                )
-                gen.setdefault_nested(kw, default_kw)
-                if kw['df_kwargs']['det_get_values_kws']['averaged']:
-                    # Avoid measuring unneeded shots since the detector
-                    # anyway overwrites the data with a simulation. If not
-                    # averaged, keep the number of shots (might not be
-                    # needed for data shapes, but allows the det to know it)
-                    kw['temporary_values'].append((kw['dev'].acq_shots, 1))
-            kw.setdefault('fast_mode', True)
+            self.add_default_kw(kw, df_name=df_name)
             self.optimize = optimize
             if self.optimize:
                 sweep_points = None
@@ -118,6 +102,34 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         except Exception as x:
             self.exception = x
             traceback.print_exc()
+
+    def add_default_kw(self, kw, df_name=None):
+        # Options for simulated experiment
+        kw.setdefault('temporary_values', [])
+        # Here prepending is equivalent to setdefault
+        kw['temporary_values'].insert(0,(
+            kw['dev'].instr_mc.get_instr().live_plot_enabled, False))
+        if df_name=='sim_int_avg_classif_det':
+            default_kw = dict(
+                fast_mode=False,
+                df_kwargs=dict(
+                    qutrit=False,
+                    det_get_values_kws=dict(
+                        classified=True,
+                        correlated=True,
+                        thresholded=True,
+                        averaged=True,
+                    ),
+                ),
+            )
+            gen.setdefault_nested(kw, default_kw)
+            if kw['df_kwargs']['det_get_values_kws']['averaged']:
+                # Avoid measuring unneeded shots since the detector
+                # anyway overwrites the data with a simulation. If not
+                # averaged, keep the number of shots (might not be
+                # needed for data shapes, but allows the det to know it)
+                kw['temporary_values'].insert(0, (kw['dev'].acq_shots, 1))
+        kw.setdefault('fast_mode', True)
 
     def update_metadata(self):
         super().update_metadata()
@@ -301,30 +313,56 @@ class HNNExperiment(VariationalAlgorithm):
 
     default_experiment_name = 'HNN'
 
-    def __init__(self, prep_params_filename=None, do_hnn=True,
-                 timestamp=None, default_params_values=None, hard_sweep=None,
-                 soft_sweep=None, optimize=None, *args, **kw):
-        self.prep_params_filename = prep_params_filename
+    # TODO could make use of global options here
+
+    def __init__(
+            self,
+            optimize=False,  # nsteps
+            optimizer=None,
+            prep_params_filename=None,
+            do_hnn=True,
+            v_init=None,  # array or number
+            v_opt=None,  # dict
+            sweep_points=None,
+            *args, **kw
+    ):
         self.do_hnn = do_hnn
-        if not optimize:
-            # Read trained parameters from training data file in sweep mode
-            self.fixed_params_values, self.sweep_points, self.opt_weights = \
-                self._get_trained_parameters(timestamp, default_params_values,
-                                    hard_sweep, soft_sweep)
-            print("DEBUG INFORMATION")
-            print(f"self.fixed_params_values = {self.fixed_params_values}")
-            print(f"self.sweep_points = {self.sweep_points}")
-            print(f"self.opt_weights = {self.opt_weights}")
-            super().__init__(fixed_params_values=self.fixed_params_values,
-                             sweep_points=self.sweep_points,
-                             weights=self.opt_weights, optimize=optimize, *args,
-                             **kw)
-        else:
-            # In training mode, fixed_params_values has to be defined in
-            # jupyter notebook and passed to QCNNExperiment for flexibility,
-            # because training experiments need a wide variety of initial
-            # parameter values
-            super().__init__(optimize=optimize, *args, **kw)
+
+        if sweep_points is None:
+            pass  # TODO set default?
+        if optimize and optimizer is None:
+            if not hasattr(v_init, '__iter__'):
+                if v_init is None:
+                    v_init = 360
+                v_init = list(v_opt.values()) +\
+                    (np.random.random(len(v_opt)) - 0.5) * v_init
+            optimizer = VQAOptimizer(
+                optimizer_function='evolutionary',
+                optimizer_kw={
+                    'angles_init': v_init,
+                    'npop': 10,
+                    'sigma': 0.03 * 180,
+                    'rate': 1,
+                    'nsteps': optimize,
+                },
+                cost_function='binary_cross_entropy',
+                training_settings={
+                    'non_trainable_params_values':
+                        # shape = (sets of params, params values)
+                        np.reshape(sweep_points['h_index'], (-1, 1)),
+                    'trainable_params': len(v_init),
+                    'targets': sweep_points['targets'],
+                    'trainable_params_init_values': None,
+                }
+            )
+        self.prep_params_filename = prep_params_filename
+        super().__init__(
+            optimize=optimize,
+            do_hnn=do_hnn,
+            optimizer=optimizer,
+            sweep_points=sweep_points,
+            *args, **kw
+        )
 
     def _get_h5_path(self, timestamp):
         folder = a_tools.get_folder(timestamp)
@@ -904,13 +942,13 @@ class VQAOptimizer:
                 self.optimizer_kw = {}
             elif optimizer_function == 'evolutionary':
                 def _evolutionary_strategy(cost_function, angles_init, npop,
-                                           sigma, rate, Nsteps):
+                                           sigma, rate, nsteps):
                     length = len(angles_init)
 
-                    angles_ev = np.zeros([Nsteps + 1, length])
+                    angles_ev = np.zeros([nsteps + 1, length])
                     angles_ev[0] = angles_init  # initial guess
 
-                    for i in range(Nsteps):
+                    for i in range(nsteps):
                         seed = sigma * np.random.randn(npop-1, length)
                         seed = np.concatenate((np.zeros((1, length)), seed),
                                               axis=0)
