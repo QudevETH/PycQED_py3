@@ -3,8 +3,7 @@ import logging
 import h5py
 import traceback
 import os
-from copy import copy
-
+from copy import copy, deepcopy
 
 from pycqed.utilities import general as gen
 from pycqed.measurement import quantum_experiment as qe_mod
@@ -199,6 +198,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         # Convert into sweep_points format
         sweep_dicts_list = sp_mod.SweepPoints()
         for key, val in fixed_params_values.items():
+            assert isinstance(key, str)
             sweep_dicts_list.add_sweep_parameter(key, [val])
         # Update self.block: fix parameters contained in sweep_dicts_list
         self.block.pulses = self.block.pulses_sweepcopy(sweep_dicts_list, [0])
@@ -319,6 +319,7 @@ class HNNExperiment(VariationalAlgorithm):
             self,
             optimize=False,  # nsteps
             optimizer=None,
+            fixed_params_values=None,
             prep_params_filename=None,
             do_hnn=True,
             v_init=None,  # array or number
@@ -328,8 +329,11 @@ class HNNExperiment(VariationalAlgorithm):
     ):
         self.do_hnn = do_hnn
 
-        if sweep_points is None:
-            pass  # TODO set default?
+        if sweep_points is not None:
+            sweep_points = self.update_sweep_points(
+                sweep_points,
+                fixed_params_values,
+            )
         if optimize and optimizer is None:
             if not hasattr(v_init, '__iter__'):
                 if v_init is None:
@@ -360,9 +364,70 @@ class HNNExperiment(VariationalAlgorithm):
             optimize=optimize,
             do_hnn=do_hnn,
             optimizer=optimizer,
+            fixed_params_values=fixed_params_values,
             sweep_points=sweep_points,
             *args, **kw
         )
+
+    def update_sweep_points(self, sweep_points, fixed_params_values):
+        fixed_params_values = fixed_params_values or {}
+        sweep_points = deepcopy(sweep_points)
+        for sp_dim in sweep_points:
+            for sp_name in list(sp_dim):
+                if sp_dim[sp_name] == 'auto':
+                    val = 0
+                    if sp_name in fixed_params_values:
+                        val = fixed_params_values.pop(sp_name)
+                    sp_dim[sp_name] = (
+                        np.linspace(-180, 180, 36) + val,
+                        'deg', sp_name
+                    )
+        if len(sweep_points)==1:
+            sweep_points.append({'dummy': (np.array([0]), '', '')})
+        return sp_mod.SweepPoints(sweep_points)
+
+    def pp9(self, h_index, param_index):
+        # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 1
+        # h_index = 21, ..., 28, validation set
+        h_index = int(round(h_index))
+        if h_index >= 21:
+            test_prep_params = np.zeros((8, 44))
+            # test_prep_params[0] is all-zero to prepare 0000
+            test_prep_params[1][0:9] = 180  # all 1
+            test_prep_params[2][0:9] = 90  # all +
+            test_prep_params[3][0:9] = -90  # all -
+            test_prep_params[4][[1, 3, 5, 7]] = 180  # 010101010
+            test_prep_params[5][[0, 2, 4, 6, 8]] = 180  # 101010101
+            pm = np.empty(9)
+            pm[::2] = 90
+            pm[1::2] = -90
+            test_prep_params[6][0:9] = pm  # +-+-+-+-+
+            test_prep_params[7][0:9] = -pm  # -+-+-+-+-
+            return test_prep_params[h_index - 21][param_index]
+        if not hasattr(self, 'prep_params_vs_h'):
+            if self.prep_params_filename is None:
+                raise ValueError("self.prep_params_filename is None!")
+            try:
+                with h5py.File(self.prep_params_filename,
+                               'r') as fileObject:
+                    # parameters are not saved as a 2D array of 21*44
+                    theta_opt = fileObject['THETAS_opt']
+                    phi_opt = fileObject['phi_opt']
+                    self.prep_params_vs_h = np.zeros((21, 44))
+                    for i in range(21):
+                        self.prep_params_vs_h[i][0:9] = theta_opt[i][0]
+                        self.prep_params_vs_h[i][9:11] = phi_opt[i][0:2]
+                        self.prep_params_vs_h[i][11:20] = theta_opt[i][1]
+                        self.prep_params_vs_h[i][20:23] = phi_opt[i][2:5]
+                        self.prep_params_vs_h[i][23:32] = theta_opt[i][2]
+                        self.prep_params_vs_h[i][32:35] = phi_opt[i][5:8]
+                        self.prep_params_vs_h[i][35:44] = theta_opt[i][3]
+                    self.prep_params_vs_h *= 180 / np.pi
+            except FileNotFoundError:
+                log.warning(
+                    "Can't find prep params file! Using zeros instead")
+                self.prep_params_vs_h = np.zeros((21, 44))
+        return self.prep_params_vs_h[h_index, param_index]
 
     def _get_h5_path(self, timestamp):
         folder = a_tools.get_folder(timestamp)
