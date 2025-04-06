@@ -3197,11 +3197,16 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
 
         self.cpp_results = {}
         pdd = self.proc_data_dict
-        freqs = pdd['meas_results_per_qb']['all_qubits']
-        # Turn into list and keep qubit subspace only
-        labels = list(freqs)
-        freqs = np.array([
-            val for key, val in freqs.items() if not 'f' in key])
+        if False:  # old code, in case needed
+            shots = pdd['single_shots_per_qb_thresholded']
+            shots = self._get_binary_shots_array(shots=shots)
+            freqs, bitstrings_labels = self.cpp_histogram(shots)
+        else:
+            freqs = pdd['meas_results_per_qb']['all_qubits']
+            # Turn into list and keep qubit subspace only
+            labels = list(freqs)
+            freqs = np.array([
+                val for key, val in freqs.items() if not 'f' in key])
         # shape: (n_states, hard sweep, soft sweep)
 
         # targets_sp_axis is the dimension of targets in self.sp,
