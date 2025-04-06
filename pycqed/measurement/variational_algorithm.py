@@ -2,8 +2,7 @@ import numpy as np
 import logging
 import h5py
 import traceback
-import os
-from copy import copy, deepcopy
+from copy import deepcopy
 
 from pycqed.utilities import general as gen
 from pycqed.measurement import quantum_experiment as qe_mod
@@ -12,7 +11,7 @@ from pycqed.analysis_v2 import timedomain_analysis as tda
 import pycqed.measurement.sweep_points as sp_mod
 from pycqed.analysis_v2.timedomain_analysis import (
     VariationalAlgorithmAnalysis as vaa)
-from pycqed.analysis import analysis_toolbox as a_tools
+from pycqed.analysis_v3 import helper_functions as hlp_mod
 
 log = logging.getLogger(__name__)
 
@@ -143,7 +142,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         })
         if self.optimize:
             self.exp_metadata.update({
-                'training_settings': self.optimizer.training_settings,
+                'batching_settings': self.optimizer.batching_settings,
                 'hybrid': self.optimizer.hybrid,
                 'plot_raw_data': False,
                 'optim_param_names': self.params,
@@ -316,17 +315,26 @@ class HNNExperiment(VariationalAlgorithm):
 
     def __init__(
             self,
+            ts_reload=None,
             optimize=False,  # nsteps
             optimizer=None,
             fixed_params_values=None,
+            weights=None,
             prep_params_filename=None,
             do_hnn=True,
-            v_init=None,  # array or number
+            angles_init=None,  # array or number
             v_opt=None,  # dict
             sweep_points=None,
             *args, **kw
     ):
+        self.prep_params_filename = prep_params_filename
         self.do_hnn = do_hnn
+
+        if ts_reload:
+            # Read trained parameters from training data file in sweep mode
+            apd = self._get_apd(ts_reload)
+            weights = apd['weights_opt']
+            fixed_params_values = apd['params_opt']
 
         if sweep_points is not None:
             sweep_points = self.update_sweep_points(
@@ -334,199 +342,67 @@ class HNNExperiment(VariationalAlgorithm):
                 fixed_params_values,
             )
         if optimize and optimizer is None:
-            if not hasattr(v_init, '__iter__'):
-                if v_init is None:
-                    v_init = 360
-                v_init = list(v_opt.values()) +\
-                    (np.random.random(len(v_opt)) - 0.5) * v_init
+            if not hasattr(angles_init, '__iter__'):
+                if angles_init is None:
+                    angles_init = 360
+                angles_init = list(v_opt.values()) +\
+                    (np.random.random(len(v_opt)) - 0.5) * angles_init
             optimizer = VQAOptimizer(
                 optimizer_function='evolutionary',
                 optimizer_kw={
-                    'angles_init': v_init,
+                    'angles_init': angles_init,
                     'npop': 10,
                     'sigma': 0.03 * 180,
                     'rate': 1,
                     'nsteps': optimize,
                 },
                 cost_function='binary_cross_entropy',
-                training_settings={
+                batching_settings={
                     'non_trainable_params_values':
                         # shape = (sets of params, params values)
                         np.reshape(sweep_points['h_index'], (-1, 1)),
-                    'trainable_params': len(v_init),
+                    'trainable_params': len(angles_init),
                     'targets': sweep_points['targets'],
                     'trainable_params_init_values': None,
                 }
             )
-        self.prep_params_filename = prep_params_filename
+
         super().__init__(
             optimize=optimize,
-            do_hnn=do_hnn,
             optimizer=optimizer,
             fixed_params_values=fixed_params_values,
+            weights=weights,  # for the analysis
+            do_hnn=do_hnn,
             sweep_points=sweep_points,
             *args, **kw
         )
 
+    def _get_apd(self, timestamp):
+        try:
+            return hlp_mod.get_param_from_analysis_group(
+                timestamp=timestamp, param_name='analysis_params_dict')
+        except KeyError:
+            # weights_opt doesn't exist yet
+            tda.VariationalAlgorithmAnalysis(
+                t_start=timestamp, extract_only=True, raise_exceptions=True,
+            )
+            return self._get_apd(timestamp)
+
     def update_sweep_points(self, sweep_points, fixed_params_values):
-        fixed_params_values = fixed_params_values or {}
+        if fixed_params_values is None:
+            fixed_params_values = {}
         sweep_points = deepcopy(sweep_points)
         for sp_dim in sweep_points:
             for sp_name in list(sp_dim):
-                if sp_dim[sp_name] == 'auto':
-                    val = 0
-                    if sp_name in fixed_params_values:
-                        val = fixed_params_values.pop(sp_name)
-                    sp_dim[sp_name] = (
-                        np.linspace(-180, 180, 36) + val,
-                        'deg', sp_name
-                    )
+                vals = sp_dim[sp_name][0]
+                if sp_name in fixed_params_values:
+                    vals += fixed_params_values.pop(sp_name)
+                sp_dim[sp_name] = (
+                    vals, sp_dim[sp_name][1], sp_dim[sp_name][2]
+                )
         if len(sweep_points)==1:
             sweep_points.append({'dummy': (np.array([0]), '', '')})
-        return sp_mod.SweepPoints(sweep_points)
-
-    def pp9(self, h_index, param_index):
-        # h_index = 0 ~ 20, parameters from h5 file, h = 0 ~ 1
-        # h_index = 21, ..., 28, validation set
-        h_index = int(round(h_index))
-        if h_index >= 21:
-            test_prep_params = np.zeros((8, 44))
-            # test_prep_params[0] is all-zero to prepare 0000
-            test_prep_params[1][0:9] = 180  # all 1
-            test_prep_params[2][0:9] = 90  # all +
-            test_prep_params[3][0:9] = -90  # all -
-            test_prep_params[4][[1, 3, 5, 7]] = 180  # 010101010
-            test_prep_params[5][[0, 2, 4, 6, 8]] = 180  # 101010101
-            pm = np.empty(9)
-            pm[::2] = 90
-            pm[1::2] = -90
-            test_prep_params[6][0:9] = pm  # +-+-+-+-+
-            test_prep_params[7][0:9] = -pm  # -+-+-+-+-
-            return test_prep_params[h_index - 21][param_index]
-        if not hasattr(self, 'prep_params_vs_h'):
-            if self.prep_params_filename is None:
-                raise ValueError("self.prep_params_filename is None!")
-            try:
-                with h5py.File(self.prep_params_filename,
-                               'r') as fileObject:
-                    # parameters are not saved as a 2D array of 21*44
-                    theta_opt = fileObject['THETAS_opt']
-                    phi_opt = fileObject['phi_opt']
-                    self.prep_params_vs_h = np.zeros((21, 44))
-                    for i in range(21):
-                        self.prep_params_vs_h[i][0:9] = theta_opt[i][0]
-                        self.prep_params_vs_h[i][9:11] = phi_opt[i][0:2]
-                        self.prep_params_vs_h[i][11:20] = theta_opt[i][1]
-                        self.prep_params_vs_h[i][20:23] = phi_opt[i][2:5]
-                        self.prep_params_vs_h[i][23:32] = theta_opt[i][2]
-                        self.prep_params_vs_h[i][32:35] = phi_opt[i][5:8]
-                        self.prep_params_vs_h[i][35:44] = theta_opt[i][3]
-                    self.prep_params_vs_h *= 180 / np.pi
-            except FileNotFoundError:
-                log.warning(
-                    "Can't find prep params file! Using zeros instead")
-                self.prep_params_vs_h = np.zeros((21, 44))
-        return self.prep_params_vs_h[h_index, param_index]
-
-    def _get_h5_path(self, timestamp):
-        folder = a_tools.get_folder(timestamp)
-        h5_name = folder.split('\\')[-1] + '.hdf5'
-        return os.path.join(folder, h5_name)
-
-    def _get_opt_params(self, timestamp):
-        h5_path = self._get_h5_path(timestamp)
-        with h5py.File(h5_path, 'a') as h5_file:
-            cost_function_values = np.array(
-                h5_file['Optimization_result']['opt']['cost_function_values'])
-            params = np.array(
-                h5_file['Optimization_result']['opt']['optim_param_values'])
-        min_cost_index = np.unravel_index(
-            np.argmin(cost_function_values, axis=None),
-            cost_function_values.shape
-        )
-        return params[:, *min_cost_index]
-
-    def _get_opt_weights(self, timestamp):
-        h5_path = self._get_h5_path(timestamp)
-        with h5py.File(h5_path, 'a') as h5_file:
-            # Try to get weights_opt from the data file. Compute and save
-            # weights_opt if it not exists for backward compatibility
-            try:
-                weights_opt = np.array(h5_file['Analysis']['weights_opt'])
-            except:
-                ana = tda.VariationalAlgorithmAnalysis(
-                    t_start=timestamp,
-                    extract_only=True,
-                    options_dict={
-                        'delegate_plotting': False,
-                        'plot_raw_data': False,
-                        'plot_proj_data': False,
-                    },
-                    raise_exceptions=True,
-                )
-                min_cost_index = np.unravel_index(
-                    np.argmin(ana.cpp_results['training_set_cost'][0],
-                              axis=None),
-                    ana.cpp_results['training_set_cost'][0].shape
-                )
-                assert ana.get_param_value('optimize') == True
-                # ana.cpp_results['weights'] has one more dimension (for
-                # targets) than ana.cpp_results['training_set_cost'], thus the
-                # codes below add that dimension to min_cost_index
-                min_cost_index = list(min_cost_index)
-                min_cost_index.insert(1, 0)  # (index, value)
-                # min_cost_index.insert(0, Ellipsis)
-                min_cost_index = tuple(min_cost_index)
-                weights_opt = ana.cpp_results['weights'][0][:, *min_cost_index]
-
-                # save data to file
-                h5_file['Analysis'].create_dataset('weights_opt',
-                                                   weights_opt.shape,
-                                                   dtype='f',
-                                                   data=weights_opt)
-        # TODO discuss
-        # weights are optimal in terms of the wrong training_set_cost
-        return weights_opt
-
-    def _get_trained_parameters(self, timestamp, default_params_values,
-                                hard_sweep, soft_sweep):
-        # Read trained parameters from training experiment data file and
-        # configure sweep_points
-        # hard_sweep/soft_sweep: {param_name: [values]}
-        # opt_params_values: {param_name: value}
-        opt_params = self._get_opt_params(timestamp)
-        for i, param_name in enumerate(default_params_values.keys()):
-            default_params_values[param_name] = opt_params[i]
-        opt_weights = self._get_opt_weights(timestamp)
-
-        fixed_params_values = copy(default_params_values)
-
-        sweep_points = sp_mod.SweepPoints()
-
-        for i, sweep_param_name in enumerate(hard_sweep.keys()):
-            sweep_points.add_sweep_parameter(
-                param_name=sweep_param_name,
-                values=hard_sweep[sweep_param_name] +
-                       fixed_params_values.pop(sweep_param_name) if (
-                       sweep_param_name in fixed_params_values.keys())
-                       else hard_sweep[sweep_param_name],
-                unit='',
-                label=sweep_param_name  # will appear as plot axis label
-            )
-
-        sweep_points.add_sweep_dimension()
-
-        for i, sweep_param_name in enumerate(soft_sweep.keys()):
-            sweep_points.add_sweep_parameter(
-                param_name=sweep_param_name,
-                values=soft_sweep[sweep_param_name] +
-                       fixed_params_values.pop(sweep_param_name) if (
-                    sweep_param_name in fixed_params_values.keys())
-                else soft_sweep[sweep_param_name],
-                unit='',
-                label=sweep_param_name  # will appear as plot axis label
-            )
-        return fixed_params_values, sweep_points, opt_weights
+        return sweep_points
 
     def _add_rxy_block(self, prefix, qbns, params=None, rot='Y'):
         # FIXME this kind of functionality could be moved to CircuitBuilder,
@@ -782,7 +658,7 @@ class QCNNExperiment_old(VariationalAlgorithm):
         self.params += [f'theta{i}' for i in range(2)]
 
 
-class StatePrepExperiment(QCNNExperiment):  # TODO
+class StatePrepExperiment(HNNExperiment):  # TODO
 
     def set_block_and_params(self):
         self._blocks = []

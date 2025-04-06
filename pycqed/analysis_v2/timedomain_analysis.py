@@ -3224,13 +3224,18 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             targets_sp_axis = 0
             targets_axis = 2
             n_targets = len(targets)
-            # shape: (n_states, n_sets_trainable_pars * n_targets, n_iter)
+            # freqs.shape: (n_states, n_sets_trainable_pars*n_targets, n_iter)
             freqs = freqs.reshape(
                 [freqs.shape[0]] +
                 list(self.raw_data_dict['optimizer']['batch_shape']) +
                 [self.sp.length(1)]
             )
-            # shape: (n_states, n_sets_trainable_pars, n_targets, n_iter)
+            # freqs.shape: (n_states, n_sets_trainable_pars, n_targets, n_iter)
+            optim_param_values = self.raw_data_dict['optimizer'][
+                'optim_param_values']
+            p_names = self.get_param_value('optim_param_names')
+            # Only keep trainable params
+            p_names_trainable = p_names[-len(optim_param_values):]
         elif self.sp.find_parameter('targets') is not None:
             # sweep mode with targets in targets_axis
             # shape: (n_states, hard sweep, soft sweep)
@@ -3314,8 +3319,6 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             cost, training_set_cost = self.cpp_bxe_cost(
                 freqs, weights,
                 targets=targets, targets_axis=targets_axis,
-                # keepdims: see comments in self.cpp_bxe_cost
-                keepdims=(not self.get_param_value('optimize')),
             )
             cost = cost.reshape(virtual_sp.length())
             self.cpp_results.update({
@@ -3326,18 +3329,31 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                 'weights': (weights, 'noplot'),  # plotting won't work
             })
 
-        # add parameters plots
+        self.proc_data_dict['analysis_params_dict'] = {}
         if self.get_param_value('optimize'):
-            optim_param_values = self.raw_data_dict['optimizer'][
-                'optim_param_values']
-            n_trainable = len(optim_param_values)
-            p_names = self.get_param_value('optim_param_names')
-            p_names = p_names[-n_trainable:]  # Only keep trainable params
-            for id_param in range(optim_param_values.shape[0]):
-                p_name = p_names[id_param]
+            # extract optimal weights
+            min_cost_index = list(np.unravel_index(
+                np.argmin(training_set_cost), training_set_cost.shape
+            ))
+            params_opt = optim_param_values[:, *min_cost_index]
+            params_opt = dict(zip(p_names_trainable, params_opt))
+            # weights has one more dimension (for targets) than
+            # training_set_cost, thus add that dimension to min_cost_index
+            min_cost_index.insert(1, 0)  # (index, value)
+            weights_opt = weights[:, *min_cost_index]
+
+            # save data to file
+            self.proc_data_dict['analysis_params_dict']['weights_opt'] = \
+                weights_opt
+            self.proc_data_dict['analysis_params_dict']['params_opt'] = \
+                params_opt
+            self.save_processed_data(key='analysis_params_dict')
+
+            # add parameters plots
+            for p_name, p_val in params_opt.items():
                 self.cpp_results.update({
                     p_name: (
-                    optim_param_values[id_param],
+                    p_val,
                     self._adjust_sp_length(virtual_sp, axis=targets_sp_axis,
                     scale_div=n_targets))
                 })
@@ -3574,7 +3590,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
     @staticmethod
     def cpp_bxe_cost(freqs, weights, state_axis=0,
                        targets=None, targets_axis=None,  # optional
-                       keepdims=False):
+                     ):
         epsilon_stable = 1e-10  # small parameter to avoid division by zero
         freq1 = freqs * targets  # Don't sum over targets here
         freq0 = freqs * (1 - targets)
@@ -3587,10 +3603,9 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         # cost.shape =
         #   (n_sets_trainable_pars, n_targets, n_iter) in training
         #   {n_sweep_param, n_targets} (undetermined order) in sweep
-        # training_set_cost has to be 2D for plotting thus keepdims=True in
-        # sweep mode (optimize=False)
-        training_set_cost = np.mean(cost, axis=targets_axis-1,
-                                    keepdims=keepdims)
+        # training_set_cost has to be 2D for plotting
+        # targets_axis-1 because we have removed state_axis above
+        training_set_cost = np.atleast_2d(np.mean(cost, axis=targets_axis-1))
         return cost, training_set_cost
 
     @staticmethod
