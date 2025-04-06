@@ -52,6 +52,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             self.default_experiment_name += '_opt' if optimize else ''
             self.add_default_kw(kw, df_name=df_name)
             self.optimize = optimize
+            self.fixed_params_values = fixed_params_values
             if self.optimize:
                 sweep_points = None
                 if None in [optimizer]:
@@ -65,7 +66,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 sequence_kwargs=dict(sweep_points=sweep_points), **kw
             )
             self.set_block_and_params()
-            self.resolve_fixed_block_params(fixed_params_values)
+            self.resolve_fixed_block_params()
 
             if self.optimize:
                 # Sweep points will be stored at the end by MC from the
@@ -186,22 +187,23 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         _, idx = np.unique(self.params, return_index=True)
         self.params = list(np.array(self.params)[np.sort(idx)])
 
-    def resolve_fixed_block_params(self, fixed_params_values=None):
+    def resolve_fixed_block_params(self):
         """Partially resolves self.block, to set params which are not swept
 
         Args:
             fixed_params_values: dict of the form {'param_name': value,}
         """
-        if fixed_params_values is None:
+        if self.fixed_params_values is None:
             return
         # Convert into sweep_points format
         sweep_dicts_list = sp_mod.SweepPoints()
-        for key, val in fixed_params_values.items():
+        for key, val in self.fixed_params_values.items():
             assert isinstance(key, str)
             sweep_dicts_list.add_sweep_parameter(key, [val])
         # Update self.block: fix parameters contained in sweep_dicts_list
         self.block.pulses = self.block.pulses_sweepcopy(sweep_dicts_list, [0])
-        self.params = [p for p in self.params if p not in fixed_params_values]
+        self.params = [p for p in self.params
+                       if p not in self.fixed_params_values]
 
     def _data_processing_function(self, vals):
 
