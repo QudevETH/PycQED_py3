@@ -3345,6 +3345,8 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
                     p_name, [(':', 'smcol')]
                 )
 
+        # FIXME to avoid plotting all measured data
+        pdd['projected_data_dict'] = {}
         for key, (values, sp) in self.cpp_results.items():
             self.add_dummy_qb_data(key, values, sp)
 
