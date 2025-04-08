@@ -3613,7 +3613,7 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
         return cost, training_set_cost
 
     @staticmethod
-    def cpp_bxe_cost_function_training(freqs, targets, fms=False):
+    def cpp_bxe_cost_function_training(freqs, targets, fms=False, **kw):
         # targets_axis: the axis of targets in freqs
         # TODO currently only used during training, unify with process_data
         state_axis = 0
