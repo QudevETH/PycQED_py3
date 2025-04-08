@@ -3630,7 +3630,9 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             targets = VariationalAlgorithmAnalysis._expand_to_ND_from_axis(
                 targets, freqs.shape, current_axes=[targets_axis])
         # TODO modularize the fms procedure
+        # TODO requires fms, so could be rewritten nicely
         if np.all(targets == 1):
+            assert fms
             # There is no target 0: add a fully mixed state as target 0
             shape_fms = list(shape)
             shape_fms[targets_axis] = 1  # Add one target, along targets_axis

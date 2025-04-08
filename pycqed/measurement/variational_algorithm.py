@@ -319,18 +319,19 @@ class HNNExperiment(VariationalAlgorithm):
     # TODO could make use of global options here
 
     def __init__(
-            self,
-            ts_reload=None,
-            optimize=False,  # nsteps
-            optimizer=None,
-            fixed_params_values=None,
-            weights=None,
-            prep_params_filename=None,
-            do_hnn=True,
-            angles_init=None,  # array or number
-            v_opt=None,  # dict
-            sweep_points=None,
-            *args, **kw
+        self,
+        ts_reload=None,
+        optimize=False,  # nsteps
+        optimizer=None,
+        fixed_params_values=None,
+        weights=None,
+        prep_params_filename=None,
+        do_hnn=True,
+        angles_init=None,  # array or number
+        v_opt=None,  # dict
+        sweep_points=None,
+        fms=False,
+        *args, **kw
     ):
         self.prep_params_filename = prep_params_filename
         self.do_hnn = do_hnn
@@ -369,6 +370,7 @@ class HNNExperiment(VariationalAlgorithm):
                     'trainable_params': len(angles_init),
                     'targets': sweep_points['targets'],
                     'trainable_params_init_values': None,
+                    'fms': fms,
                 }
             )
 
@@ -735,8 +737,7 @@ class VQAOptimizer:
             'optim_param_values': self.optim_param_values,
             'cost_function_values': self.cost_function_values,
             'sweep_points': self.sweep_points,
-            'batch_shape': np.array(self.batch_shape),
-            'targets': self.targets,
+            **self.batch_kw,
         }
         if self.hybrid:
             result_dict.update({
@@ -748,14 +749,14 @@ class VQAOptimizer:
         return result_dict
 
     def _full_circuit(self, params):
-        all_params, batch_shape, targets = self.get_batch_params(params)
+        all_params, kw = self.get_batch_params(params)
         # Same format as analysis.proc_data_dict
         pdd = self.measurement_wrapper(all_params)
         freqs = pdd['meas_results_per_qb']['all_qubits']
         # Turn into list and keep qubit subspace only
         freqs = np.array([
             val for key, val in freqs.items() if not 'f' in key])
-        freqs = freqs.reshape((freqs.shape[0], *batch_shape))
+        freqs = freqs.reshape((freqs.shape[0], *kw['batch_shape']))
         # shape: (n_states, sets of trainable params (batch size),
         #   sets of non trainable params (prep circuit))
         # with batch_shape = (sets_trainable, sets_non_trainable)
@@ -764,17 +765,16 @@ class VQAOptimizer:
             from qml_training_utils.utils import neural_network_post_processing
             freqs = pdd['TODO']
             cost, weights = neural_network_post_processing(
-                freqs, targets, optimize=True)
+                freqs, **kw, optimize=True)
             self.classical_optim_param_values.append(cost)
             self.classical_cost_function_values.append(weights)
 
-        costs = self.cost_function(freqs, targets)
+        costs = self.cost_function(freqs, **kw)
         self.iterations += 1
         # shape: (sets of trainable params (batch size))
         self.optim_param_values.append(np.atleast_2d(params))
         self.cost_function_values.append(costs)
-        self.batch_shape = batch_shape
-        self.targets = targets
+        self.batch_kw = kw
         return costs
 
     def get_batch_params(self, trainable_params_values):
@@ -826,12 +826,17 @@ class VQAOptimizer:
         # )
         # Extract the first 2 dimensions: this is the real shape of the data
         # (which will be returned flattened by the experiment, see next line).
-        batch_shape = params_values.shape[:-1]
+        batch_shape = np.array(params_values.shape[:-1])
         # Flatten the first 2 dimensions, to iterate jointly over vf and vt
         # in the experiment (single sweep). The last dimension just
         # corresponds to the number of params, which are swept jointly.
         params_values = params_values.reshape(-1, params_values.shape[-1])
-        return params_values, batch_shape, targets
+        kw = {
+            'batch_shape': batch_shape,
+            'targets': targets,
+            'fms': self.batching_settings.get('fms', True)
+        }
+        return params_values, kw
 
     def create_sweep_points(self):
         # Create a posteriori sweep points based on the optimisation run
