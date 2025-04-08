@@ -2534,6 +2534,74 @@ class Segment:
         output += f'\n% {num_single_qb} single-qubit gates, {num_two_qb} two-qubit gates, {num_virtual} virtual gates'
         return output
 
+    @staticmethod
+    def export_qutip(
+            qb_names, seg=None, pulses=None, q=None, skip_RO=False, **kw
+    ):
+        import pycqed.utilities.qutip_compat as qtp
+        if q is None:
+            kw.setdefault('reverse_states', False)
+            # bug in qutip==5.1.1 plotting: if there are measurements,
+            # rendering the circuit will try to assign measurement results
+            # to a classical bit (classical_store), which cannot be None
+            kw.setdefault('num_cbits', 0 if skip_RO else 1)
+            q = qtp.qip.circuit.QubitCircuit(len(qb_names), **kw)
+        if seg:  # Pass either a segment or directly pulses
+            assert pulses is None
+            seg.resolve_segment()
+            op_codes = [p.op_code for p in seg.unresolved_pulses]
+        else:
+            op_codes = [p.get('op_code') for p in pulses]
+        warned_ef = False
+        for op_code in op_codes:
+            if not op_code:
+                continue
+            if 'ef' in op_code:
+                if not warned_ef:
+                    warned_ef = True
+                    log.warning("Skipping all ef pulses as export_qutip is "
+                                "only implemented for qubits...")
+                continue
+            op_code = op_code.split(' ')
+            op_name = op_code[0]
+            # test if qubit names have been provided, see CB.get_qubits
+            try:
+                qb_inds = [qb_names.index(qbn) for qbn in op_code[1:]]
+            except ValueError:
+                qb_inds = [int(i) for i in qb_names]
+            if op_name[0] == 's':
+                op_name = op_name[1:]
+            if 'CZ' in op_name:
+                op_type = op_name.split(':')[0].rstrip('0123456789.e-')
+                val = op_name[len(op_type):]
+                val = float(val) if val else 180
+                q.add_gate(
+                    "CPHASE", controls=qb_inds[0], targets=qb_inds[1],
+                    arg_value=val / 180 * np.pi, arg_label=f"CZ{val}")
+            elif op_name == 'RO':
+                if skip_RO:
+                    # Remove RO, to use the circuit to run a simulation
+                    continue
+                q.add_measurement(
+                    measurement='M0',
+                    targets=qb_inds[0],
+                    classical_store=0,
+                )
+            elif op_name[0] == 'I':
+                continue
+            else:
+                if op_name[0] == 'm':
+                    factor = -1
+                    op_name = op_name[1:]
+                else:
+                    factor = 1
+                gate_type = op_name[:1]
+                val = float(op_name[1:])
+                q.add_gate('R' + gate_type, targets=qb_inds[0],
+                           arg_value=factor * val / 180 * np.pi,
+                           arg_label=f"{gate_type}{val}")
+        return q
+
     def export_stim(self, qubit_coords=None,
                     transpiling_dict=None, resolve_segment=True, tol=1e-9):
         """

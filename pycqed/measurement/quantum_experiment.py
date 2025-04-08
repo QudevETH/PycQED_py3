@@ -34,8 +34,6 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
 
     """
     TIMED_METHODS = ["run_analysis"]
-    _metadata_params = {'cal_points', 'sweep_points',
-                        'channel_map', 'meas_objs'}
     # The following string can be overwritten by child classes to provide a
     # default value for the kwarg experiment_name. None means that the name
     # of the first sequences will be used.
@@ -163,6 +161,8 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         super().__init__(dev=dev, qubits=qubits, operation_dict=operation_dict,
                          **kw)
 
+        self._metadata_params = {'cal_points', 'sweep_points',
+                                 'channel_map', 'meas_objs'}
         self.exp_metadata = exp_metadata
         if self.exp_metadata is None:
             self.exp_metadata = {}
@@ -523,8 +523,10 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self._set_MC(MC)
 
         # check whether the number of readouts is the same for all sequences
-        assert len(np.unique([s.n_acq_elements() for s in self.sequences])) == 1, \
-            "All sequences must have the same n_acq_elements (number of ROs)."
+        # Note that the < is to allow the case where there are no sequences yet
+        assert len(np.unique([s.n_acq_elements() for s in self.sequences])) \
+                   <= 1, "All sequences must have the same n_acq_elements (" \
+                         "number of ROs)."
         # if not, then the definition of the mc_points and the compression
         # would need to be changed
 

@@ -12,6 +12,7 @@ try:
         # these will be available as this_module.qip.submodule
         import qutip_qip.operations
         import qutip_qip.circuit
+        import qutip_qip.device
     is_imported = True
 except ImportError as e:
     is_imported = False

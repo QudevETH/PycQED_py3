@@ -19,6 +19,7 @@ from functools import reduce, wraps
 import operator
 import string
 from zipfile import ZipFile
+from collections.abc import Mapping
 
 try:
     import msvcrt  # used on windows to catch keyboard input
@@ -634,6 +635,15 @@ def setInDict(dataDict: dict, mapList: list, value):
                         'b': 4}
     """
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
+
+
+def setdefault_nested(d, new_d):
+    for key in new_d:
+        # Try and set default whenever possible
+        d.setdefault(key, new_d[key])
+        # If both are dicts: continue with nested call
+        if isinstance(d[key], Mapping) and isinstance(new_d[key], Mapping):
+            setdefault_nested(d[key], new_d[key])
 
 
 def is_more_rencent(filename: str, comparison_filename: str):

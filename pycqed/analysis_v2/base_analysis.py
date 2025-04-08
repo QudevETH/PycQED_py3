@@ -769,6 +769,20 @@ class BaseDataAnalysis(object):
                                 ' is not extracted from the file. '
                                 'An empty list will be returned.')
                     raw_data_dict_ts['measured_values'] = []
+                if 'exp_metadata' in params_dict:
+                    if opt_res := data_file.get('Optimization_result'):
+                        raw_data_dict_ts['optimizer'] = dict()
+                        # FIXME this assumes that the 'Optimization_result'
+                        #  group contains the dict {'opt': {k: v...}}
+                        #  where each v is a numpy array. This could be
+                        #  generalised once there is a concrete use case.
+                        for k, v in dict(opt_res['opt']).items():
+                            if k == 'sweep_points':
+                                # For backwards compatibility with
+                                # measurements done in 2024 in which sweep
+                                # points were not removed from this opt result.
+                                continue
+                            raw_data_dict_ts['optimizer'][k] = np.array(v)
 
                 # add hdf attributes and groups
                 for save_par, file_par in params_dict.items():
