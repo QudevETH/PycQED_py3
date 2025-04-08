@@ -843,7 +843,7 @@ class VQAOptimizer:
         self.sweep_points = sp_mod.SweepPoints()
         self.sweep_points.add_sweep_parameter(
             'optimizer_hard_sweep_index',
-            np.array(range(np.prod(self.batch_shape))),
+            np.array(range(np.prod(self.batch_kw['batch_shape']))),
         )
         self.sweep_points.add_sweep_dimension()
         self.sweep_points.add_sweep_parameter(
