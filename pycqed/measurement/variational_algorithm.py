@@ -186,7 +186,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
         e.g. [":cb.pp([h_index],{i})", ...] -> ["h_index", ...]
         """
         self.params = [self._parse_param(p)[0]
-                       for p in self.params if ':' in p]
+                       for p in self.params if isinstance(p, str) and ':' in p]
         _, idx = np.unique(self.params, return_index=True)
         self.params = list(np.array(self.params)[np.sort(idx)])
 
@@ -509,7 +509,7 @@ class HNNExperiment(VariationalAlgorithm):
                 self._gate_block('Y', range(len(self.qubits)), ['theta_b']*9)
         elif len(self.qubits) == 1:
             self._gate_block('Y', range(len(self.qubits)), ['theta_p'])
-            self._gate_block('Y', range(len(self.qubits)), ['theta_t'])
+            self._gate_block('Y', range(len(self.qubits)), ['basis'])
         else:
             raise ValueError(f"{len(self.qubits)} qubits not supported!")
         self._extract_variational_param_names()
