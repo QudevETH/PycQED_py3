@@ -53,6 +53,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
             self.add_default_kw(kw, df_name=df_name)
             self.optimize = optimize
             self.fixed_params_values = fixed_params_values
+            self._prefix_count = 0
             if self.optimize:
                 sweep_points = None
                 if None in [optimizer]:
@@ -65,6 +66,7 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                 df_name=df_name,
                 sequence_kwargs=dict(sweep_points=sweep_points), **kw
             )
+            self.create_pp_vals()
             self.set_block_and_params()
             self.resolve_fixed_block_params()
 
@@ -179,11 +181,12 @@ class VariationalAlgorithm(qe_mod.QuantumExperiment):
                                             destroy=True)
 
     def _extract_variational_param_names(self):
-        """Extracts the actual sweep parameters from the parameterised angles
+        """Extracts the actual sweep parameters from parameterised angles
 
-        e.g. ["cb.pp([h_index],{i})", ...] -> ["h_index", ...]
+        e.g. [":cb.pp([h_index],{i})", ...] -> ["h_index", ...]
         """
-        self.params = [self._parse_param(p)[0] for p in self.params]
+        self.params = [self._parse_param(p)[0]
+                       for p in self.params if ':' in p]
         _, idx = np.unique(self.params, return_index=True)
         self.params = list(np.array(self.params)[np.sort(idx)])
 
@@ -406,147 +409,113 @@ class HNNExperiment(VariationalAlgorithm):
             sweep_points.append({'dummy': (np.array([0]), '', '')})
         return sweep_points
 
-    def _add_rxy_block(self, prefix, qbns, params=None, rot='Y'):
-        # FIXME this kind of functionality could be moved to CircuitBuilder,
-        #  e.g. by extending get_pulses.
-        #  This would also allow replacing this unnecessary prefix with
-        #  e.g. a simple counter.
-        # Add a rotation-X or -Y gate to the qubits specified by qbns.
-        #
-        # Input arguments
-        #   prefix: name of the gate parameter
-        #   qbns: index of the qubits
-        #   params: values of the gate parameter or op_code
+    def _gate_block(self, gate, qbiss, params=None, f=None):
+        """ Adds a block of parallel gates
 
+        Args:
+            gate: gate type
+            qbiss: list of lists of (or list of) qubit indices
+            params: param values, can be
+                list of strings, e.g. ['[x]*2', ...]
+                list of values, e.g. [90, ...]
+                list of indices, to be used together with f
+                None: using the indices in qbiss
+            f: formatting string, used e.g. to turn params indices into strings
+        Returns:
+
+        """
+
+        # just for unique names, a requirement of blocks
+        prefix = f"{gate}{self._prefix_count}"
+        self._prefix_count += 1
+        # if single list
+        if isinstance(qbiss[0], int):
+            qbiss = [[qbi] for qbi in qbiss]
+        # get params from qb indices
         if params is None:
-            params = [f"{prefix}_{qbn}" for qbn in qbns]
-        qbns = [qbn if isinstance(qbn, str) else self.qubits[qbn].name
-                for qbn in qbns]
-        self.params += [p for p in params if isinstance(p, str)]
-        op_code_params = [':'+p if isinstance(p, str) else p for p in params]
+            params = ['_'.join([str(i) for i in qbis]) for qbis in qbiss]
+        # format params
+        if f is not None:
+            params = [f.format(i=p) for p in params]
+        # indicate which gate params are fixed and which are parameterised
+        params = [':'+p if isinstance(p, str) else p for p in params]
+        self.params += params  # see _extract_variational_param_names
+        # use the qb names in the op code for fast_mode, here for convenience
+        qbiss = [[self.qubits[qbi].name for qbi in qbis] for qbis in qbiss]
+
         self._blocks.append(self.simultaneous_blocks(
                 block_name=prefix,
                 blocks=[self.block_from_anything(
-                    f"{rot}{op_code_params[i]} {qbns[i]}",
-                    f"{prefix}_{qbns[i]}")
-                    for i in range(len(qbns))],
+                    f"{gate}{param} " + ' '.join(qbis),
+                    f"{prefix}_" + '_'.join(qbis))
+                    for param, qbis in zip(params, qbiss)],
                 block_align='middle',
                 set_end_after_all_pulses=True,
                 destroy=True,
-            ))
-
-    def _add_cz_block(self, prefix, qubit_lists, params=None):
-        # Add an arbitrary-phase controlled-Z gate to the qubit pairs specified
-        # by qubits_lists.
-        #
-        # Input arguments
-        #   prefix: name of the gate parameter
-        #   qubits_lists: indices or names of the qubits
-        #   params: values of the gate parameter or op_code
-
-        if params is None:
-            params = [f"{prefix}_{qbns[0]}_{qbns[1]}"
-                       for i, qbns in enumerate(qubit_lists)]
-        qubit_lists = [[qbn if isinstance(qbn, str) else self.qubits[qbn].name
-                        for qbn in qbns] for qbns in qubit_lists]
-        self.params += [p for p in params if isinstance(p, str)]
-        op_code_params = [':'+p if isinstance(p, str) else p for p in params]
-        self._blocks.append(self.simultaneous_blocks(
-            block_name=prefix,
-            blocks=[
-                self.block_from_ops(
-                    block_name=f'{prefix}_{qbns[0]}_{qbns[1]}',
-                    operations=[f'CZ{op_code_params[i]} {qbns[0]} {qbns[1]}']
-                ) for i, qbns in enumerate(qubit_lists)
-            ],
-            block_align='middle',
-            set_end_after_all_pulses=True,
-            destroy=True,
             ))
 
     def set_block_and_params(self):
         self._blocks = []
         self.params = []
 
+        f = "cb.pp([h_index],{i})"
         if len(self.qubits) == 2:
-            self._add_rxy_block('RYp1', range(len(self.qubits)),
-                               [90, '[theta_p]/2'])
-            self._add_cz_block('CZp1', [[0, 1]],
-                               [180])
-            self._add_rxy_block('RYp2', range(len(self.qubits)),
-                                [0, '[basis]',])
+            self._gate_block('Y', range(len(self.qubits)), [90, '[theta_p]/2'])
+            self._gate_block('CZ', [[0, 1]], [180])
+            self._gate_block('Y', range(len(self.qubits)), [0, '[basis]'])
         elif len(self.qubits) == 4:
-            op_code = "cb.pp([h_index],{i})"
-            self._add_rxy_block('RYp1', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [0, 1, 2, 3]])
-            self._add_cz_block('CZp1', [[1, 2]],
-                               [op_code.format(i=4)])
-            self._add_rxy_block('RYp2', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [5, 6, 7, 8]])
-            self._add_cz_block('CZp2', [[2, 3], [0, 1]],
-                               [op_code.format(i=i) for i in [9, 10]])
-            self._add_rxy_block('RYp3', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [11, 12, 13, 14]])
+            self._gate_block('Y', range(len(self.qubits)), None, f)
+            self._gate_block('CZ', [[1, 2]], [4], f)
+            self._gate_block('Y', [1, 2], [6, 7], f)
+            self._gate_block('CZ', [[2, 3], [0, 1]], [9, 10], f)
+            self._gate_block('Y', range(len(self.qubits)), [11, 12, 13, 14], f)
             # temporary X gate to switch measurement bases for state
             # preparation check
-            # self._add_rxy_block('RY', range(len(self.qubits)), [90]*4)
+            # self._gate_block('Y', range(len(self.qubits)), [90]*4)
             if self.do_hnn:
                 # HNN. Each gate has an independent parameter.
-                self._add_rxy_block('RY1', range(len(self.qubits)),
-                                   ['RY1_0', 'RY1_1', 'RY1_2', 'RY1_3'])
-                self._add_cz_block('CZ1', [[0, 1], [2, 3]], ['CZ1', 'CZ2'])
-                self._add_rxy_block('RY2', range(len(self.qubits)),
-                                   ['RY2_0', 'RY2_1', 'RY2_2', 'RY2_3'])
-                self._add_cz_block('CZ3', [[1, 2]], ['CZ3'])
-                self._add_rxy_block('RY3', range(len(self.qubits)),
-                                   ['RY3_0', 'RY3_1', 'RY3_2', 'RY3_3'])
+                self._gate_block('Y', range(len(self.qubits)), f='[Y0_{i}]')
+                self._gate_block('CZ', [[0, 1], [2, 3]], f='[CZ0_{i}]')
+                self._gate_block('Y', range(len(self.qubits)), f='[Y1_{i}]')
+                self._gate_block('CZ', [[1, 2]], f='[CZ1_{i}]')
+                self._gate_block('Y', [1, 2], f='[Y2_{i}]')
             else:
-                self._add_rxy_block('RYb', range(len(self.qubits)),
-                                    ['theta_b']*4)
+                self._gate_block('Y', range(len(self.qubits)), ['theta_b']*4)
         elif len(self.qubits) == 9:
-            op_code = "cb.pp([h_index],{i})"
-            self._add_rxy_block('RYp1', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in range(0, 9)])
-            self._add_cz_block('CZp1', [[2, 3], [5, 6]],
-                               [op_code.format(i=i) for i in range(9, 11)])
-            self._add_rxy_block('RYp2', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in range(11, 20)])
-            self._add_cz_block('CZp2', [[1, 2], [4, 5], [7, 8]],
-                               [op_code.format(i=i) for i in range(20, 23)])
-            self._add_rxy_block('RYp3', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in range(23, 32)])
-            self._add_cz_block('CZp3', [[0, 1], [3, 4], [6, 7]],
-                               [op_code.format(i=i) for i in range(32, 35)])
-            self._add_rxy_block('RYp4', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in range(35, 44)])
+            self._gate_block('Y', range(len(self.qubits)), None, f)
+            self._gate_block('CZ', [[2, 3], [5, 6]], [9, 10], f)
+            self._gate_block('Y', [2, 3, 5, 6], [13, 14, 16, 17], f)
+            self._gate_block('CZ', [[1, 2], [4, 5], [7, 8]], [20, 21, 22], f)
+            self._gate_block('Y', [1, 2, 4, 5, 7, 8],
+                             [24, 25, 27, 28, 30, 31], f)
+            self._gate_block('CZ', [[0, 1], [3, 4], [6, 7]], [32, 33, 34], f)
+            self._gate_block('Y', [0, 1, 3, 4, 6, 7],
+                             [35, 36, 38, 39, 41, 42], f)
             # temporary X gate to switch measurement bases for state
             # preparation check
-            # self._add_rxy_block('RY', range(len(self.qubits)), [90]*9)
+            # self._gate_block('Y', range(len(self.qubits)), [90]*9)
             if self.do_hnn:
                 # HNN. Each gate has an independent parameter.
-                self._add_rxy_block('RY1', range(len(self.qubits)))
-                self._add_cz_block('CZ1', [[1, 2], [4, 5], [8, 7]])
-                self._add_rxy_block('RY2', range(len(self.qubits)))
-                self._add_cz_block('CZ2', [[0, 1], [3, 4], [6, 7]])
-                self._add_rxy_block('RY3', range(len(self.qubits)))
-                self._add_cz_block('CZ3', [[2, 3], [5, 6]])
-                self._add_rxy_block('RY4', range(len(self.qubits)))
+                self._gate_block('Y', range(len(self.qubits)), f='[Y0_{i}]')
+                self._gate_block('CZ', [[1, 2], [4, 5], [8, 7]], f='[CZ0_{i}]')
+                self._gate_block('Y', [1, 2, 4, 5, 7, 8], f='[Y1_{i}]')
+                self._gate_block('CZ', [[0, 1], [3, 4], [6, 7]], f='[CZ1_{i}]')
+                self._gate_block('Y', [0, 1, 3, 4, 6, 7], f='[Y2_{i}]')
+                self._gate_block('CZ', [[2, 3], [5, 6]], f='[CZ2_{i}]')
+                self._gate_block('Y', [2, 3, 5, 6], f='[Y3_{i}]')
             else:
-                self._add_rxy_block('RYb', range(len(self.qubits)),
-                                    ['theta_b']*9)
+                self._gate_block('Y', range(len(self.qubits)), ['theta_b']*9)
         elif len(self.qubits) == 1:
-            self._add_rxy_block('RYp', [qb.name for qb in self.qubits],
-                               ['theta_p'])
-            self._add_rxy_block('RYt', [qb.name for qb in self.qubits],
-                               ['theta_t'])
+            self._gate_block('Y', range(len(self.qubits)), ['theta_p'])
+            self._gate_block('Y', range(len(self.qubits)), ['theta_t'])
         else:
-            raise ValueError("Only 4 or 9 qubits are supported!")
+            raise ValueError(f"{len(self.qubits)} qubits not supported!")
         self._extract_variational_param_names()
-        self.block = self.sequential_blocks('HNN',
-                                            self._blocks,
-                                            set_end_after_all_pulses=True,
-                                            destroy=True)
-        self.create_pp_vals()
+        self.block = self.sequential_blocks(
+            'HNN',
+            self._blocks,
+            set_end_after_all_pulses=True,
+            destroy=True)
 
     def create_pp_vals(self):
         """Creates the array containing state preparation parameters
@@ -564,6 +533,28 @@ class HNNExperiment(VariationalAlgorithm):
         n_params = {
             4: 15,
             9: 44,
+        }.get(n_qubits)
+        if n_params is None:  # No prep params
+            return
+
+        combine_gates = {  # (kept, removed)
+            4: [
+                (0, 5),
+                (3, 8),
+            ],
+            9: [
+                (0, 11),
+                (0, 23),
+                (1, 12),
+                (4, 15),
+                (7, 18),
+                (8, 19),
+                (14, 26),
+                (17, 29),
+                (25, 37),
+                (28, 40),
+                (31, 43),
+            ],
         }[n_qubits]
         # h_index = 0 ~ 20: parameters from h5 file.
         # For n_qubits = 4 and 9, h = 0 ~ 2 and 0 ~ 1 respectively
@@ -591,6 +582,12 @@ class HNNExperiment(VariationalAlgorithm):
         self.pp_vals[28][0:n_qubits] = \
             2 * (np.arange(n_qubits) % 2 - 1 / 2) * 90  # |-+-+...>
 
+        # This only combines the values (for convenience to avoid modifying
+        # the hdf file), but gates in self.block must still avoid i_removed
+        for i_kept, i_removed in combine_gates:
+            self.pp_vals[:, i_kept] += self.pp_vals[:, i_removed]
+            self.pp_vals[:, i_removed] = None
+
     def pp(self, h_index, param_index):
         """Get a preparation parameter
 
@@ -598,7 +595,9 @@ class HNNExperiment(VariationalAlgorithm):
         """
         # TODO h_index is a misnomer, should rename/clean up
         h_index = int(round(h_index))
-        return self.pp_vals[h_index, param_index]
+        val = self.pp_vals[h_index, param_index]
+        assert val is not None  # i_removed in create_pp_vals
+        return val
 
 
 class QCNNExperiment_old(VariationalAlgorithm):
@@ -658,55 +657,6 @@ class QCNNExperiment_old(VariationalAlgorithm):
 
         self.params = [f'prep{i}' for i in range(7)]
         self.params += [f'theta{i}' for i in range(2)]
-
-
-class StatePrepExperiment(HNNExperiment):  # TODO
-
-    def set_block_and_params(self):
-        self._blocks = []
-        self.params = []
-
-        if len(self.qubits) == 1:
-            self._add_rxy_block('RY0', range(len(self.qubits)),
-                                [90]*9)
-        elif len(self.qubits) == 4:
-            op_code = "cb.pp([h_index],{i})"
-            self._add_rxy_block('RYp1', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [0, 1, 2, 3]])
-            self._add_cz_block('CZp1', [[1, 2]],
-                               [op_code.format(i=4)])
-            self._add_rxy_block('RYp2', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [5, 6, 7, 8]])
-            self._add_cz_block('CZp2', [[2, 3], [0, 1]],
-                               [op_code.format(i=i) for i in [9, 10]])
-            self._add_rxy_block('RYp3', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in [11, 12, 13, 14]])
-        elif len(self.qubits) == 9:
-            op_code = "cb.pp([h_index],{i})"
-            self._add_rxy_block('RYp1', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in range(0, 9)])
-            self._add_cz_block('CZp1', [[2, 3], [5, 6]],
-                               [op_code.format(i=i) for i in range(9, 11)])
-            self._add_rxy_block('RYp2', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in range(11, 20)])
-            self._add_cz_block('CZp2', [[1, 2], [4, 5], [7, 8]],
-                               [op_code.format(i=i) for i in range(20, 23)])
-            self._add_rxy_block('RYp3', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in range(23, 32)])
-            self._add_cz_block('CZp3', [[0, 1], [3, 4], [6, 7]],
-                               [op_code.format(i=i) for i in range(32, 35)])
-            self._add_rxy_block('RYp4', range(len(self.qubits)),
-                               [op_code.format(i=i) for i in range(35, 44)])
-        else:
-            raise ValueError("Only 4 or 9 qubits are supported!")
-        self._add_rxy_block('RYb', range(len(self.qubits)),
-                            ['theta_b']*9)
-        self._extract_variational_param_names()
-        self.block = self.sequential_blocks('StatePrep',
-                                            self._blocks,
-                                            set_end_after_all_pulses=True,
-                                            destroy=True)
-        self.create_pp_vals()
 
 
 class VQAOptimizer:
