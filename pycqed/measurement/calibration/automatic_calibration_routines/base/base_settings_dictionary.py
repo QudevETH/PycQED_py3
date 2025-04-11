@@ -25,7 +25,7 @@ class DictWithTracking(dict):
         super().__init__(*args, **kwargs)
 
 
-class SettingsDictionary(dict):
+class SettingsDictionary(DictWithTracking):
     """
     This class represents the configuration parameters specified in default,
     setup, and sample folder as a dictionary.
@@ -146,7 +146,7 @@ class SettingsDictionary(dict):
             settings_user (dict): A dictionary with the user configuration
                 parameters.
         """
-        update_nested_dictionary(self, settings_user)
+        update_nested_dictionary(self, settings_user, origin='settings_user')
 
     def _get_unprocessed_param_value(self,
                                      param,
@@ -365,7 +365,9 @@ class SettingsDictionary(dict):
                 for file in Path(settings_folder).iterdir():
                     with open(file) as f:
                         update_nested_dictionary(
-                            self, {file.stem: json.load(f)})
+                            self, {file.stem: json.load(f)},
+                            origin=str(file),
+                        )
 
         if settings_user is not None:
             self.update_user_settings(settings_user)
@@ -418,6 +420,8 @@ class SettingsDictionary(dict):
         settings_copy = SettingsDictionary(copy.deepcopy(overwrite_dict),
                                            db_client=self.db_client,
                                            dev_name=self.dev_name)
+        settings_copy.tracking_dict = copy.deepcopy(
+            getattr(overwrite_dict, 'tracking_dict', {}))
 
         return settings_copy
 
