@@ -325,8 +325,8 @@ class DateTimeGenerator:
     def __init__(self):
         pass
 
+    @staticmethod
     def create_data_dir_name(
-        self,
         datadir: str,
         name: str = None,
         ts=None,
@@ -351,6 +351,7 @@ class DateTimeGenerator:
             ts = time.localtime()
         path = os.path.join(datadir, time.strftime('%Y%m%d', ts))
         ts_string = time.strftime("%H%M%S", ts)
+        ts_string_full = time.strftime("%Y%m%d_%H%M%S", ts)
 
         timestamp_unique = False
         counter = 0
@@ -369,6 +370,7 @@ class DateTimeGenerator:
                 # Add one second to timestamp until we find a unique one
                 ts = time.localtime(time.mktime(ts) + 1)
                 ts_string = time.strftime("%H%M%S", ts)
+                ts_string_full = time.strftime("%Y%m%d_%H%M%S", ts)
 
             if counter >= 3:
                 raise TimeoutError(
@@ -382,7 +384,7 @@ class DateTimeGenerator:
         else:
             path = os.path.join(path, ts_string)
 
-        return path, ts_string
+        return path, ts_string_full
 
     def new_filename(self, data_obj, folder, auto_increase: bool = True):
         """Return a new filename, based on name and timestamp."""
