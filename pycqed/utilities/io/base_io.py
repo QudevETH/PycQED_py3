@@ -368,6 +368,8 @@ class DateTimeGenerator:
                 timestamp_unique = True
             else:
                 # Add one second to timestamp until we find a unique one
+                # TODO: add logic to adapt day timestring when pushed from
+                #  235959 to 000000
                 ts = time.localtime(time.mktime(ts) + 1)
                 ts_string = time.strftime("%H%M%S", ts)
                 ts_string_full = time.strftime("%Y%m%d_%H%M%S", ts)
