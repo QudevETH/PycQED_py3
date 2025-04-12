@@ -14,6 +14,7 @@ import numbers
 import pycqed.version
 from pycqed.utilities import general
 from pycqed.utilities.io import hdf5 as h5d
+from pycqed.utilities.io import base_io
 
 # used for saving instrument settings
 from pycqed.instrument_drivers import instrument as pycqedins
@@ -278,7 +279,7 @@ class MeasurementControl(Instrument):
         label = '' if label is None else '_' + label
 
         self.set_measurement_name('Instrument_settings' + label)
-        self.last_timestamp(self.get_datetimestamp())
+        self.last_timestamp(self.get_next_timestamp())
 
         if self.settings_file_format() == 'hdf5':
             with h5d.Data(name=self.get_measurement_name(),
@@ -377,7 +378,7 @@ class MeasurementControl(Instrument):
         if self.skip_measurement():
             return return_dict
 
-        self.last_timestamp(self.get_datetimestamp())
+        self.last_timestamp(self.get_next_timestamp())
         with h5d.Data(name=self.get_measurement_name(),
                       datadir=self.datadir(),
                       timestamp=self.last_timestamp()) \
@@ -2211,6 +2212,15 @@ class MeasurementControl(Instrument):
 
     def get_datetimestamp(self):
         return time.strftime('%Y%m%d_%H%M%S', time.localtime())
+
+    def get_next_timestamp(self):
+        """Returns the next timestamp available in self.datadir.
+        See base_io.DateTimeGenerator.create_data_dir_name
+
+        Returns: String in timestamp format.
+        """
+        return base_io.DateTimeGenerator.create_data_dir_name(
+            self.datadir())[1]
 
     def get_datawriting_start_idx(self):
         if self.mode == 'adaptive':
