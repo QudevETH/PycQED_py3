@@ -2304,6 +2304,13 @@ class Ramsey(SingleQubitGateCalibExperiment):
         sweep_points = task['sweep_points']
         task['first_delay_point'] = sweep_points.get_sweep_params_property(
             'values', 0, 'pulse_delay')[0]
+        for qb in self.qubits:
+            if qb.name in task['qb']:
+                continue
+            if task['first_delay_point'] < qb.ge_sigma() * qb.ge_nr_sigma():
+                log.warning(f'Shortest delay shorter than a pi/2 pulse of '
+                            f'{qb.name}. This can lead to weird behaviour, '
+                            f'e.g. wrongly extracted qubit frequencies.')
 
         return task
 
