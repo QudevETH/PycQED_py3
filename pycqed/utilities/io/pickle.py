@@ -4,6 +4,7 @@ from pycqed.utilities.io.base_io import Loader, file_extensions, Dumper
 class PickleLoader(Loader):
 
     def __init__(self, timestamp=None, filepath=None, **kwargs):
+
         super().__init__(timestamp=timestamp, filepath=filepath,
                          **kwargs)
 
@@ -35,14 +36,13 @@ class PickleDumper(Dumper):
 
     def __init__(self, name: str, data: dict, datadir: str = None,
                  compression=False, timestamp: str = None):
-        super().__init__(name, data, datadir=datadir, compression=compression,
-                         timestamp=timestamp)
-        if self.compression:
-            self.filepath = self.filepath.replace(
-                file_extensions['hdf5'][0], file_extensions['pickle_comp'][0])
+        if compression:
+            extension = file_extensions['pickle_comp'][0]
         else:
-            self.filepath = self.filepath.replace(
-                file_extensions['hdf5'][0], file_extensions['pickle'][0])
+            extension = file_extensions['pickle'][0]
+        super().__init__(name, data, datadir=datadir, compression=compression,
+                         timestamp=timestamp, file_extension=extension)
+
 
     def dump(self, mode='xb'):
         """
