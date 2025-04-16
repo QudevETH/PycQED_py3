@@ -2215,12 +2215,11 @@ class MeasurementControl(Instrument):
 
     def get_next_timestamp(self):
         """Returns the next timestamp available in self.datadir.
-        See base_io.DateTimeGenerator.create_data_dir_name
+        See base_io.get_next_available_timestamp
 
         Returns: String in timestamp format.
         """
-        return base_io.DateTimeGenerator.create_data_dir_name(
-            self.datadir())[1]
+        return base_io.get_next_available_timestamp(self.datadir())[1]
 
     def get_datawriting_start_idx(self):
         if self.mode == 'adaptive':
