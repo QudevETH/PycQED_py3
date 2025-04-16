@@ -284,7 +284,9 @@ class MeasurementControl(Instrument):
         if self.settings_file_format() == 'hdf5':
             with h5d.Data(name=self.get_measurement_name(),
                           datadir=self.datadir(),
-                          timestamp=self.last_timestamp()) as self.data_object:
+                          timestamp=self.last_timestamp(),
+                          auto_increase=False,
+                          ) as self.data_object:
                 self.save_instrument_settings(self.data_object)
         else:
             self.save_instrument_settings()
