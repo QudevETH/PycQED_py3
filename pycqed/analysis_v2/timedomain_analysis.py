@@ -3339,12 +3339,12 @@ class VariationalAlgorithmAnalysis(MultiQubit_TimeDomain_Analysis):
             min_cost_index = list(np.unravel_index(
                 np.argmin(training_set_cost), training_set_cost.shape
             ))
-            params_opt = optim_param_values[:, *min_cost_index]
+            # params_opt = optim_param_values[:, *min_cost_index]
             params_opt = dict(zip(p_names_trainable, params_opt))
             # weights has one more dimension (for targets) than
             # training_set_cost, thus add that dimension to min_cost_index
             min_cost_index.insert(1, 0)  # (index, value)
-            weights_opt = weights[:, *min_cost_index]
+            # weights_opt = weights[:, *min_cost_index]
 
             # save data to file
             self.proc_data_dict['analysis_params_dict']['weights_opt'] = \
