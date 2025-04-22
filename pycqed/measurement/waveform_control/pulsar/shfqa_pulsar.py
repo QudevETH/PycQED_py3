@@ -84,7 +84,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         PulsarAWGInterface.create_channel_parameters(self, id, ch_name, ch_type)
 
         # TODO: Not all AWGs provide an initial value. Should it be the case?
-        self.pulsar[f"{ch_name}_amp"].set(1)
+        self.pulsar.parameters[f"{ch_name}_amp"].set(1)
 
     def awg_setter(self, id:str, param:str, value):
 
