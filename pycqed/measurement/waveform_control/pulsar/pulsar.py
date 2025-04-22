@@ -1488,8 +1488,8 @@ class Pulsar(Instrument):
         elif not self.awgs:
             return 0
         else:
-            return max([self.get(f"{awg}_inter_element_deadtime")
-                        for awg in self.awgs])
+            return max([awgi.INTER_ELEMENT_DEADTIME
+                        for awgi in self.awg_interfaces.values()])
 
     def _set_filter_segments(self, val:Tuple[int, int]=None,
                              awgs='with_waveforms'):
