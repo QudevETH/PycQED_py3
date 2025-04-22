@@ -955,6 +955,37 @@ class Pulsar(Instrument):
         else:
             return delay[group]
 
+    def get_trigger_groups_info(self):
+        """Returns a dict with information about the trigger groups.
+
+        Returns:
+            A dict containing the following entries:
+            - channels: dict with trigger group name as key and a list of
+                channel names (str) of the trigger group as value
+            - awg: dict with trigger group name as key and the awg name
+                (str) to which the group belongs as value
+            - trigger_channels: dict trigger group name as key and a list
+                of names (str) of channels that trigger the group as value
+            - delay: dict trigger group name as key and the delay of the
+                group (float) as value
+            - group_by_channel: dict with channel name as key and the name
+                (str) of the trigger group containing the channel as value
+        """
+        info = dict(awg={}, channels={}, trigger_channels={}, delay={})
+        for awg in self.awgs:
+            ch = self.parameters[f'{awg}_trigger_groups'].cache.get()
+            info['channels'].update(ch)
+            info['awg'].update({group: awg for group in ch})
+            for key in ['trigger_channels', 'delay']:
+                val = self.parameters[f'{awg}_{key}'].cache.get()
+                if isinstance(val, dict):
+                    info[key].update(val)
+                else:
+                    info[key].update({group: val for group in ch})
+        info['group_by_channel'] = {
+            ch: g for g, chs in info['channels'].items() for ch in chs}
+        return info
+
     def get_element_start_granularity(self, group:str):
         """
         Returns granularity of device for a given trigger group.

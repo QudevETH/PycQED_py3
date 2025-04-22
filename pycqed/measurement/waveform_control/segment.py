@@ -312,6 +312,7 @@ class Segment:
         :param store_segment_length_timer: (bool, default: True) whether
             the segment length should be stored in the segment's Timer object
         """
+        self.trigger_groups_info = self.pulsar.get_trigger_groups_info()
         self._check_acquisition_elements()
         self.join_or_split_elements()
         self.resolve_timing()
@@ -969,9 +970,6 @@ class Segment:
                     f'{c}_charge_buildup_compensation'].cache.get():
                 compensation_chan.add(c)
 
-        # Caches {c: self.pulsar.get_trigger_group(c)}
-        # Note that groups is modified by self.tvals
-        groups = {}
         # * generate the pulse_area dictionary containing for each channel
         #   that has to be compensated the sum of all pulse areas on that
         #   channel + the name of the last element
@@ -980,7 +978,7 @@ class Segment:
             # finds the channels of AWGs with that element
             awg_channels = set()
             for group in self.element_start_end[element]:
-                chan = set(self.pulsar.get_trigger_group_channels(group))
+                chan = set(self.trigger_groups_info['channels'][group])
                 awg_channels = awg_channels.union(chan)
 
             tvals = None
@@ -991,8 +989,6 @@ class Segment:
                 for c in pulse.masked_channels():
                     if c not in compensation_chan:
                         continue
-                    if c not in groups:
-                        groups[c] = self.pulsar.get_trigger_group(c)
                     if c not in pulse_area:
                         pulse_area[c] = [0, None]
                     if pulse.is_net_zero:
@@ -1000,7 +996,8 @@ class Segment:
                         continue
 
                     element_start_time = self.get_element_start(
-                        element, groups[c])
+                        element,
+                        self.trigger_groups_info['group_by_channel'][c])
                     pulse_start = self.time2sample(
                         pulse.element_time(element_start_time), channel=c)
                     pulse_end = self.time2sample(
@@ -1010,7 +1007,7 @@ class Segment:
                     # Calculate the tvals dictionary for the element
                     if tvals is None:
                         tvals = self.tvals(compensation_chan & awg_channels,
-                                           element, groups)
+                                           element)
                     pulse_area[c][0] += pulse.pulse_area(
                         c, tvals[c][pulse_start:pulse_end])
                     # Overwrite this entry for all elements. The last
@@ -1049,7 +1046,7 @@ class Segment:
             last_element = pulse_area[c][1]
             # for RO elements create a seperate element for compensation pulses
             if last_element in self.acquisition_elements:
-                RO_group = groups[c]
+                RO_group = self.trigger_groups_info['group_by_channel'][c]
                 if RO_group not in comp_dict:
                     # FIXME We create a segment here, but it will never get
                     #  triggered because trigger pulses are generated before
@@ -1089,7 +1086,7 @@ class Segment:
             pulse.algorithm_time(t_end)
 
             # Save the length of the longer pulse in longest_pulse dictionary
-            group = groups[c]
+            group = self.trigger_groups_info['group_by_channel'][c]
             total_length = 2 * comp_delay + length
             longest_pulse[(last_element,group)] = \
                     max(longest_pulse.get((last_element,group),0), total_length)
@@ -1105,7 +1102,7 @@ class Segment:
             el_start = self.get_element_start(el, group)
             el_buffer = self.pulsar.parameters['min_element_buffer'].cache.get() or 0.
             new_end = t_end + length_comp + el_buffer
-            awg = self.pulsar.get_awg_from_trigger_group(group)
+            awg = self.trigger_groups_info['awg'][group]
             new_samples = self.time2sample(new_end - el_start, awg=awg)
             # make sure that the element length exceeds min length for the AWG,
             # and is a multiple of sample granularity
@@ -1145,14 +1142,11 @@ class Segment:
             self.resolve_timing()
 
         self.elements_on_awg = {}
-        groups = {}
 
         for element in self.elements:
             for pulse in self.elements[element]:
                 for channel in pulse.masked_channels():
-                    if channel not in groups:
-                        groups[channel] = self.pulsar.get_trigger_group(channel)
-                    group = groups[channel]
+                    group = self.trigger_groups_info['group_by_channel'][channel]
                     if group not in self.elements_on_awg:
                         self.elements_on_awg[group] = [element]
                     elif element not in self.elements_on_awg[group]:
@@ -1174,8 +1168,8 @@ class Segment:
                         key=lambda element: get_element_start(element, group))
 
     def find_trigger_group_hierarchy(self):
-        masters = {group for group in self.pulsar.trigger_groups
-            if len(self.pulsar.get_trigger_channels(group)) == 0}
+        masters = {k for k, v in self.trigger_groups_info[
+            'trigger_channels'].items() if len(v) == 0}
 
         # generate dictionary triggering_groups (keys are trigger
         # groups of triggering AWG and values are trigger groups
@@ -1183,10 +1177,12 @@ class Segment:
         # groups of AWGs and values are trigger groups of triggering AWGs)
         triggering_groups = {}
         triggered_groups = {}
-        groups = self.pulsar.trigger_groups - masters
+        groups = set(
+            self.trigger_groups_info['trigger_channels'].keys()) - masters
         for group in groups:
-            for channel in self.pulsar.get_trigger_channels(group):
-                trigger_group = self.pulsar.get_trigger_group(channel)
+            for channel in self.trigger_groups_info['trigger_channels'][group]:
+                trigger_group = self.trigger_groups_info[
+                    'group_by_channel'][channel]
                 if trigger_group not in triggering_groups:
                     triggering_groups[trigger_group] = []
                 triggering_groups[trigger_group].append(group)
@@ -1247,7 +1243,8 @@ class Segment:
                 'trigger_pulse_parameters'].cache.get()
 
             for ch, trigger_pulse_time, pars in trigger_pulses:
-                trigger_group = self.pulsar.get_trigger_group(ch)
+                trigger_group = self.trigger_groups_info[
+                    'group_by_channel'][ch]
                 # Find the element to play the trigger pulse in.
                 # If there is no element on that AWG create a new element
                 if self.elements_on_awg.get(trigger_group, None) is None:
@@ -1340,13 +1337,13 @@ class Segment:
         for group in trigger_group_hierarchy:
             if group not in self.elements_on_awg:
                 continue
-            if len(self.pulsar.get_trigger_channels(group)) == 0:
+            if len(self.trigger_groups_info['trigger_channels'][group]) == 0:
                 # master AWG directly triggered by main trigger
                 # find and store the first element
                 masters[group] = self.find_trigger_element(group, -np.inf)
                 # determine required main trigger timer, taking into account
                 # the delay settings of this master trigger group
-                delays[group] = self.pulsar.get_trigger_delay(group)
+                delays[group] = self.trigger_groups_info['delay'][group]
                 start_end = self.element_start_end[masters[group]][group]
                 t_main_trig = min(start_end[0] + delays[group], t_main_trig)
                 continue  # for master AWG no trigger_pulse has to be added
@@ -1356,11 +1353,12 @@ class Segment:
                 # Calculate the trigger pulse time
                 [el_start, _] = self.element_start_length(element, group)
 
-                trigger_pulse_time = el_start \
-                                     + self.pulsar.get_trigger_delay(group)
+                trigger_pulse_time = el_start + self.trigger_groups_info[
+                    'delay'][group]
 
                 # Find the trigger channels that trigger the AWG
-                for channel in self.pulsar.get_trigger_channels(group):
+                for channel in self.trigger_groups_info[
+                        'trigger_channels'][group]:
                     trigger_pulses.append(
                         (channel, trigger_pulse_time,
                          {'amplitude': 0}
@@ -1413,7 +1411,7 @@ class Segment:
                 element, trigger_group)
             el_end = el_start + self.sample2time(
                 samples,
-                awg=self.pulsar.get_awg_from_trigger_group(trigger_group))
+                awg=self.trigger_groups_info['awg'][trigger_group])
             distance_start_end = [
                 [
                     abs(trigger_pulse_time + self.trigger_pars['length'] / 2 -
@@ -1437,7 +1435,7 @@ class Segment:
         """
 
         samples = self.element_start_end[element][group][1]
-        awg = self.pulsar.get_awg_from_trigger_group(group)
+        awg = self.trigger_groups_info['awg'][group]
         length = self.sample2time(samples, awg=awg)
         return self.element_start_end[element][group][0] + length
 
@@ -1507,7 +1505,7 @@ class Segment:
                 # appended by pulsar. Test for elements with at least
                 # min_el_len if they overlap.
                 min_el_len = self.pulsar.parameters[
-                    self.pulsar.get_awg_from_trigger_group(group)
+                    self.trigger_groups_info['awg'][group]
                     + '_min_length'].cache.get()
                 if el_length < min_el_len:
                     el_prev_end = el_prev_start + min_el_len
@@ -1623,7 +1621,7 @@ class Segment:
         self.gen_elements_on_awg(return_sorted=False)
 
         # update element_start_end
-        for group in self.pulsar.trigger_groups:
+        for group in self.trigger_groups_info['channels']:
             self.element_start_length(combined_el_name, group)
 
 
@@ -1635,7 +1633,7 @@ class Segment:
         Note that we assume that gen_elements_on_awg has been called before.
         """
         for group in self.elements_on_awg:
-            if len(self.pulsar.get_trigger_channels(group)) != 0:
+            if len(self.trigger_groups_info['trigger_channels'][group]) != 0:
                 continue
             if len(self.elements_on_awg[group]) > 1:
                 raise ValueError(
@@ -1749,7 +1747,7 @@ class Segment:
         self.elements[element].append(pulse)
         for el_group in self._element_start_end_raw:
             if el_group[0] == element:
-                group_chs = self.pulsar.get_trigger_group_channels(el_group[1])
+                group_chs = self.trigger_groups_info['channels'][el_group[1]]
                 t_start_raw, t_end = self._element_start_end_raw[el_group]
                 for ch in pulse.masked_channels():
                     if ch in group_chs:
@@ -1767,7 +1765,7 @@ class Segment:
         """
         if element not in self.element_start_end:
             self.element_start_end[element] = {}
-        group_chs = self.pulsar.get_trigger_group_channels(trigger_group)
+        group_chs = self.trigger_groups_info['channels'][trigger_group]
         # find element start, end and length
         t_end = -np.inf
 
@@ -1813,7 +1811,7 @@ class Segment:
         # start granularity
         # we allow rounding up of the start time by half a sample, otherwise
         # we round the start time down
-        awg = self.pulsar.get_awg_from_trigger_group(trigger_group)
+        awg = self.trigger_groups_info['awg'][trigger_group]
         start_gran = self.pulsar.get_element_start_granularity(trigger_group)
         sample_time = 1/self.pulsar.clock(awg=awg)
         if start_gran is not None:
@@ -1861,7 +1859,7 @@ class Segment:
         #        generate_waveforms_sequences().
 
         if awgs is None:
-            awgs = set(self.pulsar.get_awg_from_trigger_group(group)
+            awgs = set(self.trigger_groups_info['awg'][group]
                        for group in self.elements_on_awg)
         if channels is None:
             channels = set(self.pulsar.channels)
@@ -1875,13 +1873,13 @@ class Segment:
             # only procede for AWGs with waveforms
             if group not in self.elements_on_awg:
                 continue
-            awg = self.pulsar.get_awg_from_trigger_group(group)
+            awg = self.trigger_groups_info['awg'][group]
             if awg not in awgs:
                 continue
             if awg not in awg_wfs:
                 awg_wfs[awg] = {}
-            channel_set = set(self.pulsar.get_trigger_group_channels(
-                group)) & set(channels)
+            channel_set = set(self.trigger_groups_info['channels'][
+                group]) & set(channels)
             if not channel_set:
                 continue
             for i, element in enumerate(self.elements_on_awg[group]):
@@ -2105,8 +2103,8 @@ class Segment:
         if awg is not None:
             awg_channels = set(self.pulsar.find_awg_channels(awg))
         if trigger_group is not None:
-            group_channels = set(self.pulsar.get_trigger_group_channels(
-                trigger_group))
+            group_channels = set(self.trigger_groups_info['channels'][
+                trigger_group])
 
         for pulse in self.elements[element]:
             channels = set(pulse.masked_channels())
@@ -2138,8 +2136,8 @@ class Segment:
         if awg is not None:
             channels &= set(self.pulsar.find_awg_channels(awg))
         if trigger_group is not None:
-            channels &= set(self.pulsar.get_trigger_group_channels(
-                trigger_group))
+            channels &= set(self.trigger_groups_info['channels'][
+                trigger_group])
         return channels
 
     @_with_pulsar_tmp_vals
@@ -2158,7 +2156,8 @@ class Segment:
         if trigger_group is None:
             # It is possible to get trigger_group from channel as here,
             # but this is rather slow, so it is better to pass it above
-            trigger_group = self.pulsar.get_trigger_group(channel)
+            trigger_group = self.trigger_groups_info['group_by_channel'][
+                channel]
         tstart, length = self.element_start_end[elname][trigger_group]
         hashlist.append(length)  # element length in samples
         if channel in self.pulsar.analog_channels and \
@@ -2223,21 +2222,14 @@ class Segment:
         else:
             return pulse.hashables(tstart, channel)
 
-    def tvals(self, channel_list, element, groups=None):
+    def tvals(self, channel_list, element):
         """
         Returns a dictionary with channel names of the used channels in the
         element as keys and the tvals array for the channel as values.
-
-        Note that groups is modified by this method. This allows to cache
-        groups for each channel, to limit calls to pulsar.get_trigger_group
         """
-
         tvals = {}
-        groups = groups or {}
         for channel in channel_list:
-            if channel not in groups:
-                groups[channel] = self.pulsar.get_trigger_group(channel)
-            group = groups[channel]
+            group = self.trigger_groups_info['group_by_channel'][channel]
             samples = self.element_start_end[element][group][1]
             tvals[channel] = np.arange(samples) / self.pulsar.clock(
                 channel=channel) + self.get_element_start(element, group)
