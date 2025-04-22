@@ -1289,10 +1289,10 @@ class Pulsar(Instrument):
                     for elname, el in seq.items()}
                 if awg not in awgs_to_program:
                     try:
-                        np.testing.assert_equal(
+                        assert np.array_equal(
                             sequence_cache['settings'].get(awg, {}),
                             settings[awg])
-                        np.testing.assert_equal(
+                        assert np.array_equal(
                             sequence_cache['metadata'].get(awg, {}),
                             metadata[awg])
                     except AssertionError:  # settings or metadata change
@@ -1320,13 +1320,13 @@ class Pulsar(Instrument):
                     continue
                 changed_settings = True
                 try:
-                    np.testing.assert_equal(
+                    assert np.array_equal(
                         sequence_cache['settings'].get(ch, {}),
                         settings[ch])
                     changed_settings = False
-                    np.testing.assert_equal(
+                    assert np.array_equal(
                         sequence_cache['hashes'].get(ch, {}), hashes)
-                    np.testing.assert_equal(
+                    assert np.array_equal(
                         sequence_cache['metadata'].get(ch, {}), metadata[ch])
                 except AssertionError:
                     # changed setting, sequence structure, or hash
@@ -1368,7 +1368,7 @@ class Pulsar(Instrument):
                         or ch_awg in awgs_to_program:
                     continue
                 try:
-                    np.testing.assert_equal(
+                    assert np.array_equal(
                         sequence_cache['length'].get(ch, {}),
                         ch_length[ch])
                 except AssertionError:  # changed length or sequence structure
