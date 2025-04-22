@@ -37,6 +37,7 @@ from pycqed.utilities.io import hdf5 as h5d
 import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
+import weakref
 import logging
 log = logging.getLogger(__name__)
 
@@ -207,6 +208,9 @@ class BaseDataAnalysis(object):
             self.plot_dicts = OrderedDict()
             self.axs = OrderedDict()
             self.figs = OrderedDict()
+            # the following dict allows to check whether figures got deleted
+            # by garbage collection
+            self._weak_refs_to_figs = weakref.WeakValueDictionary()
             self.presentation_mode = self.options_dict.get(
                 'presentation_mode', False)
             self.transparent_background = self.options_dict.get(
@@ -1595,6 +1599,8 @@ class BaseDataAnalysis(object):
                     # plotsize None uses .rc_default of matplotlib
                     gridspec_kw=pdict.get('gridspec_kw', None),
                 )
+                self._weak_refs_to_figs[pdict['fig_id']] = self.figs[
+                    pdict['fig_id']]
                 if pdict.get('3d', False):
                     self.axs[pdict['fig_id']].remove()
                     self.axs[pdict['fig_id']] = Axes3D(
