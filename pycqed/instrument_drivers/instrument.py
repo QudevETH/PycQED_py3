@@ -19,16 +19,18 @@ class PycqedInstrumentMixin(ABC):
         """
         return {'driver': self.__class__.__name__, 'name': self.name}
 
-    def get(self, param_name, *args):
+    def get(self, param_name, *args, cache=False):
         """Shortcut for getting a parameter from its name or a default value.
 
         Extends the super method to allow specifying a default value as
         second argument, which is returned if the parameter does not exist.
 
         Args:
-            param_name: The name of a parameter of this instrument.
+            param_name (str): The name of a parameter of this instrument.
             *args: accepts a single unnamed argument, which, if provided, is
                 used as default value if the parameter does not exist.
+            cache (bool): if True, enforces that the value is retrieved
+                from the cache (default: False).
 
         Returns:
             The current value of the parameter.
@@ -44,6 +46,8 @@ class PycqedInstrumentMixin(ABC):
                              f'{len(args) + 1} were provided.')
         if param_name not in self.parameters and len(args) == 1:
             return args[0] # interpret second argument as default value
+        elif cache:
+            return self.parameters[param_name].cache.get()
         else:
             # qcodes 0.49 deprecated self.get()/self.set() for params;
             # use the form below instead
