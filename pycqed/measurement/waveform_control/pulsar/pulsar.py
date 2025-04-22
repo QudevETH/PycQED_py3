@@ -1178,17 +1178,18 @@ class Pulsar(Instrument):
         used_awgs = [awg for awg in used_awgs if awg.awg_name not in exclude]
 
         # Stop master AWG
-        if self.master_awg() and self.master_awg() not in exclude:
+        master_awg_name = self.master_awg()
+        if master_awg_name and master_awg_name not in exclude:
             self.master_awg.get_instr().stop()
 
         # Start slave AWGs
         for awg in used_awgs:
-            if awg.awg.name != self.master_awg():
+            if awg.awg_name != master_awg_name:
                 awg.start()
 
         # Check that all slave AWGs start within 10s
         awgs_to_check = [awg for awg in used_awgs
-                         if awg.awg.name != self.master_awg()]
+                         if awg.awg_name != master_awg_name]
         try:
             with WatchdogTimer(10) as timer:
                 while len(awgs_to_check):
@@ -1200,7 +1201,7 @@ class Pulsar(Instrument):
             raise WatchdogException(f"AWGs {awgs_to_check} did not start in 10s.")
 
         # Start master AWG
-        if self.master_awg() not in exclude:
+        if master_awg_name not in exclude:
             self.master_awg.get_instr().start()
 
     def stop(self):
