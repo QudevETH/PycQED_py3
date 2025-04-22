@@ -540,7 +540,7 @@ class ZIGeneratorModule:
         self._awg_nr = awg_nr
         """AWG module number of the current instance."""
 
-        self.module_name = f"{self._awg.name}_generator{awg_nr}"
+        self.module_name = f"{self._awg_name}_generator{awg_nr}"
         """Name of this AWG module."""
 
         self.channel_ids = None
@@ -759,7 +759,7 @@ class ZIGeneratorModule:
         else:
             self._set_signal_output_status()
         if any(self.has_waveforms.values()):
-            self.pulsar.add_awg_with_waveforms(self._awg.name)
+            self.pulsar.add_awg_with_waveforms(self._awg_name)
 
     def _update_channel_config(
             self,
@@ -797,7 +797,7 @@ class ZIGeneratorModule:
         """Get I channel name from self.pulsar.channels ."""
         self.i_channel_name = self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],
-            awg=self._awg.name
+            awg=self._awg_name
         )
 
     def _update_use_filter_flag(
@@ -821,7 +821,7 @@ class ZIGeneratorModule:
     def _update_use_command_table_flag(self):
         """Updates self._use_command_table flag with the setting specified
         in pulsar."""
-        device_param = f"{self._awg.name}_use_command_table"
+        device_param = f"{self._awg_name}_use_command_table"
         device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_use_command_table"
         channel_value = self.pulsar.get(channel_param, False, cache=True)
@@ -830,7 +830,7 @@ class ZIGeneratorModule:
     def _update_use_placeholder_wave_flag(self):
         """Updates self._use_placeholder_wave flag with the setting specified
         in pulsar."""
-        device_param = f"{self._awg.name}_use_placeholder_waves"
+        device_param = f"{self._awg_name}_use_placeholder_waves"
         device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_use_placeholder_waves"
         channel_value = self.pulsar.get(channel_param, False, cache=True)
@@ -839,7 +839,7 @@ class ZIGeneratorModule:
     def _update_use_internal_mod_flag(self):
         """Updates self._use_internal_mod flag with the setting specified in
         pulsar."""
-        device_param = f"{self._awg.name}_internal_modulation"
+        device_param = f"{self._awg_name}_internal_modulation"
         device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_internal_modulation"
         channel_value = self.pulsar.get(channel_param, False, cache=True)
@@ -890,7 +890,7 @@ class ZIGeneratorModule:
                     first_new_dict=first_new_dict,
             ):
                 raise RuntimeError(
-                    f"On {self._awg.name}: Configuration {config_name} in "
+                    f"On {self._awg_name}: Configuration {config_name} in "
                     f"metadata is incompatible between different elements in "
                     f"the same sequence."
                 )
@@ -990,8 +990,8 @@ class ZIGeneratorModule:
             # Check if analog channels has overlap with the segment trigger
             # group. If no, this segment will not be played.
             trigger_groups = metadata['trigger_groups']
-            channels = set(self.pulsar._id_channel(chid, self._awg.name)
-                        for chid in self.analog_channel_ids)
+            channels = set(self.pulsar._id_channel(chid, self._awg_name)
+                           for chid in self.analog_channel_ids)
             if not self.pulsar.check_channels_in_trigger_groups(
                     set(channels), trigger_groups):
                 continue
@@ -1014,7 +1014,7 @@ class ZIGeneratorModule:
                 continue
             if nr_cw > 0 and not self._use_command_table:
                 raise ValueError(f"Set {self.pulsar.name}."
-                                 f"{self._awg.name}_use_command_table to "
+                                 f"{self._awg_name}_use_command_table to "
                                  f"True for feedback operations!")
 
             for cw in awg_sequence_element:
@@ -1162,7 +1162,7 @@ class ZIGeneratorModule:
                     if max(placeholder_wave_lengths) != \
                             min(placeholder_wave_lengths):
                         log.warning(f"Waveforms of unequal length on"
-                                    f"{self._awg.name}, vawg{self._awg_nr},"
+                                    f"{self._awg_name}, vawg{self._awg_nr},"
                                     f" {current_segment}, {element}.")
 
                     placeholder_wave_length =  max(placeholder_wave_lengths)
@@ -1204,7 +1204,7 @@ class ZIGeneratorModule:
                 first_element_of_segment = False
             else:
                 self._playback_strings += self._awg_interface.zi_wait_trigger(
-                        name=self._awg.name,
+                        name=self._awg_name,
                         device=self._device_type,
                     )
 
@@ -1378,7 +1378,7 @@ class ZIGeneratorModule:
                 np.testing.assert_equal(self._wave_idx_lookup, cached_lookup)
                 run_compiler = False
             except AssertionError:
-                log.debug(f'{self._awg.name}_{self._awg_nr}: Waveform reuse '
+                log.debug(f'{self._awg_name}_{self._awg_nr}: Waveform reuse '
                           f'pattern has changed. Forcing recompilation.')
                 run_compiler = True
 
@@ -1461,7 +1461,7 @@ class ZIGeneratorModule:
             if self.pulsar.parameters['use_mcc'].cache.get():
                 log.warning(
                     f'Parallel elf compilation not supported for '
-                    f'{self._awg.name} ({self._awg.devname}), see debug '
+                    f'{self._awg_name} ({self._awg.devname}), see debug '
                     f'log when adding the AWG to pulsar.')
             self._save_awg_str(awg_str=awg_str)
             self._configure_awg_str(awg_str=awg_str, **kw)
@@ -1518,7 +1518,7 @@ class ZIGeneratorModule:
         """Helper function that returns I channel name of this AWG module."""
         return self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],
-            awg=self._awg.name
+            awg=self._awg_name
         )
 
     @property
