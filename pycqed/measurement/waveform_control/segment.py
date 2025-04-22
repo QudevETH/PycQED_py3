@@ -981,10 +981,13 @@ class Segment:
                 chan = set(self.trigger_groups_info['channels'][group])
                 awg_channels = awg_channels.union(chan)
 
+            # Find the end of the last pulse of the segment
+            t_end = max(t_end, self._element_start_end_raw[
+                (element, group)][1])  # TODO check: correct?
+            if not len(awg_channels & compensation_chan):
+                continue
             tvals = None
             for pulse in self.elements[element]:
-                # Find the end of the last pulse of the segment
-                t_end = max(t_end, pulse.algorithm_time() + pulse.length)
 
                 for c in pulse.masked_channels():
                     if c not in compensation_chan:
