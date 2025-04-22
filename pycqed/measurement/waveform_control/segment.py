@@ -964,9 +964,7 @@ class Segment:
         compensation_chan = set()
 
         # Find channels where charge compensation should be applied
-        for c in self.pulsar.channels:
-            if self.pulsar.get('{}_type'.format(c)) != 'analog':
-                continue
+        for c in self.pulsar.analog_channels:
             if self.pulsar.parameters[
                     f'{c}_charge_buildup_compensation'].cache.get():
                 compensation_chan.add(c)
@@ -1952,7 +1950,7 @@ class Segment:
                             extra_delay, awg=awg)
                         ps_mod = pulse_start + extra_delay_samples
                         pe_mod = pulse_end + extra_delay_samples
-                        analog = self.pulsar.get(f"{channel}_type") == "analog"
+                        analog = channel in self.pulsar.analog_channels
                         if analog:
                             precalculate = self.pulsar.parameters[
                                 f"{channel}_distortion"].cache.get(
@@ -1995,8 +1993,7 @@ class Segment:
                 # do predistortion
                 for codeword in wfs:
                     for c in wfs[codeword]:
-                        if not self.pulsar.get(
-                                '{}_type'.format(c)) == 'analog':
+                        if c not in self.pulsar.analog_channels:
                             continue
                         if not self.pulsar.parameters[
                                 f'{c}_distortion'].cache.get(
@@ -2058,7 +2055,7 @@ class Segment:
                         # normalize the waveforms
                         amp = self.pulsar.get('{}_amp'.format(c))
                         self._channel_amps[c] = amp
-                        if self.pulsar.get('{}_type'.format(c)) == 'analog':
+                        if c in self.pulsar.analog_channels:
                             if np.max(wfs[codeword][c], initial=0) > amp:
                                 logging.warning(
                                     'Clipping waveform {}: {} > {}'.format(
@@ -2075,7 +2072,7 @@ class Segment:
                             # normalize wfs
                             wfs[codeword][c] = wfs[codeword][c] / amp
                         # marker channels have to be 1 or 0
-                        elif self.pulsar.get('{}_type'.format(c)) == 'marker':
+                        else:
                             wfs[codeword][c] = (wfs[codeword][c] > 0)\
                                 .astype(int)
 
@@ -2164,7 +2161,7 @@ class Segment:
             trigger_group = self.pulsar.get_trigger_group(channel)
         tstart, length = self.element_start_end[elname][trigger_group]
         hashlist.append(length)  # element length in samples
-        if self.pulsar.get(f'{channel}_type') == 'analog' and \
+        if channel in self.pulsar.analog_channels and \
                 self.pulsar.parameters[f'{channel}_distortion'
                 ].cache.get() == 'precalculate':
             hashlist.append(repr(self.pulsar.parameters[
@@ -2179,7 +2176,7 @@ class Segment:
                 else:
                     hashlist.append(False)
         hashlist.append(self.pulsar.parameters[f'{channel}_delay'].cache.get())
-        if self.pulsar.get(f'{channel}_type') == 'analog' and \
+        if channel in self.pulsar.analog_channels and \
                 self.pulsar.parameters[f'{channel}_charge_buildup_compensation'].cache.get():
             for par in ['compensation_pulse_delay',
                         'compensation_pulse_gaussian_filter_sigma',

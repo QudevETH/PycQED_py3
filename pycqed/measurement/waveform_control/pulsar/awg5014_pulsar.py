@@ -319,7 +319,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
             cid = self.pulsar.id_lookup[channel]
             amp = self.pulsar.get(f"{channel}_amp")
             off = self.pulsar.get(f"{channel}_offset")
-            if self.pulsar.get(f"{channel}_type") == 'analog':
+            if channel in self.pulsar.analog_channels:
                 offset_mode = self.pulsar.parameters[
                     f"{channel}_offset_mode"].cache.get()
                 channel_cfg['ANALOG_METHOD_' + cid[2]] = 1

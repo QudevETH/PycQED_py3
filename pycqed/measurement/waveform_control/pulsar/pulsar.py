@@ -282,6 +282,7 @@ class PulsarAWGInterface(ABC):
                              parameter_class=ManualParameter)
 
         if ch_type == "analog":
+            self.pulsar.analog_channels.add(ch_name)
             pulsar.add_parameter(f"{ch_name}_distortion",
                                  label=f"{ch_name} distortion mode",
                                  initial_value="off",
@@ -702,6 +703,7 @@ class Pulsar(Instrument):
                       "the devices' trigger with this parameter.")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
+        self.analog_channels = set()  # names of analog channels
         self.awgs:Set[str] = set()  # AWG names
         self.awg_interfaces:Dict[str, PulsarAWGInterface] = {}
         self.last_sequence = None
