@@ -135,9 +135,9 @@ class AWG5014Pulsar(PulsarAWGInterface):
                     amp = self.awg.parameters[f"{id}_amp"].get_latest() / 2
                 else:
                     amp = self.awg.get(f"{id}_amp") / 2
-                if scale_param is not None and self.pulsar.get(scale_param) is \
-                        not None:
-                    amp /= self.pulsar.get(scale_param)
+                if scale_param is not None and (scale := self.pulsar.get(
+                        scale_param)) is not None:
+                    amp /= scale
                 return amp
         else:
             # Convert ch1m1 to ch1_m1
