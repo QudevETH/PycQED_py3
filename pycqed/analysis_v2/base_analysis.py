@@ -1155,6 +1155,7 @@ class BaseDataAnalysis(object):
     def close_figs(self, key_list='auto'):
         """Closes specified figures.
 
+        Clears the figures before closing them.
         Furthermore, removes all closed figures and axes from `self.figs` and
         `self.axs` dictionaries.
 
@@ -1178,6 +1179,7 @@ class BaseDataAnalysis(object):
         for ax_key in axes_keys_to_pop:
             self.axs.pop(ax_key)
         for key in list(key_list):
+            self.figs[key].clear()
             plt.close(self.figs[key])
             self.figs.pop(key)
 
