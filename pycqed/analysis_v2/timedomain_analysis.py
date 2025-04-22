@@ -10964,7 +10964,7 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
                                     'fig_id': fig_key,
                                     'xvals': np.arange(len(pop)),
                                     'yvals': p_therm * np.ones_like(pop),
-                                    'setlabel': "$P_\mathrm{therm}$",
+                                    'setlabel': r"$P_\mathrm{therm}$",
                                     'linestyle': '--',
                                     'marker': "",
                                     'color': 'k',
