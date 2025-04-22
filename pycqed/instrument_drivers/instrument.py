@@ -1,4 +1,5 @@
 from qcodes.instrument.base import Instrument as QcodesInstrument
+from qcodes.parameters import ManualParameter
 from qcodes.instrument.channel import InstrumentModule as QcodesInstrumentModule
 import weakref
 from abc import ABC
@@ -46,7 +47,7 @@ class PycqedInstrumentMixin(ABC):
                              f'{len(args) + 1} were provided.')
         if param_name not in self.parameters and len(args) == 1:
             return args[0] # interpret second argument as default value
-        elif cache:
+        elif cache or isinstance(self.parameters[param_name], ManualParameter):
             return self.parameters[param_name].cache.get()
         else:
             # qcodes 0.49 deprecated self.get()/self.set() for params;
