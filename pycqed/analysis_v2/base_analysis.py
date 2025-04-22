@@ -3,6 +3,7 @@ File containing the BaseDataAnalysis class.
 """
 from inspect import signature
 import os
+import gc
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -1157,7 +1158,7 @@ class BaseDataAnalysis(object):
 
         Clears the figures before closing them.
         Furthermore, removes all closed figures and axes from `self.figs` and
-        `self.axs` dictionaries.
+        `self.axs` dictionaries, and runs a garbage collection afterwards.
 
         Args:
             key_list: list of figure keys to close or 'auto', in which case
@@ -1182,6 +1183,7 @@ class BaseDataAnalysis(object):
             self.figs[key].clear()
             plt.close(self.figs[key])
             self.figs.pop(key)
+        gc.collect()
 
     def save_data(self, savedir: str = None, savebase: str = None,
                   tag_tstamp: bool = True,
