@@ -1026,7 +1026,7 @@ class Segment:
         for c in pulse_area:
             comp_delay = self.pulsar.parameters[
                 f'{c}_compensation_pulse_delay'].cache.get()
-            amp = self.pulsar.get('{}_amp'.format(c))
+            amp = self.pulsar.get(f'{c}_amp')
             amp *= self.pulsar.parameters[
                 f'{c}_compensation_pulse_scale'].cache.get()
 
@@ -1059,8 +1059,7 @@ class Segment:
                         'compensation. This might let your experiment fail. '
                         'Have you forgotten to enable enforce_single_element '
                         'for the flux AWG?')
-                    last_element = 'compensation_el{}_{}'.format(
-                        comp_i, self.name)
+                    last_element = f'compensation_el{comp_i}_{self.name}'
                     comp_dict[RO_group] = last_element
                     self.elements[last_element] = []
                     self.element_start_end[last_element] = {RO_group: [t_end, 0]}
@@ -1078,7 +1077,7 @@ class Segment:
                     f'{c}_compensation_pulse_gaussian_filter_sigma'].cache.get()
             }
             pulse = pl.BufferedSquarePulse(
-                last_element, c, name='compensation_pulse_{}'.format(i), **kw)
+                last_element, c, name=f'compensation_pulse_{i}', **kw)
             self.extra_pulses.append(pulse)
             i += 1
 
@@ -1278,7 +1277,7 @@ class Segment:
                 trig_pulse = pl.BufferedSquarePulse(
                     trigger_element,
                     channel=ch,
-                    name='trigger_pulse_{}'.format(i),
+                    name=f'trigger_pulse_{i}',
                     **kw)
                 self.extra_pulses.append(trig_pulse)
                 i += 1
@@ -1595,7 +1594,7 @@ class Segment:
 
         for i in range(len(joint_overlapping_elements)):
             self._combine_elements(joint_overlapping_elements[i],
-                                   'overlapping_el_{}_{}'.format(i, self.name))
+                                   f'overlapping_el_{i}_{self.name}')
 
     def _combine_elements(self, elements, combined_el_name):
         """
@@ -2051,7 +2050,7 @@ class Segment:
                     for c in wfs[codeword]:
                         # truncate all values that are out of bounds and
                         # normalize the waveforms
-                        amp = self.pulsar.get('{}_amp'.format(c))
+                        amp = self.pulsar.get(f'{c}_amp')
                         self._channel_amps[c] = amp
                         if c in self.pulsar.analog_channels:
                             if np.max(wfs[codeword][c], initial=0) > amp:
