@@ -722,6 +722,7 @@ class Pulsar(Instrument):
         self._filter_segments = None
         self.awg_lookup = {}
         self.id_lookup = {}
+        self._id_channel_lookup = {}
 
         Pulsar._instance = self
 
@@ -1541,11 +1542,16 @@ class Pulsar(Instrument):
         Returns: The corresponding channel name. If the channel is not found,
                  returns `None`.
         """
+        if (found_cname := self._id_channel_lookup.get((cid, awg))) \
+                is not None:
+            return found_cname
         for cname in self.channels:
-            if self.get('{}_awg'.format(cname)) == awg and \
-               self.get('{}_id'.format(cname)) == cid:
-                return cname
-        return None
+            if self.awg_lookup[cname] == awg and self.id_lookup[cname] == cid:
+                found_cname = cname
+        if found_cname:
+            self._id_channel_lookup[(cid, awg)] = found_cname
+
+        return found_cname
 
     @staticmethod
     def _channels_in_awg_sequences(awg_sequences) -> Dict[str, Set[str]]:
