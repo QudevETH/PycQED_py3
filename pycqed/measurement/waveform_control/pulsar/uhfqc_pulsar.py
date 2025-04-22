@@ -384,7 +384,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.awg._awg_needs_configuration[0] = False
         self.awg._awg_program[0] = True
 
-        if self.pulsar.use_mcc() and self.awg_mcc:
+        if self.pulsar.parameters['use_mcc'].cache.get() and self.awg_mcc:
             self.multi_core_compiler.sequencer_code_mcc[self.awg.name] = (
                 self.awg_mcc.awgs[0], dict(
                     sequencer_program=awg_str,
@@ -395,7 +395,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             self.awg.store_awg_source_string(0, awg_str)
             # otherwise, configure_awg_from_string stores it automatically
         else:
-            if self.pulsar.use_mcc():
+            if self.pulsar.parameters['use_mcc'].cache.get():
                 log.warning(
                     f'Parallel elf compilation not supported for '
                     f'{self.awg.name} ({self.awg.devname}), see debug '

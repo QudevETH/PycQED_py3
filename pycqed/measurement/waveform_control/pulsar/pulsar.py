@@ -360,10 +360,10 @@ class PulsarAWGInterface(ABC):
                      channels_to_program:Union[List[str], str]="all",
                      filter_segments=None):
         """Preprocess filter segments before programming actual hardware"""
-        # Switch of repeat_pattern if not supported or if disabled via
+        # Switch off repeat_pattern if not supported or if disabled via
         # _minimize_sequencer_memory parameter.
         param = f'{self.awg.name}_minimize_sequencer_memory'
-        if param not in self.pulsar.parameters or not self.pulsar.get(param):
+        if not self.pulsar.get(param, False, cache=True):
             repeat_pattern = None
         awg_sequence = self.get_filtered_awg_sequence(
             awg_sequence, waveforms, filter_segments, repeat_pattern,
@@ -733,7 +733,7 @@ class Pulsar(Instrument):
         return os.path.join(gen.get_pycqed_appdata_dir(), "pulsar_id")
 
     def _use_sequence_cache_parser(self, val):
-        if val and not self.use_sequence_cache():
+        if val and not self.parameters['use_sequence_cache'].cache.get():
             self.reset_sequence_cache()
         return val
 
@@ -744,7 +744,8 @@ class Pulsar(Instrument):
         Returns:
             Set of all trigger group names.
         """
-        return set([g for awg in self.awgs for g in self.get(f'{awg}_trigger_groups')])
+        return set([g for awg in self.awgs for g in
+                    self.parameters[f'{awg}_trigger_groups'].cache.get()])
 
     def reset_sequence_cache(self):
         """Resets the sequence cache.
@@ -893,7 +894,8 @@ class Pulsar(Instrument):
         # currently we assume a trigger group to only
         # span over a single AWG
         awg_name = self.awg_lookup[channel]
-        trigger_groups = self.get(f"{awg_name}_trigger_groups")
+        trigger_groups = self.parameters[
+            f"{awg_name}_trigger_groups"].cache.get()
 
         found_group = f"{awg_name}_{_DEFAULT_TRG_GRP}"
 
@@ -942,7 +944,7 @@ class Pulsar(Instrument):
             group: Name of the group.
         """
         awg = self.get_awg_from_trigger_group(group)
-        delay = self.get(f"{awg}_delay")
+        delay = self.parameters[f"{awg}_delay"].cache.get()
 
         if isinstance(delay, float) or isinstance(delay, int):
             return delay
@@ -958,7 +960,8 @@ class Pulsar(Instrument):
         """
 
         awg = self.get_awg_from_trigger_group(group)
-        gran = self.get(f"{awg}_element_start_granularity")
+        gran = self.parameters[
+            f"{awg}_element_start_granularity"].cache.get()
 
         if isinstance(gran, dict):
             gran = gran[group]
@@ -975,7 +978,8 @@ class Pulsar(Instrument):
         """
 
         awg = self.get_awg_from_trigger_group(group)
-        trigger_channels = self.get(f"{awg}_trigger_channels")
+        trigger_channels = self.parameters[
+            f"{awg}_trigger_channels"].cache.get()
 
         # if trigger channels are list return that
         # list for all groups
@@ -1036,7 +1040,8 @@ class Pulsar(Instrument):
         """
         awg = self.awg_lookup[ch]
 
-        join_or_split_elements = self.get(f"{awg}_join_or_split_elements")
+        join_or_split_elements = self.parameters[
+            f"{awg}_join_or_split_elements"].cache.get()
 
         if isinstance(join_or_split_elements, str):
             return join_or_split_elements
@@ -1077,7 +1082,8 @@ class Pulsar(Instrument):
         get updated.
         """
 
-        return {awg for awg in self.awgs if self.get('{}_active'.format(awg))}
+        return {awg for awg in self.awgs
+                if self.parameters[f'{awg}_active'].cache.get()}
 
     def add_awg_with_waveforms(self, awg:str):
         """Adds an awg to the set of AWGs with waveforms programmed."""
@@ -1184,7 +1190,7 @@ class Pulsar(Instrument):
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
-            if not self.use_sequence_cache():
+            if not self.parameters['use_sequence_cache'].cache.get():
                 raise
             log.warning(f'Pulsar: Exception {repr(e)} while programming AWGs. '
                         f'Retrying after resetting the sequence cache.')
@@ -1214,7 +1220,7 @@ class Pulsar(Instrument):
 
         log.info(f'Starting compilation of sequence {sequence.name}')
         t0 = time.time()
-        if self.use_sequence_cache():
+        if self.parameters['use_sequence_cache'].cache.get():
             self.invalid_cache_if_other_pulsar()
             # get hashes and information about the sequence structure
             channel_hashes, awg_sequences = \
@@ -1257,7 +1263,7 @@ class Pulsar(Instrument):
             for awg, seq in awg_sequences.items():
                 settings[awg] = {
                     s.format(awg): (
-                        self.get(s.format(awg))
+                        self.parameters[s.format(awg)].cache.get()
                         if s.format(awg) in self.parameters else None)
                     for s in settings_to_check}
 
@@ -1269,7 +1275,7 @@ class Pulsar(Instrument):
                             i_channel = awg_module.i_channel_name
                             setting_name = s.format(i_channel)
                             settings[awg][setting_name] = \
-                                self.get(setting_name) \
+                                self.parameters[setting_name].cache.get() \
                                 if setting_name in self.parameters \
                                 else None
 
@@ -1301,7 +1307,7 @@ class Pulsar(Instrument):
                 ch_awg = self.awg_lookup[ch]
                 settings[ch] = {
                     s.format(ch): (
-                        self.get(s.format(ch))
+                        self.parameters[s.format(ch)].cache.get()
                         if s.format(ch) in self.parameters else None)
                     for s in settings_to_check}
                 metadata[ch] = {'repeat_pattern':
@@ -1397,7 +1403,8 @@ class Pulsar(Instrument):
 
         # TODO: Check if this could be done somewhere else, such that there is
         # no need to import ZIPulsarMixin in this module.
-        if not self.use_sequence_cache() or ZIPulsarMixin.zi_cleanup_needed():
+        if not self.parameters['use_sequence_cache'].cache.get() \
+                or ZIPulsarMixin.zi_cleanup_needed():
             ZIPulsarMixin.zi_waves_clean(False)
         self._hash_to_wavename_table = {}
 
@@ -1432,13 +1439,13 @@ class Pulsar(Instrument):
 
             log.info(f'Finished programming {awg} in {time.time() - t0}')
 
-        if self.use_mcc():
+        if self.parameters['use_mcc'].cache.get():
             # Use parallel compilation and upload if the _awgs_with_waveforms
             # support it.
             for mcc in self.multi_core_compilers:
                 mcc.execute_mcc()
 
-        if self.use_sequence_cache():
+        if self.parameters['use_sequence_cache'].cache.get():
             # Compilation finished sucessfully. Store sequence cache.
             self._sequence_cache = sequence_cache
 
@@ -1575,7 +1582,7 @@ class Pulsar(Instrument):
         for cname in repeat_dict_per_ch:
             awg = self.awg_lookup[cname]
             param = f'{awg}_minimize_sequencer_memory'
-            if param not in self.parameters or not self.get(param):
+            if not self.get(param, False, cache=True):
                 # repeat_pattern is not supported or is disabled via
                 # _minimize_sequencer_memory parameter.
                 continue
@@ -1687,6 +1694,9 @@ class Pulsar(Instrument):
         this method will try to return the channel-specific parameter,
         and returns False if that does not exist.
 
+        Note that this method reads parameter values from the cache. This is
+        not an issue if used for parameters of type ManualParameter.
+
         Args:
             awg: (str) AWG name.
             channel: (str) Channel name.
@@ -1699,12 +1709,13 @@ class Pulsar(Instrument):
 
         for name in [awg, channel]:
             parameter = name + parameter_suffix
-            if hasattr(self, parameter):
-                if not isinstance(self.get(parameter), bool):
+            if parameter in self.parameters:
+                val = self.parameters[parameter].cache.get()
+                if not isinstance(val, bool):
                     raise RuntimeError(f"Please do not use this method for "
                                        f"checking non-boolean parameter "
                                        f"pulsar.{parameter}")
-                elif self.get(parameter):
+                elif val:
                     return True
 
         return False

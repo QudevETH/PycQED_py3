@@ -327,7 +327,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         if not allow_IF_sweep:
             return mc_parameter_wrapper.wrap_par_to_swf(
                 self.pulsar.parameters[f'{ch}_centerfreq'])
-        if self.pulsar.get(f"{self.awg.name}_use_hardware_sweeper"):
+        if self.pulsar.parameters[f"{self.awg.name}_use_hardware_sweeper"].cache.get():
             return swf.SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Frequency with offset'
         return swf.Offset_Sweep(
@@ -626,7 +626,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
         awg_nr = self._awg_nr
 
         # check if the waveform has been uploaded
-        if self.pulsar.use_sequence_cache():
+        if self.pulsar.parameters['use_sequence_cache'].cache.get():
             if wave_hashes == self.waveform_cache.get(wave_idx, None):
                 log.debug(f'{self._awg.name} awgs{awg_nr}: '
                           f'{wave_idx} same as in cache')
@@ -665,7 +665,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
         waveforms = zhinst.toolkit.waveform.Waveforms()
         waveforms.assign_waveform(wave_idx, a1, a2)
 
-        if self.pulsar.use_mcc() and self.multi_core_compiler:
+        if self.pulsar.parameters['use_mcc'].cache.get() \
+                and self.multi_core_compiler:
             # Waveforms are added to mcc.post_sequencer_code_upload and will
             # be uploaded to device in pulsar._program_awgs after multi-core
             # compiler is executed.
@@ -703,7 +704,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             wave_idx (int): index of wave upload (0 or 1)
             wave_hashes: waveforms hashes
         """
-        if self.pulsar.use_sequence_cache():
+        if self.pulsar.parameters['use_sequence_cache'].cache.get():
             self.waveform_cache[wave_idx] = wave_hashes
 
     def _generate_oscillator_seq_code(self):
@@ -860,6 +861,6 @@ class SHFGeneratorModule(ZIGeneratorModule):
         return status
 
     def _set_signal_output_status(self):
-        if self.pulsar.sigouts_on_after_programming():
+        if self.pulsar.parameters['sigouts_on_after_programming'].cache.get():
             for sgchannel in self._awg.sgchannels:
                 sgchannel.output.on(True)

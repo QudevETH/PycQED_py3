@@ -781,7 +781,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
         awg_nr = self._awg_nr
 
-        if self.pulsar.use_sequence_cache():
+        if self.pulsar.parameters['use_sequence_cache'].cache.get():
             if wave_hashes == self.waveform_cache.get(wave_idx, None):
                 log.debug(
                     f'{self._awg.name} awgs{awg_nr}: {wave_idx} same as in '
@@ -812,7 +812,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         a1 = None if a1 is None else np.pad(a1, n - a1.size)
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         wf_raw_combined = merge_waveforms(a1, a2, mc)
-        if self.pulsar.use_mcc() and self.multi_core_compiler:
+        if self.pulsar.parameters['use_mcc'].cache.get() \
+                and self.multi_core_compiler:
             # Waveforms are added to mcc.post_sequencer_code_upload and will
             # be uploaded to device in pulsar._program_awgs after multi-core
             # compiler is executed.
@@ -853,7 +854,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             wave_idx (int): index of wave upload (0 or 1)
             wave_hashes: waveforms hashes
         """
-        if self.pulsar.use_sequence_cache():
+        if self.pulsar.parameters['use_sequence_cache'].cache.get():
             self.waveform_cache[wave_idx] = wave_hashes
 
     def _update_awg_instrument_status(self):
@@ -877,9 +878,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     ):
         if first_element_of_segment:
             prepend_zeros = self.pulsar.parameters[
-                f"{self._awg.name}_prepend_zeros"]()
+                f"{self._awg.name}_prepend_zeros"].cache.get()
             if prepend_zeros is None:
-                prepend_zeros = self.pulsar.prepend_zeros()
+                prepend_zeros = self.pulsar.parameters[
+                    'prepend_zeros'].cache.get()
             elif isinstance(prepend_zeros, list):
                 prepend_zeros = prepend_zeros[self._awg_nr]
         else:
@@ -937,7 +939,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             self,
             awg_str,
     ):
-        if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
+        if self.pulsar.parameters['use_mcc'].cache.get() \
+                and self._awg_interface.awg_mcc:
             self._awg.store_awg_source_string(self._awg_nr, awg_str)
             # otherwise, configure_awg_from_string stores it automatically
 
@@ -1049,6 +1052,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                 self._awg_interface.awg_mcc_generators[self._awg_nr].ready()
 
     def _set_signal_output_status(self):
-        if self.pulsar.sigouts_on_after_programming():
+        if self.pulsar.parameters['sigouts_on_after_programming'].cache.get():
             for ch in range(8):
                 self._awg.set('sigouts_{}_on'.format(ch), True)

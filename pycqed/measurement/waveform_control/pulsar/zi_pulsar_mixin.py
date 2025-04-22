@@ -341,8 +341,8 @@ class ZIPulsarMixin:
 
     def zi_wait_trigger(self, name, device, trigger_source=None):
         playback_string = []
-        trig_source = trigger_source or self.pulsar.get(
-            f"{name}_trigger_source")
+        trig_source = trigger_source or self.pulsar.parameters[
+            f"{name}_trigger_source"].cache.get()
         if trig_source == "Dig1":
             playback_string.append(
                 "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
@@ -363,8 +363,8 @@ class ZIPulsarMixin:
 
         self.wfms_to_upload = {}  # reset waveform upload memory
 
-        use_placeholder_waves = self.pulsar.get(
-            f"{self.awg.name}_use_placeholder_waves")
+        use_placeholder_waves = self.pulsar.parameters[
+            f"{self.awg.name}_use_placeholder_waves"].cache.get()
         if not use_placeholder_waves:
             if not self.zi_waves_clean():
                 self._zi_clear_waves()
@@ -385,7 +385,7 @@ class ZIPulsarMixin:
             )
             has_waveforms |= any(channel_pair.has_waveforms)
 
-        if self.pulsar.sigouts_on_after_programming():
+        if self.pulsar.parameters['sigouts_on_after_programming'].cache.get():
             for awg_module in self.awg_modules:
                 for channel_id in awg_module.analog_channel_ids:
                     channel_name = self.pulsar._id_channel(
@@ -660,7 +660,7 @@ class ZIGeneratorModule:
     def _reset_mcc_post_compilation_upload_list(self):
         """If multi-core compiler is enabled, reset the post-programming
         upload list."""
-        if self.pulsar.use_mcc():
+        if self.pulsar.parameters['use_mcc'].cache.get():
             self.multi_core_compiler.post_sequencer_code_upload[
                 self.module_name] = list()
 
@@ -742,14 +742,14 @@ class ZIGeneratorModule:
             # code. If the multicore compiler is used, "upload_command_table"
             # method will be pended and executed after the sequencer program
             # gets uploaded.
-            if self.pulsar.use_mcc():
+            if self.pulsar.parameters['use_mcc'].cache.get():
                 self.multi_core_compiler.post_sequencer_code_upload[
                     self.module_name].append(
                     (self._upload_command_table, dict()))
             else:
                 self._upload_command_table()
 
-        if self.pulsar.use_mcc():
+        if self.pulsar.parameters['use_mcc'].cache.get():
             self.multi_core_compiler.post_sequencer_code_upload[
                 self.module_name].append(
                 (self._set_signal_output_status, dict()))
@@ -822,39 +822,27 @@ class ZIGeneratorModule:
         """Updates self._use_command_table flag with the setting specified
         in pulsar."""
         device_param = f"{self._awg.name}_use_command_table"
-        device_value = self.pulsar.get(device_param) \
-            if hasattr(self.pulsar, device_param) else False
-
+        device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_use_command_table"
-        channel_value = self.pulsar.get(channel_param) \
-            if hasattr(self.pulsar, channel_param) else False
-
+        channel_value = self.pulsar.get(channel_param, False, cache=True)
         self._use_command_table = device_value | channel_value
 
     def _update_use_placeholder_wave_flag(self):
         """Updates self._use_placeholder_wave flag with the setting specified
         in pulsar."""
         device_param = f"{self._awg.name}_use_placeholder_waves"
-        device_value = self.pulsar.get(device_param) \
-            if hasattr(self.pulsar, device_param) else False
-
+        device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_use_placeholder_waves"
-        channel_value = self.pulsar.get(channel_param) \
-            if hasattr(self.pulsar, channel_param) else False
-
+        channel_value = self.pulsar.get(channel_param, False, cache=True)
         self._use_placeholder_waves = device_value | channel_value
 
     def _update_use_internal_mod_flag(self):
         """Updates self._use_internal_mod flag with the setting specified in
         pulsar."""
         device_param = f"{self._awg.name}_internal_modulation"
-        device_value = self.pulsar.get(device_param) \
-            if hasattr(self.pulsar, device_param) else False
-
+        device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_internal_modulation"
-        channel_value = self.pulsar.get(channel_param) \
-            if hasattr(self.pulsar, channel_param) else False
-
+        channel_value = self.pulsar.get(channel_param, False, cache=True)
         self._use_internal_mod = device_value | channel_value
 
     def _resolve_channel_config(
@@ -1463,13 +1451,14 @@ class ZIGeneratorModule:
             kw["waveforms"] = ";".join([s + ".csv"
                                         for s in self._defined_waves])
 
-        if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
+        if self.pulsar.parameters['use_mcc'].cache.get() \
+                and self._awg_interface.awg_mcc:
             self.multi_core_compiler.sequencer_code_mcc[self.module_name] = (
                 self._awg_interface.awg_mcc_generators[self._awg_nr],
                 dict(sequencer_program=awg_str, **kw))
             self._save_awg_str(awg_str=awg_str)
         else:
-            if self.pulsar.use_mcc():
+            if self.pulsar.parameters['use_mcc'].cache.get():
                 log.warning(
                     f'Parallel elf compilation not supported for '
                     f'{self._awg.name} ({self._awg.devname}), see debug '

@@ -257,7 +257,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         ),
                         playback_string='\n  '.join(playback_strings)
                     )
-                    if self.pulsar.use_mcc():
+                    if self.pulsar.parameters['use_mcc'].cache.get():
                         self.multi_core_compiler.sequencer_code_mcc[
                             f"{self.awg.name}_qa{i}"] = (
                             self.awg_mcc_qagenerators[i],
@@ -281,7 +281,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 path = f"/{self.awg.get_idn()['serial']}/qachannels/{i}/" \
                        f"spectroscopy/envelope"
                 if w is not None:
-                    if self.pulsar.use_mcc():
+                    if self.pulsar.parameters['use_mcc'].cache.get():
                         post_seqc_command = list()
                         post_seqc_command.append(
                             (daq.setVector,
@@ -373,7 +373,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     prep_string='')
             wave_upload_dict = {hash_to_index_map[k]: v
                                 for k, v in waves_to_upload.items()}
-            if self.pulsar.use_mcc():
+            if self.pulsar.parameters['use_mcc'].cache.get():
                 self.multi_core_compiler.sequencer_code_mcc[
                     f"{self.awg.name}_qa{i}"] = (
                     self.awg_mcc_qagenerators[i],

@@ -133,7 +133,8 @@ class Segment:
         self.extra_pulses = []  # trigger and charge compensation pulses
         self.previous_pulse = None
         self._init_end_name = None  # to detect end of init block in self.add
-        self._algo_start = {'search': self.pulsar.algorithm_start(),
+        self._algo_start = {'search': self.pulsar.parameters[
+                                'algorithm_start'].cache.get(),
                             'name': None, 'occ_counter': [0]}
         if self._algo_start['search'] in ['segment_start', 'init_start']:
             self._algo_start['name'] = self._algo_start['search']
@@ -181,7 +182,8 @@ class Segment:
         self.fast_mode = fast_mode
         self.resolve_overlapping_elements = \
             kw.pop('resolve_overlapping_elements',
-                   self.pulsar.resolve_overlapping_elements())
+                   self.pulsar.parameters[
+                       'resolve_overlapping_elements'].cache.get())
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
 
@@ -634,10 +636,13 @@ class Segment:
             p for (_, _, p) in sorted(visited_pulses.values())]
 
     def add_flux_crosstalk_cancellation_channels(self):
-        pulsar_calibration_key = self.pulsar.flux_crosstalk_cancellation()
-        flux_channels = self.pulsar.flux_channels()
-        cancellation_mtx = self.pulsar.flux_crosstalk_cancellation_mtx()
-        shift_mtx = self.pulsar.flux_crosstalk_cancellation_shift_mtx()
+        pulsar_calibration_key = self.pulsar.parameters[
+            'flux_crosstalk_cancellation'].cache.get()
+        flux_channels = self.pulsar.parameters['flux_channels'].cache.get()
+        cancellation_mtx = self.pulsar.parameters[
+            'flux_crosstalk_cancellation_mtx'].cache.get()
+        shift_mtx = self.pulsar.parameters[
+            'flux_crosstalk_cancellation_shift_mtx'].cache.get()
         for p in self.resolved_pulses:
             calibration_key = getattr(p.pulse_obj,
                                       'crosstalk_cancellation_key', None)
@@ -962,7 +967,8 @@ class Segment:
         for c in self.pulsar.channels:
             if self.pulsar.get('{}_type'.format(c)) != 'analog':
                 continue
-            if self.pulsar.get('{}_charge_buildup_compensation'.format(c)):
+            if self.pulsar.parameters[
+                    f'{c}_charge_buildup_compensation'].cache.get():
                 compensation_chan.add(c)
 
         # Caches {c: self.pulsar.get_trigger_group(c)}
@@ -1023,17 +1029,18 @@ class Segment:
         comp_dict = {}
         longest_pulse = {}
         for c in pulse_area:
-            comp_delay = self.pulsar.get(
-                '{}_compensation_pulse_delay'.format(c))
+            comp_delay = self.pulsar.parameters[
+                f'{c}_compensation_pulse_delay'].cache.get()
             amp = self.pulsar.get('{}_amp'.format(c))
-            amp *= self.pulsar.get('{}_compensation_pulse_scale'.format(c))
+            amp *= self.pulsar.parameters[
+                f'{c}_compensation_pulse_scale'].cache.get()
 
             # If pulse lenght was smaller than min_length, the amplitude will
             # be reduced
             length = abs(pulse_area[c][0] / amp)
             awg = self.pulsar.awg_lookup[c]
-            min_length = self.pulsar.get(
-                '{}_compensation_pulse_min_length'.format(awg))
+            min_length = self.pulsar.parameters[
+                f'{awg}_compensation_pulse_min_length'].cache.get()
             if length < min_length:
                 length = min_length
                 amp = abs(pulse_area[c][0] / length)
@@ -1072,8 +1079,8 @@ class Segment:
                 'buffer_length_start': comp_delay,
                 'buffer_length_end': comp_delay,
                 'pulse_length': length,
-                'gaussian_filter_sigma': self.pulsar.get(
-                    '{}_compensation_pulse_gaussian_filter_sigma'.format(c))
+                'gaussian_filter_sigma': self.pulsar.parameters[
+                    f'{c}_compensation_pulse_gaussian_filter_sigma'].cache.get()
             }
             pulse = pl.BufferedSquarePulse(
                 last_element, c, name='compensation_pulse_{}'.format(i), **kw)
@@ -1098,15 +1105,15 @@ class Segment:
         for (el, group) in longest_pulse:
             length_comp = longest_pulse[(el, group)]
             el_start = self.get_element_start(el, group)
-            el_buffer = self.pulsar.min_element_buffer() or 0.
+            el_buffer = self.pulsar.parameters['min_element_buffer'].cache.get() or 0.
             new_end = t_end + length_comp + el_buffer
             awg = self.pulsar.get_awg_from_trigger_group(group)
             new_samples = self.time2sample(new_end - el_start, awg=awg)
             # make sure that the element length exceeds min length for the AWG,
             # and is a multiple of sample granularity
-            gran = self.pulsar.get('{}_granularity'.format(awg))
+            gran = self.pulsar.parameters[f'{awg}_granularity'].cache.get()
             min_length_samples = self.time2sample(
-                self.pulsar.get('{}_min_length'.format(awg)), awg=awg)
+                self.pulsar.parameters[f'{awg}_min_length'].cache.get(), awg=awg)
             new_samples = max(new_samples, min_length_samples)
             if new_samples % gran != 0:
                 new_samples += gran - new_samples % gran
@@ -1238,7 +1245,8 @@ class Segment:
             # the trigger pulses
             trigger_el_set = set()
 
-            trig_pulse_params = self.pulsar.trigger_pulse_parameters()
+            trig_pulse_params = self.pulsar.parameters[
+                'trigger_pulse_parameters'].cache.get()
 
             for ch, trigger_pulse_time, pars in trigger_pulses:
                 trigger_group = self.pulsar.get_trigger_group(ch)
@@ -1364,7 +1372,8 @@ class Segment:
 
         # if a fixed main trigger time is set: check compatibility and
         # overwrite with fixed value
-        t_main_trig_setting = self.pulsar.main_trigger_time()
+        t_main_trig_setting = self.pulsar.parameters[
+            'main_trigger_time'].cache.get()
         if t_main_trig_setting != 'auto':
             if t_main_trig < t_main_trig_setting:
                 raise ValueError(
@@ -1499,8 +1508,9 @@ class Segment:
                 # If element length is shorter than min length, 0s will be
                 # appended by pulsar. Test for elements with at least
                 # min_el_len if they overlap.
-                min_el_len = self.pulsar.get('{}_min_length'.format(
-                    self.pulsar.get_awg_from_trigger_group(group)))
+                min_el_len = self.pulsar.parameters[
+                    self.pulsar.get_awg_from_trigger_group(group)
+                    + '_min_length'].cache.get()
                 if el_length < min_el_len:
                     el_prev_end = el_prev_start + min_el_len
 
@@ -1763,7 +1773,8 @@ class Segment:
         # find element start, end and length
         t_end = -np.inf
 
-        el_buffer = self.pulsar.min_element_buffer() or 0.
+        el_buffer = self.pulsar.parameters['min_element_buffer'].cache.get(
+            ) or 0.
         el_group = (element, trigger_group)
         if el_group not in self._element_start_end_raw:
             t_start_raw = np.inf
@@ -1797,8 +1808,8 @@ class Segment:
 
         # Enforces the latest t_start of the element if the corresponding
         # pulsar parameter is specified, and does nothing otherwise.
-        t_start = min(t_start,
-                      self.pulsar.max_element_start_time() or np.inf)
+        t_start = min(t_start, self.pulsar.parameters[
+            'max_element_start_time'].cache.get() or np.inf)
 
         # make sure that element start is a multiple of element
         # start granularity
@@ -1813,10 +1824,10 @@ class Segment:
 
         # make sure that the element length exceeds min length for the AWG,
         # and is a multiple of sample granularity
-        gran = self.pulsar.get('{}_granularity'.format(awg))
+        gran = self.pulsar.parameters[f'{awg}_granularity'].cache.get()
         samples = self.time2sample(t_end - t_start, awg=awg)
         min_length_samples = self.time2sample(
-            self.pulsar.get('{}_min_length'.format(awg)), awg=awg)
+            self.pulsar.parameters[f'{awg}_min_length'].cache.get(), awg=awg)
         samples = max(samples, min_length_samples)
         if samples % gran != 0:
             samples += gran - samples % gran
@@ -1928,9 +1939,11 @@ class Segment:
 
                     # insert the waveforms at the correct position in wfs
                     # offset by the pulsar software channel delay
-                    el_buffer = self.pulsar.min_element_buffer() or 0.
+                    el_buffer = self.pulsar.parameters[
+                        'min_element_buffer'].cache.get() or 0.
                     for channel in pulse_channels:
-                        extra_delay = self.pulsar.get(channel + '_delay') or 0.
+                        extra_delay = self.pulsar.parameters[
+                            channel + '_delay'].cache.get() or 0.
                         # extra 1e-12 to deal with numerical precision
                         if abs(extra_delay) > el_buffer + 1e-12:
                             raise Exception('Delay on channel {} exceeds the '
@@ -1941,8 +1954,9 @@ class Segment:
                         pe_mod = pulse_end + extra_delay_samples
                         analog = self.pulsar.get(f"{channel}_type") == "analog"
                         if analog:
-                            precalculate = self.pulsar.get(
-                                f"{channel}_distortion") == "precalculate"
+                            precalculate = self.pulsar.parameters[
+                                f"{channel}_distortion"].cache.get(
+                                ) == "precalculate"
                         else:
                             precalculate = False
                         bypass = pulse.filter_bypass is not None
@@ -1984,16 +1998,17 @@ class Segment:
                         if not self.pulsar.get(
                                 '{}_type'.format(c)) == 'analog':
                             continue
-                        if not self.pulsar.get(
-                                '{}_distortion'.format(c)) == 'precalculate':
+                        if not self.pulsar.parameters[
+                                f'{c}_distortion'].cache.get(
+                                ) == 'precalculate':
                             continue
 
                         wf = wfs[codeword][c]
 
                         distortion_dict = self.distortion_dicts.get(c, None)
                         if distortion_dict is None:
-                            distortion_dict = self.pulsar.get(
-                                '{}_distortion_dict'.format(c))
+                            distortion_dict = self.pulsar.parameters[
+                                f'{c}_distortion_dict'].cache.get()
                         else:
                             distortion_dict = \
                                 flux_dist.process_filter_coeffs_dict(
@@ -2132,11 +2147,11 @@ class Segment:
 
     @_with_pulsar_tmp_vals
     def calculate_hash(self, elname, codeword, channel, trigger_group=None):
-        if not self.pulsar.reuse_waveforms():
+        if not self.pulsar.parameters['reuse_waveforms'].cache.get():
             # these hash entries avoid that the waveform is reused on another
             # channel or in another element/codeword
             hashlist = [self.name, elname, codeword, channel]
-            if not self.pulsar.use_sequence_cache():
+            if not self.pulsar.parameters['use_sequence_cache'].cache.get():
                 return tuple(hashlist)
             # when sequence cache is used, we still need to add the other
             # hashables to allow pulsar to detect when a re-upload is required
@@ -2150,24 +2165,26 @@ class Segment:
         tstart, length = self.element_start_end[elname][trigger_group]
         hashlist.append(length)  # element length in samples
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
-                self.pulsar.get(f'{channel}_distortion') == 'precalculate':
-            hashlist.append(repr(self.pulsar.get(
-                f'{channel}_distortion_dict')))
+                self.pulsar.parameters[f'{channel}_distortion'
+                ].cache.get() == 'precalculate':
+            hashlist.append(repr(self.pulsar.parameters[
+                f'{channel}_distortion_dict'].cache.get()))
         else:
             hashlist.append(self.pulsar.clock(channel=channel))  # clock rate
             for par in ['type', 'amp', 'internal_modulation']:
                 chpar = f'{channel}_{par}'
                 if chpar in self.pulsar.parameters:
+                    # do not use cache because amp is not a ManualParameter
                     hashlist.append(self.pulsar.get(chpar))
                 else:
                     hashlist.append(False)
-        hashlist.append(self.pulsar.get(f'{channel}_delay'))
+        hashlist.append(self.pulsar.parameters[f'{channel}_delay'].cache.get())
         if self.pulsar.get(f'{channel}_type') == 'analog' and \
-                self.pulsar.get(f'{channel}_charge_buildup_compensation'):
+                self.pulsar.parameters[f'{channel}_charge_buildup_compensation'].cache.get():
             for par in ['compensation_pulse_delay',
                         'compensation_pulse_gaussian_filter_sigma',
                         'compensation_pulse_scale']:
-                hashlist.append(self.pulsar.get(f'{channel}_{par}'))
+                hashlist.append(self.pulsar.parameters[f'{channel}_{par}'].cache.get())
 
         for pulse in self.elements[elname]:
             if pulse.codeword in {'no_codeword', codeword}:
