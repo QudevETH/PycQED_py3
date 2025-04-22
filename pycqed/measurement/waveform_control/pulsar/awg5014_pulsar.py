@@ -45,7 +45,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         group = []
         for ch_nr in range(4):
@@ -243,14 +243,14 @@ class AWG5014Pulsar(PulsarAWGInterface):
                 # Exponentially small starting value is fine
                 if any([abs(wf[0]) > self.WARN_CUT for wf in grp_wfs]):
                     log.warning(f'Element {element} starts with non-zero '
-                                f'entry on {self.awg.name}.')
+                                f'entry on {self.awg_name}.')
 
         if not any(grp_has_waveforms.values()):
             for grp in ['ch1', 'ch2', 'ch3', 'ch4']:
                 self.awg.set('{}_state'.format(grp), grp_has_waveforms[grp])
             return None
 
-        self.pulsar.add_awg_with_waveforms(self.awg.name)
+        self.pulsar.add_awg_with_waveforms(self.awg_name)
 
         nrep_l = [1] * len(wfname_l)
         goto_l = [0] * len(wfname_l)
@@ -278,7 +278,7 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
         hardware_offsets = 0
         for grp in ['ch1', 'ch2', 'ch3', 'ch4']:
-            cname = self.pulsar._id_channel(grp, self.awg.name)
+            cname = self.pulsar._id_channel(grp, self.awg_name)
             offset_mode = self.pulsar.parameters[
                 f'{cname}_offset_mode'].cache.get()
             if offset_mode == 'hardware':

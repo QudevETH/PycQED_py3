@@ -100,6 +100,7 @@ class PulsarAWGInterface(ABC):
         super().__init__()
 
         self.awg = awg
+        self.awg_name = awg.name
         self.pulsar = pulsar
 
         self._filter_segment_functions = None
@@ -143,7 +144,7 @@ class PulsarAWGInterface(ABC):
         """
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_active",
                              initial_value=True,
@@ -363,7 +364,7 @@ class PulsarAWGInterface(ABC):
         """Preprocess filter segments before programming actual hardware"""
         # Switch off repeat_pattern if not supported or if disabled via
         # _minimize_sequencer_memory parameter.
-        param = f'{self.awg.name}_minimize_sequencer_memory'
+        param = f'{self.awg_name}_minimize_sequencer_memory'
         if not self.pulsar.get(param, False, cache=True):
             repeat_pattern = None
         awg_sequence = self.get_filtered_awg_sequence(
@@ -392,7 +393,7 @@ class PulsarAWGInterface(ABC):
                 # filter segments emulation needed
                 if repeat_pattern is not None:
                     raise NotImplementedError(
-                        f'{self.awg.name} does not support filter_segments and '
+                        f'{self.awg_name} does not support filter_segments and '
                         f'an emulation is needed, but the combination of '
                         f'filter_segments emulation and repeat_pattern is not '
                         f'implemented.')
@@ -411,7 +412,7 @@ class PulsarAWGInterface(ABC):
                     # FIXME: This assumes that filter_segments will be set
                     #  after the call to program_awgs (as it is the case in
                     #  FilteredSweep). Find a more general solution.
-                    self.pulsar._awgs_with_waveforms.add(self.awg.name)
+                    self.pulsar._awgs_with_waveforms.add(self.awg_name)
                     return
                 new_awg_sequence = odict()
                 i_seg = -1
@@ -798,6 +799,7 @@ class Pulsar(Instrument):
                 channel names.
         """
 
+        awg_name = awg.name
         if channel_name_map is None:
             channel_name_map = {}
         if trigger_group_map is None:
@@ -808,27 +810,27 @@ class Pulsar(Instrument):
             if channel_name in self.channels:
                 raise KeyError("Channel named '{}' already defined".format(
                     channel_name))
-        if awg.name in self.awgs:
-            raise KeyError("AWG '{}' already added to pulsar".format(awg.name))
+        if awg_name in self.awgs:
+            raise KeyError(f"AWG '{awg_name}' already added to pulsar")
 
         # Add awg and channels parameters to pulsar
         awg_interface_class = PulsarAWGInterface.get_interface_class(awg)
         awg_interface = awg_interface_class(self, awg)
         awg_interface.create_awg_parameters(channel_name_map)
-        self.awg_interfaces[awg.name] = awg_interface
+        self.awg_interfaces[awg_name] = awg_interface
 
         # Reconstruct the set of unique channel groups from the
         # self.channel_groups dictionary, which stores for each channel a list
         # of all channels in the same group.
-        self.num_channel_groups[awg.name] = len(set(
+        self.num_channel_groups[awg_name] = len(set(
             ['---'.join(v) for k, v in self.channel_groups.items()
              if self.awg_lookup[k] == awg_name]))
 
-        self.awgs.add(awg.name)
+        self.awgs.add(awg_name)
         # Make sure that registers for filter_segments are set in the new AWG.
         self.filter_segments(self.filter_segments())
         # Define trigger groups of AWG
-        self.define_awg_trigger_groups(awg.name, trigger_group_map)
+        self.define_awg_trigger_groups(awg_name, trigger_group_map)
 
     def define_awg_trigger_groups(self, awg_name: str,
                                   trigger_group_map: dict = {}):
@@ -1128,7 +1130,7 @@ class Pulsar(Instrument):
                 awg.stop()
 
         # Exclude AWGs that should not be started
-        used_awgs = [awg for awg in used_awgs if awg.awg.name not in exclude]
+        used_awgs = [awg for awg in used_awgs if awg.awg_name not in exclude]
 
         # Stop master AWG
         if self.master_awg() and self.master_awg() not in exclude:
