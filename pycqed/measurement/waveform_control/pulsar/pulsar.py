@@ -918,13 +918,11 @@ class Pulsar(Instrument):
             group: Name of the trigger group.
         """
 
-        if group not in self.trigger_groups:
-            raise ValueError(f"Provided group {group} not in "
-                             f"list of defined trigger groups.")
-
-        for awg_name in self.awgs:
-            if group in self.get(f"{awg_name}_trigger_groups"):
-                return awg_name
+        for awg in self.awgs:
+            if group in self.parameters[f'{awg}_trigger_groups'].cache.get():
+                return awg
+        raise ValueError(f"Provided group {group} not in "
+                         f"list of defined trigger groups.")
 
     def get_trigger_group_channels(self, group:str)->List[str]:
         """
@@ -934,11 +932,12 @@ class Pulsar(Instrument):
         Args:
             group: Name of group.
         """
-
-        awg_name = self.get_awg_from_trigger_group(group)
-        trigger_groups = self.get(f"{awg_name}_trigger_groups")
-
-        return trigger_groups[group]
+        for awg in self.awgs:
+            groups = self.parameters[f'{awg}_trigger_groups'].cache.get()
+            if group in groups:
+                return groups[group]
+        raise ValueError(f"Provided group {group} not in "
+                         f"list of defined trigger groups.")
 
     def get_trigger_delay(self, group:str):
         """
