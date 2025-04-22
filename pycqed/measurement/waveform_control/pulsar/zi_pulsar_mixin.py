@@ -993,7 +993,7 @@ class ZIGeneratorModule:
             channels = set(self.pulsar._id_channel(chid, self._awg_name)
                            for chid in self.analog_channel_ids)
             if not self.pulsar.check_channels_in_trigger_groups(
-                    set(channels), trigger_groups):
+                    channels, trigger_groups):
                 continue
 
             self._playback_strings.append(f'// Element {element}')
