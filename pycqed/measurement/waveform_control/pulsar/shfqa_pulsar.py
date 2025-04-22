@@ -132,7 +132,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
             channels = set(self.pulsar._id_channel(chid, self.awg.name)
-                        for chid in chids)
+                           for chid in chids)
 
             playback_strings = []
 
