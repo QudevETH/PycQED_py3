@@ -924,6 +924,20 @@ class Pulsar(Instrument):
         raise ValueError(f"Provided group {group} not in "
                          f"list of defined trigger groups.")
 
+    def get_awgs_from_trigger_groups(self, groups=None) -> str:
+        """Returns a lookup dict to get awg names for trigger groups.
+
+        Args:
+            groups(list, default: None): if provided, the lookup dict will
+                only include the trigger groups in this list
+        """
+        lookup = {group: awg for awg in self.awgs for group
+                  in self.parameters[f'{awg}_trigger_groups'].cache.get()}
+        if groups is not None:
+            lookup = {group: awg for group, awg in lookup.items()
+                      if group in groups}
+        return lookup
+
     def get_trigger_group_channels(self, group:str)->List[str]:
         """
         Return all channels of the trigger group. If default return all
