@@ -163,7 +163,7 @@ class Sequence:
                         sequences[awg][uelname].setdefault(cw, {})
                         for ch in seg.get_element_channels(elname,
                                                            trigger_group=group):
-                            chid = self.pulsar.get(f'{ch}_id')
+                            chid = self.pulsar.id_lookup[ch]
                             if awg_sequences:
                                 h = awg_sequences[awg][uelname][cw][chid]
                             else:
@@ -344,12 +344,12 @@ class Sequence:
                         # boolean parameter indicating whether one pulse
                         # overlaps with the current AWG module
                         pulse_overlaps_with_channel = any([
-                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            self.pulsar.id_lookup[channel] in channel_ids
                             for channel in pulse.channels])
                         # boolean parameter indicating whether one pulse
                         # is played solely on the current AWG module
                         pulse_only_on_channel = all([
-                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            self.pulsar.id_lookup[channel] in channel_ids
                             for channel in pulse.channels])
 
                         if not pulse_overlaps_with_channel:
@@ -408,7 +408,7 @@ class Sequence:
 
                     for pulse in seg.elements[elname]:
                         if len(pulse.channels) == 0 or \
-                                not all([self.pulsar.get(f'{channel}_id')
+                                not all([self.pulsar.id_lookup[channel]
                                          in channel_ids
                                          for channel in pulse.channels]):
                             continue

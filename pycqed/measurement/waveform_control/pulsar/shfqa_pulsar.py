@@ -407,14 +407,14 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         return 2.0e9
 
     def sigout_on(self, ch, on=True):
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         self.awg.qachannels[int(chid[2]) - 1].output.on(on)
 
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
         return self.awg.get_params_for_spectrum(requested_freqs)
 
     def get_frequency_sweep_function(self, ch: str, **kw):
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         return self.awg.get_lo_sweep_function(int(chid[2]) - 1, **kw)
 
 

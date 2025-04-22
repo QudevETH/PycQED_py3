@@ -311,11 +311,11 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
         relevant_channels = [
             c for c in self.pulsar.channels
-            if self.pulsar.get(f"{c}_awg") == self.awg.name
+            if self.pulsar.awg_lookup[c] == self.awg_name
         ]
 
         for channel in relevant_channels:
-            cid = self.pulsar.get(f"{channel}_id")
+            cid = self.pulsar.id_lookup[channel]
             amp = self.pulsar.get(f"{channel}_amp")
             off = self.pulsar.get(f"{channel}_offset")
             if self.pulsar.get(f"{channel}_type") == 'analog':
@@ -343,13 +343,13 @@ class AWG5014Pulsar(PulsarAWGInterface):
 
         for channel in relevant_channels:
             if self.pulsar.get(f"{self.awg.name}_active"):
-                cid = self.pulsar.get(f"{channel}_id")
+                cid = self.pulsar.id_lookup[channel]
                 channel_cfg['CHANNEL_STATE_' + cid[2]] = 1
 
         return channel_cfg
 
     def sigout_on(self, ch, on=True):
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         if f"{chid}_state" in self.awg.parameters:
             self.awg.set(f"{chid}_state", on)
         else:  # it is a marker channel

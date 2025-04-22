@@ -686,7 +686,7 @@ class Segment:
             # internal modulation is turned on for this channel. If not,
             # we will skip this channel.
             if not self.pulsar.check_channel_parameter(
-                awg=self.pulsar.get_channel_awg(channel).name,
+                awg=self.pulsar.awg_lookup[channel],
                 channel=channel,
                 parameter_suffix="_internal_modulation"
             ):
@@ -1031,7 +1031,7 @@ class Segment:
             # If pulse lenght was smaller than min_length, the amplitude will
             # be reduced
             length = abs(pulse_area[c][0] / amp)
-            awg = self.pulsar.get('{}_awg'.format(c))
+            awg = self.pulsar.awg_lookup[c]
             min_length = self.pulsar.get(
                 '{}_compensation_pulse_min_length'.format(awg))
             if length < min_length:
@@ -2069,8 +2069,8 @@ class Segment:
                     if codeword not in awg_wfs[awg][(i, element)]:
                         awg_wfs[awg][(i, element)][codeword] = {}
                     for channel in wfs[codeword]:
-                        awg_wfs[awg][(i, element)][codeword][self.pulsar.get(
-                            '{}_id'.format(channel))] = (
+                        awg_wfs[awg][(i, element)][codeword][
+                            self.pulsar.id_lookup[channel]] = (
                                 wfs[codeword][channel])
 
         return awg_wfs

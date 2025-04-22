@@ -615,7 +615,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 self.awg._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         if chid[-1] != 'm':  # not a marker channel
             self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
@@ -637,8 +637,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             is_channel_pair (str): whether these two AWG channels belongs to
                 the same channel pair.
         """
-        ch1id = self.pulsar.get(f"{cname1}_id")
-        ch2id = self.pulsar.get(f"{cname2}_id")
+        ch1id = self.pulsar.id_lookup[cname1]
+        ch2id = self.pulsar.id_lookup[cname2]
 
         ch_idx_1 = int(ch1id[-1])
         ch_idx_2 = int(ch2id[-1])
@@ -667,7 +667,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             is_i_channel (str): whether this channel has the smaller number
             in its analog channel pair.
         """
-        chid = self.pulsar.get(f"{cname}_id")
+        chid = self.pulsar.id_lookup[cname]
         if chid[-1] == 'm':
             return False
         ch_idx = int(chid[-1])

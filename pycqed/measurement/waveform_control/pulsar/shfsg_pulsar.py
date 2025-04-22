@@ -277,7 +277,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         return 2.0e9
 
     def sigout_on(self, ch, on=True):
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         self.awg.sgchannels[int(chid[2]) - 1].output.on(on)
 
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
@@ -322,7 +322,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 False leads to a sweep function that is only allowed to take
                 values on the 100 MHz grid supported by the synthesizer.
         """
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         name = 'Frequency'
         if not allow_IF_sweep:
             return mc_parameter_wrapper.wrap_par_to_swf(
@@ -350,23 +350,23 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         Returns:
             center_freq_generator module
         """
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         return self.awg.sgchannels[int(chid[2]) - 1].synthesizer() - 1
 
     def _direct_mod_setter(self, ch):
         def s(val):
             if val == None:
                 self.awg.configure_sine_generation(
-                    self.pulsar.get(ch + '_id'), enable=False)
+                    self.pulsar.id_lookup[ch], enable=False)
             else:
                 self.awg.configure_sine_generation(
-                    self.pulsar.get(ch + '_id'), enable=True, freq=val,
+                    self.pulsar.id_lookup[ch], enable=True, freq=val,
                     force_enable=True)
         return s
 
     def _direct_mod_getter(self, ch):
         def g():
-            chid = self.pulsar.get(ch + '_id')
+            chid = self.pulsar.id_lookup[ch]
             sgchannel = self.awg.sgchannels[int(chid[2]) - 1]
             if sgchannel.sines[0].i.enable() or sgchannel.sines[0].q.enable():
                 return sgchannel.sines[0].freq()
@@ -376,7 +376,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def _direct_mod_amplitude_setter(self, ch):
         def s(val):
-            chid = self.pulsar.get(ch + '_id')
+            chid = self.pulsar.id_lookup[ch]
             sgchannel = self.awg.sgchannels[int(chid[2]) - 1]
             sgchannel.sines[0].i.sin.amplitude(0)
             sgchannel.sines[0].i.cos.amplitude(val)
@@ -386,7 +386,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def _direct_mod_amplitude_getter(self, ch):
         def g():
-            chid = self.pulsar.get(ch + '_id')
+            chid = self.pulsar.id_lookup[ch]
             sgchannel = self.awg.sgchannels[int(chid[2]) - 1]
             gains = [sgchannel.sines[0].i.sin.amplitude(),
                      sgchannel.sines[0].i.cos.amplitude(),
@@ -417,8 +417,8 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             is_channel_pair (str): whether these two AWG channels belongs to
                 the same channel pair.
         """
-        ch1id = self.pulsar.get(f"{cname1}_id")
-        ch2id = self.pulsar.get(f"{cname2}_id")
+        ch1id = self.pulsar.id_lookup[cname1]
+        ch2id = self.pulsar.id_lookup[cname2]
 
         # Note that alphabetically 'i' is smaller than 'q'
         if require_ordered and ch1id > ch2id:
@@ -443,7 +443,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         Returns:
             is_i_channel (str): whether this channel is the I channel.
         """
-        chid = self.pulsar.get(f"{cname}_id")
+        chid = self.pulsar.id_lookup[cname]
         return chid[-1] == 'i'
 
 
@@ -588,7 +588,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
         """
         enable = True if mod_config else False
         self._awg.configure_internal_mod(
-            chid=self.pulsar.get(self.i_channel_name + '_id'),
+            chid=self.pulsar.id_lookup[self.i_channel_name],
             enable=enable,
             osc_index=mod_config.get('osc', 0),
             osc_frequency=mod_config.get('mod_frequency', None),
@@ -613,7 +613,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
         """
         config = sine_config.get(self.i_channel_name, dict())
         self._awg.configure_sine_generation(
-            chid=self.pulsar.get(self.i_channel_name + '_id'),
+            chid=self.pulsar.id_lookup[self.i_channel_name],
             enable=config.get('continuous', False),
             osc_index=config.get('osc', 0),
             sine_generator_index=config.get('sine', 0),

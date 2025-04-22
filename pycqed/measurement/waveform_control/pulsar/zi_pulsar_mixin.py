@@ -1344,7 +1344,7 @@ class ZIGeneratorModule:
 
         # check if channels specified in scaling_factor match the
         # analog channels on this AWG module.
-        channel_ids = [self.pulsar.get(f"{channel}_id")
+        channel_ids = [self.pulsar.id_lookup[channel]
                        for channel in scaling_factor.keys()]
         if set(channel_ids) != set(self.analog_channel_ids):
             raise RuntimeError(

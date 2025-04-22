@@ -416,7 +416,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def sigout_on(self, ch, on=True):
 
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
     def _update_device_ready_status_mcc(self):
