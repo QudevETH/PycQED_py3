@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 import numpy as np
-from copy import deepcopy
+from copy import deepcopy, copy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from zhinst.core.errors import CoreError
 
@@ -974,7 +974,7 @@ class ZIGeneratorModule:
         first_element_of_segment = True
 
         for element in awg_sequence:
-            awg_sequence_element = deepcopy(awg_sequence[element])
+            awg_sequence_element = copy(awg_sequence[element])
             if awg_sequence_element is None:
                 current_segment = element
                 self._playback_strings.append(f'// Segment {current_segment}')
