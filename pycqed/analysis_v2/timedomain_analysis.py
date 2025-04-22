@@ -11039,12 +11039,12 @@ class ResetAnalysis(MultiQubit_TimeDomain_Analysis):
     def _get_feedback_params_text_str(self, qbn):
         str = "Reset cycle time: "
         ro_sep = self.prep_params.get("ro_separation", None)
-        str += f"{1e6 * ro_sep:.2f}$\mu s$" if ro_sep is not None else "Unknown"
+        str += f"{1e6 * ro_sep:.2f}$\\mu s$" if ro_sep is not None else "Unknown"
         str += "\n"
 
         str += "RO to feedback time: "
         prow = self.prep_params.get("post_ro_wait", None)
-        str += f"{1e6 * prow:.2f}$\mu s$" if ro_sep is not None else "Unknown"
+        str += f"{1e6 * prow:.2f}$\\mu s$" if ro_sep is not None else "Unknown"
         str += "\n"
         thresholds = self.get_param_value('thresholds', {})
         str += "Threshold(s):\n{}".format(
