@@ -1407,7 +1407,7 @@ def predict_gm_proba_from_cal_points(X, cal_points):
     return np.array(probas)
 
 
-def predict_gm_proba_from_clf(X, clf_params):
+def predict_gm_proba_from_clf(X, clf_params, nr_states=None):
     """
     Predict gaussian mixture posterior probabilities for single shots
     of different levels of a qudit.
@@ -1423,11 +1423,14 @@ def predict_gm_proba_from_clf(X, clf_params):
             For more info see about parameters see :
             https://scikit-learn.org/stable/modules/generated/sklearn.mixture.
             GaussianMixture.html
+        nr_states: Ensures that clf_params are cut to the right number of
+            states, useful e.g. when classifying qubit data with a qutrit
+            classifier. If None, clf_params stays unchanged
     Returns: (n_datapoints, n_levels) array of posterior probability of being
         in each level
 
     """
-    gm = load_gm_from_clf_params(clf_params)
+    gm = load_gm_from_clf_params(clf_params, nr_states=nr_states)
 
     X_to_use = deepcopy(X)
     if X.ndim == 1:
@@ -1436,10 +1439,14 @@ def predict_gm_proba_from_clf(X, clf_params):
     return probas
 
 
-def load_gm_from_clf_params(clf_params):
+def load_gm_from_clf_params(clf_params, nr_states=None):
     reqs_params = ['means_', 'covariances_', 'covariance_type',
                    'weights_', 'precisions_cholesky_']
+    nr_state_dependent_params = ['means_', 'weights_']
     clf_params = deepcopy(clf_params)
+    if nr_states is not None:
+        for r in nr_state_dependent_params:
+            clf_params[r] = clf_params[r][:nr_states]
     for r in reqs_params:
         assert r in clf_params, f"Required Classifier parameter {r} not given."
     gm = GM(covariance_type=clf_params.pop('covariance_type'))

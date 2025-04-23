@@ -2060,7 +2060,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             # where len(nr_sweep_points) = len(mc_sweep_points) * nr_shots
             mobj_data = data[:, k*i: k*i+k]
             clf_data = a_tools.predict_gm_proba_from_clf(
-                mobj_data, classifier_params_list[i])
+                mobj_data, classifier_params_list[i], nr_states=nr_states)
             classified_data[:, nr_states * i: nr_states * i + nr_states] = \
                 clf_data
 
