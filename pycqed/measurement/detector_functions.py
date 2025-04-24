@@ -937,8 +937,6 @@ class MultiPollDetector(PollDetector):
                     raise Exception('Not all AWG instances in '
                                     'MultiPollDetector are the same.')
             d.AWG = None
-            if any([d.simulation for d in self.detectors]):
-                self.simulation = True
 
         # disable live plotting if any of the detectors requests it
         self.live_plot_allowed = all(self.live_plot_allowed)
@@ -961,14 +959,8 @@ class MultiPollDetector(PollDetector):
         self.correlated = kw.get('correlated', False)
         self.averaged = kw.get('averaged', True)
         if 'classifier' in self.detectors[0].name:
-            self.correlated = self.detectors[0].get_values_function_kwargs.get(
-                'correlated', False)
-            self.averaged = self.detectors[0].get_values_function_kwargs.get(
-                'averaged', True)
-
-        if self.correlated:
-            self.value_names += ['correlation']
-            self.value_units += ['']
+            self.correlated = self.detectors[0].correlated
+            self.averaged = self.detectors[0].averaged
 
     def prepare(self, sweep_points=None, **kw):
         """
@@ -993,10 +985,6 @@ class MultiPollDetector(PollDetector):
             return [self.AWG.master_awg] + self.AWG.awgs
         return [self.AWG]
 
-    def setattr(self, name, val):
-        for d in self.detectors:
-            d.setattr(name, val)
-
     def set_acq_length(self, val):
         for d in self.detectors:
             d.set_acq_length(val)
@@ -1017,17 +1005,9 @@ class MultiPollDetector(PollDetector):
         data_processed = [self.det_from_acq_dev[acq_dev].process_data(d)
                           for acq_dev, d in data_raw.items()]
         data_processed = np.concatenate(data_processed)
-        if self.correlated:
-            if not self.detectors[0].get_values_function_kwargs.get(
-                    'averaged', True):
-                data_for_corr = data_processed
-            else:
-                data_for_corr = np.concatenate([d for d in data_raw.values()])
-            corr_data = self.get_correlations_classif_det(data_for_corr)
-            data_processed = np.concatenate([data_processed, corr_data], axis=0)
-
         return data_processed
 
+    # FIXME: not used anymore
     def get_correlations_classif_det(self, data):
         """
         Correlate the single shot data obtained with the ClassifyingPollDetector
@@ -1103,7 +1083,7 @@ class MultiPollDetector(PollDetector):
         corr_data = np.sum(np.array(qb_states_list) % 2, axis=0) % 2
         if self.averaged:
             corr_data = np.reshape(corr_data,
-                                   (d0.nr_shots, d0.nr_sweep_points/d0.nr_shots))
+                                   (d0.nr_shots, d0.nr_sweep_points//d0.nr_shots))
             corr_data = np.mean(corr_data, axis=0)
         corr_data = np.reshape(corr_data, (1, corr_data.size))
 
@@ -1857,7 +1837,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
 
     The only additional keyword argument that is used by this class but not by
     its parent class is get_values_function_kwargs. This parameter is a dict
-    where the user can specify how he wants this detector function to process
+    where the user can specify how they want this detector function to process
     the shots.
     get_values_function_kwargs can contain:
      - classifier_params_list (list or dict): THIS ENTRY MUST EXIST. This class
@@ -1906,10 +1886,10 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         self.name = '{}_classifier_det'.format(self.data_type)
 
         self.state_labels = ['pg', 'pe', 'pf'] if self.qutrit else ['pg', 'pe']
-        classifier_params = self.get_values_function_kwargs.get(
+        self.classifier_params_list = self.get_values_function_kwargs.get(
             'classifier_params', [])
-        self.n_meas_objs = 1 if not len(classifier_params) else \
-                len(classifier_params)
+        self.n_meas_objs = 1 if not len(self.classifier_params_list) else \
+                len(self.classifier_params_list)
         k = len(self.channels) // self.n_meas_objs
         # this will give <acq unit>_<1st wint ch><2nd wint ch>, e.g., '0_01'
         self.channel_str_mobj = [(
@@ -1917,8 +1897,15 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             ''.join([str(ch[1]) for ch in self.channels[k*j:k*j+k]])
         ) for j in range(self.n_meas_objs)]
 
-        self.classified = self.get_values_function_kwargs.get('classified',
-                                                              True)
+        self.classified = self.get_values_function_kwargs.get(
+            'classified', True)
+        self.thresholded = self.get_values_function_kwargs.get(
+            'thresholded', True)
+        # For now will only be used if wrapped by a SimulatedMultiPollDetector
+        self.correlated = self.get_values_function_kwargs.get(
+            'correlated', True)
+        self.averaged = self.get_values_function_kwargs.get(
+            'averaged', True)
         if self.classified:
             self.value_names = ['']*(
                     len(self.state_labels) * len(self.channel_str_mobj))
@@ -1953,7 +1940,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
                                 (dev, channel_processed))
             self.meas_obj_channel_map = meas_obj_channel_map_new
 
-        if self.get_values_function_kwargs.get('averaged', True):
+        if self.averaged:
             self.acq_data_len_scaling = 1
             # The following value is only used for correct progress
             # calculation in poll_data.
@@ -1989,12 +1976,8 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         data_processed = super().process_data(data_raw, polar=False,
                                               reshape_data=False).T
         nr_states = len(self.state_labels)
-        thresholded = self.get_values_function_kwargs.get('thresholded', True)
-        averaged = self.get_values_function_kwargs.get('averaged', True)
         if self.classified:
             # Classify data into qutrit states
-            self.classifier_params_list = self.get_values_function_kwargs.get(
-                'classifier_params', None)
             if self.classifier_params_list is None:
                 raise ValueError('Please specify the classifier '
                                  'parameters list.')
@@ -2004,14 +1987,14 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
                                                  self.classifier_params_list,
                                                  nr_states)
 
-        if thresholded:
+        if self.thresholded:
             if not self.classified:
                 raise NotImplementedError(
                     'Currently the threshold_shots only works if the data '
                     'was first classified.')
             data_processed = self.threshold_shots(data_processed, nr_states)
 
-        if averaged:
+        if self.averaged:
             data_processed = self.average_shots(data_processed)
 
         # do readout correction
@@ -2023,7 +2006,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             raise ValueError('"ro_corrected_seq_cal_mtx" and '
                              '"ro_corrected_stored_mtx" cannot both be True.')
         ro_corrected = ro_corrected_seq_cal_mtx or ro_corrected_stored_mtx
-        if (ro_corrected and thresholded) and not averaged:
+        if (ro_corrected and self.thresholded) and not self.averaged:
             raise ValueError('It does not make sense to apply readout '
                              'correction if thresholded==True and '
                              'averaged==False.')
@@ -2034,7 +2017,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         elif ro_corrected_seq_cal_mtx:
             # correct data with the calibration matrix extracted from
             # the data array
-            if not averaged:
+            if not self.averaged:
                 raise NotImplementedError(
                     'Data correction based on calibration state_prob_mtx '
                     'from measurement sequence is currently only '
