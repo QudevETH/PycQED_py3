@@ -360,8 +360,7 @@ class MeasurementControl(Instrument):
         self.acq_data_len_scaling = self.detector_function.acq_data_len_scaling
 
         if self.detector_function.simulation:
-            # FIXME breaking abstraction layers, df should just be able to
-            #  obtain sweep_function.sequence.segments at each upload
+            # Needed to run a simulation from segments at each upload
             self.detector_function.sweep_function = self.sweep_functions[-1]
 
         # update sweep_points based on self.acq_data_len_scaling
