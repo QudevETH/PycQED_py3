@@ -38,6 +38,7 @@ from matplotlib import cm
 latest_data_match_whole_words = False
 datadir = None
 fetch_data_dir = None
+original_datadir = None  # Local datadir path on the original measurement PC
 ignore_delegate_plotting = False
 
 

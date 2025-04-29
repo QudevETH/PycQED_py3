@@ -341,11 +341,16 @@ def process_filter_coeffs_dict(flux_distortion, datadir=None, default_dt=None):
                                                dt=f.get('dt', default_dt),
                                                direct=f.get('direct', False))
             elif f['type'] == 'csv':
+                filename = f['filename']
                 if datadir is not None:
+                    if (not os.path.exists(filename)
+                            and a_tools.original_datadir is not None
+                            and filename.lower().startswith(
+                                a_tools.original_datadir.lower())):
+                        filename = os.path.relpath(filename,
+                                                   a_tools.original_datadir)
                     filename = os.path.join(datadir,
-                                            f['filename'].lstrip(os.sep))
-                else:
-                    filename = f['filename']
+                                            filename.lstrip(os.sep))
                 if (not os.path.exists(filename)
                         and a_tools.fetch_data_dir is not None
                         and filename.startswith(a_tools.datadir)):
