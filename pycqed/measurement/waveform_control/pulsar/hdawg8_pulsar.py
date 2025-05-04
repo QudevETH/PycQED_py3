@@ -899,30 +899,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             trigger_source=self.trigger_source,
         )
 
-    @property
-    def trigger_source(self):
-        trigger_source = self.pulsar.parameters[
-            self._awg_name + "_trigger_source"].cache.get()
-        if isinstance(trigger_source, str):
-            return trigger_source
-        return trigger_source[self.trigger_group]
-
-    @property
-    def trigger_group(self):
-        """The pulsar trigger group to which this AWG module belong.
-
-        Remark: for speed reasons, this is not implemented via calls to
-            pulsar.get_trigger_group.
-        """
-        # FIXME: some kind of caching should be implemented since this might
-        #  be called from trigger_source for each element.
-        trigger_groups = self.pulsar.parameters[
-            self._awg_name + "_trigger_groups"].cache.get()
-        for group, channels in trigger_groups.items():
-            if self.i_channel_name in channels:
-                return group
-        return f"{self._awg_name}_{self.pulsar.DEFAULT_TRG_GRP}"
-
     def _configure_awg_str(
             self,
             awg_str,
