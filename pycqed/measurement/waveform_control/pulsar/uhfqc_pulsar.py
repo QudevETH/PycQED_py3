@@ -1,4 +1,4 @@
-from copy import deepcopy
+from copy import copy
 import logging
 import numpy as np
 
@@ -184,7 +184,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         def play_element(element, playback_strings, wave_definitions,
                          allow_filter=True):
-            awg_sequence_element = deepcopy(awg_sequence[element])
+            awg_sequence_element = copy(awg_sequence[element])
             if awg_sequence_element is None:
                 current_segment = element
                 playback_strings.append(f'// Segment {current_segment}')

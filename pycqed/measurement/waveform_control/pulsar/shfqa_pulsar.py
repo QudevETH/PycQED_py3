@@ -1,7 +1,7 @@
 import logging
 
 import numpy as np
-from copy import deepcopy
+from copy import copy
 
 import qcodes.utils.validators as vals
 from qcodes.instrument.parameter import ManualParameter
@@ -232,7 +232,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     # This is a light copy of the readout mode below,
                     # not sure how to make this more general without a
                     # use case.
-                    awg_sequence_element = deepcopy(awg_sequence[element])
+                    awg_sequence_element = copy(awg_sequence[element])
                     if awg_sequence_element is None:
                         playback_strings.append(f'// Segment {element}')
                         continue
@@ -306,7 +306,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 continue
 
             def play_element(element, playback_strings, acq_unit):
-                awg_sequence_element = deepcopy(awg_sequence[element])
+                awg_sequence_element = copy(awg_sequence[element])
                 if awg_sequence_element is None:
                     current_segment = element
                     playback_strings.append(f'// Segment {current_segment}')
