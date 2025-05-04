@@ -364,7 +364,7 @@ class ZIPulsarMixin:
         self.wfms_to_upload = {}  # reset waveform upload memory
 
         use_placeholder_waves = self.pulsar.parameters[
-            f"{self.awg.name}_use_placeholder_waves"].cache.get()
+            f"{self.awg_name}_use_placeholder_waves"].cache.get()
         if not use_placeholder_waves:
             if not self.zi_waves_clean():
                 self._zi_clear_waves()
@@ -390,12 +390,12 @@ class ZIPulsarMixin:
                 for channel_id in awg_module.analog_channel_ids:
                     channel_name = self.pulsar._id_channel(
                         cid=channel_id,
-                        awg=self.awg.name,
+                        awg=self.awg_name,
                     )
                     self.sigout_on(channel_name)
 
         if has_waveforms:
-            self.pulsar.add_awg_with_waveforms(self.awg.name)
+            self.pulsar.add_awg_with_waveforms(self.awg_name)
 
     def find_multi_core_compiler(self):
         """ Set up a multi-core compiler (MCC) for programming the

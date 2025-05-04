@@ -94,7 +94,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             group = []
             for q in ["i", "q"]:
                 id = f"sg{ch_nr + 1}{q}"
-                ch_name = channel_name_map.get(id, f"{self.awg.name}_{id}")
+                ch_name = channel_name_map.get(id, f"{self.awg_name}_{id}")
                 self.create_channel_parameters(id, ch_name, "analog")
                 self.pulsar.channels.add(ch_name)
                 group.append(ch_name)
@@ -230,7 +230,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             new_center_freq = self.awg.synthesizers[
                 self.awg.sgchannels[ch].synthesizer()].centerfreq()
             if np.abs(new_center_freq - value) > 1:
-                log.warning(f'{self.awg.name}: center freq. {value/1e6:.6f} '
+                log.warning(f'{self.awg_name}: center freq. {value/1e6:.6f} '
                             f'MHz not supported. Setting center frequency to '
                             f'{new_center_freq/1e6:.6f} MHz. This does NOT '
                             f'automatically set the IF!')
@@ -327,7 +327,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         if not allow_IF_sweep:
             return mc_parameter_wrapper.wrap_par_to_swf(
                 self.pulsar.parameters[f'{ch}_centerfreq'])
-        if self.pulsar.parameters[f"{self.awg.name}_use_hardware_sweeper"].cache.get():
+        if self.pulsar.parameters[f"{self.awg_name}_use_hardware_sweeper"].cache.get():
             return swf.SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Frequency with offset'
         return swf.Offset_Sweep(
@@ -459,7 +459,7 @@ class SHFSGPulsar(SHFGeneratorModulesPulsar):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
@@ -628,11 +628,11 @@ class SHFGeneratorModule(ZIGeneratorModule):
         # check if the waveform has been uploaded
         if self.pulsar.parameters['use_sequence_cache'].cache.get():
             if wave_hashes == self.waveform_cache.get(wave_idx, None):
-                log.debug(f'{self._awg.name} awgs{awg_nr}: '
+                log.debug(f'{self._awg_name} awgs{awg_nr}: '
                           f'{wave_idx} same as in cache')
                 return
         log.debug(
-            f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+            f'{self._awg_name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
 
         # take the waves specified for this channel from the overall wave dict
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
@@ -731,7 +731,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
     ):
         prepend_zeros = 0
         self._playback_strings += self._awg_interface.zi_playback_string(
-            name=self._awg.name,
+            name=self._awg_name,
             device='shfsg',
             wave=wave,
             codeword=codeword,
@@ -745,7 +745,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
     def _check_ignore_waveforms(self):
         i_channel = self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],
-            awg=self._awg.name
+            awg=self._awg_name
         )
         if i_channel not in self._sine_config.keys():
             return False
@@ -809,7 +809,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
 
         elif not ((isinstance(amplitude, np.ndarray) or
                    isinstance(amplitude, list)) and len(amplitude) == 4):
-            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+            raise ValueError(f"{self._awg_name} channel pair {self._awg_nr} "
                              f"receives inappropriate command table amplitude "
                              f"value. Accepts float or array-like object with "
                              f"length 4.")
@@ -852,7 +852,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
 
             if status != 1:
                 log.warning(f"Failed to upload the command table to "
-                            f"{self._awg.name}, error index {status}")
+                            f"{self._awg_name}, error index {status}")
         else:
             # This is a DAQ server for virtual devices. We assume that upload
             # is successful.

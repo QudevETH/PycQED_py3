@@ -66,20 +66,20 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             from pycqed.instrument_drivers.physical_instruments. \
                 ZurichInstruments.zhinst_qcodes_wrappers import UHFQA
             kw = {'server': 'emulator'} if awg.server == 'emulator' else {}
-            self.awg_mcc = UHFQA(awg.devname, name=awg.name + '_mcc',
+            self.awg_mcc = UHFQA(awg.devname, name=awg_name + '_mcc',
                                  host='localhost', interface=awg.interface,
                                  **kw)
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '
-                      f'{awg.name} ({awg.devname}).')
+                      f'{awg_name} ({awg.devname}).')
             self.awg_mcc = None
 
     def create_awg_parameters(self, channel_name_map):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_minimize_sequencer_memory",
                              initial_value=True, vals=vals.Bool(),
@@ -232,7 +232,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             # calling play_element with allow_filter=False: repeat patterns,
             # see below.)
             playback_strings += self.zi_playback_string(
-                name=self.awg.name, device='uhf', wave=wave, acq=acq,
+                name=self.awg_name, device='uhf', wave=wave, acq=acq,
                 log_acquisition=log_acquisition,
                 allow_filter=(
                         allow_filter and metadata.get('allow_filter', False)))
@@ -369,7 +369,7 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         if not (ch_has_waveforms['ch1'] or ch_has_waveforms['ch2']):
             return
-        self.pulsar.add_awg_with_waveforms(self.awg.name)
+        self.pulsar.add_awg_with_waveforms(self.awg_name)
 
         awg_str = self._uhf_sequence_string_template.format(
             wave_definitions='\n'.join(wave_definitions),
@@ -385,20 +385,20 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
         self.awg._awg_program[0] = True
 
         if self.pulsar.parameters['use_mcc'].cache.get() and self.awg_mcc:
-            self.multi_core_compiler.sequencer_code_mcc[self.awg.name] = (
+            self.multi_core_compiler.sequencer_code_mcc[self.awg_name] = (
                 self.awg_mcc.awgs[0], dict(
                     sequencer_program=awg_str,
                     waveforms=";".join([s + ".csv"
                                         for s in self._defined_waves])))
             self.multi_core_compiler.post_sequencer_code_upload[
-                self.awg.name] = [(self._update_device_ready_status_mcc, {})]
+                self.awg_name] = [(self._update_device_ready_status_mcc, {})]
             self.awg.store_awg_source_string(0, awg_str)
             # otherwise, configure_awg_from_string stores it automatically
         else:
             if self.pulsar.parameters['use_mcc'].cache.get():
                 log.warning(
                     f'Parallel elf compilation not supported for '
-                    f'{self.awg.name} ({self.awg.devname}), see debug '
+                    f'{self.awg_name} ({self.awg.devname}), see debug '
                     f'log when adding the AWG to pulsar.')
             # Sequential seqc string upload
             self.awg.configure_awg_from_string(awg_nr=0, program_string=awg_str,

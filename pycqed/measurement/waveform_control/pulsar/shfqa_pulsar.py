@@ -67,7 +67,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             group = []
             for q in ["i", "q"]:
                 id = f"qa{ch_nr + 1}{q}"
-                ch_name = channel_name_map.get(id, f"{self.awg.name}_{id}")
+                ch_name = channel_name_map.get(id, f"{self.awg_name}_{id}")
                 self.create_channel_parameters(id, ch_name, "analog")
                 self.pulsar.channels.add(ch_name)
                 group.append(ch_name)
@@ -131,7 +131,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             grp = f'qa{i+1}'
             chids = [f'qa{i+1}i', f'qa{i+1}q']
             grp_has_waveforms[grp] = False
-            channels = set(self.pulsar._id_channel(chid, self.awg.name)
+            channels = set(self.pulsar._id_channel(chid, self.awg_name)
                            for chid in chids)
 
             playback_strings = []
@@ -163,7 +163,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                         np.pad(wq, [(0, wlen - len(wq))], mode='constant')*1j
                     waves_to_upload[(hi, hq)] = w
             if not grp_has_waveforms[grp]:
-                log.debug(f'{self.awg.name}: no waveforms on group {i}')
+                log.debug(f'{self.awg_name}: no waveforms on group {i}')
                 self.awg.awg_active[i] = False
                 continue
             self.awg.awg_active[i] = True
@@ -172,15 +172,15 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             # not, we can now skip in case no channels need to be uploaded.
             if channels_to_upload != 'all' and not any(
                     [ch in channels_to_upload for ch in chids]):
-                log.debug(f'{self.awg.name}: skip programming group {i}')
+                log.debug(f'{self.awg_name}: skip programming group {i}')
                 continue
-            log.debug(f'{self.awg.name}: programming group {i}')
+            log.debug(f'{self.awg_name}: programming group {i}')
 
             hash_to_index_map = {h: i for i, h in enumerate(waves_to_upload)}
 
             if is_spectroscopy and len(waves_to_upload) > 1:
                 log.error(f"Can not have multiple elements in spectroscopy mode"
-                          f"on {self.awg.name}, channel {i+1}")
+                          f"on {self.awg_name}, channel {i+1}")
                 continue
 
             for h, w in waves_to_upload.items():
@@ -259,7 +259,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     )
                     if self.pulsar.parameters['use_mcc'].cache.get():
                         self.multi_core_compiler.sequencer_code_mcc[
-                            f"{self.awg.name}_qa{i}"] = (
+                            f"{self.awg_name}_qa{i}"] = (
                             self.awg_mcc_qagenerators[i],
                             dict(sequencer_program=sequence_string))
                         self.awg._awg_program[i] = sequence_string
@@ -295,7 +295,7 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                              {"path": path + "/delay", "value": 0}))
                         post_seqc_command.append((daq.sync, {}))
                         self.multi_core_compiler.post_sequencer_code_upload[
-                            f"{self.awg.name}_qa{i}"] = post_seqc_command
+                            f"{self.awg_name}_qa{i}"] = post_seqc_command
                     else:
                         daq.setVector(path + "/wave", w.astype("complex128"))
                         daq.setInt(path + "/enable", 1)
@@ -375,18 +375,18 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                                 for k, v in waves_to_upload.items()}
             if self.pulsar.parameters['use_mcc'].cache.get():
                 self.multi_core_compiler.sequencer_code_mcc[
-                    f"{self.awg.name}_qa{i}"] = (
+                    f"{self.awg_name}_qa{i}"] = (
                     self.awg_mcc_qagenerators[i],
                     dict(sequencer_program=sequence_string))
                 self.multi_core_compiler.post_sequencer_code_upload[
-                    f"{self.awg.name}_qa{i}"] = [
+                    f"{self.awg_name}_qa{i}"] = [
                     (self.awg_mcc_qagenerators[i].write_to_waveform_memory,
                      {"pulses": wave_upload_dict})]
             else:
                 self.awg.set_awg_program(i, sequence_string, wave_upload_dict)
 
         if any(grp_has_waveforms.values()):
-            self.pulsar.add_awg_with_waveforms(self.awg.name)
+            self.pulsar.add_awg_with_waveforms(self.awg_name)
 
     def is_awg_running(self):
         is_running = []
@@ -431,7 +431,7 @@ class SHFQAPulsar(SHFAcquisitionModulesPulsar):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",

@@ -92,7 +92,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 ZurichInstruments.zhinst_qcodes_wrappers import HDAWG8
             self.awg_mcc = HDAWG8(
                 awg.devname,
-                name=awg.name + '_mcc',
+                name=awg_name + '_mcc',
                 host='localhost',
                 interface=awg.interface,
                 server=awg.server
@@ -102,7 +102,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '
-                      f'{awg.name} ({awg.devname}).')
+                      f'{awg_name} ({awg.devname}).')
             self.awg_mcc = None
 
         # dict for storing previously-uploaded waveforms
@@ -122,7 +122,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
@@ -447,7 +447,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def _hdawg_mod_freq_setter(self, awg_nr, direct=False, amp=0.0):
         def s(val):
-            log.debug(f'{self.awg.name}_awgs_{awg_nr} modulation freq: {val}')
+            log.debug(f'{self.awg_name}_awgs_{awg_nr} modulation freq: {val}')
             if val == None:
                 self.awg.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
                 self.awg.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
@@ -556,7 +556,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 mode = mod_mode_dict[val]
             else:
                 mode = val
-            log.debug(f'{self.awg.name}_awgs_{awg_nr} modulation mod: {val} ({mode})')
+            log.debug(f'{self.awg_name}_awgs_{awg_nr} modulation mod: {val} ({mode})')
             self.awg.set(f'awgs_{awg_nr}_outputs_{output_nr}_modulation_mode', mode)
         return s
 
@@ -587,7 +587,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def clock(self):
         if self.pulsar.awgs_prequeried:
-            clock = self.pulsar.clock(awg=self.awg.name)
+            clock = self.pulsar.clock(awg=self.awg_name)
         else:
             # This if-else statement is to prevent the infinite loop between
             # this method and pulsar.clock(). If the AWG clock info is not
@@ -715,7 +715,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         for chid in self.channel_ids:
             self._divisor[chid] = self._awg_interface.get_divisor(
                 chid=chid,
-                awg=self._awg.name,
+                awg=self._awg_name,
             )
 
     def _generate_oscillator_seq_code(self):
@@ -784,11 +784,11 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         if self.pulsar.parameters['use_sequence_cache'].cache.get():
             if wave_hashes == self.waveform_cache.get(wave_idx, None):
                 log.debug(
-                    f'{self._awg.name} awgs{awg_nr}: {wave_idx} same as in '
+                    f'{self._awg_name} awgs{awg_nr}: {wave_idx} same as in '
                     f'cache')
                 return
         log.debug(
-            f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+            f'{self._awg_name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
 
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
@@ -878,7 +878,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     ):
         if first_element_of_segment:
             prepend_zeros = self.pulsar.parameters[
-                f"{self._awg.name}_prepend_zeros"].cache.get()
+                f"{self._awg_name}_prepend_zeros"].cache.get()
             if prepend_zeros is None:
                 prepend_zeros = self.pulsar.parameters[
                     'prepend_zeros'].cache.get()
@@ -977,7 +977,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             amplitude = [float(amplitude)] * 2
         elif not ((isinstance(amplitude, np.ndarray) or
                    isinstance(amplitude, list)) and len(amplitude) == 2):
-            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+            raise ValueError(f"{self._awg_name} channel pair {self._awg_nr} "
                              f"receives inappropriate command table amplitude "
                              f"value, accepts float or array-like object with "
                              f"length 2.")
@@ -986,7 +986,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             phase = [float(phase), float(phase)]
         elif not ((isinstance(phase, np.ndarray) or
                    isinstance(phase, list)) and len(phase) == 2):
-            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+            raise ValueError(f"{self._awg_name} channel pair {self._awg_nr} "
                              f"receives inappropriate command table phase "
                              f"value, accepts float or array-like object with "
                              f"length 2.")
@@ -1037,7 +1037,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
             if status != 1:
                 log.warning(f"Failed to upload the command table to "
-                            f"{self._awg.name}, error index {status}")
+                            f"{self._awg_name}, error index {status}")
         else:
             # This is a DAQ server for virtual devices. We assume that upload
             # is successful.

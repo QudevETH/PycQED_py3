@@ -35,7 +35,7 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
