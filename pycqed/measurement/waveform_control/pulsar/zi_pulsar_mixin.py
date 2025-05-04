@@ -1128,7 +1128,7 @@ class ZIGeneratorModule:
 
                         if entry_index >= i_end:
                             raise RuntimeError(
-                                f"On {self.awg.name} generator module "
+                                f"On {self._awg_name} generator module "
                                 f"{self._awg_nr}: command table memory overflow. "
                                 f"Please check if you have defined too many "
                                 f"different waveforms or allocated too few space "
@@ -1337,7 +1337,7 @@ class ZIGeneratorModule:
         if set(channel_ids) != set(self.analog_channel_ids):
             raise RuntimeError(
                 f"Channels specified in 'scaling_factor' metadata does not "
-                f"match analog channels on {self.awg.name} generator module "
+                f"match analog channels on {self._awg_name} generator module "
                 f"{self._awg_nr}."
             )
 
@@ -1346,7 +1346,7 @@ class ZIGeneratorModule:
         #  channels in this AWG module.
         if len(set(scaling_factor.values())) > 1:
             raise RuntimeError(
-                f"Scaling factors on {self.awg.name} generator module"
+                f"Scaling factors on {self._awg_name} generator module"
                 f"{self._awg_nr} are defined differently among output channels."
             )
 
