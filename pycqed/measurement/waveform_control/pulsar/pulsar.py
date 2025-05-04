@@ -902,13 +902,11 @@ class Pulsar(Instrument):
         trigger_groups = self.parameters[
             f"{awg_name}_trigger_groups"].cache.get()
 
-        found_group = f"{awg_name}_{_DEFAULT_TRG_GRP}"
-
         for group, channels in trigger_groups.items():
             if channel in channels:
-                found_group = group
+                return group
 
-        return found_group
+        return f"{awg_name}_{_DEFAULT_TRG_GRP}"
 
     def get_awg_from_trigger_group(self, group:str) -> str:
         """Given a trigger group, returns the AWG which the
