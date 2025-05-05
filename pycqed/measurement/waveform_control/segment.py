@@ -1077,7 +1077,8 @@ class Segment:
                 'buffer_length_end': comp_delay,
                 'pulse_length': length,
                 'gaussian_filter_sigma': self.pulsar.parameters[
-                    f'{c}_compensation_pulse_gaussian_filter_sigma'].cache.get()
+                    f'{c}_compensation_pulse_gaussian_filter_sigma'
+                ].cache.get()
             }
             pulse = pl.BufferedSquarePulse(
                 last_element, c, name=f'compensation_pulse_{i}', **kw)
@@ -1102,7 +1103,8 @@ class Segment:
         for (el, group) in longest_pulse:
             length_comp = longest_pulse[(el, group)]
             el_start = self.get_element_start(el, group)
-            el_buffer = self.pulsar.parameters['min_element_buffer'].cache.get() or 0.
+            el_buffer = self.pulsar.parameters[
+                'min_element_buffer'].cache.get() or 0.
             new_end = t_end + length_comp + el_buffer
             awg = self.trigger_groups_info['awg'][group]
             new_samples = self.time2sample(new_end - el_start, awg=awg)
@@ -1110,7 +1112,8 @@ class Segment:
             # and is a multiple of sample granularity
             gran = self.pulsar.parameters[f'{awg}_granularity'].cache.get()
             min_length_samples = self.time2sample(
-                self.pulsar.parameters[f'{awg}_min_length'].cache.get(), awg=awg)
+                self.pulsar.parameters[f'{awg}_min_length'].cache.get(),
+                awg=awg)
             new_samples = max(new_samples, min_length_samples)
             if new_samples % gran != 0:
                 new_samples += gran - new_samples % gran
@@ -2178,11 +2181,13 @@ class Segment:
                     hashlist.append(False)
         hashlist.append(self.pulsar.parameters[f'{channel}_delay'].cache.get())
         if channel in self.pulsar.analog_channels and \
-                self.pulsar.parameters[f'{channel}_charge_buildup_compensation'].cache.get():
+                self.pulsar.parameters[
+                    f'{channel}_charge_buildup_compensation'].cache.get():
             for par in ['compensation_pulse_delay',
                         'compensation_pulse_gaussian_filter_sigma',
                         'compensation_pulse_scale']:
-                hashlist.append(self.pulsar.parameters[f'{channel}_{par}'].cache.get())
+                hashlist.append(self.pulsar.parameters[
+                    f'{channel}_{par}'].cache.get())
 
         for pulse in self.elements[elname]:
             if pulse.codeword in {'no_codeword', codeword}:
