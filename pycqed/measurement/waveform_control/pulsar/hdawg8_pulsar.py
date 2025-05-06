@@ -92,7 +92,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 ZurichInstruments.zhinst_qcodes_wrappers import HDAWG8
             self.awg_mcc = HDAWG8(
                 awg.devname,
-                name=awg_name + '_mcc',
+                name=self.awg_name + '_mcc',
                 host='localhost',
                 interface=awg.interface,
                 server=awg.server
@@ -102,7 +102,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '
-                      f'{awg_name} ({awg.devname}).')
+                      f'{self.awg_name} ({awg.devname}).')
             self.awg_mcc = None
 
         # dict for storing previously-uploaded waveforms

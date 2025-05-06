@@ -66,13 +66,14 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
             from pycqed.instrument_drivers.physical_instruments. \
                 ZurichInstruments.zhinst_qcodes_wrappers import UHFQA
             kw = {'server': 'emulator'} if awg.server == 'emulator' else {}
-            self.awg_mcc = UHFQA(awg.devname, name=awg_name + '_mcc',
+            self.awg_mcc = UHFQA(awg.devname,
+                                 name=self.awg_name + '_mcc',
                                  host='localhost', interface=awg.interface,
                                  **kw)
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '
-                      f'{awg_name} ({awg.devname}).')
+                      f'{self.awg_name} ({awg.devname}).')
             self.awg_mcc = None
 
     def create_awg_parameters(self, channel_name_map):
