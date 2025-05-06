@@ -187,6 +187,11 @@ class Segment:
         for pulse_pars in pulse_pars_list:
             self.add(pulse_pars)
 
+    def __getattr__(self, name):
+        if name == 'trigger_groups_info':
+            self._get_trigger_groups_info()  # generate if it does not exist
+        return object.__getattribute__(self, name)
+
     def add(self, pulse_pars):
         """
         Checks if all entries of the passed pulse_pars dictionary are valid
@@ -295,6 +300,9 @@ class Segment:
         for p in pulses:
             self.add(p)
 
+    def _get_trigger_groups_info(self):
+        self.trigger_groups_info = self.pulsar.get_trigger_groups_info()
+
     @Timer()
     @_with_pulsar_tmp_vals
     def resolve_segment(self, allow_overlap=False,
@@ -312,7 +320,7 @@ class Segment:
         :param store_segment_length_timer: (bool, default: True) whether
             the segment length should be stored in the segment's Timer object
         """
-        self.trigger_groups_info = self.pulsar.get_trigger_groups_info()
+        self._get_trigger_groups_info()  # ensure this info is up-to-date
         self._check_acquisition_elements()
         self.join_or_split_elements()
         self.resolve_timing()
