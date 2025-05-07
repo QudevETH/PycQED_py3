@@ -1,5 +1,6 @@
 import logging
 from copy import deepcopy
+import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -450,7 +451,7 @@ def parse_pulse_search_pattern(pattern):
         be fulfilled, as described in the docstring of Block.build,
         param sweep_dicts_list.
     """
-    if isinstance(pattern, int):
+    if isinstance(pattern, (int, np.int_)):
         pattern = f'occurrence={pattern}'
     if pattern == 'all':
         return {}
