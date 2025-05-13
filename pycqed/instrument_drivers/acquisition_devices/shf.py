@@ -15,13 +15,7 @@ from pycqed.utilities.timer import Timer
 
 log = logging.getLogger(__name__)
 
-# FIXME: remove this once 24.10 is the mandatory version
-zhinst_core_version = gen.get_zhinst_modules_versions()[0]["zhinst-core"]
-# e.g. "24.10.64896"
-if zhinst_core_version[:5] >= "24.10":
-    ALLOWED_LO_FREQS = np.arange(1e9, 8.0e9 + 1, 200e6)  # Include 8.0e9
-else:
-    ALLOWED_LO_FREQS = np.arange(1e9, 8.1e9 + 1, 100e6)  # Include 8.1e9
+ALLOWED_LO_FREQS = np.arange(1e9, 8.0e9 + 1, 200e6)  # Include 8.0e9
 
 
 class SHF_AcquisitionDevice(ZI_AcquisitionDevice, ZHInstMixin):
