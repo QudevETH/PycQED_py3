@@ -1036,7 +1036,7 @@ class MultiPollDetector(PollDetector):
         if len(state_prob_mtx_list) == 0:
             state_prob_mtx_list = None
         d0 = self.detectors[0]
-        nr_states = len(d0.state_labels)
+        nr_states = len(d0.states_map)
         all_ch_pairs = [d.channel_str_mobj for d in self.detectors]
         all_ch_pairs = [e0 for e1 in all_ch_pairs for e0 in e1]
 
@@ -1885,7 +1885,8 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
                                                  None)
         self.name = '{}_classifier_det'.format(self.data_type)
 
-        self.state_labels = ['pg', 'pe', 'pf'] if self.qutrit else ['pg', 'pe']
+        state_labels = ['g', 'e', 'f'] if self.qutrit else ['g', 'e']
+        self.states_map = dict(zip(range(len(state_labels)), state_labels))
         self.classifier_params_list = self.get_values_function_kwargs.get(
             'classifier_params', [])
         self.n_meas_objs = 1 if not len(self.classifier_params_list) else \
@@ -1908,14 +1909,14 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             'averaged', True)
         if self.classified:
             self.value_names = ['']*(
-                    len(self.state_labels) * len(self.channel_str_mobj))
+                    len(self.states_map) * len(self.channel_str_mobj))
             idx = 0
             self._channels_value_names_map = dict()
             for ch_pair in self.channel_str_mobj:
                 self._channels_value_names_map[ch_pair] = list()
-                for state in self.state_labels:
+                for state in self.states_map.values():
                     self.value_names[idx] = \
-                        f'{acq_dev.name}_{ch_pair[0]}_{state} w{ch_pair[1]}'
+                        f'{acq_dev.name}_{ch_pair[0]}_p{state} w{ch_pair[1]}'
                     # update the thresholded channel names to
                     # self._channels_value_names_map
                     self._channels_value_names_map[ch_pair].append(
@@ -1975,7 +1976,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         """
         data_processed = super().process_data(data_raw, polar=False,
                                               reshape_data=False).T
-        nr_states = len(self.state_labels)
+        nr_states = len(self.states_map)
         if self.classified:
             # Classify data into qutrit states
             if self.classifier_params_list is None:
