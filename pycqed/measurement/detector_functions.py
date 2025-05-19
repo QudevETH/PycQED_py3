@@ -679,9 +679,6 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
     def get_awgs(self):
         return [self.AWG]
 
-    def setattr(self, name, val):
-        setattr(self, name, val)
-
     def set_acq_length(self, val):
         """Set the acquisition length (overwrite value given in init).
 
@@ -1082,8 +1079,8 @@ class MultiPollDetector(PollDetector):
         # if one qubit is in g or f but the other in e ---> correlator = 1
         corr_data = np.sum(np.array(qb_states_list) % 2, axis=0) % 2
         if self.averaged:
-            corr_data = np.reshape(corr_data,
-                                   (d0.nr_shots, d0.nr_sweep_points//d0.nr_shots))
+            corr_data = np.reshape(
+                corr_data, (d0.nr_shots, d0.nr_sweep_points//d0.nr_shots))
             corr_data = np.mean(corr_data, axis=0)
         corr_data = np.reshape(corr_data, (1, corr_data.size))
 
