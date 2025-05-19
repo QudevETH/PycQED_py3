@@ -454,7 +454,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
         # Updating ge-frequency at this voltage to guess value
         qb.ge_freq(ge_freq := qb.calculate_frequency(flux=flux))
+        qb.ef_freq(ef_freq := qb.calculate_frequency(flux=flux,
+                                                     transition="ef"))
         log.info(f'{qb.name} updated with ge-frequency {ge_freq} Hz.')
+        log.info(f'{qb.name} updated with ef-frequency {ef_freq} Hz.')
 
         AutomaticCalibrationRoutine.post_run(self)
 
