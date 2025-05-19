@@ -611,6 +611,9 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
             self.cphase = cphase
         if not (self.cphase is None
                 or hasattr(self.cphase, '_is_parametric_value')):
+            if self.cphase_calib_dict is None:
+                raise ValueError(f"Pulse {self.name} does not have an "
+                                 f"arbitrary phase calibration!")
             param_dict = \
                 self.calc_cphase_params(
                     cphase=self.cphase,
