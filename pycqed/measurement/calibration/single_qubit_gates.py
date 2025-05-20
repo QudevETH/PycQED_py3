@@ -137,11 +137,11 @@ class T1FrequencySweep(CalibBuilder):
             # Combine sweep points in task and in sweep_points
             sweep_points = task.get('sweep_points', [{}, {}])
             sweep_points = SweepPoints(sweep_points)
-            if len(sweep_points) == 1:
-                sweep_points.add_sweep_dimension()
-            if len(self.sweep_points) == 1:
-                self.sweep_points.add_sweep_dimension()
-            for i in range(len(sweep_points)):
+            for i in range(len(self.sweep_points)):
+                # Add sweep dimensions in the task if sweep_points has more
+                if i >= len(sweep_points):
+                    sweep_points.add_sweep_dimension()
+                # Update the sweep points in the task with the sweep_points
                 sweep_points[i].update(self.sweep_points[i])
             if 'qubit_freqs' in sweep_points.get_parameters():
                 qubit_freqs = sweep_points['qubit_freqs']
