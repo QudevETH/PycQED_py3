@@ -297,7 +297,8 @@ class MeasurementControl(Instrument):
     @Timer()
     def run(self, name: str=None, exp_metadata: dict=None,
             mode: str='1D', disable_snapshot_metadata: bool=False,
-            previous_attempts=0, store_sweep_indices=False, **kw):
+            previous_attempts=0, store_sweep_indices=False, store_data=True,
+            **kw):
         '''
         Core of the Measurement control.
 
@@ -326,6 +327,9 @@ class MeasurementControl(Instrument):
                     calls itself recursively.
             store_sweep_indices (bool): If True, when storing the data the
                 sweep indices are prepended instead of the sweep points.
+            store_data (bool): If False, does not store data in the main
+                data table. Useful e.g. for optimisation experiments with a
+                large measured dataset where only the final result is useful
         '''
 
         def try_finish():
@@ -350,6 +354,7 @@ class MeasurementControl(Instrument):
         self.mode = mode
         # When storing the data, prepend indices instead of the full sweep pts
         self.store_sweep_indices = store_sweep_indices
+        self.store_data = store_data
         # used in determining data writing indices (deprecated?)
         self.iteration = 0
 
@@ -702,6 +707,8 @@ class MeasurementControl(Instrument):
 
         datasetshape = self.dset.shape
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(new_data)
+        if not self.store_data:
+            raise NotImplementedError
         new_datasetshape = (np.max([datasetshape[0], stop_idx]),
                             datasetshape[1])
         self.dset.resize(new_datasetshape)
@@ -869,6 +876,7 @@ class MeasurementControl(Instrument):
             # Transpose since detectors return [len(value_names), num_points],
             # to get shape [num_points, len(value_names)]
             vals = np.array(self.detector_function.get_values()).T
+
         start_idx, stop_idx = self.get_datawriting_indices_update_ctr(vals)
         # Resizing dataset and saving
 
@@ -889,8 +897,9 @@ class MeasurementControl(Instrument):
         # Concatenates the sweep points x with the data vals,
         # by prepending x as columns. If vals has more rows than x,
         # x is repeated vertically.
+        _vals = vals if self.store_data else np.zeros((len(vals), 0))
         new_data = np.concatenate(
-            (np.array(list(x) * int(vals.shape[0] / x.shape[0])), vals),
+            (np.array(list(x) * int(vals.shape[0] / x.shape[0])), _vals),
             axis=-1
         )
 
@@ -1690,9 +1699,10 @@ class MeasurementControl(Instrument):
             self.sweep_par_names.append(sweep_function.parameter_name)
             self.sweep_par_units.append(sweep_function.unit)
 
-        for i, val_name in enumerate(self.detector_function.value_names):
+        det_met = self.exp_metadata['Detector Metadata']
+        for i, val_name in enumerate(det_met['value_names']):
             self.column_names.append(
-                val_name+' (' + self.detector_function.value_units[i] + ')')
+                val_name+' (' + det_met['value_units'][i] + ')')
         return self.column_names
 
     def _get_experimentaldata_group(self):
@@ -1722,12 +1732,13 @@ class MeasurementControl(Instrument):
                 for sweep_function in self.sweep_functions])
 
     def create_experimentaldata_dataset(self):
+        det_met = self.exp_metadata['Detector Metadata']
         data_group = self._get_experimentaldata_group()
         self.dset = data_group.create_dataset(
             'Data', (0, self._get_nr_sweep_point_columns() +
-                     len(self.detector_function.value_names)),
+                     len(det_met['value_names'])),
             maxshape=(None, self._get_nr_sweep_point_columns() +
-                      len(self.detector_function.value_names)),
+                      len(det_met['value_names'])),
             dtype='float64', **self._get_create_dataset_kwargs())
         self.get_column_names()
         self.dset.attrs['column_names'] = h5d.encode_to_utf8(self.column_names)
@@ -1739,9 +1750,9 @@ class MeasurementControl(Instrument):
             self.sweep_par_units)
 
         data_group.attrs['value_names'] = h5d.encode_to_utf8(
-            self.detector_function.value_names)
+            det_met['value_names'])
         data_group.attrs['value_units'] = h5d.encode_to_utf8(
-            self.detector_function.value_units)
+            det_met['value_units'])
 
     def create_experiment_result_dict(self):
         try:
@@ -2011,6 +2022,14 @@ class MeasurementControl(Instrument):
                     Simple dictionary without nesting. An attribute will be
                     created for every key in this dictionary.
         '''
+        det_met = self.exp_metadata['Detector Metadata']
+        if not self.store_data:
+            det_met['value_names'] = []
+            det_met['value_units'] = []
+            det_met['meas_obj_value_names_map'] = {}
+            self.exp_metadata['meas_obj_value_names_map'] = {'nothing': []}
+            det_met['states_map'] = {}
+
         data_group = self._get_experimentaldata_group()
 
         if 'Experimental Metadata' in data_group:

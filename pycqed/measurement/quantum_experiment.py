@@ -51,7 +51,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                  harmonize_element_lengths=False,
                  compression_seg_lim=None, force_2D_sweep=True, callback=None,
                  callback_condition=lambda : True, mc_mode=None,
-                 mc_store_sweep_indices=False, **kw):
+                 mc_store_sweep_indices=False, mc_store_data=True, **kw):
         """
         Initializes a QuantumExperiment.
 
@@ -147,6 +147,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
                 not the callback function should be executed. Defaults to always True.
             mc_mode (str): manually set the mode argument in the call to MC.run
             mc_store_sweep_indices (bool): set MC.store_sweep_indices in MC.run
+            mc_store_data (bool): set MC.store_data in MC.run
             **kw:
                 further keyword arguments are passed to the CircuitBuilder __init__
         """
@@ -183,6 +184,7 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
         self.plot_sequence = plot_sequence
         self.mc_mode = mc_mode
         self.mc_store_sweep_indices = mc_store_sweep_indices
+        self.mc_store_data = mc_store_data
 
         self.sequences = list(sequences)
         self.sequence_function = sequence_function
@@ -312,7 +314,9 @@ class QuantumExperiment(CircuitBuilder, metaclass=TimedMetaClass):
             try:
                 self.MC.run(name=self.label, exp_metadata=self.exp_metadata,
                             mode=self.mc_mode,
-                            store_sweep_indices=self.mc_store_sweep_indices)
+                            store_sweep_indices=self.mc_store_sweep_indices,
+                            store_data=self.mc_store_data
+                            )
             except (Exception, KeyboardInterrupt) as e:
                 exception = e  # exception will be raised below
         self.extract_timestamp()
