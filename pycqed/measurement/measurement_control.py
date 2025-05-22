@@ -364,6 +364,10 @@ class MeasurementControl(Instrument):
         # used in get_percdone to scale the length of acquired data
         self.acq_data_len_scaling = self.detector_function.acq_data_len_scaling
 
+        if self.detector_function.simulation:
+            # Needed to run a simulation from segments at each upload
+            self.detector_function.sweep_function = self.sweep_functions[-1]
+
         # update sweep_points based on self.acq_data_len_scaling
         if previous_attempts == 0:
             # The following call modifies the sweep points and should thus

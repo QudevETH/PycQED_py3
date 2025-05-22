@@ -330,6 +330,18 @@ def get_multiplexed_readout_detector_functions(df_name, qubits,
                 get_values_function_kwargs=det_get_values_kws[uhf],
                 data_type='raw', **kw)
             for uhf in uhfs])
+    elif df_name == 'sim_int_avg_classif_det':
+        return det.SimulatedMultiPollDetector(
+            detectors=[
+            det.ClassifyingPollDetector(
+                acq_dev=uhf_instances[uhf], AWG=AWG,
+                channels=int_channels[uhf],
+                integration_length=max_int_len[uhf], nr_shots=nr_shots,
+                get_values_function_kwargs=det_get_values_kws[uhf],
+                data_type='raw', **kw)
+            for uhf in uhfs],
+            mobjn=[qb.name for qb in qubits], backend='qutip',
+        )
     elif df_name == 'inp_avg_det':
         return det.MultiPollDetector([
             det.AveragingPollDetector(
