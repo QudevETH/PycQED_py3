@@ -25,6 +25,8 @@ class Detector_Function(object):
     Detector_Function class for MeasurementControl
     '''
 
+    simulation = False
+
     def __init__(self, **kw):
         self.name = self.__class__.__name__
         self.set_kw()
@@ -595,7 +597,6 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
     the poll method of an acquisition device.
     """
     TIMED_METHODS = ["prepare"]
-    simulation = False
 
     def __init__(self, acq_dev=None, detectors=None,
                  prepare_and_finish_pulsar=False,
