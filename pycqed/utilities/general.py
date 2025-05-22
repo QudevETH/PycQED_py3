@@ -1036,6 +1036,8 @@ def save_zibugreport(
     from pycqed.measurement.waveform_control import pulsar as ps
     import zhinst.toolkit as ztk
     import qcodes as qc
+    import pycqed.instrument_drivers.acquisition_devices as acq_devs
+    import pycqed.instrument_drivers.physical_instruments as phys_instr
 
     session = ztk.Session("localhost")
     pulsar = ps.Pulsar.get_instance()
@@ -1085,9 +1087,10 @@ def save_zibugreport(
         except Exception as e:
             exceptions['stdout'] = e
 
-    # export the waveform and sequencer code of the SHFQCs
-    if hasattr(station, "SHFQCs"):
-        for SHF in station.SHFQCs:
+    for component in station.components.values():
+        # export the waveform and sequencer code of the SHFQCs
+        if isinstance(component, acq_devs.shf.SHFQC):
+            SHF = component
             # crate the top-level folder for this SHF
             shf_data_dir = os.path.join(brdir, SHF.name)
             os.makedirs(shf_data_dir, exist_ok=True)
@@ -1136,15 +1139,10 @@ def save_zibugreport(
                 shf_data_dir=shf_data_dir,
                 qa_channel=0,
             )
-    else:
-        log.warning("station.SHFQCs not specified. If you want to log the"
-                    "status of the SHFQCs in your system, please create this "
-                    "attribute and add assign station.SHFQCs = [SHFQC1, "
-                    "SHFQC2, ...]")
 
-    # export the waveform and sequencer code of the SHFQAs
-    if hasattr(station, "SHFQAs"):
-        for SHF in station.SHFQAs:
+        # export the waveform and sequencer code of the SHFQAs
+        if isinstance(component, acq_devs.shf.SHFQA):
+            SHF = component
             # crate the top-level folder for this SHF
             shf_data_dir = os.path.join(brdir, SHF.name)
             os.makedirs(shf_data_dir, exist_ok=True)
@@ -1170,15 +1168,12 @@ def save_zibugreport(
                     shf_data_dir=shf_data_dir,
                     qa_channel=qa_channel,
                 )
-    else:
-        log.warning("station.SHFQAs not specified. If you want to log the"
-                    "status of the SHFQAs in your system, please create this "
-                    "attribute and add assign station.SHFQAs = [SHFQA1, "
-                    "SHFQA2, ...]")
 
-    # export the waveform and sequencer code of the HDAWGs
-    if hasattr(station, "AWGs"):
-        for AWG in station.AWGs:
+        # export the waveform and sequencer code of the HDAWGs
+        if isinstance(component,
+                      phys_instr.ZurichInstruments.ZI_HDAWG_qudev.ZI_HDAWG_qudev):
+
+            AWG = component
             if involved_channels and AWG.name not in involved_channels.keys():
                 continue
 
@@ -1197,15 +1192,10 @@ def save_zibugreport(
             # save HDAWG settings
             sn = AWG.daq.get(f'/{AWG.devname}/*', settingsonly=True)
             np.save(os.path.join(awg_data_dir, f'awg_settings'), sn)
-    else:
-        log.warning("station.AWGs not specified. If you want to log the"
-                    "status of the AWGs in your system, please create this "
-                    "attribute and add assign station.AWGs = [AWG1, "
-                    "AWG2, ...]")
 
-    # export the waveform and sequencer code of the UHFQAs
-    if hasattr(station, "UHFs"):
-        for UHF in station.UHFs:
+        # export the waveform and sequencer code of the UHFQAs
+        if isinstance(component, acq_devs.uhfqa.UHFQA):
+            UHF = component
             if involved_channels and UHF.name not in involved_channels.keys():
                 continue
 
@@ -1223,15 +1213,11 @@ def save_zibugreport(
 
             sn = UHF.daq.get(f'/{UHF.devname}/*', settingsonly=True)
             np.save(os.path.join(uhf_data_dir, f'uhf_settings'), sn)
-    else:
-        log.warning("station.UHFs not specified. If you want to log the"
-                    "status of the UHFs in your system, please create this "
-                    "attribute and add assign station.UHFs = [UHF1, "
-                    "UHF2, ...]")
 
-    if hasattr(station, "PQSC"):
-        pqsc_data_dir = os.path.join(brdir, station.PQSC.name)
-        os.makedirs(pqsc_data_dir, exist_ok=True)
+        if isinstance(component,
+                      phys_instr.ZurichInstruments.ZI_PQSC.ZI_PQSC):
+            pqsc_data_dir = os.path.join(brdir, station.PQSC.name)
+            os.makedirs(pqsc_data_dir, exist_ok=True)
 
     # save the firmware git revision
     for dev in instruments:
