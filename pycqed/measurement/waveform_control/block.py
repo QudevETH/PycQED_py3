@@ -1,5 +1,6 @@
 import logging
 from copy import deepcopy
+import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -437,10 +438,11 @@ def parse_pulse_search_pattern(pattern):
     """Parse strings/ints that represent a pulse search pattern
 
     Args:
-        pattern (str, int): the representation of the search pattern can be:
+        pattern (str, int, np.int_): the representation of the search pattern
+        can be:
           - a string as described in the docstring of Block.build,
             param sweep_dicts_list
-          - an int i, which will be interpreted as the string
+          - an int or np.int_ i, which will be interpreted as the string
             f'occurrence={i}'
           - the str 'all' for matching all pulses
 
@@ -450,7 +452,7 @@ def parse_pulse_search_pattern(pattern):
         be fulfilled, as described in the docstring of Block.build,
         param sweep_dicts_list.
     """
-    if isinstance(pattern, int):
+    if isinstance(pattern, (int, np.int_)):
         pattern = f'occurrence={pattern}'
     if pattern == 'all':
         return {}
