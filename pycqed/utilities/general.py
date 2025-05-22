@@ -996,6 +996,7 @@ def zipfolder(zip_filename, folder, directory):
 
 
 def save_zibugreport(
+        station,
         involved_channels=None,
         interactive=True,
         save_folder=None
@@ -1035,13 +1036,11 @@ def save_zibugreport(
     # get the pulsar instance
     from pycqed.measurement.waveform_control import pulsar as ps
     import zhinst.toolkit as ztk
-    import qcodes as qc
     import pycqed.instrument_drivers.acquisition_devices as acq_devs
     import pycqed.instrument_drivers.physical_instruments as phys_instr
 
     session = ztk.Session("localhost")
     pulsar = ps.Pulsar.get_instance()
-    station = qc.station
 
     # create the save folder
     if save_folder is None:
