@@ -64,8 +64,8 @@ class QubitCalcFunctionsMixIn:
         if flux_amplitude_bias_ratio is None:
             is_transmon = model in ['transmon', 'transmon_res']
             is_approx = model == ['approx']
-            if ((is_transmon and np.all(amplitude!=0)) or
-                    (is_approx and bias is not None and np.all(bias!=0))):
+            if ((is_transmon and np.any(amplitude!=0)) or
+                    (is_approx and bias is not None and np.any(bias!=0))):
                 raise ValueError('flux_amplitude_bias_ratio is None, but is '
                                  'required for this calculation.')
 
