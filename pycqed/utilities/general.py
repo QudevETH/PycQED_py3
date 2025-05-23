@@ -1203,7 +1203,7 @@ def save_zibugreport(
             os.makedirs(uhf_data_dir, exist_ok=True)
 
             # save UHFQA waveforms
-            for i in range(2):
+            for i in range(1):
                 save_uhfqa_channel_data(
                     uhf=UHF,
                     uhf_data_dir=uhf_data_dir,
