@@ -2478,7 +2478,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
                               exp_metadata=None, operation_dict=None,
-                              vfc_kwargs=None):
+                              vfc_kwargs=None, **kw):
         """Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
 
@@ -2599,9 +2599,15 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
 
         if analyze:
             try:
-                tda.T2FrequencySweepAnalysis(qb_names=[self.name],
-                                             options_dict=dict(TwoD=False))
-            except Exception:
+                options_dict = {
+                    'TwoD': False,
+                    'all_fits': kw.get('all_fits', False)
+                }
+                return tda.T2FrequencySweepAnalysis(
+                    qb_names=[self.name], options_dict=options_dict,
+                    do_fitting=kw.get('do_fitting', True)
+                    )
+            except Exception as e:
                 ma.MeasurementAnalysis(TwoD=False)
 
     def configure_pulsar(self):
