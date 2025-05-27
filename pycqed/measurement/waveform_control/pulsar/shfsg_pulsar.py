@@ -211,7 +211,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             )
 
         # TODO: Not all AWGs provide an initial value. Should it be the case?
-        self.pulsar[f"{ch_name}_amp"].set(1)
+        self.pulsar.parameters[f"{ch_name}_amp"].set(1)
 
     def awg_setter(self, id:str, param:str, value):
         # Sanity checks
