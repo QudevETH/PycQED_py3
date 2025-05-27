@@ -11989,7 +11989,8 @@ class RunTimeAnalysis(ba.BaseDataAnalysis):
         else:
             # When sweep points are skipped, data is missing in all columns
             # Thus, we can simply check in the first column.
-            vals = list(self.raw_data_dict['measured_data'].values())[0]
+            vals = self.raw_data_dict['measured_data'].values()
+            vals = list(vals)[0] if vals else np.array([0])
             perc_meas = 1 - np.sum(np.isnan(vals)) / np.prod(vals.shape)
         return self._bare_measurement_time(n_ssp, n_hsp, repetition_rate,
                                            nr_averages, perc_meas)
