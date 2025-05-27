@@ -814,7 +814,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
                              f"length 4.")
 
         shfsg_command_table_entry = {
-            "index": entry_index,
+            "index": int(entry_index),
             "waveform": {"index": wave_index},
             "amplitude00": {"value": amplitude[0]},
             "amplitude01": {"value": amplitude[1]},
