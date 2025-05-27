@@ -3,6 +3,7 @@ File containing the BaseDataAnalysis class.
 """
 from inspect import signature
 import os
+import gc
 import numpy as np
 import copy
 from collections import OrderedDict
@@ -36,6 +37,7 @@ from pycqed.utilities.io import hdf5 as h5d
 import pycqed.utilities.settings_manager as setman
 import copy
 import traceback
+import weakref
 import logging
 log = logging.getLogger(__name__)
 
@@ -206,6 +208,9 @@ class BaseDataAnalysis(object):
             self.plot_dicts = OrderedDict()
             self.axs = OrderedDict()
             self.figs = OrderedDict()
+            # the following dict allows to check whether figures got deleted
+            # by garbage collection
+            self._weak_refs_to_figs = weakref.WeakValueDictionary()
             self.presentation_mode = self.options_dict.get(
                 'presentation_mode', False)
             self.transparent_background = self.options_dict.get(
@@ -1155,8 +1160,9 @@ class BaseDataAnalysis(object):
     def close_figs(self, key_list='auto'):
         """Closes specified figures.
 
+        Clears the figures before closing them.
         Furthermore, removes all closed figures and axes from `self.figs` and
-        `self.axs` dictionaries.
+        `self.axs` dictionaries, and runs a garbage collection afterwards.
 
         Args:
             key_list: list of figure keys to close or 'auto', in which case
@@ -1178,8 +1184,10 @@ class BaseDataAnalysis(object):
         for ax_key in axes_keys_to_pop:
             self.axs.pop(ax_key)
         for key in list(key_list):
+            self.figs[key].clear()
             plt.close(self.figs[key])
             self.figs.pop(key)
+        gc.collect()
 
     def save_data(self, savedir: str = None, savebase: str = None,
                   tag_tstamp: bool = True,
@@ -1591,6 +1599,8 @@ class BaseDataAnalysis(object):
                     # plotsize None uses .rc_default of matplotlib
                     gridspec_kw=pdict.get('gridspec_kw', None),
                 )
+                self._weak_refs_to_figs[pdict['fig_id']] = self.figs[
+                    pdict['fig_id']]
                 if pdict.get('3d', False):
                     self.axs[pdict['fig_id']].remove()
                     self.axs[pdict['fig_id']] = Axes3D(
