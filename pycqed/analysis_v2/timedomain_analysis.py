@@ -7487,7 +7487,10 @@ class EchoAnalysis(MultiQubit_TimeDomain_Analysis, ArtificialDetuningMixin):
 
     def plot(self, **kw):
         # Overload base method to run the method in echo_analysis
-        self.echo_analysis.plot(key_list='auto')
+        self.echo_analysis.plot(
+            key_list='auto',
+            save_figs=self.echo_analysis.options_dict['save_figs'],
+            close_figs=self.echo_analysis.options_dict['close_figs'])
 
 
 class RamseyAddPulseAnalysis(MultiQubit_TimeDomain_Analysis):
