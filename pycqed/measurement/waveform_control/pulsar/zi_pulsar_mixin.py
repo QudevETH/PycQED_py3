@@ -1110,7 +1110,7 @@ class ZIGeneratorModule:
 
                     # entry_index will be set to a value below
                     entry = self._generate_command_table_entry(
-                        entry_index=None,
+                        entry_index=0,
                         wave_index=self._wave_idx_lookup[element][cw],
                         amplitude=amplitude,
                         phase=phase,
