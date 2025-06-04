@@ -7904,7 +7904,8 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
                         # at this index) to stay in the same frequency band
                         df[-1] -= np.round((df[-1] - prev_df) * dt) / dt
                         if len(df) in shift_unwrapped_freqs['indices']:
-                            print(f'Manually shifted unwrapped frequency at index {len(df)}')
+                            log.warning(f'Manually shifted unwrapped '
+                                        f'frequency at index {len(df)}')
                             freq_shift = shift_unwrapped_freqs['applied_shift'] \
                                     [shift_unwrapped_freqs['indices'].index(len(df))]
                             df[-1] += freq_shift / dt
