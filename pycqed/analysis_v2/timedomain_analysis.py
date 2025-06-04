@@ -8561,9 +8561,23 @@ class CryoscopeAnalysis(DynamicPhaseAnalysis):
                     # the nyquist band at any step
                     df = []
                     prev_df = 0
+                    # In cases of large frequency changes between two truncation times
+                    # unwrapping mistakes can occur, these can be corrected by manually
+                    # subracting a whole number of the sampling rate (determined by delta_tau)
+                    # {'indices': [list of indices], 'applied_shift': [correction applied at these indices]}
+                    shift_unwrapped_freqs = self.get_param_value(
+                        'shift_unwrapped_freqs') or {'indices': [], 'applied_shift':[]}
                     for dp, dt in zip(delta_phases_vals, delta_tau):
                         df.append(dp / (2 * np.pi * dt))
-                        df[-1] += np.round((prev_df - df[-1]) * dt) / dt
+                        # Subtract multiples of the sampling rate (determined by delta_tau
+                        # at this index) to stay in the same frequency band
+                        df[-1] -= np.round((df[-1] - prev_df) * dt) / dt
+                        if len(df) in shift_unwrapped_freqs['indices']:
+                            log.warning(f'Manually shifted unwrapped '
+                                        f'frequency at index {len(df)}')
+                            freq_shift = shift_unwrapped_freqs['applied_shift'] \
+                                    [shift_unwrapped_freqs['indices'].index(len(df))]
+                            df[-1] += freq_shift / dt
                         prev_df = df[-1]
                     delta_phases_vals = np.array(df)*(2*np.pi*delta_tau)
                 else:
