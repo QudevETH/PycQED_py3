@@ -696,7 +696,7 @@ class Segment:
             # internal modulation. If not, we will print a warning message
             # and disable internal modulation on this channel.
             if not self._internal_mod_check_pulse_type(channel=channel):
-                logging.warning(
+                log.warning(
                     f"In segment {self.name}: not all pulses supports "
                     f"internal modulation on channel {channel}. This channel "
                     f"will not be internally modulated in the current "
@@ -711,7 +711,7 @@ class Segment:
             pulse_params_allow_internal_mod, check_values = \
                 self._internal_mod_check_pulse_params(channel=channel)
             if not pulse_params_allow_internal_mod:
-                logging.warning(
+                log.warning(
                     f"In segment {self.name}: internal modulation "
                     f"parameters are not compatible among the pulses. This "
                     f"channel will not be internally modulated in the current "
@@ -2045,11 +2045,11 @@ class Segment:
                         self._channel_amps[c] = amp
                         if self.pulsar.get('{}_type'.format(c)) == 'analog':
                             if np.max(wfs[codeword][c], initial=0) > amp:
-                                logging.warning(
+                                log.warning(
                                     'Clipping waveform {}: {} > {}'.format(
                                         c, np.max(wfs[codeword][c]), amp))
                             if np.min(wfs[codeword][c], initial=0) < -amp:
-                                logging.warning(
+                                log.warning(
                                     'Clipping waveform {}: {} < {}'.format(
                                         c, np.min(wfs[codeword][c]), -amp))
                             np.clip(
