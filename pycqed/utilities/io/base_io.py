@@ -31,6 +31,7 @@ file_extensions = OrderedDict({
     'msgpack': ['.msgpack', '.msg'], 'msgpack_comp': ['.msgpack', '.msgc'],
     'pickle': ['.pickle'],'pickle_comp': ['.picklec'],
     'hdf5': ['.hdf5']})
+DEFAULT_FILE_EXTENSION = file_extensions['msgpack'][0]
 
 
 class Dumper:
@@ -39,7 +40,8 @@ class Dumper:
     """
 
     def __init__(self, name: str, data: dict, datadir: str = None,
-                 compression=False, timestamp: str = None):
+                 compression=False, timestamp: str = None,
+                 file_extension: str = DEFAULT_FILE_EXTENSION):
         """
         Creates a folder for the file.
         Args:
@@ -64,10 +66,9 @@ class Dumper:
         self._datemark = time.strftime('%Y%m%d', self._localtime)
 
         # sets the file path
-        self.filepath = DateTimeGenerator().new_filename(
-            self, folder=datadir, auto_increase=False)
-
-        self.filepath = self.filepath.replace("%timemark", self._timemark)
+        self.filepath = create_filename(
+            name=self._name, root_directory=datadir, ts=self._localtime,
+            auto_increase=False, extension=file_extension)
 
         self.folder, self._filename = os.path.split(self.filepath)
         # creates the folder if needed
@@ -317,79 +318,95 @@ class Loader:
         return dict()
 
 
-class DateTimeGenerator:
+def get_next_available_timestamp(datadir, ts=None, max_counter=3):
     """
-    Class to generate filenames / directories based on the date and time.
+    Returns next available timestamp in data directory.
+    If a folder with the requested timestamp already exists, it moves one
+    second in the future until it either finds an available timestamp or
+    moves more seconds than 'max_counter' into the future.
+    Raises an TimeoutError if no timestamp within the diven max?counter can
+    be found.
+    Args:
+        datadir (str): base directory
+        ts (time.struct_time): timestamp of the requested day
+        max_counter (int): maximum seconds to move add to ts to search for
+        an available timestamp
+
+    Returns: timestamp as time.struct_time and string in format '%Y%m%d_%H%M%S'
     """
+    if ts is None:
+        ts = time.localtime()
 
-    def __init__(self):
-        pass
-
-    def create_data_dir_name(
-        self,
-        datadir: str,
-        name: str = None,
-        ts=None,
-        auto_increase: bool = True,
-    ):
-        """Create and return the name of a new data directory.
-
-        Input:
-            datadir (string): base directory
-            name (string): optional name of measurement
-            ts (time.localtime()): timestamp which will be used
-                if timesubdir=True
-            timesubdir (bool): whether to create a subdirectory for the time
-            auto_increase (bool): ensures that timestamp is unique and if not
-                increases by 1s until it is.
-
-        Output:
-            The directory to place the new file in
-        """
-
-        if ts is None:
-            ts = time.localtime()
+    timestamp_unique = False
+    counter = 0
+    while not timestamp_unique:
+        counter += 1
         path = os.path.join(datadir, time.strftime('%Y%m%d', ts))
         ts_string = time.strftime("%H%M%S", ts)
-
-        timestamp_unique = False
-        counter = 0
-
-        # Verify if timestamp is unique by checking if the folder exists
-        while not timestamp_unique and auto_increase:
-            counter += 1
-            if not os.path.exists(path):
-                timestamp_unique = True
-                continue
-
-            measdirs = [d for d in os.listdir(path) if d.startswith(ts_string)]
-            if not measdirs:
-                timestamp_unique = True
-            else:
-                # Add one second to timestamp until we find a unique one
-                ts = time.localtime(time.mktime(ts) + 1)
-                ts_string = time.strftime("%H%M%S", ts)
-
-            if counter >= 3:
-                raise TimeoutError(
-                    "Could not find a unique timestamp after"
-                    "moving 3 sec into the future.\n"
-                    "Please check this machine or its filesystem."
-                )
-
-        if name is not None:
-            path = os.path.join(path, ts_string + "_" + name)
+        if not os.path.exists(path):
+            timestamp_unique = True
+            continue
+        measdirs = [d for d in os.listdir(path) if d.startswith(ts_string)]
+        if not measdirs:
+            timestamp_unique = True
         else:
-            path = os.path.join(path, ts_string)
+            ts = time.localtime(time.mktime(ts) + 1)
+        if counter > max_counter:
+            raise TimeoutError(
+                "Could not find a unique timestamp after"
+                f"moving {max_counter} sec into the future.\n"
+                "Creation for timestamp "
+                f"{time.strftime('%Y%m%d_%H%M%S', ts)} failed.\n"
+                "Please check this machine or its filesystem."
+            )
+    return ts, time.strftime('%Y%m%d_%H%M%S', ts)
 
-        return path, ts_string
 
-    def new_filename(self, data_obj, folder, auto_increase: bool = True):
-        """Return a new filename, based on name and timestamp."""
-        path, tstr = self.create_data_dir_name(
-            folder,
-            name=data_obj._name,
-            ts=data_obj._localtime,
-            auto_increase=auto_increase)
-        filename = '%s_%s.hdf5' % (tstr, data_obj._name)
-        return os.path.join(path, filename)
+def create_data_dir_name(
+    datadir: str,
+    name: str = None,
+    ts=None,
+    auto_increase: bool = True,
+):
+    """Create and return the name of a new data directory.
+
+    Input:
+        datadir (string): base directory
+        name (string): optional name of measurement
+        ts (time.localtime()): timestamp which will be used
+            if timesubdir=True
+        auto_increase (bool): ensures that timestamp is unique and if not
+            increases by 1s until it is.
+
+    Returns:
+        The directory to place the new file in and its hour-timestamp.
+    """
+
+    if ts is None:
+        ts = time.localtime()
+
+    if auto_increase:
+        ts, _ = get_next_available_timestamp(datadir, ts=ts)
+    path = os.path.join(datadir, time.strftime('%Y%m%d', ts))
+    ts_string = time.strftime("%H%M%S", ts)
+
+    if name is not None:
+        path = os.path.join(path, ts_string + "_" + name)
+    else:
+        path = os.path.join(path, ts_string)
+
+    return path, ts_string
+
+
+def create_filename(name, root_directory, ts, auto_increase: bool = True,
+                    extension=DEFAULT_FILE_EXTENSION):
+    """Return a new filename, based on name, root_directory and timestamp."""
+    # first step: create data folder name
+    path, tstr = create_data_dir_name(
+        datadir=root_directory,
+        name=name,
+        ts=ts,
+        auto_increase=auto_increase)
+    # second step: create filename
+    filename = f'{tstr}_{name}{extension}'
+    return os.path.join(path, filename)

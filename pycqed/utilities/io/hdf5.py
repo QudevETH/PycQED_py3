@@ -21,8 +21,8 @@ from typing import IO, Optional
 from numpy import array  # noqa: F401
 from collections import OrderedDict  # noqa: F401
 
-from pycqed.utilities.io.base_io import Loader, file_extensions, \
-    DateTimeGenerator
+from pycqed.utilities.io.base_io import (Loader, file_extensions,
+                                         create_filename)
 from pycqed.instrument_drivers.mock_qcodes_interface import Parameter, \
     Instrument, Station, ParameterNotFoundError
 
@@ -60,10 +60,9 @@ class Data(h5py.File):
         self._timemark = time.strftime('%H%M%S', self._localtime)
         self._datemark = time.strftime('%Y%m%d', self._localtime)
 
-        self.filepath = DateTimeGenerator().new_filename(
-            self, folder=datadir, auto_increase=auto_increase)
-
-        self.filepath = self.filepath.replace("%timemark", self._timemark)
+        self.filepath = create_filename(name=self._name,
+            root_directory=datadir, ts=self._localtime,
+            auto_increase=auto_increase, extension=file_extensions['hdf5'][0])
 
         self.folder, self._filename = os.path.split(self.filepath)
         if not os.path.isdir(self.folder):
