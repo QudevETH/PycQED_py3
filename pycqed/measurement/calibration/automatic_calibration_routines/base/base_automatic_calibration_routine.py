@@ -1,5 +1,5 @@
 from pycqed.measurement.calibration.automatic_calibration_routines.base import\
-    update_nested_dictionary
+    update_nested_dictionary, DictWithTracking
 
 from .base_step import Step, IntermediateStep
 from pycqed.measurement.calibration import single_qubit_gates as qbcal
@@ -73,6 +73,7 @@ class RoutineTemplate(list):
             self.global_settings = global_settings
         else:
             self.global_settings = {}
+        self.global_settings = DictWithTracking(self.global_settings)
 
     def get_step_class_at_index(self, index):
         """Returns the step class for a specific step in the routine template.
@@ -436,7 +437,7 @@ class AutomaticCalibrationRoutine(Step):
         else:
             # If the root routine is calling the function, then initialize
             # an empty dictionary for the settings of the child step
-            settings = {}
+            settings = DictWithTracking()
 
         for sublookup in reversed(sublookups):
             # Looks for the sublookups directly in the settings. If self is the
@@ -858,7 +859,7 @@ class AutomaticCalibrationRoutine(Step):
             self.settings,
             {self.highest_lookup: {
                 self.highest_sublookup: self.kw
-            }})
+            }}, origin='kwargs')
 
     def create_initial_routine(self, load_parameters=True):
         """Creates (or recreates) initial routine by defining the routine
