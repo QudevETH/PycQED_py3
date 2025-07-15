@@ -993,6 +993,8 @@ class Segment:
             t_end = max(t_end, self._element_start_end_raw[
                 (element, group)][1])  # TODO check: correct?
             if not len(awg_channels & compensation_chan):
+                # No channel of the current element is part of the set of
+                # channels for which charge compensation should be applied.
                 continue
             tvals = None
             for pulse in self.elements[element]:
