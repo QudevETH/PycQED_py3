@@ -31,9 +31,10 @@ class PycqedInstrumentMixin(ABC):
             *args: accepts a single unnamed argument, which, if provided, is
                 used as default value if the parameter does not exist.
             cache (bool): if True, enforces that the value is retrieved
-                from the cache (default: False). This argument is ignored in
-                case of a ManualParameter, which will always be retrieved
-                from the cache.
+                from the cache (default: False). Note that parameters of
+                class ManualParameter will always be retrieved from the
+                cache, but explicitly passing cache=True is slightly faster
+                even in this case.
 
         Returns:
             The current value of the parameter.
