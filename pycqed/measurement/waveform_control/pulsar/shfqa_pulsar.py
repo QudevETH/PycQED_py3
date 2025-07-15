@@ -232,6 +232,9 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                     # This is a light copy of the readout mode below,
                     # not sure how to make this more general without a
                     # use case.
+                    # CAUTION: the following line avoids a deepcopy for speed
+                    #  reasons. When modifying any code below, make sure to
+                    #  not modify mutable elements in awg_sequence_element.
                     awg_sequence_element = copy(awg_sequence[element])
                     if awg_sequence_element is None:
                         playback_strings.append(f'// Segment {element}')
@@ -306,6 +309,9 @@ class SHFAcquisitionModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 continue
 
             def play_element(element, playback_strings, acq_unit):
+                # CAUTION: the following line avoids a deepcopy for speed
+                #  reasons. When modifying any code below, make sure to
+                #  not modify mutable elements in awg_sequence_element.
                 awg_sequence_element = copy(awg_sequence[element])
                 if awg_sequence_element is None:
                     current_segment = element

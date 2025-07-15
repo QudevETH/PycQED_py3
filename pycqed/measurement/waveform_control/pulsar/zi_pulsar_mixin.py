@@ -974,6 +974,9 @@ class ZIGeneratorModule:
         first_element_of_segment = True
 
         for element in awg_sequence:
+            # CAUTION: the following line avoids a deepcopy for speed
+            #  reasons. When modifying any code below, make sure to
+            #  not modify mutable elements in awg_sequence_element.
             awg_sequence_element = copy(awg_sequence[element])
             if awg_sequence_element is None:
                 current_segment = element

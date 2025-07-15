@@ -185,6 +185,9 @@ class UHFQCPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
         def play_element(element, playback_strings, wave_definitions,
                          allow_filter=True):
+            # CAUTION: the following line avoids a deepcopy for speed
+            #  reasons. When modifying any code below, make sure to
+            #  not modify mutable elements in awg_sequence_element.
             awg_sequence_element = copy(awg_sequence[element])
             if awg_sequence_element is None:
                 current_segment = element
