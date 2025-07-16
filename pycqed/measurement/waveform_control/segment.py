@@ -991,7 +991,7 @@ class Segment:
 
             # Find the end of the last pulse of the segment
             t_end = max(t_end, self._element_start_end_raw[
-                (element, group)][1])  # TODO check: correct?
+                (element, group)][1])
             if not len(awg_channels & compensation_chan):
                 # No channel of the current element is part of the set of
                 # channels for which charge compensation should be applied.
