@@ -20,6 +20,7 @@ import operator
 import string
 from zipfile import ZipFile
 from collections.abc import Mapping
+import frozendict
 
 try:
     import msvcrt  # used on windows to catch keyboard input
@@ -635,6 +636,46 @@ def setInDict(dataDict: dict, mapList: list, value):
                         'b': 4}
     """
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
+
+
+def make_values_immutable(obj):
+    """Makes values in a dict immutable
+
+    Args:
+        obj (dict): The dict whose items should be made immutable.
+    """
+    for k in obj.keys():
+        obj[k] = frozendict.deepfreeze(obj[k])
+
+
+def contains_mutable_values(obj):
+    """Returns whether a dict contains mutable values.
+
+    Args:
+        obj (dict): The dict to be tested. Note that obj can also be of a
+            different type (any hashable object, any kind of Mapping or a
+            tuple), but these other types are only meant to be passed
+            in recursive calls.
+    """
+    try:
+        hash(obj)
+        return False  # if obj can be hashed, it cannot contain mutables
+    except TypeError:
+        pass
+    if isinstance(obj, tuple):
+        iter = range(len(obj))
+    elif isinstance(obj, Mapping):
+        iter = obj.keys()
+    else:
+        raise NotImplementedError
+    for k in iter:  # iterate through items
+        if isinstance(obj[k], (list, dict, set)):
+            return True  # list, dict, and set are mutable
+        # check recursively whether the immutable item contains mutables
+        if contains_mutable_values(obj[k]):
+            return True
+        # no mutables found in current item, proceed to next item
+    return False  # no mutables found while checking all items
 
 
 def setdefault_nested(d, new_d):
