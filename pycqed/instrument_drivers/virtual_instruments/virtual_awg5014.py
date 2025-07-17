@@ -1,14 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 from qcodes.instrument_drivers.tektronix.AWG5014 import Tektronix_AWG5014
 from pycqed.instrument_drivers.instrument import DummyVisaHandle
 
 
-class VirtualAWG5014(Tektronix_AWG5014):
+class VirtualAWG5014(Tektronix_AWG5014, Instrument):
     def __init__(self, name, timeout=5, address=''):
         Instrument.__init__(self, name)
         self.visa_handle = DummyVisaHandle()
@@ -115,10 +115,10 @@ class VirtualAWG5014(Tektronix_AWG5014):
         self.file = None
         self.stop()  # to init self._state
 
-    def stop(self):
+    def stop(self, **kwargs):
         self._state = 'Idle'
 
-    def start(self):
+    def start(self, **kwargs):
         self._state = 'Waiting for trigger'
 
     def get_state(self):
