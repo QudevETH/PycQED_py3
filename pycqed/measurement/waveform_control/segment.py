@@ -507,7 +507,7 @@ class Segment:
             ref_pulses_dict_new = {}
             for name, pulse in ref_pulses_dict.items():
                 for p in pulses.get(name, []):
-                    if isinstance(p.ref_pulse, list):
+                    if isinstance(p.ref_pulse, (list, tuple)):
                         if p.pulse_obj.name in visited_pulses:
                             continue
                         if not all([ref_pulse in ref_pulses_dict_all for
@@ -515,8 +515,10 @@ class Segment:
                             continue
 
                         t0_list = []
-                        delay_list = [p.delay] * len(p.ref_pulse) if not isinstance(p.delay, list) else p.delay
-                        ref_point_list = [p.ref_point] * len(p.ref_pulse) if not isinstance(p.ref_point, list) \
+                        delay_list = [p.delay] * len(p.ref_pulse) if \
+                            not isinstance(p.delay, (list, tuple)) else p.delay
+                        ref_point_list = [p.ref_point] * len(p.ref_pulse) if \
+                            not isinstance(p.ref_point, (list, tuple)) \
                             else p.ref_point
 
                         for (ref_pulse, delay, ref_point) in zip(p.ref_pulse, delay_list, ref_point_list):
@@ -1138,7 +1140,7 @@ class Segment:
         pulses = {}
         for pulse in self.resolved_pulses:
             ref_pulse_list = pulse.ref_pulse
-            if not isinstance(ref_pulse_list, list):
+            if not isinstance(ref_pulse_list, (list, tuple)):
                 ref_pulse_list = [ref_pulse_list]
             for p in ref_pulse_list:
                 if p not in pulses:

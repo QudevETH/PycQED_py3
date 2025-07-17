@@ -144,7 +144,7 @@ class Block:
 
             # rename ref pulse within the block if not a special name
             escape_names = ("previous_pulse", "segment_start", "init_start")
-            if isinstance(ref_pulse, list):
+            if isinstance(ref_pulse, (list, tuple)):
                 p['ref_pulse'] = [name + "-|-" + rp for rp in p['ref_pulse']]
             else:
                 if ref_pulse not in escape_names and not p_is_block_start:

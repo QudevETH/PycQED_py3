@@ -8,6 +8,7 @@ import sys
 import numpy as np
 import scipy as sp
 from scipy.interpolate import interp1d
+from collections.abc import Mapping
 # For Python < 3.10, itertools doesn't contain pairwise
 # FIXME remove once python minimum version >= 3.10
 if sys.version_info < (3, 10):
@@ -421,7 +422,7 @@ class GaussianFilteredPiecewiseConstPulse(pulse.Pulse):
         idx = self.channels.index(channel)
         wave = np.zeros_like(t)
 
-        if isinstance(self.gaussian_filter_sigma, list):
+        if isinstance(self.gaussian_filter_sigma, (list, tuple)):
             gaussian_filter_sigma = self.gaussian_filter_sigma[idx]
         else:
             gaussian_filter_sigma = self.gaussian_filter_sigma
@@ -588,7 +589,7 @@ class NZTransitionControlledPulse(GaussianFilteredPiecewiseConstPulse):
         # control params needed to reach this value of cphase
         for param_name in cphase_ctrl_params:
             cal_data = cphase_calib_dict[param_name]
-            if isinstance(cal_data, dict):  # for 'basis_rotation'
+            if isinstance(cal_data, Mapping):  # for 'basis_rotation'
                 param_vals_dict = {}
                 for qbn, qbn_data in cal_data.items():
                     f = interp1d(cp_list, qbn_data, kind=interpolation_type)

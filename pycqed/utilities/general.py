@@ -712,7 +712,7 @@ def get_required_upload_information(pulses : list, station):
             if not 'channel' in key:
                 continue
             channel = pulse[key]
-            if isinstance(channel, dict):
+            if isinstance(channel, Mapping):
                 # the the CZ pulse has aux_channels_dict parameter
                 for ch in channel:
                     if not 'AWG' in ch:
