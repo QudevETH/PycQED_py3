@@ -115,10 +115,10 @@ class VirtualAWG5014(Tektronix_AWG5014, Instrument):
         self.file = None
         self.stop()  # to init self._state
 
-    def stop(self):
+    def stop(self, **kwargs):
         self._state = 'Idle'
 
-    def start(self):
+    def start(self, **kwargs):
         self._state = 'Waiting for trigger'
 
     def get_state(self):
