@@ -1175,8 +1175,9 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
 
             operation_dict.update(add_suffix_to_dict_keys(
                 sq.get_pulse_dict_from_pars(
-                    operation_dict[f'X180{tn} ' + self.name]),
-                f'{tn} ' + self.name))
+                    operation_dict[f'X180{tn} ' + self.name],
+                    make_immutable=False,  # will be done below anyway
+                ), f'{tn} ' + self.name))
 
         for code, op in operation_dict.items():
             op['op_code'] = code
