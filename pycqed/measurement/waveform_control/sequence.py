@@ -122,10 +122,9 @@ class Sequence:
             for seg in self.segments.values():
                 trigger_groups |= set(seg.elements_on_awg)
 
+        awg_by_group = self.pulsar.get_awgs_from_trigger_groups(trigger_groups)
         if awgs is None:
-            awgs = set()
-            for group in trigger_groups:
-                awgs.add(self.pulsar.get_awg_from_trigger_group(group))
+            awgs = set(awg_by_group.values())
 
         # Note that method 'self.generate_waveforms_sequences' will be
         # called by 'pulsar._program_awgs' multiple times, but we only
@@ -138,7 +137,7 @@ class Sequence:
 
         for segname, seg in self.segments.items():
             for group in trigger_groups:
-                awg = self.pulsar.get_awg_from_trigger_group(group)
+                awg = awg_by_group[group]
                 if awg not in awgs:
                     continue
                 scaling_factors = self.awg_scaling_factors[awg]
@@ -163,7 +162,7 @@ class Sequence:
                         sequences[awg][uelname].setdefault(cw, {})
                         for ch in seg.get_element_channels(elname,
                                                            trigger_group=group):
-                            chid = self.pulsar.get(f'{ch}_id')
+                            chid = self.pulsar.id_lookup[ch]
                             if awg_sequences:
                                 h = awg_sequences[awg][uelname][cw][chid]
                             else:
@@ -236,6 +235,7 @@ class Sequence:
         """
         # Setting the property will prequery all AWG clock and amplitudes
         sequences[0].pulsar.awgs_prequeried = True
+        awg_by_group = sequences[0].pulsar.get_awgs_from_trigger_groups()
         seq_groups = []
         if awgs is None:
             awgs = sequences[0].pulsar.awgs
@@ -248,7 +248,7 @@ class Sequence:
                 seg.gen_elements_on_awg(return_sorted=False)
             seq_groups[i] |= set(
                 [group for group in seg.elements_on_awg
-                 if seq.pulsar.get_awg_from_trigger_group(group) in awgs])
+                 if awg_by_group[group] in awgs])
             for group in seq_groups[i]:
                 if group not in lengths:
                     lengths[group] = odict()
@@ -344,12 +344,12 @@ class Sequence:
                         # boolean parameter indicating whether one pulse
                         # overlaps with the current AWG module
                         pulse_overlaps_with_channel = any([
-                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            self.pulsar.id_lookup[channel] in channel_ids
                             for channel in pulse.channels])
                         # boolean parameter indicating whether one pulse
                         # is played solely on the current AWG module
                         pulse_only_on_channel = all([
-                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            self.pulsar.id_lookup[channel] in channel_ids
                             for channel in pulse.channels])
 
                         if not pulse_overlaps_with_channel:
@@ -408,7 +408,7 @@ class Sequence:
 
                     for pulse in seg.elements[elname]:
                         if len(pulse.channels) == 0 or \
-                                not all([self.pulsar.get(f'{channel}_id')
+                                not all([self.pulsar.id_lookup[channel]
                                          in channel_ids
                                          for channel in pulse.channels]):
                             continue

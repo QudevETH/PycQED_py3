@@ -94,7 +94,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             group = []
             for q in ["i", "q"]:
                 id = f"sg{ch_nr + 1}{q}"
-                ch_name = channel_name_map.get(id, f"{self.awg.name}_{id}")
+                ch_name = channel_name_map.get(id, f"{self.awg_name}_{id}")
                 self.create_channel_parameters(id, ch_name, "analog")
                 self.pulsar.channels.add(ch_name)
                 group.append(ch_name)
@@ -230,7 +230,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             new_center_freq = self.awg.synthesizers[
                 self.awg.sgchannels[ch].synthesizer()].centerfreq()
             if np.abs(new_center_freq - value) > 1:
-                log.warning(f'{self.awg.name}: center freq. {value/1e6:.6f} '
+                log.warning(f'{self.awg_name}: center freq. {value/1e6:.6f} '
                             f'MHz not supported. Setting center frequency to '
                             f'{new_center_freq/1e6:.6f} MHz. This does NOT '
                             f'automatically set the IF!')
@@ -277,7 +277,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         return 2.0e9
 
     def sigout_on(self, ch, on=True):
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         self.awg.sgchannels[int(chid[2]) - 1].output.on(on)
 
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
@@ -322,12 +322,12 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
                 False leads to a sweep function that is only allowed to take
                 values on the 100 MHz grid supported by the synthesizer.
         """
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         name = 'Frequency'
         if not allow_IF_sweep:
             return mc_parameter_wrapper.wrap_par_to_swf(
                 self.pulsar.parameters[f'{ch}_centerfreq'])
-        if self.pulsar.get(f"{self.awg.name}_use_hardware_sweeper"):
+        if self.pulsar.parameters[f"{self.awg_name}_use_hardware_sweeper"].cache.get():
             return swf.SpectroscopyHardSweep(parameter_name=name)
         name_offset = 'Frequency with offset'
         return swf.Offset_Sweep(
@@ -350,23 +350,23 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         Returns:
             center_freq_generator module
         """
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         return self.awg.sgchannels[int(chid[2]) - 1].synthesizer() - 1
 
     def _direct_mod_setter(self, ch):
         def s(val):
             if val == None:
                 self.awg.configure_sine_generation(
-                    self.pulsar.get(ch + '_id'), enable=False)
+                    self.pulsar.id_lookup[ch], enable=False)
             else:
                 self.awg.configure_sine_generation(
-                    self.pulsar.get(ch + '_id'), enable=True, freq=val,
+                    self.pulsar.id_lookup[ch], enable=True, freq=val,
                     force_enable=True)
         return s
 
     def _direct_mod_getter(self, ch):
         def g():
-            chid = self.pulsar.get(ch + '_id')
+            chid = self.pulsar.id_lookup[ch]
             sgchannel = self.awg.sgchannels[int(chid[2]) - 1]
             if sgchannel.sines[0].i.enable() or sgchannel.sines[0].q.enable():
                 return sgchannel.sines[0].freq()
@@ -376,7 +376,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def _direct_mod_amplitude_setter(self, ch):
         def s(val):
-            chid = self.pulsar.get(ch + '_id')
+            chid = self.pulsar.id_lookup[ch]
             sgchannel = self.awg.sgchannels[int(chid[2]) - 1]
             sgchannel.sines[0].i.sin.amplitude(0)
             sgchannel.sines[0].i.cos.amplitude(val)
@@ -386,7 +386,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def _direct_mod_amplitude_getter(self, ch):
         def g():
-            chid = self.pulsar.get(ch + '_id')
+            chid = self.pulsar.id_lookup[ch]
             sgchannel = self.awg.sgchannels[int(chid[2]) - 1]
             gains = [sgchannel.sines[0].i.sin.amplitude(),
                      sgchannel.sines[0].i.cos.amplitude(),
@@ -417,8 +417,8 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
             is_channel_pair (str): whether these two AWG channels belongs to
                 the same channel pair.
         """
-        ch1id = self.pulsar.get(f"{cname1}_id")
-        ch2id = self.pulsar.get(f"{cname2}_id")
+        ch1id = self.pulsar.id_lookup[cname1]
+        ch2id = self.pulsar.id_lookup[cname2]
 
         # Note that alphabetically 'i' is smaller than 'q'
         if require_ordered and ch1id > ch2id:
@@ -443,7 +443,7 @@ class SHFGeneratorModulesPulsar(PulsarAWGInterface, ZIPulsarMixin):
         Returns:
             is_i_channel (str): whether this channel is the I channel.
         """
-        chid = self.pulsar.get(f"{cname}_id")
+        chid = self.pulsar.id_lookup[cname]
         return chid[-1] == 'i'
 
 
@@ -459,7 +459,7 @@ class SHFSGPulsar(SHFGeneratorModulesPulsar):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
@@ -588,7 +588,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
         """
         enable = True if mod_config else False
         self._awg.configure_internal_mod(
-            chid=self.pulsar.get(self.i_channel_name + '_id'),
+            chid=self.pulsar.id_lookup[self.i_channel_name],
             enable=enable,
             osc_index=mod_config.get('osc', 0),
             osc_frequency=mod_config.get('mod_frequency', None),
@@ -613,7 +613,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
         """
         config = sine_config.get(self.i_channel_name, dict())
         self._awg.configure_sine_generation(
-            chid=self.pulsar.get(self.i_channel_name + '_id'),
+            chid=self.pulsar.id_lookup[self.i_channel_name],
             enable=config.get('continuous', False),
             osc_index=config.get('osc', 0),
             sine_generator_index=config.get('sine', 0),
@@ -626,13 +626,13 @@ class SHFGeneratorModule(ZIGeneratorModule):
         awg_nr = self._awg_nr
 
         # check if the waveform has been uploaded
-        if self.pulsar.use_sequence_cache():
+        if self.pulsar.parameters['use_sequence_cache'].cache.get():
             if wave_hashes == self.waveform_cache.get(wave_idx, None):
-                log.debug(f'{self._awg.name} awgs{awg_nr}: '
+                log.debug(f'{self._awg_name} awgs{awg_nr}: '
                           f'{wave_idx} same as in cache')
                 return
         log.debug(
-            f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+            f'{self._awg_name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
 
         # take the waves specified for this channel from the overall wave dict
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
@@ -665,7 +665,8 @@ class SHFGeneratorModule(ZIGeneratorModule):
         waveforms = zhinst.toolkit.waveform.Waveforms()
         waveforms.assign_waveform(wave_idx, a1, a2)
 
-        if self.pulsar.use_mcc() and self.multi_core_compiler:
+        if self.pulsar.parameters['use_mcc'].cache.get() \
+                and self.multi_core_compiler:
             # Waveforms are added to mcc.post_sequencer_code_upload and will
             # be uploaded to device in pulsar._program_awgs after multi-core
             # compiler is executed.
@@ -703,7 +704,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
             wave_idx (int): index of wave upload (0 or 1)
             wave_hashes: waveforms hashes
         """
-        if self.pulsar.use_sequence_cache():
+        if self.pulsar.parameters['use_sequence_cache'].cache.get():
             self.waveform_cache[wave_idx] = wave_hashes
 
     def _generate_oscillator_seq_code(self):
@@ -730,7 +731,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
     ):
         prepend_zeros = 0
         self._playback_strings += self._awg_interface.zi_playback_string(
-            name=self._awg.name,
+            name=self._awg_name,
             device='shfsg',
             wave=wave,
             codeword=codeword,
@@ -744,7 +745,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
     def _check_ignore_waveforms(self):
         i_channel = self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],
-            awg=self._awg.name
+            awg=self._awg_name
         )
         if i_channel not in self._sine_config.keys():
             return False
@@ -808,7 +809,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
 
         elif not ((isinstance(amplitude, np.ndarray) or
                    isinstance(amplitude, list)) and len(amplitude) == 4):
-            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+            raise ValueError(f"{self._awg_name} channel pair {self._awg_nr} "
                              f"receives inappropriate command table amplitude "
                              f"value. Accepts float or array-like object with "
                              f"length 4.")
@@ -851,7 +852,7 @@ class SHFGeneratorModule(ZIGeneratorModule):
 
             if status != 1:
                 log.warning(f"Failed to upload the command table to "
-                            f"{self._awg.name}, error index {status}")
+                            f"{self._awg_name}, error index {status}")
         else:
             # This is a DAQ server for virtual devices. We assume that upload
             # is successful.
@@ -860,6 +861,6 @@ class SHFGeneratorModule(ZIGeneratorModule):
         return status
 
     def _set_signal_output_status(self):
-        if self.pulsar.sigouts_on_after_programming():
+        if self.pulsar.parameters['sigouts_on_after_programming'].cache.get():
             for sgchannel in self._awg.sgchannels:
                 sgchannel.output.on(True)

@@ -35,7 +35,7 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_trigger_source",
                              initial_value="Dig1",
@@ -162,15 +162,15 @@ class SHFQCPulsar(SHFAcquisitionModulesPulsar, SHFGeneratorModulesPulsar):
                SHFGeneratorModulesPulsar.is_awg_running(self)
 
     def sigout_on(self, ch, on=True):
-        id = self.pulsar.get(ch + '_id')
+        id = self.pulsar.id_lookup[ch]
         return self._get_superclass(id).sigout_on(self, ch, on=on)
 
     def get_params_for_spectrum(self, ch: str, requested_freqs: list[float]):
-        id = self.pulsar.get(ch + '_id')
+        id = self.pulsar.id_lookup[ch]
         return self._get_superclass(id) \
             .get_params_for_spectrum(self, ch, requested_freqs)
 
     def get_frequency_sweep_function(self, ch: str, **kw):
-        id = self.pulsar.get(ch + '_id')
+        id = self.pulsar.id_lookup[ch]
         return self._get_superclass(id) \
             .get_frequency_sweep_function(self, ch, **kw)

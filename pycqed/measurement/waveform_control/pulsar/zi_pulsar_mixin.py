@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 import numpy as np
-from copy import deepcopy
+from copy import deepcopy, copy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from zhinst.core.errors import CoreError
 
@@ -341,8 +341,8 @@ class ZIPulsarMixin:
 
     def zi_wait_trigger(self, name, device, trigger_source=None):
         playback_string = []
-        trig_source = trigger_source or self.pulsar.get(
-            f"{name}_trigger_source")
+        trig_source = trigger_source or self.pulsar.parameters[
+            f"{name}_trigger_source"].cache.get()
         if trig_source == "Dig1":
             playback_string.append(
                 "waitDigTrigger(1{});".format(", 1" if device == "uhf" else ""))
@@ -363,8 +363,8 @@ class ZIPulsarMixin:
 
         self.wfms_to_upload = {}  # reset waveform upload memory
 
-        use_placeholder_waves = self.pulsar.get(
-            f"{self.awg.name}_use_placeholder_waves")
+        use_placeholder_waves = self.pulsar.parameters[
+            f"{self.awg_name}_use_placeholder_waves"].cache.get()
         if not use_placeholder_waves:
             if not self.zi_waves_clean():
                 self._zi_clear_waves()
@@ -385,17 +385,17 @@ class ZIPulsarMixin:
             )
             has_waveforms |= any(channel_pair.has_waveforms)
 
-        if self.pulsar.sigouts_on_after_programming():
+        if self.pulsar.parameters['sigouts_on_after_programming'].cache.get():
             for awg_module in self.awg_modules:
                 for channel_id in awg_module.analog_channel_ids:
                     channel_name = self.pulsar._id_channel(
                         cid=channel_id,
-                        awg=self.awg.name,
+                        awg=self.awg_name,
                     )
                     self.sigout_on(channel_name)
 
         if has_waveforms:
-            self.pulsar.add_awg_with_waveforms(self.awg.name)
+            self.pulsar.add_awg_with_waveforms(self.awg_name)
 
     def find_multi_core_compiler(self):
         """ Set up a multi-core compiler (MCC) for programming the
@@ -540,7 +540,7 @@ class ZIGeneratorModule:
         self._awg_nr = awg_nr
         """AWG module number of the current instance."""
 
-        self.module_name = f"{self._awg.name}_generator{awg_nr}"
+        self.module_name = f"{self._awg_name}_generator{awg_nr}"
         """Name of this AWG module."""
 
         self.channel_ids = None
@@ -660,7 +660,7 @@ class ZIGeneratorModule:
     def _reset_mcc_post_compilation_upload_list(self):
         """If multi-core compiler is enabled, reset the post-programming
         upload list."""
-        if self.pulsar.use_mcc():
+        if self.pulsar.parameters['use_mcc'].cache.get():
             self.multi_core_compiler.post_sequencer_code_upload[
                 self.module_name] = list()
 
@@ -742,14 +742,14 @@ class ZIGeneratorModule:
             # code. If the multicore compiler is used, "upload_command_table"
             # method will be pended and executed after the sequencer program
             # gets uploaded.
-            if self.pulsar.use_mcc():
+            if self.pulsar.parameters['use_mcc'].cache.get():
                 self.multi_core_compiler.post_sequencer_code_upload[
                     self.module_name].append(
                     (self._upload_command_table, dict()))
             else:
                 self._upload_command_table()
 
-        if self.pulsar.use_mcc():
+        if self.pulsar.parameters['use_mcc'].cache.get():
             self.multi_core_compiler.post_sequencer_code_upload[
                 self.module_name].append(
                 (self._set_signal_output_status, dict()))
@@ -759,7 +759,7 @@ class ZIGeneratorModule:
         else:
             self._set_signal_output_status()
         if any(self.has_waveforms.values()):
-            self.pulsar.add_awg_with_waveforms(self._awg.name)
+            self.pulsar.add_awg_with_waveforms(self._awg_name)
 
     def _update_channel_config(
             self,
@@ -797,7 +797,7 @@ class ZIGeneratorModule:
         """Get I channel name from self.pulsar.channels ."""
         self.i_channel_name = self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],
-            awg=self._awg.name
+            awg=self._awg_name
         )
 
     def _update_use_filter_flag(
@@ -821,40 +821,28 @@ class ZIGeneratorModule:
     def _update_use_command_table_flag(self):
         """Updates self._use_command_table flag with the setting specified
         in pulsar."""
-        device_param = f"{self._awg.name}_use_command_table"
-        device_value = self.pulsar.get(device_param) \
-            if hasattr(self.pulsar, device_param) else False
-
+        device_param = f"{self._awg_name}_use_command_table"
+        device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_use_command_table"
-        channel_value = self.pulsar.get(channel_param) \
-            if hasattr(self.pulsar, channel_param) else False
-
+        channel_value = self.pulsar.get(channel_param, False, cache=True)
         self._use_command_table = device_value | channel_value
 
     def _update_use_placeholder_wave_flag(self):
         """Updates self._use_placeholder_wave flag with the setting specified
         in pulsar."""
-        device_param = f"{self._awg.name}_use_placeholder_waves"
-        device_value = self.pulsar.get(device_param) \
-            if hasattr(self.pulsar, device_param) else False
-
+        device_param = f"{self._awg_name}_use_placeholder_waves"
+        device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_use_placeholder_waves"
-        channel_value = self.pulsar.get(channel_param) \
-            if hasattr(self.pulsar, channel_param) else False
-
+        channel_value = self.pulsar.get(channel_param, False, cache=True)
         self._use_placeholder_waves = device_value | channel_value
 
     def _update_use_internal_mod_flag(self):
         """Updates self._use_internal_mod flag with the setting specified in
         pulsar."""
-        device_param = f"{self._awg.name}_internal_modulation"
-        device_value = self.pulsar.get(device_param) \
-            if hasattr(self.pulsar, device_param) else False
-
+        device_param = f"{self._awg_name}_internal_modulation"
+        device_value = self.pulsar.get(device_param, False, cache=True)
         channel_param = f"{self.i_channel_name}_internal_modulation"
-        channel_value = self.pulsar.get(channel_param) \
-            if hasattr(self.pulsar, channel_param) else False
-
+        channel_value = self.pulsar.get(channel_param, False, cache=True)
         self._use_internal_mod = device_value | channel_value
 
     def _resolve_channel_config(
@@ -902,7 +890,7 @@ class ZIGeneratorModule:
                     first_new_dict=first_new_dict,
             ):
                 raise RuntimeError(
-                    f"On {self._awg.name}: Configuration {config_name} in "
+                    f"On {self._awg_name}: Configuration {config_name} in "
                     f"metadata is incompatible between different elements in "
                     f"the same sequence."
                 )
@@ -986,7 +974,10 @@ class ZIGeneratorModule:
         first_element_of_segment = True
 
         for element in awg_sequence:
-            awg_sequence_element = deepcopy(awg_sequence[element])
+            # CAUTION: the following line avoids a deepcopy for speed
+            #  reasons. When modifying any code below, make sure to
+            #  not modify mutable elements in awg_sequence_element.
+            awg_sequence_element = copy(awg_sequence[element])
             if awg_sequence_element is None:
                 current_segment = element
                 self._playback_strings.append(f'// Segment {current_segment}')
@@ -1002,10 +993,10 @@ class ZIGeneratorModule:
             # Check if analog channels has overlap with the segment trigger
             # group. If no, this segment will not be played.
             trigger_groups = metadata['trigger_groups']
-            channels = set(self.pulsar._id_channel(chid, self._awg.name)
-                        for chid in self.analog_channel_ids)
+            channels = set(self.pulsar._id_channel(chid, self._awg_name)
+                           for chid in self.analog_channel_ids)
             if not self.pulsar.check_channels_in_trigger_groups(
-                    set(channels), trigger_groups):
+                    channels, trigger_groups):
                 continue
 
             self._playback_strings.append(f'// Element {element}')
@@ -1026,7 +1017,7 @@ class ZIGeneratorModule:
                 continue
             if nr_cw > 0 and not self._use_command_table:
                 raise ValueError(f"Set {self.pulsar.name}."
-                                 f"{self._awg.name}_use_command_table to "
+                                 f"{self._awg_name}_use_command_table to "
                                  f"True for feedback operations!")
 
             for cw in awg_sequence_element:
@@ -1140,7 +1131,7 @@ class ZIGeneratorModule:
 
                         if entry_index >= i_end:
                             raise RuntimeError(
-                                f"On {self.awg.name} generator module "
+                                f"On {self._awg_name} generator module "
                                 f"{self._awg_nr}: command table memory overflow. "
                                 f"Please check if you have defined too many "
                                 f"different waveforms or allocated too few space "
@@ -1174,7 +1165,7 @@ class ZIGeneratorModule:
                     if max(placeholder_wave_lengths) != \
                             min(placeholder_wave_lengths):
                         log.warning(f"Waveforms of unequal length on"
-                                    f"{self._awg.name}, vawg{self._awg_nr},"
+                                    f"{self._awg_name}, vawg{self._awg_nr},"
                                     f" {current_segment}, {element}.")
 
                     placeholder_wave_length =  max(placeholder_wave_lengths)
@@ -1216,12 +1207,36 @@ class ZIGeneratorModule:
                 first_element_of_segment = False
             else:
                 self._playback_strings += self._awg_interface.zi_wait_trigger(
-                        name=self._awg.name,
+                        name=self._awg_name,
                         device=self._device_type,
                     )
 
             self._playback_strings += \
                 ZIPulsarMixin.zi_playback_string_loop_end(metadata)
+
+    @property
+    def trigger_source(self):
+        trigger_source = self.pulsar.parameters[
+            self._awg_name + "_trigger_source"].cache.get()
+        if isinstance(trigger_source, str):
+            return trigger_source
+        return trigger_source[self.trigger_group]
+
+    @property
+    def trigger_group(self):
+        """The pulsar trigger group to which this AWG module belong.
+
+        Remark: for speed reasons, this is not implemented via calls to
+            pulsar.get_trigger_group.
+        """
+        # FIXME: some kind of caching should be implemented since this might
+        #  be called from trigger_source for each element.
+        trigger_groups = self.pulsar.parameters[
+            self._awg_name + "_trigger_groups"].cache.get()
+        for group, channels in trigger_groups.items():
+            if self.i_channel_name in channels:
+                return group
+        return f"{self._awg_name}_{self.pulsar.DEFAULT_TRG_GRP}"
 
     def _generate_playback_string(
             self,
@@ -1344,12 +1359,12 @@ class ZIGeneratorModule:
 
         # check if channels specified in scaling_factor match the
         # analog channels on this AWG module.
-        channel_ids = [self.pulsar.get(f"{channel}_id")
+        channel_ids = [self.pulsar.id_lookup[channel]
                        for channel in scaling_factor.keys()]
         if set(channel_ids) != set(self.analog_channel_ids):
             raise RuntimeError(
                 f"Channels specified in 'scaling_factor' metadata does not "
-                f"match analog channels on {self.awg.name} generator module "
+                f"match analog channels on {self._awg_name} generator module "
                 f"{self._awg_nr}."
             )
 
@@ -1358,7 +1373,7 @@ class ZIGeneratorModule:
         #  channels in this AWG module.
         if len(set(scaling_factor.values())) > 1:
             raise RuntimeError(
-                f"Scaling factors on {self.awg.name} generator module"
+                f"Scaling factors on {self._awg_name} generator module"
                 f"{self._awg_nr} are defined differently among output channels."
             )
 
@@ -1390,7 +1405,7 @@ class ZIGeneratorModule:
                 np.testing.assert_equal(self._wave_idx_lookup, cached_lookup)
                 run_compiler = False
             except AssertionError:
-                log.debug(f'{self._awg.name}_{self._awg_nr}: Waveform reuse '
+                log.debug(f'{self._awg_name}_{self._awg_nr}: Waveform reuse '
                           f'pattern has changed. Forcing recompilation.')
                 run_compiler = True
 
@@ -1463,16 +1478,17 @@ class ZIGeneratorModule:
             kw["waveforms"] = ";".join([s + ".csv"
                                         for s in self._defined_waves])
 
-        if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
+        if self.pulsar.parameters['use_mcc'].cache.get() \
+                and self._awg_interface.awg_mcc:
             self.multi_core_compiler.sequencer_code_mcc[self.module_name] = (
                 self._awg_interface.awg_mcc_generators[self._awg_nr],
                 dict(sequencer_program=awg_str, **kw))
             self._save_awg_str(awg_str=awg_str)
         else:
-            if self.pulsar.use_mcc():
+            if self.pulsar.parameters['use_mcc'].cache.get():
                 log.warning(
                     f'Parallel elf compilation not supported for '
-                    f'{self._awg.name} ({self._awg.devname}), see debug '
+                    f'{self._awg_name} ({self._awg.devname}), see debug '
                     f'log when adding the AWG to pulsar.')
             self._save_awg_str(awg_str=awg_str)
             self._configure_awg_str(awg_str=awg_str, **kw)
@@ -1529,7 +1545,7 @@ class ZIGeneratorModule:
         """Helper function that returns I channel name of this AWG module."""
         return self.pulsar._id_channel(
             cid=self.analog_channel_ids[0],
-            awg=self._awg.name
+            awg=self._awg_name
         )
 
     @property

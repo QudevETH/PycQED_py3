@@ -92,7 +92,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 ZurichInstruments.zhinst_qcodes_wrappers import HDAWG8
             self.awg_mcc = HDAWG8(
                 awg.devname,
-                name=awg.name + '_mcc',
+                name=self.awg_name + '_mcc',
                 host='localhost',
                 interface=awg.interface,
                 server=awg.server
@@ -102,7 +102,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         except ImportError as e:
             log.debug(f'Error importing zhinst-qcodes: {e}.')
             log.debug(f'Parallel elf compilation will not be available for '
-                      f'{awg.name} ({awg.devname}).')
+                      f'{self.awg_name} ({awg.devname}).')
             self.awg_mcc = None
 
         # dict for storing previously-uploaded waveforms
@@ -122,7 +122,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
         super().create_awg_parameters(channel_name_map)
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_use_placeholder_waves",
                              initial_value=False, vals=vals.Bool(),
@@ -447,7 +447,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def _hdawg_mod_freq_setter(self, awg_nr, direct=False, amp=0.0):
         def s(val):
-            log.debug(f'{self.awg.name}_awgs_{awg_nr} modulation freq: {val}')
+            log.debug(f'{self.awg_name}_awgs_{awg_nr} modulation freq: {val}')
             if val == None:
                 self.awg.set(f'awgs_{awg_nr}_outputs_0_modulation_mode', 0)
                 self.awg.set(f'awgs_{awg_nr}_outputs_1_modulation_mode', 0)
@@ -556,7 +556,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 mode = mod_mode_dict[val]
             else:
                 mode = val
-            log.debug(f'{self.awg.name}_awgs_{awg_nr} modulation mod: {val} ({mode})')
+            log.debug(f'{self.awg_name}_awgs_{awg_nr} modulation mod: {val} ({mode})')
             self.awg.set(f'awgs_{awg_nr}_outputs_{output_nr}_modulation_mode', mode)
         return s
 
@@ -587,7 +587,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
 
     def clock(self):
         if self.pulsar.awgs_prequeried:
-            clock = self.pulsar.clock(awg=self.awg.name)
+            clock = self.pulsar.clock(awg=self.awg_name)
         else:
             # This if-else statement is to prevent the infinite loop between
             # this method and pulsar.clock(). If the AWG clock info is not
@@ -615,7 +615,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
                 self.awg._awg_program[i] is not None]
 
     def sigout_on(self, ch, on=True):
-        chid = self.pulsar.get(ch + '_id')
+        chid = self.pulsar.id_lookup[ch]
         if chid[-1] != 'm':  # not a marker channel
             self.awg.set('sigouts_{}_on'.format(int(chid[-1]) - 1), on)
 
@@ -637,8 +637,8 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             is_channel_pair (str): whether these two AWG channels belongs to
                 the same channel pair.
         """
-        ch1id = self.pulsar.get(f"{cname1}_id")
-        ch2id = self.pulsar.get(f"{cname2}_id")
+        ch1id = self.pulsar.id_lookup[cname1]
+        ch2id = self.pulsar.id_lookup[cname2]
 
         ch_idx_1 = int(ch1id[-1])
         ch_idx_2 = int(ch2id[-1])
@@ -667,7 +667,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             is_i_channel (str): whether this channel has the smaller number
             in its analog channel pair.
         """
-        chid = self.pulsar.get(f"{cname}_id")
+        chid = self.pulsar.id_lookup[cname]
         if chid[-1] == 'm':
             return False
         ch_idx = int(chid[-1])
@@ -715,7 +715,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         for chid in self.channel_ids:
             self._divisor[chid] = self._awg_interface.get_divisor(
                 chid=chid,
-                awg=self._awg.name,
+                awg=self._awg_name,
             )
 
     def _generate_oscillator_seq_code(self):
@@ -781,14 +781,14 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     def _update_waveforms(self, wave_idx, wave_hashes, waveforms):
         awg_nr = self._awg_nr
 
-        if self.pulsar.use_sequence_cache():
+        if self.pulsar.parameters['use_sequence_cache'].cache.get():
             if wave_hashes == self.waveform_cache.get(wave_idx, None):
                 log.debug(
-                    f'{self._awg.name} awgs{awg_nr}: {wave_idx} same as in '
+                    f'{self._awg_name} awgs{awg_nr}: {wave_idx} same as in '
                     f'cache')
                 return
         log.debug(
-            f'{self._awg.name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
+            f'{self._awg_name} awgs{awg_nr}: {wave_idx} needs to be uploaded')
 
         a1, m1, a2, m2 = [waveforms.get(h, None) for h in wave_hashes]
         n = max([len(w) for w in [a1, m1, a2, m2] if w is not None])
@@ -812,7 +812,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
         a1 = None if a1 is None else np.pad(a1, n - a1.size)
         a2 = None if a2 is None else np.pad(a2, n - a2.size)
         wf_raw_combined = merge_waveforms(a1, a2, mc)
-        if self.pulsar.use_mcc() and self.multi_core_compiler:
+        if self.pulsar.parameters['use_mcc'].cache.get() \
+                and self.multi_core_compiler:
             # Waveforms are added to mcc.post_sequencer_code_upload and will
             # be uploaded to device in pulsar._program_awgs after multi-core
             # compiler is executed.
@@ -853,7 +854,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             wave_idx (int): index of wave upload (0 or 1)
             wave_hashes: waveforms hashes
         """
-        if self.pulsar.use_sequence_cache():
+        if self.pulsar.parameters['use_sequence_cache'].cache.get():
             self.waveform_cache[wave_idx] = wave_hashes
 
     def _update_awg_instrument_status(self):
@@ -877,9 +878,10 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
     ):
         if first_element_of_segment:
             prepend_zeros = self.pulsar.parameters[
-                f"{self._awg.name}_prepend_zeros"]()
+                f"{self._awg_name}_prepend_zeros"].cache.get()
             if prepend_zeros is None:
-                prepend_zeros = self.pulsar.prepend_zeros()
+                prepend_zeros = self.pulsar.parameters[
+                    'prepend_zeros'].cache.get()
             elif isinstance(prepend_zeros, list):
                 prepend_zeros = prepend_zeros[self._awg_nr]
         else:
@@ -897,30 +899,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             trigger_source=self.trigger_source,
         )
 
-    @property
-    def trigger_source(self):
-        trigger_source = self.pulsar.parameters[
-            self._awg_name + "_trigger_source"].cache.get()
-        if isinstance(trigger_source, str):
-            return trigger_source
-        return trigger_source[self.trigger_group]
-
-    @property
-    def trigger_group(self):
-        """The pulsar trigger group to which this AWG module belong.
-
-        Remark: for speed reasons, this is not implemented via calls to
-            pulsar.get_trigger_group.
-        """
-        # FIXME: some kind of caching should be implemented since this might
-        #  be called from trigger_source for each element.
-        trigger_groups = self.pulsar.parameters[
-            self._awg_name + "_trigger_groups"].cache.get()
-        for group, channels in trigger_groups.items():
-            if self.i_channel_name in channels:
-                return group
-        return f"{self._awg_name}_{self.pulsar.DEFAULT_TRG_GRP}"
-
     def _configure_awg_str(
             self,
             awg_str,
@@ -937,7 +915,8 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             self,
             awg_str,
     ):
-        if self.pulsar.use_mcc() and self._awg_interface.awg_mcc:
+        if self.pulsar.parameters['use_mcc'].cache.get() \
+                and self._awg_interface.awg_mcc:
             self._awg.store_awg_source_string(self._awg_nr, awg_str)
             # otherwise, configure_awg_from_string stores it automatically
 
@@ -974,7 +953,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             amplitude = [float(amplitude)] * 2
         elif not ((isinstance(amplitude, np.ndarray) or
                    isinstance(amplitude, list)) and len(amplitude) == 2):
-            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+            raise ValueError(f"{self._awg_name} channel pair {self._awg_nr} "
                              f"receives inappropriate command table amplitude "
                              f"value, accepts float or array-like object with "
                              f"length 2.")
@@ -983,7 +962,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
             phase = [float(phase), float(phase)]
         elif not ((isinstance(phase, np.ndarray) or
                    isinstance(phase, list)) and len(phase) == 2):
-            raise ValueError(f"{self._awg.name} channel pair {self._awg_nr} "
+            raise ValueError(f"{self._awg_name} channel pair {self._awg_nr} "
                              f"receives inappropriate command table phase "
                              f"value, accepts float or array-like object with "
                              f"length 2.")
@@ -1034,7 +1013,7 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
 
             if status != 1:
                 log.warning(f"Failed to upload the command table to "
-                            f"{self._awg.name}, error index {status}")
+                            f"{self._awg_name}, error index {status}")
         else:
             # This is a DAQ server for virtual devices. We assume that upload
             # is successful.
@@ -1049,6 +1028,6 @@ class HDAWGGeneratorModule(ZIGeneratorModule):
                 self._awg_interface.awg_mcc_generators[self._awg_nr].ready()
 
     def _set_signal_output_status(self):
-        if self.pulsar.sigouts_on_after_programming():
+        if self.pulsar.parameters['sigouts_on_after_programming'].cache.get():
             for ch in range(8):
                 self._awg.set('sigouts_{}_on'.format(ch), True)
