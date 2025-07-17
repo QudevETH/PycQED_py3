@@ -17,7 +17,6 @@ class Block:
             the block end at its defined location.
     """
     counter = 0
-    INSIDE_BLOCKINFO_NAME = "BlockInfo"
 
     def __init__(self, block_name, pulse_list:list, pulse_modifs=None,
                  copy_pulses=True, **kw):
@@ -120,18 +119,6 @@ class Block:
             pulses_built = [block_start] + pulses_built
         if not block_end_specified:
             pulses_built = pulses_built + [block_end]
-
-        for p in pulses_built:
-            # if a dictionary wrapping a block is found, compile the inner block.
-            if p.get("pulse_type", None) == self.INSIDE_BLOCKINFO_NAME:
-                # p needs to have a block key
-                assert 'block' in p, f"Inside block {p.get('name', 'Block')} " \
-                    f"requires a key 'block' which refers to the uncompiled " \
-                    f"block object."
-                inside_block = p.pop('block')
-                inside_block_pulses = inside_block.build(**p)
-                # add all pulses of the inside block to the outer block
-                pulses_built.extend(inside_block_pulses)
 
         # prepend block name to reference pulses and pulses names
         for p in pulses_built:
