@@ -35,6 +35,7 @@ from copy import deepcopy
 
 from pycqed.instrument_drivers.instrument import InstrumentModule
 import pycqed.measurement.waveform_control.block as block_mod
+from pycqed.utilities import general as gen
 
 from qcodes import ManualParameter
 from qcodes.utils import validators
@@ -275,6 +276,7 @@ class ResetScheme(InstrumentModule):
             for argument_name, parameter_name in op.items():
                 operation_dict[op_code][argument_name] = \
                     self.get(parameter_name)
+            gen.make_values_immutable(operation_dict[op_code])
         return operation_dict
 
     def get_init_specific_params(self, operations=None):
@@ -509,6 +511,7 @@ class FeedbackReset(ResetScheme):
         operation_dict[self.get_opcode("I")] = \
             deepcopy(operation_dict[self.get_opcode("X180")])
         operation_dict[self.get_opcode("I")]['amplitude'] = 0
+        gen.make_values_immutable(operation_dict[op_code_I])
         operation_dict[self.get_opcode("RO")]['log_acquisition'] = \
             self.log_feedback_acquisitions()
         return operation_dict

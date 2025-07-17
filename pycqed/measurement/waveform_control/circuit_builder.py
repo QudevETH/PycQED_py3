@@ -1172,7 +1172,7 @@ class CircuitBuilder:
         simultaneous.extend([{"name": "simultaneous_end_pulse",
                               "pulse_type": "VirtualPulse",
                               "pulse_delay": 0,
-                              "ref_pulse": simultaneous_end_pulses,
+                              "ref_pulse": tuple(simultaneous_end_pulses),
                               "ref_point": 'end',
                               "ref_function": 'max'
                               }])

@@ -8,6 +8,8 @@ from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v2 import amplifier_characterization as ca
 from pycqed.instrument_drivers.meta_instrument.MeasurementObject import \
     MeasurementObject
+from pycqed.utilities import general as gen
+
 
 class TWPAObject(MeasurementObject):
     """
@@ -97,6 +99,7 @@ class TWPAObject(MeasurementObject):
         }
         for code, op in operation_dict.items():
             op['op_code'] = code
+            gen.make_values_immutable(op)
         return operation_dict
 
     def prepare_readout(self):
