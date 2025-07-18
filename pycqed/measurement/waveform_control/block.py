@@ -149,58 +149,6 @@ class Block:
             })
         self.block_end.update(block_end)
 
-    def _is_shell(self, pulse, block_start, block_end):
-        """
-        Checks, based on the pulse name, whether a pulse belongs to the block shell.
-        That is, if the pulse name is the same as the name of the block start or end.
-        A simple equivalence p == block_start or p == p_end does not work as pulse
-        could be a deepcopy of block_start, which would return False in the above
-        expressions.
-        Args:
-            pulse (dict): pulse to check.
-            block_start (dict): dictionary of the block start
-            block_end (dict): dictionary of the block end
-
-        Returns: whether pulse is a shell dictionary (bool)
-
-        """
-        return self._is_block_start(pulse, block_start) \
-               or self._is_block_end(pulse, block_end)
-
-    def _is_block_start(self, pulse, block_start):
-        """
-        Checks, based on the pulse name, whether a pulse belongs to the block shell.
-        That is, if the pulse name is the same as the name of the block start or end.
-        A simple equivalence p == block_start or p == p_end does not work as pulse
-        could be a deepcopy of block_start, which would return False in the above
-        expressions.
-        Args:
-            pulse (dict): pulse to check.
-            block_start (dict): dictionary of the block start
-
-        Returns: whether pulse is a the block start dictionary (bool)
-
-        """
-        return pulse.get('name', None) == block_start['name']
-
-
-    def _is_block_end(self, pulse, block_end):
-        """
-        Checks, based on the pulse name, whether a pulse belongs to the block shell.
-        That is, if the pulse name is the same as the name of the block start or end.
-        A simple equivalence p == block_start or p == p_end does not work as pulse
-        could be a deepcopy of block_start, which would return False in the above
-        expressions.
-        Args:
-            pulse (dict): pulse to check.
-            block_end (dict): dictionary of the block end
-
-        Returns: whether pulse is a the block end dictionary (bool)
-
-        """
-        return pulse.get('name', None) == block_end['name']
-
-
     def extend(self, additional_pulses):
         self.pulses.extend(additional_pulses)
 
