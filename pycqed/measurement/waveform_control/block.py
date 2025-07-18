@@ -127,15 +127,13 @@ class Block:
                 p['name'] = f"{name}-|-{p_name}"
 
             ref_pulse = p.get("ref_pulse", "previous_pulse")
-            p_is_block_start = self._is_block_start(p, block_start)
-
             # rename ref pulse within the block if not a special name
             escape_names = ("previous_pulse", "segment_start", "init_start")
             if isinstance(ref_pulse, (list, tuple)):
                 p['ref_pulse'] = tuple(
                     f'{name}-|-{rp}' for rp in p['ref_pulse'])
             else:
-                if ref_pulse not in escape_names and not p_is_block_start:
+                if ref_pulse not in escape_names and p is not block_start:
                     p['ref_pulse'] = f"{name}-|-{ref_pulse}"
 
         return pulses_built
