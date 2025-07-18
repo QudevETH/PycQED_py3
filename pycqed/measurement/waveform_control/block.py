@@ -108,10 +108,10 @@ class Block:
         block_start_specified = False
         block_end_specified = False
         for p in pulses_built:
-            if p.get("name", None) == "start":
+            if (p_name := p.get("name", None)) == "start":
                 block_start = p #save reference
                 block_start_specified = True
-            elif p.get("name", None) == "end":
+            elif p_name == "end":
                 block_end = p
                 block_end_specified = True
         # add them if not specified
@@ -124,8 +124,8 @@ class Block:
         escape_names = ("previous_pulse", "segment_start", "init_start")
         for p in pulses_built:
             # if the pulse has a name, prepend the blockname to it
-            if p.get("name", None) is not None:
-                p['name'] = name + "-|-" + p['name']
+            if (p_name := p.get("name")) is not None:
+                p['name'] = f"{name}-|-{p_name}"
 
             ref_pulse = p.get("ref_pulse", "previous_pulse")
             p_is_block_start = self._is_block_start(p, block_start)
@@ -137,7 +137,7 @@ class Block:
                     f'{name}-|-{rp}' for rp in p['ref_pulse'])
             else:
                 if ref_pulse not in escape_names and not p_is_block_start:
-                    p['ref_pulse'] = name + "-|-" + p['ref_pulse']
+                    p['ref_pulse'] = f"{name}-|-{ref_pulse}"
 
         return pulses_built
 
