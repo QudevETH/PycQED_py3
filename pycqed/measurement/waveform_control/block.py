@@ -88,15 +88,6 @@ class Block:
             name = self.name + (f"_{self.counter}" if self.counter > 0 else "")
             self.counter += 1
 
-        block_start = {"name": f"start",
-                       "pulse_type": "VirtualPulse",
-                       "pulse_delay": block_delay,
-                       "ref_pulse": ref_pulse,
-                       "ref_point": ref_point}
-        block_start.update(kwargs.get("block_start", self.block_start))
-        block_end = {"name": f"end",
-                     "pulse_type": "VirtualPulse"}
-        block_end.update(kwargs.get("block_end", self.block_end))
         if sweep_dicts_list is not None and sweep_index_list is not None:
             pulses_built = self.pulses_sweepcopy(sweep_dicts_list, sweep_index_list)
         elif destroy:
@@ -112,12 +103,20 @@ class Block:
                 block_start = p #save reference
                 block_start_specified = True
             elif p_name == "end":
-                block_end = p
                 block_end_specified = True
         # add them if not specified
         if not block_start_specified:
+            block_start = {"name": f"start",
+                           "pulse_type": "VirtualPulse",
+                           "pulse_delay": block_delay,
+                           "ref_pulse": ref_pulse,
+                           "ref_point": ref_point}
+            block_start.update(kwargs.get("block_start", self.block_start))
             pulses_built = [block_start] + pulses_built
         if not block_end_specified:
+            block_end = {"name": f"end",
+                         "pulse_type": "VirtualPulse"}
+            block_end.update(kwargs.get("block_end", self.block_end))
             pulses_built = pulses_built + [block_end]
 
         # prepend block name to reference pulses and pulses names
