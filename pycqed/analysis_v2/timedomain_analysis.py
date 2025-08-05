@@ -5469,6 +5469,7 @@ class FluxlineCrosstalkAnalysis(MultiQubit_TimeDomain_Analysis):
                     'fit_yvals': {'data': pdd[param][qb]}}
                 keys_to_fit.append(key)
         self.run_fitting(keys_to_fit=keys_to_fit)
+        self.save_fit_results()
 
     def prepare_plots(self):
         pdd = self.proc_data_dict
