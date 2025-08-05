@@ -229,7 +229,7 @@ def get_pulse_dict_from_pars(pulse_pars, make_immutable=True):
         pulses['mZ90']['basis_rotation'][target_qubit] += -90
 
     if make_immutable:
-        gen.make_values_immutable(pulses)
+        [gen.make_values_immutable(p) for p in pulses.values()]
     return pulses
 
 
