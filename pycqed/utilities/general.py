@@ -644,8 +644,17 @@ def make_values_immutable(obj):
     Args:
         obj (dict): The dict whose items should be made immutable.
     """
+    def array_to_tuple(a):
+        """Converts a numpy array to nested tuples"""
+        if a.shape == ():
+            return a.item()
+        else:
+            return tuple(map(array_to_tuple, a))
+
     for k in obj.keys():
-        obj[k] = frozendict.deepfreeze(obj[k])
+        obj[k] = frozendict.deepfreeze(obj[k], {
+            np.ndarray: array_to_tuple
+        })
 
 
 def contains_mutable_values(obj):
