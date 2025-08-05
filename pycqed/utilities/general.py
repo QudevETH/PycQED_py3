@@ -659,7 +659,10 @@ def contains_mutable_values(obj):
     """
     try:
         hash(obj)
-        return False  # if obj can be hashed, it cannot contain mutables
+        # If obj can be hashed, we assume that it does not contain mutables.
+        # This is in analogy to what the frozendict package assumes.
+        # (It is not always true, but works for types we are interested in).
+        return False
     except TypeError:
         pass
     if isinstance(obj, tuple):
