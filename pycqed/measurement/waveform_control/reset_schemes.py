@@ -508,9 +508,10 @@ class FeedbackReset(ResetScheme):
         """
         operation_dict = super().get_operation_dict()
 
-        operation_dict[self.get_opcode("I")] = \
+        op_code_I = self.get_opcode("I")
+        operation_dict[op_code_I] = \
             deepcopy(operation_dict[self.get_opcode("X180")])
-        operation_dict[self.get_opcode("I")]['amplitude'] = 0
+        operation_dict[op_code_I]['amplitude'] = 0
         gen.make_values_immutable(operation_dict[op_code_I])
         operation_dict[self.get_opcode("RO")]['log_acquisition'] = \
             self.log_feedback_acquisitions()
