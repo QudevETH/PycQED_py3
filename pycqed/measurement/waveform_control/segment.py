@@ -74,7 +74,7 @@ class Segment:
     the waveform frequency will be rounded to the n-th digit of Hz."""
 
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
-                 fast_mode=False, **kw):
+                 fast_mode=False, copy_pulses=None, **kw):
         """
         Initiate instance of Segment class.
 
@@ -119,6 +119,9 @@ class Segment:
                   to modify tvals in Pulse.waveforms.
                 - Not checking for unresolved ParametricValues when
                   instantiating pulses
+            copy_pulses (bool, None): Whether the entries of pulse_pars should
+                be copied to prevent any modifications. Defaults to None, in
+                which case the entries are copied, except in fast mode.
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
@@ -180,6 +183,8 @@ class Segment:
         self.pulse_pars = []
         self.is_first_segment = False
         self.fast_mode = fast_mode
+        self.copy_pulses = not fast_mode if copy_pulses is None \
+            else copy_pulses
         self.resolve_overlapping_elements = \
             kw.pop('resolve_overlapping_elements',
                    self.pulsar.parameters[
@@ -198,7 +203,7 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
-        if self.fast_mode:
+        if not self.copy_pulses:
             pars_copy = pulse_pars
         else:
             self.pulse_pars.append(deepcopy(pulse_pars))
@@ -507,7 +512,7 @@ class Segment:
             ref_pulses_dict_new = {}
             for name, pulse in ref_pulses_dict.items():
                 for p in pulses.get(name, []):
-                    if isinstance(p.ref_pulse, list):
+                    if isinstance(p.ref_pulse, (list, tuple)):
                         if p.pulse_obj.name in visited_pulses:
                             continue
                         if not all([ref_pulse in ref_pulses_dict_all for
@@ -515,8 +520,10 @@ class Segment:
                             continue
 
                         t0_list = []
-                        delay_list = [p.delay] * len(p.ref_pulse) if not isinstance(p.delay, list) else p.delay
-                        ref_point_list = [p.ref_point] * len(p.ref_pulse) if not isinstance(p.ref_point, list) \
+                        delay_list = [p.delay] * len(p.ref_pulse) if \
+                            not isinstance(p.delay, (list, tuple)) else p.delay
+                        ref_point_list = [p.ref_point] * len(p.ref_pulse) if \
+                            not isinstance(p.ref_point, (list, tuple)) \
                             else p.ref_point
 
                         for (ref_pulse, delay, ref_point) in zip(p.ref_pulse, delay_list, ref_point_list):
@@ -1138,7 +1145,7 @@ class Segment:
         pulses = {}
         for pulse in self.resolved_pulses:
             ref_pulse_list = pulse.ref_pulse
-            if not isinstance(ref_pulse_list, list):
+            if not isinstance(ref_pulse_list, (list, tuple)):
                 ref_pulse_list = [ref_pulse_list]
             for p in ref_pulse_list:
                 if p not in pulses:
@@ -1939,10 +1946,7 @@ class Segment:
                         pulse.element_time(element_start_time) + pulse.length,
                         awg=awg)
                     for channel in pulse_channels:
-                        if self.fast_mode:
-                            t_vals_ch = tvals[channel]
-                        else:
-                            t_vals_ch = tvals[channel].copy()
+                        t_vals_ch = tvals[channel]
                         chan_tvals[channel] = t_vals_ch[pulse_start:pulse_end]
 
                     # calculate pulse waveforms
@@ -2250,6 +2254,7 @@ class Segment:
             samples = self.element_start_end[element][group][1]
             tvals[channel] = np.arange(samples) / self.pulsar.clock(
                 channel=channel) + self.get_element_start(element, group)
+            tvals[channel].flags['WRITEABLE'] = False
 
         return tvals
 

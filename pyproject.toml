@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
     "cvxpy",
     "h5py",
+    "frozendict",
     "lmfit",
     "matplotlib",
     "more-itertools",
