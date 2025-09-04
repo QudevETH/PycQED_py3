@@ -1348,11 +1348,13 @@ class CircuitBuilder:
                     'segblock', [prep, this_body_block, final, ro],
                     disable_block_counter=True,
                     destroy=[False, body_block is None, False, False])
-                seg = Segment(f'seg{j}', segblock.build(
+                pulses = segblock.build(
                     sweep_dicts_list=(
                         None if (body_block is None and self.fast_mode)
                         else sweep_points), sweep_index_list=[j, i],
-                    destroy=True), fast_mode=self.fast_mode, **segment_kwargs)
+                    destroy=True)
+                seg = Segment(f'seg{j}', pulses, fast_mode=self.fast_mode,
+                              copy_pulses=False, **segment_kwargs)
                 # apply Segment sweep points
                 for dim in [0, 1]:
                     for param in sweep_points[dim]:

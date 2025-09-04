@@ -74,7 +74,7 @@ class Segment:
     the waveform frequency will be rounded to the n-th digit of Hz."""
 
     def __init__(self, name, pulse_pars_list=(), acquisition_mode='default',
-                 fast_mode=False, **kw):
+                 fast_mode=False, copy_pulses=None, **kw):
         """
         Initiate instance of Segment class.
 
@@ -119,6 +119,9 @@ class Segment:
                   to modify tvals in Pulse.waveforms.
                 - Not checking for unresolved ParametricValues when
                   instantiating pulses
+            copy_pulses (bool, None): Whether the entries of pulse_pars should
+                be copied to prevent any modifications. Defaults to None, in
+                which case the entries are copied, except in fast mode.
             kw (dict): Keyword arguments:
 
                 * ``resolve_overlapping_elements``: flag that, if true, lets the
@@ -180,6 +183,8 @@ class Segment:
         self.pulse_pars = []
         self.is_first_segment = False
         self.fast_mode = fast_mode
+        self.copy_pulses = not fast_mode if copy_pulses is None \
+            else copy_pulses
         self.resolve_overlapping_elements = \
             kw.pop('resolve_overlapping_elements',
                    self.pulsar.parameters[
@@ -198,7 +203,7 @@ class Segment:
         and sets default values where necessary. After that an UnresolvedPulse
         is instantiated.
         """
-        if self.fast_mode:
+        if not self.copy_pulses:
             pars_copy = pulse_pars
         else:
             self.pulse_pars.append(deepcopy(pulse_pars))
