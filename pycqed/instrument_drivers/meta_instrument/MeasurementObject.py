@@ -10,6 +10,7 @@ from qcodes.utils import validators as vals
 from pycqed.instrument_drivers.instrument import Instrument
 
 from pycqed.measurement import sweep_functions as swf
+from pycqed.utilities import general as gen
 
 
 class MeasurementObject(Instrument):
@@ -561,6 +562,7 @@ class MeasurementObject(Instrument):
 
         for code, op in operation_dict.items():
             op['op_code'] = code
+            gen.make_values_immutable(op)
         return operation_dict
 
     def swf_ro_freq_lo(self, bare=False):

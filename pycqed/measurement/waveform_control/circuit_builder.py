@@ -5,6 +5,7 @@ from copy import copy, deepcopy
 import numpy as np
 
 from pycqed.measurement import multi_qubit_module as mqm
+from collections.abc import Mapping
 
 log = logging.getLogger(__name__)
 from pycqed.measurement.waveform_control.block import Block, ParametricValue
@@ -1020,11 +1021,11 @@ class CircuitBuilder:
             return pulses
         elif isinstance(pulses, str):  # opcode
             return self.block_from_ops(block_name, [pulses])
-        elif isinstance(pulses, dict):  # pulse dict
+        elif isinstance(pulses, Mapping):  # pulse dict
             return self.block_from_pulse_dicts([pulses], block_name=block_name)
         elif isinstance(pulses[0], str):  # list of opcodes
             return self.block_from_ops(block_name, pulses)
-        elif isinstance(pulses[0], dict):  # list of pulse dicts
+        elif isinstance(pulses[0], Mapping):  # list of pulse dicts
             return self.block_from_pulse_dicts(pulses, block_name=block_name)
 
     def block_from_pulse_dicts(self, pulse_dicts,
@@ -1171,7 +1172,7 @@ class CircuitBuilder:
         simultaneous.extend([{"name": "simultaneous_end_pulse",
                               "pulse_type": "VirtualPulse",
                               "pulse_delay": 0,
-                              "ref_pulse": simultaneous_end_pulses,
+                              "ref_pulse": tuple(simultaneous_end_pulses),
                               "ref_point": 'end',
                               "ref_function": 'max'
                               }])

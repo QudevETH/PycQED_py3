@@ -32,6 +32,7 @@ from pycqed.measurement.pulse_sequences import single_qubit_tek_seq_elts as sq
 from pycqed.measurement.waveform_control import reset_schemes as reset
 from pycqed.utilities.general import add_suffix_to_dict_keys, temporary_value
 from pycqed.utilities.math import dbm_to_vp
+from pycqed.utilities import general as gen
 
 try:
     import pycqed.simulations.readout_mode_simulations_for_CLEAR_pulse as sim_CLEAR
@@ -1174,11 +1175,13 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
 
             operation_dict.update(add_suffix_to_dict_keys(
                 sq.get_pulse_dict_from_pars(
-                    operation_dict[f'X180{tn} ' + self.name]),
-                f'{tn} ' + self.name))
+                    operation_dict[f'X180{tn} ' + self.name],
+                    make_immutable=False,  # will be done below anyway
+                ), f'{tn} ' + self.name))
 
         for code, op in operation_dict.items():
             op['op_code'] = code
+            gen.make_values_immutable(op)
         return operation_dict
 
     def swf_drive_lo_freq(self, allow_IF_sweep=True):

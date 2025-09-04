@@ -3,6 +3,7 @@ from copy import deepcopy
 from pycqed.measurement.waveform_control import pulsar as ps
 from pycqed.measurement.waveform_control import sequence as sequence
 from pycqed.measurement.waveform_control import segment as segment
+from pycqed.utilities import general as gen
 
 import logging
 log = logging.getLogger(__name__)
@@ -164,7 +165,7 @@ def sweep_pulse_params(pulses, params, pulse_not_found_warning=True):
     return swept_pulses
 
 
-def get_pulse_dict_from_pars(pulse_pars):
+def get_pulse_dict_from_pars(pulse_pars, make_immutable=True):
     '''
     Returns a dictionary containing pulse_pars for all the primitive pulses
     based on a single set of pulse_pars.
@@ -173,6 +174,8 @@ def get_pulse_dict_from_pars(pulse_pars):
 
     input args:
         pulse_pars: dictionary containing pulse_parameters
+        make_immutable: Whether the parameteres of the pulses in the returned
+            dict should be made immutable.
     return:
         pulses: dictionary of pulse_pars dictionaries
     '''
@@ -225,6 +228,8 @@ def get_pulse_dict_from_pars(pulse_pars):
         pulses['Z90']['basis_rotation'][target_qubit] += 90
         pulses['mZ90']['basis_rotation'][target_qubit] += -90
 
+    if make_immutable:
+        [gen.make_values_immutable(p) for p in pulses.values()]
     return pulses
 
 

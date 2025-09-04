@@ -39,6 +39,7 @@ from collections import OrderedDict
 from collections.abc import Mapping
 from typing import Optional
 import pycqed.utilities.aggregation_plots as ap
+from pycqed.utilities import general as gen
 
 log = logging.getLogger(__name__)
 
@@ -230,6 +231,7 @@ class Device(Instrument):
                 this_operation[argument_name] = self.get(parameter_name)
             this_operation['op_code'] = op_tag[0] + ' ' + op_tag[1] + ' ' \
                                         + op_tag[2]
+            gen.make_values_immutable(this_operation)
             for op_name in [op_tag[0] + ' ' + op_tag[1] + ' ' + op_tag[2],
                             op_tag[0] + ' ' + op_tag[2] + ' ' + op_tag[1]]:
                 two_qb_operation_dict[op_name] = this_operation
