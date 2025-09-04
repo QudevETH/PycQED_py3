@@ -17,7 +17,6 @@ class Block:
             the block end at its defined location.
     """
     counter = 0
-    INSIDE_BLOCKINFO_NAME = "BlockInfo"
 
     def __init__(self, block_name, pulse_list:list, pulse_modifs=None,
                  copy_pulses=True, **kw):
@@ -89,15 +88,6 @@ class Block:
             name = self.name + (f"_{self.counter}" if self.counter > 0 else "")
             self.counter += 1
 
-        block_start = {"name": f"start",
-                       "pulse_type": "VirtualPulse",
-                       "pulse_delay": block_delay,
-                       "ref_pulse": ref_pulse,
-                       "ref_point": ref_point}
-        block_start.update(kwargs.get("block_start", self.block_start))
-        block_end = {"name": f"end",
-                     "pulse_type": "VirtualPulse"}
-        block_end.update(kwargs.get("block_end", self.block_end))
         if sweep_dicts_list is not None and sweep_index_list is not None:
             pulses_built = self.pulses_sweepcopy(sweep_dicts_list, sweep_index_list)
         elif destroy:
@@ -109,47 +99,41 @@ class Block:
         block_start_specified = False
         block_end_specified = False
         for p in pulses_built:
-            if p.get("name", None) == "start":
+            if (p_name := p.get("name", None)) == "start":
                 block_start = p #save reference
                 block_start_specified = True
-            elif p.get("name", None) == "end":
-                block_end = p
+            elif p_name == "end":
                 block_end_specified = True
         # add them if not specified
         if not block_start_specified:
+            block_start = {"name": f"start",
+                           "pulse_type": "VirtualPulse",
+                           "pulse_delay": block_delay,
+                           "ref_pulse": ref_pulse,
+                           "ref_point": ref_point}
+            block_start.update(kwargs.get("block_start", self.block_start))
             pulses_built = [block_start] + pulses_built
         if not block_end_specified:
+            block_end = {"name": f"end",
+                         "pulse_type": "VirtualPulse"}
+            block_end.update(kwargs.get("block_end", self.block_end))
             pulses_built = pulses_built + [block_end]
 
-        for p in pulses_built:
-            # if a dictionary wrapping a block is found, compile the inner block.
-            if p.get("pulse_type", None) == self.INSIDE_BLOCKINFO_NAME:
-                # p needs to have a block key
-                assert 'block' in p, f"Inside block {p.get('name', 'Block')} " \
-                    f"requires a key 'block' which refers to the uncompiled " \
-                    f"block object."
-                inside_block = p.pop('block')
-                inside_block_pulses = inside_block.build(**p)
-                # add all pulses of the inside block to the outer block
-                pulses_built.extend(inside_block_pulses)
-
         # prepend block name to reference pulses and pulses names
+        escape_names = ("previous_pulse", "segment_start", "init_start")
         for p in pulses_built:
             # if the pulse has a name, prepend the blockname to it
-            if p.get("name", None) is not None:
-                p['name'] = name + "-|-" + p['name']
+            if (p_name := p.get("name")) is not None:
+                p['name'] = f"{name}-|-{p_name}"
 
             ref_pulse = p.get("ref_pulse", "previous_pulse")
-            p_is_block_start = self._is_block_start(p, block_start)
-
             # rename ref pulse within the block if not a special name
-            escape_names = ("previous_pulse", "segment_start", "init_start")
             if isinstance(ref_pulse, (list, tuple)):
                 p['ref_pulse'] = tuple(
                     f'{name}-|-{rp}' for rp in p['ref_pulse'])
             else:
-                if ref_pulse not in escape_names and not p_is_block_start:
-                    p['ref_pulse'] = name + "-|-" + p['ref_pulse']
+                if ref_pulse not in escape_names and p is not block_start:
+                    p['ref_pulse'] = f"{name}-|-{ref_pulse}"
 
         return pulses_built
 
@@ -163,58 +147,6 @@ class Block:
                 'ref_point': 'end',
             })
         self.block_end.update(block_end)
-
-    def _is_shell(self, pulse, block_start, block_end):
-        """
-        Checks, based on the pulse name, whether a pulse belongs to the block shell.
-        That is, if the pulse name is the same as the name of the block start or end.
-        A simple equivalence p == block_start or p == p_end does not work as pulse
-        could be a deepcopy of block_start, which would return False in the above
-        expressions.
-        Args:
-            pulse (dict): pulse to check.
-            block_start (dict): dictionary of the block start
-            block_end (dict): dictionary of the block end
-
-        Returns: whether pulse is a shell dictionary (bool)
-
-        """
-        return self._is_block_start(pulse, block_start) \
-               or self._is_block_end(pulse, block_end)
-
-    def _is_block_start(self, pulse, block_start):
-        """
-        Checks, based on the pulse name, whether a pulse belongs to the block shell.
-        That is, if the pulse name is the same as the name of the block start or end.
-        A simple equivalence p == block_start or p == p_end does not work as pulse
-        could be a deepcopy of block_start, which would return False in the above
-        expressions.
-        Args:
-            pulse (dict): pulse to check.
-            block_start (dict): dictionary of the block start
-
-        Returns: whether pulse is a the block start dictionary (bool)
-
-        """
-        return pulse.get('name', None) == block_start['name']
-
-
-    def _is_block_end(self, pulse, block_end):
-        """
-        Checks, based on the pulse name, whether a pulse belongs to the block shell.
-        That is, if the pulse name is the same as the name of the block start or end.
-        A simple equivalence p == block_start or p == p_end does not work as pulse
-        could be a deepcopy of block_start, which would return False in the above
-        expressions.
-        Args:
-            pulse (dict): pulse to check.
-            block_end (dict): dictionary of the block end
-
-        Returns: whether pulse is a the block end dictionary (bool)
-
-        """
-        return pulse.get('name', None) == block_end['name']
-
 
     def extend(self, additional_pulses):
         self.pulses.extend(additional_pulses)
