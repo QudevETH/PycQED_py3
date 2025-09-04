@@ -1939,10 +1939,7 @@ class Segment:
                         pulse.element_time(element_start_time) + pulse.length,
                         awg=awg)
                     for channel in pulse_channels:
-                        if self.fast_mode:
-                            t_vals_ch = tvals[channel]
-                        else:
-                            t_vals_ch = tvals[channel].copy()
+                        t_vals_ch = tvals[channel]
                         chan_tvals[channel] = t_vals_ch[pulse_start:pulse_end]
 
                     # calculate pulse waveforms
@@ -2250,6 +2247,7 @@ class Segment:
             samples = self.element_start_end[element][group][1]
             tvals[channel] = np.arange(samples) / self.pulsar.clock(
                 channel=channel) + self.get_element_start(element, group)
+            tvals[channel].flags['WRITEABLE'] = False
 
         return tvals
 
