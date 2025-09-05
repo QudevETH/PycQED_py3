@@ -1,7 +1,7 @@
 """
     Base driver for the UHFQA instrument including all common functionality.
     Application dependent code can be found in the UHFQuantumController and in the
-    UHFQA_qudev modules. 
+    UHFQA_qudev modules.
 """
 
 import time
@@ -59,7 +59,7 @@ class UHFQA_core(zibase.ZI_base_instrument):
         http://www.zhinst.com/downloads, https://people.zhinst.com/~niels/
     2. upload the latest firmware to the UHFQA using the LabOne GUI
     """
-    
+
     # Define minimum required revisions
     MIN_FWREVISION = 63210
     MIN_FPGAREVISION = 63133
@@ -273,7 +273,7 @@ class UHFQA_core(zibase.ZI_base_instrument):
         self.qas_0_deskew_rows_0_cols_0(1.0)
         self.qas_0_deskew_rows_0_cols_1(0.0)
         self.qas_0_deskew_rows_1_cols_0(0.0)
-        self.qas_0_deskew_rows_1_cols_1(1.0) 
+        self.qas_0_deskew_rows_1_cols_1(1.0)
 
         # Configure the result logger to not do any averaging
         self.qas_0_result_length(1000)
@@ -451,13 +451,13 @@ class UHFQA_core(zibase.ZI_base_instrument):
     # 'public' functions: acquisition support
     ##########################################################################
 
-    def acquisition(self, 
-                    samples=100, 
-                    averages=1, 
-                    acquisition_time=0.010, 
+    def acquisition(self,
+                    samples=100,
+                    averages=1,
+                    acquisition_time=0.010,
                     timeout=10,
-                    channels=(0, 1), 
-                    mode='rl', 
+                    channels=(0, 1),
+                    mode='rl',
                     poll=True):
         self.timeout(timeout)
         self.acquisition_initialize(samples, averages, channels, mode, poll)
@@ -469,12 +469,12 @@ class UHFQA_core(zibase.ZI_base_instrument):
 
         return data
 
-    def acquisition_initialize(self, 
-                               samples, 
+    def acquisition_initialize(self,
+                               samples,
                                averages,
                                loop_cnt = None,
                                channels=(0, 1),
-                               mode='rl', 
+                               mode='rl',
                                poll=True) -> None:
         # Define the channels to use and subscribe to them
         self._acquisition_nodes = []
@@ -533,7 +533,7 @@ class UHFQA_core(zibase.ZI_base_instrument):
 
         # Generate more dummy data
         self.auxins_0_averaging(8)
-    
+
     def acquisition_arm(self, single=True) -> None:
         # time.sleep(0.01)
         self.awgs_0_single(single)

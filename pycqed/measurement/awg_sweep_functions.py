@@ -119,6 +119,11 @@ class BlockSoftHardSweep(swf.UploadingSweepFunction, swf.Soft_Sweep):
         `self.circuit_builder.sweep_n_dim` is used to convert vals into a hard
         sweep sequence which is subsequently uploaded to hardware.
         """
+        if vals.shape[-1] != len(self.params):
+            raise ValueError(
+                "BlockSoftHardSweep.set_parameter called with parameter "
+                f"values with shape {vals.shape}. This is incompatible with "
+                f"{len(self.params)} gate parameters in the circuit.")
         self.sweep_points = sp_mod.SweepPoints([{
             p: (vals[:, i], '', p)
             for i, p in enumerate(self.params)}])

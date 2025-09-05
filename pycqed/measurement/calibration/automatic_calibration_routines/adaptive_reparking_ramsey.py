@@ -152,7 +152,7 @@ class ReparkingRamseyStep(qbcal.ReparkingRamsey, Step):
         self.run_analysis()
         if self.get_param_value('update'):
             self.run_update()
-    
+
     def post_run(self):
         for qb in self.qubits:
             if self.analysis.fit_uss:

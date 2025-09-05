@@ -10,7 +10,6 @@ import scipy as sp
 from qcodes.instrument.parameter import InstrumentRefParameter, ManualParameter
 from qcodes.utils import validators as vals
 
-import pycqed.analysis.fitting_models as fit_mods
 import pycqed.analysis_v2.spectroscopy_analysis as sa
 import pycqed.measurement.waveform_control.fluxpulse_predistortion as fl_predist
 import pycqed.measurement.waveform_control.pulse as bpl
@@ -33,6 +32,7 @@ from pycqed.measurement.pulse_sequences import single_qubit_tek_seq_elts as sq
 from pycqed.measurement.waveform_control import reset_schemes as reset
 from pycqed.utilities.general import add_suffix_to_dict_keys, temporary_value
 from pycqed.utilities.math import dbm_to_vp
+from pycqed.utilities import general as gen
 
 try:
     import pycqed.simulations.readout_mode_simulations_for_CLEAR_pulse as sim_CLEAR
@@ -64,7 +64,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         'optimal': 'custom', 'optimal_qutrit': 'custom_2D',
     }
     _ro_pulse_type_vals = ['GaussFilteredCosIQPulse',
-                           'GaussFilteredCosIQPulseMultiChromatic',
                            'GaussFilteredCosIQPulseWithFlux']
     _allowed_drive_modes = [None, 'continuous_spec',
                             'continuous_spec_modulated', 'pulsed_spec',
@@ -152,6 +151,13 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                                                     "none",
                                                                     "all",
                                                                     "odd", "even"))
+        self.add_pulse_parameter(
+            'RO', 'ro_flux_net_zero_pulse', 'flux_net_zero_pulse',
+            initial_value=False, vals=vals.Bool(),
+            docstring='If True, uses a net-zero pulse for '
+                      'flux-pulse-assisted readout (note that this doubles'
+                      'the  duration of the flux pulse, such that the '
+                      'readout pulse happens during the first half).')
 
         self.add_parameter('acq_weights_basis', vals=vals.Lists(),
                            label="weight basis used",
@@ -422,6 +428,18 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                  'position.',
                            vals=vals.Numbers(),
                            parameter_class=ManualParameter)
+        self.add_parameter('instr_flux_dc', initial_value=None,
+                           parameter_class=InstrumentRefParameter,
+                           vals=vals.MultiType(
+                                    vals.Enum(None), vals.Strings()),
+                           docstring="Instrument name of the dc flux source")
+        self.add_parameter('flux_dc_channel', initial_value=None,
+                           parameter_class=ManualParameter,
+                           vals=vals.MultiType(
+                                    vals.Enum(None), vals.Strings()),
+                           docstring="Name of the flux dc channel "
+                                     "of instr_flux_dc, naming convention "
+                                     "e.g.: volt_fluxline1")
 
         # ac flux parameters
         self.add_parameter('flux_distortion', parameter_class=ManualParameter,
@@ -1157,11 +1175,13 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
 
             operation_dict.update(add_suffix_to_dict_keys(
                 sq.get_pulse_dict_from_pars(
-                    operation_dict[f'X180{tn} ' + self.name]),
-                f'{tn} ' + self.name))
+                    operation_dict[f'X180{tn} ' + self.name],
+                    make_immutable=False,  # will be done below anyway
+                ), f'{tn} ' + self.name))
 
         for code, op in operation_dict.items():
             op['op_code'] = code
+            gen.make_values_immutable(op)
         return operation_dict
 
     def swf_drive_lo_freq(self, allow_IF_sweep=True):
@@ -1522,7 +1542,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                         'x0': x0,
                         'initial_step': [initial_stepsize, initial_stepsize],
                         'no_improv_break': no_improv_break,
-                        'minimize': True,
                         'maxiter': 500}
         chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
             self.ge_I_channel())]
@@ -1700,7 +1719,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                         'x0': x0,
                         'initial_step': [initial_stepsize, initial_stepsize],
                         'no_improv_break': no_improv_break,
-                        'minimize': True,
                         'maxiter': 500}
         chI_par = self.instr_pulsar.get_instr().parameters['{}_offset'.format(
             self.ro_I_channel())]
@@ -1728,7 +1746,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             other_qb.prepare(drive=None)
             MC.set_detector_function(det.IndexDetector(
                 other_qb.int_avg_det_spec, 0))
-            awg_n = other_qb.instr_acq().get_instr().get_awg_control_object()[1]
+            awg_n = other_qb.instr_acq.get_instr().get_awg_control_object()[1]
             other_qb.instr_pulsar.get_instr().start(exclude=[awg_n])
             MC.run(name='readout_carrier_calibration' + self.msmt_suffix,
                    mode='adaptive')
@@ -1751,36 +1769,36 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                                             upload=True, **kwargs):
         """Method for calibrating the lo leakage of the drive IQ Mixer
 
-        By applying DC biases on the I and Q inputs of an IQ mixer one can 
-        change the bias conditions of the diodes inside the mixer. This can be 
-        used to reduce LO leakage. This method measures the LO leakage for 
-        different values of DC biases. The subsequent analysis fits an 
-        analytical model to the measured data and extracts the settings 
+        By applying DC biases on the I and Q inputs of an IQ mixer one can
+        change the bias conditions of the diodes inside the mixer. This can be
+        used to reduce LO leakage. This method measures the LO leakage for
+        different values of DC biases. The subsequent analysis fits an
+        analytical model to the measured data and extracts the settings
         minimizing the LO leakage.
 
         Args:
-            update (bool, optional): Determines whether the DC biases found from 
-                the measurements that minimize the LO leakage 
-                are written into the qubit parameters or not. 
+            update (bool, optional): Determines whether the DC biases found from
+                the measurements that minimize the LO leakage
+                are written into the qubit parameters or not.
                 Defaults to True.
-            meas_grid (:py:class:'np.array', optional): Grid of points to be 
-                measured in form of a Numpy array of shape (2, number of points). 
-                The first dimension holding 
-                the values for I channel DC biases and the second dimension 
-                holding the Q channel DC biases. Both in volts. If no meas_grid 
-                is provided a uniform grid is generated using n_meas and limits. 
+            meas_grid (:py:class:'np.array', optional): Grid of points to be
+                measured in form of a Numpy array of shape (2, number of points).
+                The first dimension holding
+                the values for I channel DC biases and the second dimension
+                holding the Q channel DC biases. Both in volts. If no meas_grid
+                is provided a uniform grid is generated using n_meas and limits.
                 Defaults to None.
-            n_meas (int or tuple, optional): Tuple, list or 1D array of 
-                length 2 that determines the number of measurement points in 
-                case meas_grid is not provided. If an integer is provided the 
+            n_meas (int or tuple, optional): Tuple, list or 1D array of
+                length 2 that determines the number of measurement points in
+                case meas_grid is not provided. If an integer is provided the
                 input will be transformed to a list n_meas = (n_meas, n_meas).
                 n_meas[0] = points in V_I.
                 n_meas[1] = points in V_Q.
                 Defaults to (10, 10).
             trigger_sep (float, optional): Seperation time in s between trigger
                 signals. Defaults to 5e-6 s.
-            limits (tuple, optional): Tuple, list or 1D array of length 4 
-                holding the limits of the measurement grid in case 
+            limits (tuple, optional): Tuple, list or 1D array of length 4
+                holding the limits of the measurement grid in case
                 meas_grid is not provided. Ordered as follows
                 (min bias I, max bias I, min bias Q, max bias Q)
                 Units: Volts
@@ -1792,7 +1810,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         Returns:
             V_I (float): DC bias on I channel that minimizes LO leakage.
             V_Q (float): DC bias on Q channel that minimizes LO leakage.
-            ma (:py:class:~'pycqed.timedomain_analysis.MixerCarrierAnalysis'): 
+            ma (:py:class:~'pycqed.timedomain_analysis.MixerCarrierAnalysis'):
                 The MixerCarrierAnalysis object.
         """
         log.warning("This function (calibrate_drive_mixer_carrier_model) is "
@@ -1815,16 +1833,16 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                           '`calibrate_drive_mixer_carrier_model` needs to be a list, '
                           'tuple or 1D array of length 2.\nFound length '
                           '{} object instead!'.format(len(n_meas)))
-            meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]), 
+            meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]),
                                     np.linspace(limits[2], limits[3], n_meas[1]))
-            meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])    
+            meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])
         else:
             limits = []
             limits.append(np.min(meas_grid[0, :]))
             limits.append(np.max(meas_grid[0, :]))
             limits.append(np.min(meas_grid[1, :]))
             limits.append(np.max(meas_grid[1, :]))
-        
+
         # Check that bounds of measurement grid are reasonable and do not exceed
         # 1 V as this might damage the diodes inside the mixers.
         if np.max(np.abs(meas_grid)) > 1.0:
@@ -1840,7 +1858,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         MC.set_sweep_functions([chI_par, chQ_par])
         MC.set_sweep_points(meas_grid.T)
 
-        exp_metadata = {'qb_names': [self.name], 'rotate': False, 
+        exp_metadata = {'qb_names': [self.name], 'rotate': False,
                         'cal_points': f"CalibrationPoints(['{self.name}'], [])"}
         with temporary_value(
                 (self.ro_freq, self.ge_freq() - self.ge_mod_freq()),
@@ -1896,7 +1914,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
 
     def calibrate_drive_mixer_skewness(self, update=True, amplitude=0.5,
                                        trigger_sep=5e-6, no_improv_break=50,
-                                       initial_stepsize=(0.15, 10)):
+                                       initial_stepsize=None):
         """Calibrate drive upconversion mixer other sideband.
 
         Measures the averaged signal of a square-pulse at the other sideband
@@ -1920,17 +1938,17 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                 Defaults to `50`.
             initial_stepsize:
                 Size of the initial step of the optimization algorithm in volts.
-                Defaults to `0.01`.
+                Defaults to [0.15, 10].
 
         Return:
             optimal IQ amplitude ratio `alpha` and phase correction `phi`.
         """
+        initial_stepsize = initial_stepsize or [0.15, 10]
         MC = self.instr_mc.get_instr()
         ad_func_pars = {'adaptive_function': opti.nelder_mead,
                         'x0': [self.ge_alpha(), self.ge_phi_skew()],
                         'initial_step': initial_stepsize,
                         'no_improv_break': no_improv_break,
-                        'minimize': True,
                         'maxiter': 500}
         MC.set_sweep_functions([self.ge_alpha, self.ge_phi_skew])
         MC.set_adaptive_function_parameters(ad_func_pars)
@@ -1983,29 +2001,29 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             force_ro_mod_freq=False, **kwargs):
         """Method for calibrating the sideband suppression of the drive IQ Mixer
 
-        The two settings that are used to calibrate the suppression of the 
-        unwanted sideband are the amplitude ratio and phase between I and Q. 
-        This method measures the sideband suppression for different values of 
-        these two settings that are either handed over as meas_grid or generated 
-        automatically. The subsequent analysis fits an analytical model to the 
-        measured data and extracts the settings minimizing the amplitude of the 
+        The two settings that are used to calibrate the suppression of the
+        unwanted sideband are the amplitude ratio and phase between I and Q.
+        This method measures the sideband suppression for different values of
+        these two settings that are either handed over as meas_grid or generated
+        automatically. The subsequent analysis fits an analytical model to the
+        measured data and extracts the settings minimizing the amplitude of the
         sideband.
 
         Args:
-            update (bool, optional): Determines whether the setting found from 
-                the measurements that are supposed to minimize the sideband 
-                suppression are written into the qubit parameters or not. 
+            update (bool, optional): Determines whether the setting found from
+                the measurements that are supposed to minimize the sideband
+                suppression are written into the qubit parameters or not.
                 Defaults to True.
-            meas_grid (:py:class:'np.array', optional): Grid of points to be 
+            meas_grid (:py:class:'np.array', optional): Grid of points to be
                 measured in form
-                of a np.array of shape (2, #points). The first dimension holding 
-                the values for the amplitude ratio and the second dimension 
-                holding the phi_skew values in degrees. If no meas_grid is 
-                provided a uniform grid is generated using n_meas and limits. 
+                of a np.array of shape (2, #points). The first dimension holding
+                the values for the amplitude ratio and the second dimension
+                holding the phi_skew values in degrees. If no meas_grid is
+                provided a uniform grid is generated using n_meas and limits.
                 Defaults to None.
             n_meas (tuple, optional): Tuple, list or 1D array of length 2 that
                 determines the number of measurement points in case meas_grid is
-                not provided. 
+                not provided.
                 n_meas[0] = points in amplitude ratio.
                 n_meas[1] = points in phi_skew.
                 Defaults to (10, 10).
@@ -2013,8 +2031,8 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                 to the mixer during the measurement. Defaults to 0.1 V.
             trigger_sep (float, optional): Seperation time in s between trigger
                 signals. Defaults to 5e-6 s.
-            limits (tuple, optional): Tuple, list or 1D array of length 4 
-                holding the limits of the measurement grid in case 
+            limits (tuple, optional): Tuple, list or 1D array of length 4
+                holding the limits of the measurement grid in case
                 meas_grid is not provided. Ordered as follows
                 (min ampl. ratio, max ampl. ratio, min phi_skew, max phi_skew)
                 Units: (None, None, deg, deg)
@@ -2030,11 +2048,11 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                     fails to converge within the measurement range
 
         Returns:
-            alpha (float): The amplitude ratio that maximizes the suppression of 
+            alpha (float): The amplitude ratio that maximizes the suppression of
                 the unwanted sideband.
-            phi_skew (float): The phi_skew that maximizes the suppression of 
+            phi_skew (float): The phi_skew that maximizes the suppression of
                 the unwanted sideband.
-            ma (:py:class:~'pycqed.timedomain_analysis.MixerSkewnessAnalysis'): 
+            ma (:py:class:~'pycqed.timedomain_analysis.MixerSkewnessAnalysis'):
                 The MixerSkewnessAnalysis object.
         """
         log.warning("This function (calibrate_drive_mixer_skewness_model) is "
@@ -2056,9 +2074,9 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                           '`calibrate_drive_mixer_skewness_model` needs to be a list, '
                           'tuple or 1D array of length 2.\nFound length '
                           '{} object instead!'.format(len(n_meas)))
-            meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]), 
+            meas_grid = np.meshgrid(np.linspace(limits[0], limits[1], n_meas[0]),
                                     np.linspace(limits[2], limits[3], n_meas[1]))
-            meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])    
+            meas_grid = np.array([meas_grid[0].flatten(), meas_grid[1].flatten()])
         else:
             limits = []
             limits.append(np.min(meas_grid[0, :]))
@@ -2122,7 +2140,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                     #  because the pulse seq has already been created above.
                     self.ro_mod_freq(2 * beats_per_trigger/trigger_sep \
                                      - self.ge_mod_freq())
-                    log.warning('To ensure commensurability the RO ' 
+                    log.warning('To ensure commensurability the RO '
                                 'modulation frequency will temporarily be set '
                                 'to {} Hz.'.format(self.ro_mod_freq()))
                     self.prepare(drive='timedomain', switch='calib')
@@ -2189,8 +2207,6 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
             analyze_ef:               whether or not to also look for the gf/2
 
         Keyword Args:
-            interactive_plot:        (default=False)
-                whether to plot with plotly or not
             analyze_ef:              (default=False)
                 whether to look for another f_ge/2 peak/dip
             percentile:              (default=20)
@@ -2465,7 +2481,7 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
                               analyze=True, cal_states='auto', cal_points=False,
                               upload=True, label=None, n_cal_points_per_state=2,
                               exp_metadata=None, operation_dict=None,
-                              vfc_kwargs=None):
+                              vfc_kwargs=None, **kw):
         """Flux pulse amplitude measurement used to determine the qubits energy in
         dependence of flux pulse amplitude.
 
@@ -2586,9 +2602,15 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
 
         if analyze:
             try:
-                tda.T2FrequencySweepAnalysis(qb_names=[self.name],
-                                             options_dict=dict(TwoD=False))
-            except Exception:
+                options_dict = {
+                    'TwoD': False,
+                    'all_fits': kw.get('all_fits', False)
+                }
+                return tda.T2FrequencySweepAnalysis(
+                    qb_names=[self.name], options_dict=options_dict,
+                    do_fitting=kw.get('do_fitting', True)
+                    )
+            except Exception as e:
                 ma.MeasurementAnalysis(TwoD=False)
 
     def configure_pulsar(self):
@@ -2616,25 +2638,31 @@ class QuDev_transmon(MeasurementObject, qbcalc.QubitCalcFunctionsMixIn):
         :param set_ge_offsets: whether to set offsets for drive channels
         :param offset_list: additional offsets to set
         """
-        pulsar = self.instr_pulsar.get_instr()
         if offset_list is None:
             offset_list = []
 
-        if set_ge_offsets:
+        if set_ge_offsets and self.instr_ge_lo() is not None:
             ge_lo = self.instr_ge_lo
+
+            # Here we configure the instrument reference parameter
+            # MWG.instr_pulsar, so the MWG (MWGWithLOCalibration) can update
+            # the LO-leakage calibration as its frequency is changed.
+            if param := ge_lo.get_instr().parameters.get('instr_pulsar'):
+                param(self.instr_pulsar())
+
             if self.ge_lo_leakage_cal()['mode'] == 'fixed':
                 offset_list += [('ge_I_channel', 'ge_I_offset'),
                                 ('ge_Q_channel', 'ge_Q_offset')]
-                if ge_lo() is not None and 'lo_cal_data' in ge_lo.get_instr().parameters:
+                if hasattr(ge_lo.get_instr(), 'lo_cal_data'):
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_I', None)
                     ge_lo.get_instr().lo_cal_data().pop(self.name + '_Q', None)
-            elif ge_lo() is not None:
+            else:
                 # FIXME: configure lo.lo_cal_interp_kind based on a new setting in
                 #  the qubit, e.g. self.ge_lo_leakage_cal()['interp_kind']
                 lo_cal = ge_lo.get_instr().lo_cal_data()
                 qb_lo_cal = self.ge_lo_leakage_cal()
-                i_par = pulsar.parameters[self.get('ge_I_channel') + '_offset']
-                q_par = pulsar.parameters[self.get('ge_Q_channel') + '_offset']
+                i_par = self.get('ge_I_channel') + '_offset'
+                q_par = self.get('ge_Q_channel') + '_offset'
                 lo_cal[self.name + '_I'] = (i_par, qb_lo_cal['freqs'],
                                             qb_lo_cal['I_offsets'])
                 lo_cal[self.name + '_Q'] = (q_par, qb_lo_cal['freqs'],

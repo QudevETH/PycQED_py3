@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 import json
 import re
+import traceback
 from collections.abc import Mapping
 from typing import Union, Dict, Any, Tuple
 
@@ -18,7 +19,13 @@ else:
     _device_db_client_module_missing = False
 
 
-class SettingsDictionary(dict):
+class DictWithTracking(dict):
+    def __init__(self, *args, **kwargs):
+        self.tracking_dict = {}
+        super().__init__(*args, **kwargs)
+
+
+class SettingsDictionary(DictWithTracking):
     """
     This class represents the configuration parameters specified in default,
     setup, and sample folder as a dictionary.
@@ -139,7 +146,7 @@ class SettingsDictionary(dict):
             settings_user (dict): A dictionary with the user configuration
                 parameters.
         """
-        update_nested_dictionary(self, settings_user)
+        update_nested_dictionary(self, settings_user, origin='settings_user')
 
     def _get_unprocessed_param_value(self,
                                      param,
@@ -358,7 +365,9 @@ class SettingsDictionary(dict):
                 for file in Path(settings_folder).iterdir():
                     with open(file) as f:
                         update_nested_dictionary(
-                            self, {file.stem: json.load(f)})
+                            self, {file.stem: json.load(f)},
+                            origin=str(file),
+                        )
 
         if settings_user is not None:
             self.update_user_settings(settings_user)
@@ -411,6 +420,8 @@ class SettingsDictionary(dict):
         settings_copy = SettingsDictionary(copy.deepcopy(overwrite_dict),
                                            db_client=self.db_client,
                                            dev_name=self.dev_name)
+        settings_copy.tracking_dict = copy.deepcopy(
+            getattr(overwrite_dict, 'tracking_dict', {}))
 
         return settings_copy
 
@@ -429,7 +440,8 @@ class SettingsDictionary(dict):
             dev_name=self.dev_name)
 
 
-def update_nested_dictionary(d, u: Mapping) -> dict:
+def update_nested_dictionary(d, u: Mapping, origin=None,
+                             tracking_dict=None) -> dict:
     """
     Updates a nested dictionary. Each value of 'u' will update the
     corresponding entry of 'd'. If an entry of 'u' is a dictionary itself,
@@ -441,16 +453,34 @@ def update_nested_dictionary(d, u: Mapping) -> dict:
     Args:
         d (dict): Dictionary to be updated.
         u (dict): Dictionary whose items will update the dictionary 'd'.
+        origin (str): Optional description of the origin of the current update.
+            If not provided, but tracking_dict is provided, a description is
+            generated from the traceback.
+        tracking_dict (dict): Optional dict to track where updates came from.
+            If this is None, it will be checked if d has an attribute called
+            tracking_dict, which is then used for tracking the updates.
 
     Returns:
         dict: The updated dictionary.
     """
+    if tracking_dict is None:
+        tracking_dict = getattr(d, 'tracking_dict', None)
+    if tracking_dict is not None and origin is None:
+        frame = traceback.extract_stack()[-2]
+        origin = f"{frame.line} (Line {frame.lineno} in {frame.name})"
     for k, v in u.items():
         # Check whether the value 'v' is a dictionary. In this case,
         # update_nested_dictionary is called again recursively. The
         # subdictionary d[k] will be updated with v.
         if isinstance(v, Mapping):
-            d[k] = update_nested_dictionary(d.get(k, {}), v)
+            if tracking_dict is not None:
+                tracking_dict.setdefault(k, {})
+                td = tracking_dict[k]
+            else:
+                td = None
+            d[k] = update_nested_dictionary(d.get(k, {}), v, origin, td)
         else:
             d[k] = v
+            if tracking_dict is not None:
+                tracking_dict[k] = origin
     return d

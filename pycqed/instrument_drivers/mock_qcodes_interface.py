@@ -155,6 +155,11 @@ class Instrument(DelegateAttributes):
     """
 
     delegate_attr_dicts = ['parameters', 'submodules']
+    # We define station as a class variable to ensure that self.station
+    #  always exists even before running the __init__. This is needed for
+    #  an if statement in the custom __getattr__. Setting self.station in
+    #  an instance then hides this class variable.
+    station = None
 
     def __init__(self, name: str):
         """
@@ -162,7 +167,6 @@ class Instrument(DelegateAttributes):
         Args:
             name (str): name of the respective instrument
         """
-        self.station = None
         self.name = name
         self.parameters = {}
         self.functions = {}
@@ -176,11 +180,15 @@ class Instrument(DelegateAttributes):
         try:
             return super().__getattr__(key)
         except AttributeError:
-            # Try to load the missing parameter or submodules if a settings
-            # manager is available
-            if (station := self.station) and (ts := station.timestamp) and \
-                    (set_man := station.settings_manager):
+            # If the attribute is not a dunder method (starting with __),
+            # it might be an unloaded parameter or submodule.
+            # If a settings manager is available, we try to load the parameter
+            # or submodule on the fly.
+            if (not key.startswith('__')) and (station := self.station) \
+                    and (ts := station.timestamp) \
+                    and (set_man := station.settings_manager):
                 path_to_param = self.name + '.' + key
+                # trying to load the missing parameter on the fly
                 set_man.get_parameter(path_to_param, ts)
                 return super().__getattr__(key)
             else:

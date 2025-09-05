@@ -1459,7 +1459,7 @@ def calculate_flat_multiqubit_shots(data_dict, keys_in, keys_out=None,
     is_empty = False
     for mobjn in meas_obj_names:
         ps[mobjn] = np.array(
-            [v for k, v in data_to_proc_dict.items() if mobjn in k])
+            [v for k, v in data_to_proc_dict.items() if (mobjn+'.') in k])
         is_empty = is_empty or (len(ps[mobjn]) == 0)
 
     if is_empty:

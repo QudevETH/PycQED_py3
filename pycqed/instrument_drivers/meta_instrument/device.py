@@ -37,15 +37,19 @@ from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis_v3 import plotting as plot_mod
 from collections import OrderedDict
 from collections.abc import Mapping
+from typing import Optional
+import pycqed.utilities.aggregation_plots as ap
+from pycqed.utilities import general as gen
 
 log = logging.getLogger(__name__)
 
 class Device(Instrument):
     # params that should not be loaded by pycqed.utilities.general.load_settings
-    _params_to_not_load = {'qubits'}
+    _params_to_not_load = {'qubits', 'qubit_coordinates'}
 
 
-    def __init__(self, name, qubits, connectivity_graph, **kw):
+    def __init__(self, name, qubits, connectivity_graph,
+                 qubit_coordinates: Optional[dict] = None, **kw):
         """
         Instantiates device instrument and adds its parameters.
 
@@ -54,10 +58,13 @@ class Device(Instrument):
             qubits (list of QudevTransmon or names of QudevTransmon objects): qubits of the device
             connectivity_graph: list of elements of the form [qb1, qb2] with qb1 and qb2 QudevTransmon objects or names
                          thereof. qb1 and qb2 should be physically connected on the device.
+            qubit_coordinates (dict): mapping from qubit names to integer coordinates
+                {'qb1': (x,y), ...}. Used for plotting purposes.
         """
         # initialize self.qubits before super call to prevent a potential
         # infinite recursion in __getattr__
         self.qubits = []
+        self.qubit_coordinates = qubit_coordinates or {}
         # FIXME: the following is needed for a workaround in __getattr__ and
         #  can be removed when this workaround is not needed anymore
         self._during_add_parameter = False
@@ -224,6 +231,7 @@ class Device(Instrument):
                 this_operation[argument_name] = self.get(parameter_name)
             this_operation['op_code'] = op_tag[0] + ' ' + op_tag[1] + ' ' \
                                         + op_tag[2]
+            gen.make_values_immutable(this_operation)
             for op_name in [op_tag[0] + ' ' + op_tag[1] + ' ' + op_tag[2],
                             op_tag[0] + ' ' + op_tag[2] + ' ' + op_tag[1]]:
                 two_qb_operation_dict[op_name] = this_operation
@@ -312,6 +320,29 @@ class Device(Instrument):
                     for qbn in qubits_to_return]
         else:
             return [qb_names.index(qb) for qb in qubits_to_return]
+
+    @property
+    def fluxlines_dict(self):
+        """
+        Creates and returns the fluxlines dict.
+
+        Takes qb.instr_flux_dc and qb.flux_dc_channel and creates
+        a dictionary with qubit names as keys and qcodes parameters
+        as values.
+
+        Returns:
+            fluxlines_dict
+        """
+        qubits = self.get_qubits()
+        fluxlines_dict = {}
+        for qb in qubits:
+            if qb.instr_flux_dc() is None:
+                continue
+            instr = qb.instr_flux_dc.get_instr()
+            if qb.flux_dc_channel() in instr.parameters:
+                fluxlines_dict[qb.name] = instr.parameters[
+                    qb.flux_dc_channel()]
+        return fluxlines_dict
 
     def get_pulse_par(self, gate_name, qb1, qb2, param):
         """
@@ -598,6 +629,82 @@ class Device(Instrument):
             qbi, qbj = qubit_pair
             self.set_interaction_frequency(qbi, qbj, int_freq, cz_pulse_name,
                                            update)
+
+    # FIXME this method could be shared with a mock device object to make it
+    #  available in the analysis. See an example in
+    #  pycqed/instrument_drivers/mock_qcodes_special_classes.
+    def get_interactions_for_plotting(
+            self, involved_qubits=None, cz_pulse_name=None,
+    ):
+        """
+        Gets the interaction points between qubits and their direct neighbors.
+
+        This can be useful e.g. to indicate in defect mode spectroscopy plots.
+
+        Args:
+            cz_pulse_name: CZ gate type to consider
+            involved_qubits: Set of qubits to consider. Specifying a strict
+                subset of self.qubits allows to ignore qubits, e.g. if they
+                are not involved in the CZ gates of a particular experiment
+
+        Returns: a dict of the form: {
+                'interaction_freqs': {
+                    {
+                        'qb3': {'qb4': (5262961708.784315, 'ge'), ...},
+                        'qb4': {'qb3': (5262961708.784315, 'ef'), ...},
+                        ...
+                    },
+                'interaction_amps': # same with amplitudes instead of freqs
+            }
+            The second entry of each tuple indicates the transition whose
+            frequency is indicated as first entry.
+            FIXME Currently interaction_freqs contains ge frequencies for
+             high- and ef for low-frequency qubits, while interaction_amps
+             arbitrarily labels the corresponding amplitudes as ge,
+             since this was the easiest way to implement this method.
+        """
+        if cz_pulse_name is None:
+            cz_pulse_name = self.default_cz_gate_name()
+        if involved_qubits is None:
+            involved_qubits = self.qubits
+
+        int_freqs = {}
+        int_amps = {}
+
+        for qbm in involved_qubits:
+            # Get all gates involving qbm and a qubit in involved_qubits
+            int_freqs_qbm = self.get_interaction_frequencies(
+                qubit_pairs=[
+                    (qba, qbb) for qba in involved_qubits for qbb in
+                    involved_qubits
+                    if [qba.name, qbb.name] in self.connectivity_graph()
+                       or [qbb.name, qba.name] in self.connectivity_graph()
+                ])
+
+            int_freqs_qbm = {
+                [qbg for qbg in gate if qbg.name != qbm.name][0]: v
+                for gate, v in int_freqs_qbm.items() if qbm in gate}
+            int_neighbors = list(int_freqs_qbm)  # qb objects are needed below
+            int_freqs[qbm.name] = {
+                qb.name: (
+                    v,
+                    'ef' if qbm.ge_freq() > qb.ge_freq() else 'ge'
+                ) for qb, v in int_freqs_qbm.items()}
+
+            # Assumes that high/low qubit <-> amplitude/amplitude2
+            int_amps[qbm.name] = {
+                qb.name: (
+                    self.get_pulse_par(
+                        cz_pulse_name, qbm.name, qb, 'amplitude' if
+                        qbm.ge_freq() > qb.ge_freq() else 'amplitude2')(),
+                    'ge',
+                )
+                for qb in int_neighbors
+            }
+        return {
+            'interaction_freqs': int_freqs,
+            'interaction_amps': int_amps,
+        }
 
     def set_pulse_par(self, gate_name, qb1, qb2, param, value):
         """
@@ -1014,7 +1121,7 @@ class Device(Instrument):
         ax.set_ylabel('Coupled qubit')
         ax.tick_params(direction='out')
         cbar.set_label(
-            f'Flux coupling, $\\mathrm{{d}}\Phi/\\mathrm{{d}}V$ '
+            f'Flux coupling, $\\mathrm{{d}}\\Phi/\\mathrm{{d}}V$ '
             f'($\\mathrm{{{phi_unit}}}$/V)')
 
         for i in range(len(qubits)):
@@ -1036,6 +1143,53 @@ class Device(Instrument):
             return
         else:
             return fig
+
+    def plot_on_qubit_grid(self, aggregator: Optional = None, **kw):
+        """
+        Plots data on a qubit grid, using self.qubit_coordinates
+        (a map where keys are qubit names and values are integers
+        of a grid coordinate system, e.g. {'qb1': (0,0), 'qb2': (0,1)}
+
+        To know which data to plot, the user can provide an aggregator
+        (see pycqed.utilities.aggregation_plots.PlotAggregator, which can
+        find the default data to plot for standard calibration routines from
+        a list of timestamps),
+        or directly provide a data_by_qubit dictionary and a plot_func,
+        see the doc string of aggregation_plots.plot_on_qubit_grid.
+        Args:
+            aggregator : pycqed.utilities.aggregation_plots.PlotAggregator
+            **kw: any kw passed to aggregation_plots.plot_on_qubit_grid
+
+        Returns:
+            Matplotlib Figure, Axes
+
+        """
+        # if coordinates are present, add them to the function call
+        if self.qubit_coordinates:
+            kw.setdefault('qubit_to_coord',
+                          lambda qbn: self.qubit_coordinates[qbn])
+
+        if aggregator is None:
+            # when no aggregator is used, call directly the underlying
+            # plot on qubit grid function.
+            return ap.plot_on_qubit_grid(**kw)
+        else:
+            # if an aggregator is passed (can easily be constructed from
+            # timestamps or QE objects), use it and call the plotting function
+            # of the aggregator, which will call ap.plot_on_qubit_grid with
+            # appropriate parameters
+            return aggregator.plot_on_qubit_grid(**kw)
+
+    def plot_on_pair_grid(self, aggregator: Optional = None, **kw):
+        if aggregator is not None:
+            raise NotImplementedError('First implement Aggregator.plot_on_pair_grid')
+        else:
+            if self.qubit_coordinates:
+                pair_to_coord = lambda q1, q2: (
+                    self.qubit_coordinates[q1][0] + self.qubit_coordinates[q2][0],
+                    self.qubit_coordinates[q1][1] + self.qubit_coordinates[q2][1]),
+                kw.setdefault('pair_to_coord', pair_to_coord)
+            return ap.plot_on_pair_grid(**kw)
 
     def add_parameter(self, *args, **kwargs):
         # FIXME overriding the super method is only needed for a workaround

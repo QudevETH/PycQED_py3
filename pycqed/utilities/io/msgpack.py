@@ -8,14 +8,12 @@ class MsgDumper(Dumper):
     """
     def __init__(self, name: str, data: dict, datadir: str = None,
                  compression=False, timestamp: str = None):
-        super().__init__(name, data, datadir=datadir, compression=compression,
-                         timestamp=timestamp)
-        if self.compression:
-            self.filepath = self.filepath.replace(
-                file_extensions['hdf5'][0], file_extensions['msgpack_comp'][0])
+        if compression:
+            extension = file_extensions['msgpack_comp'][0]
         else:
-            self.filepath = self.filepath.replace(
-                file_extensions['hdf5'][0], file_extensions['msgpack'][0])
+            extension = file_extensions['msgpack'][0]
+        super().__init__(name, data, datadir=datadir, compression=compression,
+                         timestamp=timestamp, file_extension=extension)
 
     def dump(self, mode='xb'):
         """

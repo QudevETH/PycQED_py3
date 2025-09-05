@@ -5,6 +5,7 @@ from copy import copy, deepcopy
 import numpy as np
 
 from pycqed.measurement import multi_qubit_module as mqm
+from collections.abc import Mapping
 
 log = logging.getLogger(__name__)
 from pycqed.measurement.waveform_control.block import Block, ParametricValue
@@ -49,7 +50,8 @@ class CircuitBuilder:
     """
 
     STD_INIT = {'0': ['I'], '1': ['X180'], '+': ['Y90'], '-': ['mY90'],
-                'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef']}
+                'g': ['I'], 'e': ['X180'], 'f': ['X180', 'X180_ef'],
+                'h': ['X180', 'X180_ef', 'X180_fh']}
 
     def __init__(self, dev=None, qubits=None, operation_dict=None,
                  filter_qb_names=None, **kw):
@@ -409,13 +411,17 @@ class CircuitBuilder:
                     #  we improve or generalise further what op codes can be
                     #  parsed by this method.
                     if param_start > 0:
-                        func_op_code = eval('lambda x, cb=self : ' + angle)
+                        func_for_op_code = eval('lambda x, cb=self : ' + angle)
                     else:
-                        func_op_code = None
-                    # sign * means that func will be -func_op_code
-                    cphase = sign * ParametricValue(
-                        param, func=func_op_code, func_op_code=func_op_code,
-                        op_split=[op_name, *qbn])
+                        func_for_op_code = lambda x: x
+                    # Only include - sign in func_for_pulse_param (responsible
+                    # for the pulse parameter), since in the op_code this
+                    # sign is already indicated by 'm'.
+                    func_for_pulse_param = \
+                        lambda x, sign=sign, f=func_for_op_code: sign * f(x)
+                    cphase = ParametricValue(
+                        param, func_for_pulse_param=func_for_pulse_param,
+                        func_for_op_code=func_for_op_code)
                 # op_name = "NameVal" (e.g. "Z100", see docstring)
                 elif angle:
                     cphase = float(angle)  # gate angle
@@ -455,10 +461,6 @@ class CircuitBuilder:
                     qb_dec = None
                 # If qb_dec is not None, we decompose the gate
                 if qb_dec:
-                    if isinstance(cphase, ParametricValue):
-                        # Update the op_split info in the ParametricValue,
-                        # such that it matches the operation decomposition
-                        cphase.op_split[0] = 'Z'
                     # CZ_x = diag(1,1,1,e^i*x)  # pycqed sign convention
                     #  = e^(i*x/4)*Z1(x/2)*Z0(x/2)*H1*CZ*H1*Z1(-x/2)*H1*CZ*H1
                     # and replacing each Hadamard H = i*Y*Z(pi) and
@@ -485,7 +487,8 @@ class CircuitBuilder:
                         # The following will not work with ParametricValue:
                         # this should look like
                         # p[4]['basis_rotation'] = -cphase/2+180
-                        # with cphase.func wrapping into a dict, as 'Z' below
+                        # with cphase.func_for_pulse_param wrapping
+                        # into a dict, as 'Z' below
                     p[4]['basis_rotation'] = {qb_dec[0]: -cphase/2+180}
                     p[9]['basis_rotation'] = {qb_dec[0]: cphase/2+180}
                     p[10]['basis_rotation'] = {qb_dec[1]: cphase/2}
@@ -508,15 +511,20 @@ class CircuitBuilder:
                 if op_type == 'Z':
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            func_op_code = eval('lambda x, cb=self : ' + angle)
+                            func_for_op_code = eval(
+                                'lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
-                            func_op_code = lambda x: x
-                        # parameter func
-                        func = (lambda x, qb=qbn[0], sign=sign, f=func_op_code:
+                            func_for_op_code = lambda x: x
+                        # In this case, func_for_pulse_param (determining the
+                        # physical parameter, the basis rotation) is the
+                        # same as func_for_op_code (determining the gate angle,
+                        # as indicated in the op_code)
+                        func_for_pulse_param = (
+                            lambda x, qb=qbn[0], sign=sign, f=func_for_op_code:
                                 {qb: sign * f(x)})
                         p[0]['basis_rotation'] = ParametricValue(
-                            param, func=func, func_op_code=func_op_code,
-                            op_split=(op_name, qbn[0]))
+                            param, func_for_pulse_param=func_for_pulse_param,
+                            func_for_op_code=func_for_op_code)
                     else:  # angle is a given value
                         # configure virtual Z gate for this angle
                         p[0]['basis_rotation'] = {qbn[0]: sign * float(angle)}
@@ -525,17 +533,21 @@ class CircuitBuilder:
                     corr_func = qb[0].calculate_nonlinearity_correction
                     if param is not None:  # angle depends on a parameter
                         if param_start > 0:  # via a mathematical expression
-                            # combine the mathematical expression with a
-                            # function that calculates the amplitude
-                            func_op_code = eval('lambda x, cb=self : ' + angle)
+                            func_for_op_code = eval(
+                                'lambda x, cb=self : ' + angle)
                         else:  # angle = parameter
-                            func_op_code = lambda x: x
-                        func = lambda x, a=p[0]['amplitude'], sign=sign,\
-                                      f=func_op_code: a * corr_func(
+                            func_for_op_code = lambda x: x
+                        # func_for_pulse_param (which determines the pulse
+                        # amplitude) combines func_for_op_code (determining
+                        # the gate angle) with the nonlinearity correction
+                        func_for_pulse_param = (
+                            lambda x, a=p[0]['amplitude'], sign=sign,
+                                   f=func_for_op_code: a * corr_func(
                                 ((sign * f(x) + 180) % (-360) + 180) / 180)
+                        )
                         p[0]['amplitude'] = ParametricValue(
-                            param, func=func, func_op_code=func_op_code,
-                            op_split=(op_name, qbn[0]))
+                            param, func_for_pulse_param=func_for_pulse_param,
+                            func_for_op_code=func_for_op_code)
                     else:  # angle is a given value
                         angle = sign * float(angle)
                         # configure drive pulse amplitude for this angle
@@ -761,6 +773,7 @@ class CircuitBuilder:
                         reset_scheme.reset_block(
                             f"step_{i}_{qb.name}",
                             sweep_params=self._reset_sweep_params.get(qb.name, None),
+                            **kws,
                         )
                     )
 
@@ -970,7 +983,7 @@ class CircuitBuilder:
             parallel_qb_block = self.simultaneous_blocks(
                 f'parallel_qb_blk_{i}', qb_blocks, block_align=block_align)
 
-            prep = self.initialize(init_state=init_state,
+            prep = self.initialize(init_state='g',
                                    qb_names=cal_points.qb_names)
             ro = self.mux_readout(**ro_kwargs, qb_names=cal_points.qb_names)
             cal_state_block = self.sequential_blocks(
@@ -1008,11 +1021,11 @@ class CircuitBuilder:
             return pulses
         elif isinstance(pulses, str):  # opcode
             return self.block_from_ops(block_name, [pulses])
-        elif isinstance(pulses, dict):  # pulse dict
+        elif isinstance(pulses, Mapping):  # pulse dict
             return self.block_from_pulse_dicts([pulses], block_name=block_name)
         elif isinstance(pulses[0], str):  # list of opcodes
             return self.block_from_ops(block_name, pulses)
-        elif isinstance(pulses[0], dict):  # list of pulse dicts
+        elif isinstance(pulses[0], Mapping):  # list of pulse dicts
             return self.block_from_pulse_dicts(pulses, block_name=block_name)
 
     def block_from_pulse_dicts(self, pulse_dicts,
@@ -1159,7 +1172,7 @@ class CircuitBuilder:
         simultaneous.extend([{"name": "simultaneous_end_pulse",
                               "pulse_type": "VirtualPulse",
                               "pulse_delay": 0,
-                              "ref_pulse": simultaneous_end_pulses,
+                              "ref_pulse": tuple(simultaneous_end_pulses),
                               "ref_point": 'end',
                               "ref_function": 'max'
                               }])
@@ -1336,11 +1349,13 @@ class CircuitBuilder:
                     'segblock', [prep, this_body_block, final, ro],
                     disable_block_counter=True,
                     destroy=[False, body_block is None, False, False])
-                seg = Segment(f'seg{j}', segblock.build(
+                pulses = segblock.build(
                     sweep_dicts_list=(
                         None if (body_block is None and self.fast_mode)
                         else sweep_points), sweep_index_list=[j, i],
-                    destroy=True), fast_mode=self.fast_mode, **segment_kwargs)
+                    destroy=True)
+                seg = Segment(f'seg{j}', pulses, fast_mode=self.fast_mode,
+                              copy_pulses=False, **segment_kwargs)
                 # apply Segment sweep points
                 for dim in [0, 1]:
                     for param in sweep_points[dim]:
@@ -1415,7 +1430,15 @@ class CircuitBuilder:
             tomo_qubits = [all_qubit_names.index(i) for i in tomo_qubits]
         # sort qubit indices to ensure that basis_rots are always applied on
         # qubits in ascending order as defined by self.get_qubits().
+        tomo_qubits_before_sorting = deepcopy(tomo_qubits)
         tomo_qubits.sort()
+        if tomo_qubits_before_sorting != tomo_qubits:
+            log.warning("The circuit builder of the tomography pulses sorts "
+                        "the qubits into the ascending order as in "
+                        "device.get_qubits(). This changes the qubit order "
+                        "that you specified in the task_list and could lead "
+                        "to unexpected behaviors. Please define task list in "
+                        "the same qubit order as they will be sorted to.")
 
         if all_rots:
             basis_rots = list(itertools.product(basis_rots,

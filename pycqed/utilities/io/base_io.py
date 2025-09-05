@@ -9,6 +9,15 @@ from pathlib import Path
 import logging
 from collections import OrderedDict
 
+from pycqed.utilities.warnings import deprecated
+
+try:
+    import blosc2
+except ModuleNotFoundError:
+    _blosc2_missing = True
+else:
+    _blosc2_missing = False
+
 from pycqed.instrument_drivers import mock_qcodes_interface as mqcodes
 
 logger = logging.getLogger(__name__)
@@ -22,6 +31,7 @@ file_extensions = OrderedDict({
     'msgpack': ['.msgpack', '.msg'], 'msgpack_comp': ['.msgpack', '.msgc'],
     'pickle': ['.pickle'],'pickle_comp': ['.picklec'],
     'hdf5': ['.hdf5']})
+DEFAULT_FILE_EXTENSION = file_extensions['msgpack'][0]
 
 
 class Dumper:
@@ -30,7 +40,8 @@ class Dumper:
     """
 
     def __init__(self, name: str, data: dict, datadir: str = None,
-                 compression=False, timestamp: str = None):
+                 compression=False, timestamp: str = None,
+                 file_extension: str = DEFAULT_FILE_EXTENSION):
         """
         Creates a folder for the file.
         Args:
@@ -55,20 +66,31 @@ class Dumper:
         self._datemark = time.strftime('%Y%m%d', self._localtime)
 
         # sets the file path
-        self.filepath = DateTimeGenerator().new_filename(
-            self, folder=datadir, auto_increase=False)
-
-        self.filepath = self.filepath.replace("%timemark", self._timemark)
+        self.filepath = create_filename(
+            name=self._name, root_directory=datadir, ts=self._localtime,
+            auto_increase=False, extension=file_extension)
 
         self.folder, self._filename = os.path.split(self.filepath)
         # creates the folder if needed
         if not os.path.isdir(self.folder):
             os.makedirs(self.folder)
 
+
     @staticmethod
+    @deprecated(
+        "Compression of settings files is deprecated since 2024-08-21."
+    )
     def compress_file(file):
-        import blosc2
-        return blosc2.compress(file)
+        if _blosc2_missing:
+            logger.warning(
+                "blosc2 could not be imported so compression cannot "
+                "be used. Please install the compression optional "
+                "dependency group if you want to use compression. "
+                "Returning the uncompressed file."
+            )
+            return file
+        else:
+            return blosc2.compress(file)
 
 
 class Loader:
@@ -166,7 +188,7 @@ class Loader:
             # https://stackoverflow.com/questions/2595119/glob-and-bracket-characters
 
             # Substitution [ -> [[] and ] -> []] done via regular expression:
-            dirname = re.sub('([\[\]])', '[\\1]', dirname)
+            dirname = re.sub(r'([\[\]])', '[\\1]', dirname)
 
             filepath = sorted(path.glob(dirname + ".*"))
 
@@ -244,9 +266,20 @@ class Loader:
         pass
 
     @staticmethod
+    @deprecated(
+        "Compression of settings files is deprecated since 2024-08-21."
+    )
     def decompress_file(file):
-        import blosc2
-        return blosc2.decompress(file)
+        if _blosc2_missing:
+            logger.warning(
+                "blosc2 could not be imported so decompression cannot "
+                "be used. Please install the compression optional "
+                "dependency group if you want to use decompression. "
+                "Returning the compressed file."
+            )
+            return file
+        else:
+            return blosc2.decompress(file)
 
     def get_station(self, param_path=None):
         """
@@ -285,83 +318,95 @@ class Loader:
         return dict()
 
 
-class DateTimeGenerator:
+def get_next_available_timestamp(datadir, ts=None, max_counter=3):
     """
-    Class to generate filenames / directories based on the date and time.
+    Returns next available timestamp in data directory.
+    If a folder with the requested timestamp already exists, it moves one
+    second in the future until it either finds an available timestamp or
+    moves more seconds than 'max_counter' into the future.
+    Raises an TimeoutError if no timestamp within the diven max?counter can
+    be found.
+    Args:
+        datadir (str): base directory
+        ts (time.struct_time): timestamp of the requested day
+        max_counter (int): maximum seconds to move add to ts to search for
+        an available timestamp
+
+    Returns: timestamp as time.struct_time and string in format '%Y%m%d_%H%M%S'
+    """
+    if ts is None:
+        ts = time.localtime()
+
+    timestamp_unique = False
+    counter = 0
+    while not timestamp_unique:
+        counter += 1
+        path = os.path.join(datadir, time.strftime('%Y%m%d', ts))
+        ts_string = time.strftime("%H%M%S", ts)
+        if not os.path.exists(path):
+            timestamp_unique = True
+            continue
+        measdirs = [d for d in os.listdir(path) if d.startswith(ts_string)]
+        if not measdirs:
+            timestamp_unique = True
+        else:
+            ts = time.localtime(time.mktime(ts) + 1)
+        if counter > max_counter:
+            raise TimeoutError(
+                "Could not find a unique timestamp after"
+                f"moving {max_counter} sec into the future.\n"
+                "Creation for timestamp "
+                f"{time.strftime('%Y%m%d_%H%M%S', ts)} failed.\n"
+                "Please check this machine or its filesystem."
+            )
+    return ts, time.strftime('%Y%m%d_%H%M%S', ts)
+
+
+def create_data_dir_name(
+    datadir: str,
+    name: str = None,
+    ts=None,
+    auto_increase: bool = True,
+):
+    """Create and return the name of a new data directory.
+
+    Input:
+        datadir (string): base directory
+        name (string): optional name of measurement
+        ts (time.localtime()): timestamp which will be used
+            if timesubdir=True
+        auto_increase (bool): ensures that timestamp is unique and if not
+            increases by 1s until it is.
+
+    Returns:
+        The directory to place the new file in and its hour-timestamp.
     """
 
-    def __init__(self):
-        pass
+    if ts is None:
+        ts = time.localtime()
 
-    def create_data_dir(self, datadir: str, name: str=None, ts=None,
-                        datesubdir: bool=True, timesubdir: bool=True,
-                        auto_increase: bool = True):
-        """
-        Create and return a new data directory.
+    if auto_increase:
+        ts, _ = get_next_available_timestamp(datadir, ts=ts)
+    path = os.path.join(datadir, time.strftime('%Y%m%d', ts))
+    ts_string = time.strftime("%H%M%S", ts)
 
-        Input:
-            datadir (string): base directory
-            name (string): optional name of measurement
-            ts (time.localtime()): timestamp which will be used
-                if timesubdir=True
-            datesubdir (bool): whether to create a subdirectory for the date
-            timesubdir (bool): whether to create a subdirectory for the time
-            auto_increase (bool): ensures that timestamp is unique and if not
-                increases by 1s until it is.
+    if name is not None:
+        path = os.path.join(path, ts_string + "_" + name)
+    else:
+        path = os.path.join(path, ts_string)
 
-        Output:
-            The directory to place the new file in
-        """
+    return path, ts_string
 
-        path = datadir
-        if ts is None:
-            ts = time.localtime()
-        if datesubdir:
-            path = os.path.join(path, time.strftime('%Y%m%d', ts))
-        if timesubdir:
-            tsd = time.strftime('%H%M%S', ts)
-            timestamp_verified = False
-            counter = 0
-            # Verify if timestamp is unique by seeing if the folder exists
-            while not timestamp_verified and auto_increase:
-                counter += 1
-                try:
-                    measdirs = [d for d in os.listdir(path)
-                                if d[:6] == tsd]
-                    if len(measdirs) == 0:
-                        timestamp_verified = True
-                    else:
-                        # if timestamp not unique, add one second
-                        # This is quite a hack
-                        # FIXME: Could add a time.sleep(1) instead of
-                        #  artificially increasing the timestamp by 1.
-                        #  Like this, timestamps in the future are avoided.
-                        #  This does not solve the problem if a data directory
-                        #  for a custom timestamp is requested but this
-                        #  timestamp already exists.
-                        ts = time.localtime((time.mktime(ts)+1))
-                        tsd = time.strftime('%H%M%S', ts)
-                    if counter >= 3600:
-                        raise Exception()
-                except OSError as err:
-                    if 'cannot find the path specified' in str(err):
-                        timestamp_verified = True
-                    elif 'No such file or directory' in str(err):
-                        timestamp_verified = True
-                    else:
-                        raise err
-            if name is not None:
-                path = os.path.join(path, tsd+'_'+name)
-            else:
-                path = os.path.join(path, tsd)
 
-        return path, tsd
-
-    def new_filename(self, data_obj, folder, auto_increase: bool = True):
-        """Return a new filename, based on name and timestamp."""
-        path, tstr = self.create_data_dir(folder,
-                                          name=data_obj._name,
-                                          ts=data_obj._localtime,
-                                          auto_increase=auto_increase)
-        filename = '%s_%s.hdf5' % (tstr, data_obj._name)
-        return os.path.join(path, filename)
+def create_filename(name, root_directory, ts, auto_increase: bool = True,
+                    extension=DEFAULT_FILE_EXTENSION):
+    """Return a new filename, based on name, root_directory and timestamp."""
+    # first step: create data folder name
+    path, tstr = create_data_dir_name(
+        datadir=root_directory,
+        name=name,
+        ts=ts,
+        auto_increase=auto_increase)
+    # second step: create filename
+    filename = f'{tstr}_{name}{extension}'
+    return os.path.join(path, filename)
