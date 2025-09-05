@@ -93,7 +93,7 @@ class HDAWG8Pulsar(PulsarAWGInterface, ZIPulsarMixin):
             self.awg_mcc = HDAWG8(
                 awg.devname,
                 name=self.awg_name + '_mcc',
-                host='localhost',
+                host=awg.server,
                 interface=awg.interface,
                 server=awg.server
             )
