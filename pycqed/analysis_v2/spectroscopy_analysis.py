@@ -1794,7 +1794,7 @@ class MultiQubit_Spectroscopy_Analysis(tda.MultiQubit_TimeDomain_Analysis):
                 kwargs = {'chigf': None}
                 if len(s21s) != 2:
                     def_guessvals.pop('chige')
-                    kwargs = {'chige': None}
+                    kwargs = {'chige': None, 'chigf': None}
                     assert len(s21s) == 1
             pars = model.make_params(**def_guessvals)
             pars['kP'].min = 0
