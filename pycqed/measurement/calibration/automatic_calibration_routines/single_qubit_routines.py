@@ -559,8 +559,7 @@ class QScaleStep(qbcal.QScale, Step):
             if sweep_points_v is not None:
                 # Get first dimension (there is only one)
                 # TODO: support for more dimensions?
-                sweep_points_kws = next(iter(
-                    self.kw_for_sweep_points.items()))[1]
+                sweep_points_kws = self.kw_for_sweep_points['qscales']
                 values = np.linspace(value_params['v_low'],
                                      value_params['v_high'],
                                      value_params['pts'])
