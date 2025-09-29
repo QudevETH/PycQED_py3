@@ -307,7 +307,10 @@ class MockDAQServer():
         self.nodes[f'/{self.device}/system/fpgarevision'] = {'type': 'Integer', 'value': 99999}
         self.nodes[f'/{self.device}/system/slaverevision'] = {'type': 'Integer', 'value': 99999}
         self.nodes[f'/{self.device}/raw/error/json/errors'] = {
-                'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
+                'type': 'String', 'value':
+                '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, '
+                '"timestamp" : 0, "timestamp_utc" : "2019-08-07 17:33:55", '
+                '"messages" : []}'}
         # 1 line added to Delft version: create error/clear node
         self.nodes[f'/{self.device}/raw/error/clear'] = {'type': 'Integer', 'value': 0}
 
