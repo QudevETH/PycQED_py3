@@ -6,11 +6,11 @@ from pycqed.instrument_drivers.pq_parameters import InstrumentParameter
 
 class FluxDecoupler(Instrument):
     """
-    Decouples a system of flux sources $\vec{V}$ (qubits' individual fluxlines 
+    Decouples a system of flux sources $\vec{V}$ (qubits' individual fluxlines
     or global coils) at the specified target points (qubits).
 
-    Each flux source and target can be inactivated using the `active_<name>` 
-    parameter. Inactive flux sources are not controlled and the fluxes at the 
+    Each flux source and target can be inactivated using the `active_<name>`
+    parameter. Inactive flux sources are not controlled and the fluxes at the
     inactive flux targets are ignored. The number of active flux sources should
     always equal the number of active flux targets.
     """

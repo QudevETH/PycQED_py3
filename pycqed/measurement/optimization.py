@@ -9,9 +9,8 @@ except Exception:
     logger.warning('Machine learning packages not loaded. '
                    'Run from pycqed.analysis import machine_learning_toolbox to see errors.')
 
-from sklearn.model_selection import GridSearchCV as gcv, train_test_split
 
-from scipy.optimize import fmin_l_bfgs_b,fmin,minimize,fsolve
+from scipy.optimize import minimize
 
 def nelder_mead(fun, x0,
                 initial_step=0.1,
@@ -519,13 +518,13 @@ def gradient(fun,x,grid_spacing):
 def gradient_descent(fun, x_ini,grid_spacing,lamb_ini=1, max_iter=500 ):
     """
     :param fun: function to be minimized
-    :param x_ini: initial point for the iteration 
-    :param grid_spacing: spacing between points on the discretized evaluation 
+    :param x_ini: initial point for the iteration
+    :param grid_spacing: spacing between points on the discretized evaluation
                          grid. has to provide a spacing for every feature in x_ini.
-    :param lamb_ini: initial learning rate. 
-    :param tol: tolerance to determine convergence. 
+    :param lamb_ini: initial learning rate.
+    :param tol: tolerance to determine convergence.
     :param max_iter: maximum iterations permitted until gradient descent fails
-    
+
     :return: input values that minimizes fun()
 
     Note: using Barzilai-Borwein adaptive step lengths for second derivative approx.

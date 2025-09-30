@@ -1,7 +1,7 @@
 import logging
 
 from qcodes import VisaInstrument
-from qcodes.utils.validators import Enum, Ints, Numbers
+from qcodes.utils.validators import Enum, Ints
 
 """
 Requires

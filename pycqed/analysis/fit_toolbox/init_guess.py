@@ -30,20 +30,20 @@ def lorentzian(x_data, y_data):
         index1 = index_array[index_i]
         index2 = index_array_2[index_i]
         if y_data[index1] > (y_max-HM):
-            
+
             HM_index = index1
             #print 'check 2'
             #print HM_index
             value_found = True
         elif y_data[index2] > (y_max-HM):
-               
+
             HM_index = index2
             #print 'check 2'
             #print HM_index
             value_found = True
 
         index_i+=1
-    
+
     HWHM = abs(x_data[HM_index] - x_min)
     #print 'check 1'
     #print 2*HWHM

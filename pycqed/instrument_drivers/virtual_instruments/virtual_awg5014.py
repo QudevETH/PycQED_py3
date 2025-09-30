@@ -1,14 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from qcodes.instrument.base import Instrument
+from pycqed.instrument_drivers.instrument import Instrument
 from qcodes.instrument.parameter import ManualParameter
 from qcodes.utils import validators as vals
 from qcodes.instrument_drivers.tektronix.AWG5014 import Tektronix_AWG5014
 from pycqed.instrument_drivers.instrument import DummyVisaHandle
 
 
-class VirtualAWG5014(Tektronix_AWG5014):
+class VirtualAWG5014(Tektronix_AWG5014, Instrument):
     def __init__(self, name, timeout=5, address=''):
         Instrument.__init__(self, name)
         self.visa_handle = DummyVisaHandle()
@@ -115,10 +115,10 @@ class VirtualAWG5014(Tektronix_AWG5014):
         self.file = None
         self.stop()  # to init self._state
 
-    def stop(self):
+    def stop(self, **kwargs):
         self._state = 'Idle'
 
-    def start(self):
+    def start(self, **kwargs):
         self._state = 'Waiting for trigger'
 
     def get_state(self):
@@ -218,11 +218,11 @@ class VirtualAWG5014(Tektronix_AWG5014):
             i += 1
 
             if cid[4:] == 'm1':
-                ydata = np.float_((pwfs // 16384) % 2)
+                ydata = np.float64((pwfs // 16384) % 2)
             elif cid[4:] == 'm2':
-                ydata = np.float_((pwfs // 32768) % 2)
+                ydata = np.float64((pwfs // 32768) % 2)
             else:
-                ydata = (np.float_(np.bitwise_and(pwfs, 16383)) - 8191) / 8191
+                ydata = (np.float64(np.bitwise_and(pwfs, 16383)) - 8191) / 8191
             xdata = np.arange(len(ydata)) / self.clock_freq()
 
             ax.plot(xdata / 1e-9, ydata)

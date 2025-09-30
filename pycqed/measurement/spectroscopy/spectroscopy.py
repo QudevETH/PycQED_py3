@@ -2,14 +2,12 @@ import numpy as np
 from collections import OrderedDict
 from copy import copy
 import traceback
-from pycqed.utilities.general import assert_not_none, \
-    configure_qubit_mux_readout
+from pycqed.utilities.general import assert_not_none
 from pycqed.utilities.math import dbm_to_vp
 from pycqed.measurement.calibration import two_qubit_gates as twoqbcal
 from pycqed.measurement.waveform_control.block import ParametricValue
 from pycqed.measurement.sweep_points import SweepPoints
 import pycqed.measurement.sweep_functions as swf
-import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.analysis_v2.spectroscopy_analysis as spa
 from pycqed.utilities.general import temporary_value
 import logging
@@ -626,6 +624,29 @@ class ResonatorSpectroscopy(MultiTaskingSpectroscopyExperiment):
             ]
             qb.set(f'ro_freq', ro_freq)
 
+    def run_analysis(self, analysis_kwargs=None, **kw):
+        """
+        Runs analysis and stores analysis instance in self.analysis.
+        Sets defaults for analysis kwargs in the case a 2D power sweep
+        was done.
+        Args:
+            analysis_kwargs (dict): keyword arguments for analysis
+            **kw: currently ignored
+
+        Returns: the MultiQubit_Spectroscopy_Analysis instance
+        """
+
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        if 'options_dict' not in analysis_kwargs:
+            analysis_kwargs['options_dict'] = {}
+        if np.any(['ro_amp' in task for task in self.task_list]):
+            analysis_kwargs['options_dict'].setdefault("plot_TwoD_as_curves",
+                                                       True)
+            analysis_kwargs['options_dict'].setdefault("logzscale", True)
+            analysis_kwargs['options_dict'].setdefault("logyscale", True)
+        return super().run_analysis(analysis_kwargs, **kw)
+
     @classmethod
     def gui_kwargs(cls, device):
         d = super().gui_kwargs(device)
@@ -1063,8 +1084,9 @@ class QubitSpectroscopy(MultiTaskingSpectroscopyExperiment):
                 # experiments (output pulse has the programmed pulse
                 # amplitude).
                 if sweep_points.find_parameter('spec_power') is not None:
-                    amp = ParametricValue('spec_power',
-                                          func=lambda x: 2 * dbm_to_vp(x))
+                    amp = ParametricValue(
+                        'spec_power',
+                        func_for_pulse_param=lambda x: 2 * dbm_to_vp(x))
                 else:
                     amp = 2 * dbm_to_vp(qubit.spec_power())
                 pulse_modifs['op_code=Spec']['amplitude'] = amp

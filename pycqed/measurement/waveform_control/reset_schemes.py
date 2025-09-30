@@ -1,4 +1,32 @@
+"""
+Reset Schemes for Quantum Control
+
+This module provides implementations of various reset schemes for quantum control
+operations in the PycQED framework. It defines several classes that inherit from
+the base ResetScheme class, each implementing a specific reset strategy.
+
+Each reset scheme class provides methods for constructing reset blocks,
+handling operation dictionaries, and generating analysis instructions. These
+schemes can be used to initialize quantum systems to desired states before
+measurements or other quantum operations.
+
+The module is designed to be flexible and extensible, allowing for easy
+addition of new reset schemes as needed.
+
+Example:
+    Usage in your notebook::
+
+        qb.add_reset_schemes()
+        qb.reset.steps(['preselection', 'feedback_reset'])
+
+By default the following reset schemes are added by add_reset_schemes():
+
+- preselection: A preselection-based reset scheme with opt. flux compensation.
+- feedback_reset: A feedback-based active reset scheme.
+"""
+
 import logging
+
 log = logging.getLogger(__name__)
 
 from copy import deepcopy
@@ -7,6 +35,7 @@ from copy import deepcopy
 
 from pycqed.instrument_drivers.instrument import InstrumentModule
 import pycqed.measurement.waveform_control.block as block_mod
+from pycqed.utilities import general as gen
 
 from qcodes import ManualParameter
 from qcodes.utils import validators
@@ -148,15 +177,15 @@ class ResetScheme(InstrumentModule):
         """
         Constructs the reset block with repetitions and buffer intervals.
 
-        This function assembles the reset block, incorporating repetitions and associated 
-        buffer intervals. For each repetition, the `_reset_block` method is called to 
-        generate the core reset instructions. 
+        This function assembles the reset block, incorporating repetitions and associated
+        buffer intervals. For each repetition, the `_reset_block` method is called to
+        generate the core reset instructions.
 
         Args:
-            name: Optional name for the reset block. If not provided, the short name 
+            name: Optional name for the reset block. If not provided, the short name
                   of the `ResetScheme` instance is used.
             sweep_params: Optional parameters for sweeping.
-            **block_kwargs: Additional keyword arguments to be passed to the 
+            **block_kwargs: Additional keyword arguments to be passed to the
                             `Block` constructor.
 
         Returns:
@@ -198,7 +227,7 @@ class ResetScheme(InstrumentModule):
         """
         Generates an operation dictionary for the ResetScheme.
 
-        This function creates a dictionary of operations, combining parameters from the reference 
+        This function creates a dictionary of operations, combining parameters from the reference
         instrument with initialization-specific parameters defined in the ResetScheme. This
         dictionary is used to construct the instructions for the reset process.
 
@@ -227,7 +256,7 @@ class ResetScheme(InstrumentModule):
         Constructs an operation dictionary for the available operations of the ResetScheme.
 
         This function generates a dictionary mapping operation codes to their corresponding
-        arguments and parameter values. The parameter values are retrieved from the ResetScheme's 
+        arguments and parameter values. The parameter values are retrieved from the ResetScheme's
         settings.
 
         Args:
@@ -235,7 +264,7 @@ class ResetScheme(InstrumentModule):
                             a new dictionary is created.
 
         Returns:
-            dict: A dictionary containing operation codes as keys and dictionaries of 
+            dict: A dictionary containing operation codes as keys and dictionaries of
                 argument-parameter mappings as values.
         """
         if operation_dict is None:
@@ -247,21 +276,22 @@ class ResetScheme(InstrumentModule):
             for argument_name, parameter_name in op.items():
                 operation_dict[op_code][argument_name] = \
                     self.get(parameter_name)
+            gen.make_values_immutable(operation_dict[op_code])
         return operation_dict
 
     def get_init_specific_params(self, operations=None):
         """
         Retrieves initialization-specific parameters for a set of operations.
 
-        This function extracts parameters that have values deviating from the default settings 
-        ('from parent') for a specified set of operations within the ResetScheme. 
+        This function extracts parameters that have values deviating from the default settings
+        ('from parent') for a specified set of operations within the ResetScheme.
 
         Args:
-            operations:  A list or iterable of operation names. If None, all available 
+            operations:  A list or iterable of operation names. If None, all available
                         operations within the ResetScheme are used.
 
         Returns:
-            dict: A deep copy of a dictionary containing initialization-specific 
+            dict: A deep copy of a dictionary containing initialization-specific
                 parameters, organized by operation name.
         """
         if operations is None:
@@ -277,7 +307,7 @@ class ResetScheme(InstrumentModule):
         """
         Constructs a unique operation code (opcode).
 
-        This function creates an operation code that combines the operation name, the 
+        This function creates an operation code that combines the operation name, the
         ResetScheme's short name, and the reference instrument's name.
 
         Args:
@@ -295,7 +325,7 @@ class ResetScheme(InstrumentModule):
         """
         Provides instructions for analyzing reset data (currently a placeholder).
 
-        This function returns basic instructions for data analysis. In the future, it will 
+        This function returns basic instructions for data analysis. In the future, it will
         likely be expanded to accommodate more complex reset schemes.
 
         Returns:
@@ -309,8 +339,8 @@ class Preselection(ResetScheme):
     """
     Implements a preselection-based ResetScheme with optional flux compensation.
 
-    This class provides a ResetScheme tailored for preselection, enabling the configuration 
-    of parameters as well as conditional modification of the readout (RO) pulse to 
+    This class provides a ResetScheme tailored for preselection, enabling the configuration
+    of parameters as well as conditional modification of the readout (RO) pulse to
     include flux compensation.
     """
     DEFAULT_INSTANCE_NAME = "preselection"
@@ -336,12 +366,13 @@ class Preselection(ResetScheme):
         """
         Constructs a reset block with a preselection readout (RO) pulse.
 
-        Optionally includes a flux compensation pulse (FP) if `compensate_ro_flux` is True. 
+        Optionally includes a flux compensation pulse (FP) if `compensate_ro_flux` is True.
         Handles potential parameter conflicts and provides informative comments.
 
         Args:
             name: Name for the reset block.
-            sweep_params: Optional parameters for sweeping.
+            sweep_params: Optional parameters for sweeping. Can be prefixed
+                with 'preselection_'.
             **kwargs: Additional keyword arguments for constructing the block.
 
         Returns:
@@ -356,6 +387,7 @@ class Preselection(ResetScheme):
         preselection_ro.update(self.get_init_specific_params()['RO'])
 
         for k, v in sweep_params.items():
+            k = k.removeprefix('preselection_')
             if k in preselection_ro:
                 preselection_ro[k] = block_mod.ParametricValue(v)
 
@@ -402,7 +434,7 @@ class Preselection(ResetScheme):
         """
         Provides instructions for analyzing preselection reset data.
 
-        Returns a dictionary containing the preparation type ('preselection'). 
+        Returns a dictionary containing the preparation type ('preselection').
         Includes a note that enhancements for more complex reset types are possible.
         """
         # instructions such that the analysis knows how to process the data
@@ -416,8 +448,8 @@ class FeedbackReset(ResetScheme):
     """
     Provides feedback-based Active Reset scheme implementation.
 
-    This class inherits from `ResetScheme` and extends it to enable Active Reset 
-    controlled by feedback from readout measurements. It supports configuration of 
+    This class inherits from `ResetScheme` and extends it to enable Active Reset
+    controlled by feedback from readout measurements. It supports configuration of
     codeword-state mappings and feedback delays.
     """
 
@@ -450,35 +482,50 @@ class FeedbackReset(ResetScheme):
                            initial_value=4e-6, vals=validators.Numbers(),
                            parameter_class=ManualParameter,
                            get_parser=self._validate_ro_feedback_delay)
+        self.add_parameter('log_feedback_acquisitions',
+                           docstring='If True, requests that the acquisition '
+                                     'device returns the reset data (default). '
+                                     'If False, the reset data will not be '
+                                     'logged and returned by the device.',
+                           initial_value=True, vals=validators.Bool(),
+                           parameter_class=ManualParameter,
+                           )
 
     def get_operation_dict(self, operation_dict=None):
         """
         Generates an operation dictionary, including an "I" (identity) operation.
- 
-        Inherits the operation dictionary from the parent `ResetScheme` class and 
+
+        Inherits the operation dictionary from the parent `ResetScheme` class and
         adds an "I" operation (with zero amplitude) derived from the "X180" operation.
- 
+        Also edits the RO operation to allow skipping logging the data if
+        log_feedback_acquisitions is False.
+
         Args:
             operation_dict: Optional existing dictionary to update.
- 
+
         Returns:
             dict: The updated operation dictionary.
         """
         operation_dict = super().get_operation_dict()
 
-        operation_dict[self.get_opcode("I")] = \
+        op_code_I = self.get_opcode("I")
+        operation_dict[op_code_I] = \
             deepcopy(operation_dict[self.get_opcode("X180")])
-        operation_dict[self.get_opcode("I")]['amplitude'] = 0
+        operation_dict[op_code_I]['amplitude'] = 0
+        gen.make_values_immutable(operation_dict[op_code_I])
+        operation_dict[self.get_opcode("RO")]['log_acquisition'] = \
+            self.log_feedback_acquisitions()
         return operation_dict
 
     def _reset_block(self, name, sweep_params, **kwargs):
         """
-        Generates a block containing a readout (RO) pulse followed by feedback pulses 
+        Generates a block containing a readout (RO) pulse followed by feedback pulses
         determined by the `codeword_state_map`.
 
         Args:
             name: Name for the reset block.
-            sweep_params: Optional parameters for sweeping.
+            sweep_params: Optional parameters for sweeping. Can be prefixed
+                with 'feedback_'.
             **kwargs: Additional keyword arguments for constructing the block.
 
         Returns:
@@ -488,6 +535,11 @@ class FeedbackReset(ResetScheme):
         # FIXME: here, implicitly assumes structure about the operations name which
         #  ideally we would have only where the operations_dict is constructed
         active_reset_ro = deepcopy(op_dict[self.get_opcode("RO")])
+
+        for k, v in sweep_params.items():
+            k = k.removeprefix('feedback_')
+            if k in active_reset_ro:
+                active_reset_ro[k] = block_mod.ParametricValue(v)
 
         # additional changes
         active_reset_ro['name'] = f'ro_{name}'
@@ -560,7 +612,7 @@ class FeedbackReset(ResetScheme):
     def get_analysis_instructions(self):
         """
         Provides instructions for analyzing feedback reset data.
- 
+
         Returns a dictionary containing analysis instructions, including preparation type,
         feedback delay, and the number of repetitions.
         """
@@ -569,17 +621,20 @@ class FeedbackReset(ResetScheme):
         # likely to change when analysis is refactored / enhanced to be able
         # to handle more complex reset types (e.g. combinations etc).
         # for now, the legacy naming conventions are used in the analysis
-        return dict(preparation_type='active_reset',
-                    post_ro_wait=self.ro_feedback_delay(),
-                    reset_reps=self.repetitions()
-                    )
+        if self.log_feedback_acquisitions():
+            return dict(preparation_type='active_reset',
+                        post_ro_wait=self.ro_feedback_delay(),
+                        reset_reps=self.repetitions()
+                        )
+        else:
+            return dict(preparation_type='wait')
 
 class ParametricFluxReset(ResetScheme):
     """
     Implements a ResetScheme using parametric flux modulation (PFM) operations.
 
-    This class dynamically determines available PFM operations from the parent instrument 
-    and configures a ResetScheme to utilize them.  
+    This class dynamically determines available PFM operations from the parent instrument
+    and configures a ResetScheme to utilize them.
     """
     DEFAULT_INSTANCE_NAME = "parametric_flux"
 
@@ -611,7 +666,7 @@ class ParametricFluxReset(ResetScheme):
 
     def _reset_block(self, name, sweep_params, **kwargs):
         """
-        Creates a block containing copies of all configured PFM operations 
+        Creates a block containing copies of all configured PFM operations
         retrieved from  the operation dictionary.
 
         Args:

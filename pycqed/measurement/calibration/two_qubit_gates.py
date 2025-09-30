@@ -14,7 +14,6 @@ from pycqed.measurement.calibration.calibration_points import CalibrationPoints
 import pycqed.measurement.awg_sweep_functions as awg_swf
 import pycqed.measurement.sweep_functions as swf
 import pycqed.analysis_v2.timedomain_analysis as tda
-from pycqed.measurement import multi_qubit_module as mqm
 import logging
 import qcodes
 import pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
@@ -153,20 +152,39 @@ class MultiTaskingExperiment(QuantumExperiment):
         """
         return self.find_qubits_in_tasks(self.qb_names, [task])
 
+    @staticmethod
+    def _parse_qubits_and_tasklist(qubits, task_list):
+        """Generates a task_list and qubits list from `qubits` argument.
+
+        Implements the shortcut where just specifying `qubits` will generate a
+        task_list and a list of the qubit names. Furthermore, if a task_list
+        was given that has a qubit object in a 'qb' entry, it will be replaced
+        with the qubit name (str).
+        """
+        if qubits is not None and not isinstance(qubits, list):
+            qubits = [qubits]
+
+        # generate task_list
+        if task_list is None:
+            if qubits is None:
+                raise ValueError('Please provide either '
+                                 '"qubits" or "task_list"')
+            # Create task_list from qubits
+            task_list = [{'qb': qb.name} for qb in qubits]
+        for task in task_list:
+            if 'qb' in task and not isinstance(task['qb'], str):
+                task['qb'] = task['qb'].name
+        return qubits, task_list
+
     def run_measurement(self, **kw):
         """
         Run the actual measurement. Stores some additional settings and
             then calls the respective method in QuantumExperiment.
         :param kw: keyword arguments
         """
-        # update the nr_averages based on the settings in the user measure
-        # objects
-        self.df_kwargs.update(
-            {'nr_averages': max(qb.acq_averages() for qb in self.meas_objs)})
 
         # Store metadata that is not part of QuantumExperiment.
         self.exp_metadata.update({
-            'reset_params': self.get_reset_params(),
             'sweep_points': self.sweep_points,
             'ro_qubits': self.meas_obj_names,
         })
@@ -554,7 +572,11 @@ class MultiTaskingExperiment(QuantumExperiment):
         :param kw: keyword arguments are passed to sweep_n_dim, except:
             - 'ro_qubits'. This keyword argument is overwritten by the list
               of qubits in self.meas_obj_names for which there are no
-              readout pulses in the parallel blocks.
+              readout pulses in the parallel blocks, unless enforce_final_readout=True
+              in which case ro_qubits = self.meas_obj_names.
+            - 'enforce_final_readout': Allows to enforce adding a readout pulse
+            on all measurement objects independently of whether or not
+            they already have a RO or Acq in the body block.
         :return: see sweep_n_dim
         """
         parallel_blocks = []
@@ -592,7 +614,7 @@ class MultiTaskingExperiment(QuantumExperiment):
                         prefix, [k for l in params_to_prefix for k in l])
                     qbs = self.find_qubits_in_tasks(self.qb_names, [task])
                     for qb in qbs:
-                        ppqb = self._prep_sweep_params[qb]
+                        ppqb = self._reset_sweep_params[qb]
                         for param in [k for l in params_to_prefix for k in l]:
                             if param in ppqb:
                                 ppqb[param] = prefix + ppqb[param]
@@ -623,9 +645,15 @@ class MultiTaskingExperiment(QuantumExperiment):
         # Generate kw['ro_qubits'] as explained in the docstring
         op_codes = [p['op_code'] for p in self.all_main_blocks.pulses if
                     'op_code' in p]
-        kw['ro_qubits'] = [m for m in self.meas_obj_names
-                           if f'RO {m}' not in op_codes
-                           and f'Acq {m}' not in op_codes]
+
+        if kw.get('enforce_final_readout', False):
+            # enforce adding a readout pulse on all measurement objects independently
+            # of whether they already have a RO or Acq in the body block.
+            kw['ro_qubits'] = self.meas_obj_names
+        else:
+            kw['ro_qubits'] = [m for m in self.meas_obj_names
+                               if f'RO {m}' not in op_codes
+                               and f'Acq {m}' not in op_codes]
         # call sweep_n_dim to perform the actual sweep
         return self.sweep_n_dim(sweep_points,
                                 body_block=self.all_main_blocks,
@@ -705,7 +733,7 @@ class MultiTaskingExperiment(QuantumExperiment):
 
         # search in all tasks
         append_qbs(found_qubits, task_list)
-        
+
         return found_qubits
 
     def create_meas_objs_list(self, task_list=None, **kw):
@@ -1496,8 +1524,8 @@ class DynamicPhase(CalibBuilder):
                 p['ref_point_new'] = 'end'
             # switch off the new initial rotations if the flux pulse is on
             for p in ir2.pulses:
-                p['pulse_off'] = ParametricValue('flux_pulse_off',
-                                                 func=lambda x : not x)
+                p['pulse_off'] = ParametricValue(
+                    'flux_pulse_off', func_for_pulse_param=lambda x : not x)
             # put the two sets of initial rotations in parallel (noting
             # that only one of them will be active at a time)
             ir = self.simultaneous_blocks('initial_rots', [ir, ir2],
@@ -1914,10 +1942,45 @@ class Chevron(CalibBuilder):
         if 'TwoD' not in analysis_kwargs['options_dict']:
             if len(self.sweep_points) == 2:
                 analysis_kwargs['options_dict']['TwoD'] = True
-        self.analysis = tda.MultiQubit_TimeDomain_Analysis(
-            qb_names=self.meas_obj_names,
-            t_start=self.timestamp, **analysis_kwargs)
+        try:
+            do_fitting = analysis_kwargs['options_dict'].pop('do_fitting', True)
+            if 'device_name' not in analysis_kwargs['options_dict']:
+                try:
+                    analysis_kwargs['options_dict']['device_name'] = \
+                        self.dev.name
+                except Exception as e:
+                    print(e)
+                    print('Could not determine device name from device. '
+                          'Please provide it in the analysis_kwargs.')
+            self.analysis = tda.ChevronAnalysis(t_start=self.timestamp,
+                                                do_fitting=do_fitting,
+                                                **analysis_kwargs)
+        except Exception as e:
+            log.warning('Could not run ChevronAnalysis because of '
+                        f'exception {e}. Using '
+                        'MultiQubit_TimeDomain_Analysis instead.')
+            self.analysis = tda.MultiQubit_TimeDomain_Analysis(
+                qb_names=self.meas_obj_names,
+                t_start=self.timestamp, **analysis_kwargs)
         return self.analysis
+
+    def run_update(self, analysis_kwargs=None, **kw):
+        """
+        ### TODO: extend to also sweep the amplitude (not only amplitude2)
+        """
+        try:
+            for task in self.task_list:
+                qbH, qbL = self.get_meas_objs_from_task(task=task)
+                gate_name = kw.get('cz_pulse_name', 'CZ')
+                self.dev.get_pulse_par(gate_name, qbH, qbL, 'amplitude2')(
+                    self.analysis.proc_data_dict['analysis_params_dict'][
+                        f'{qbH.name}_{qbL.name}']['amplitude2_Chevron'])
+                self.dev.get_pulse_par(gate_name, qbH, qbL, 'pulse_length')(
+                    self.analysis.proc_data_dict['analysis_params_dict'][
+                        f'{qbH.name}_{qbL.name}']['t_CZ_Chevron'])
+        except Exception as e:
+            log.warning('Could not update pulse parameters due to '
+                        f'exception {e}.')
 
     @classmethod
     def gui_kwargs(cls, device):

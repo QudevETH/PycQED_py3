@@ -9,6 +9,7 @@ Originally written by Adriaan, updated/rewritten by Rene May 2018
 """
 import itertools
 import logging
+from typing import Literal
 
 from scipy import stats
 
@@ -160,7 +161,7 @@ class Singleshot_Readout_Analysis(ba.BaseDataAnalysis):
                                               **guess0)
                 fitres1 = gauss2D_model_1.fit(data=H1.transpose(),  x=x2d, y=y2d,
                                               **guess1)
-                
+
                 fr0 = fitres0.best_values
                 fr1 = fitres1.best_values
                 x0 = fr0['center_x']
@@ -956,16 +957,54 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         return fm
 
     @staticmethod
-    def plot_fidelity_matrix(fm, target_names,
+    def plot_fidelity_matrix(fm, target_names, prep_names=None,
                              title="State Assignment Probability Matrix",
                              auto_shot_info=True, ax=None,
                              cmap=None, normalize=True, show=False,
-                             plot_cb=True):
+                             plot_cb=True,
+                             plot_compact=False, presel_column=None,
+                             plot_norm=None):
+        """
+        Plots fidelity matrix.
+
+        Plots fraction/number of shots as a grid where the row corresponds to
+        the state the qubits are prepared in and the column the state that was
+        assigned by the classifier(s)m, i.e. the target state. Calculates the
+        fidelity by averaging the trace sum.
+
+        Args:
+            fm (numpy.ndarray): 2D fidelity matrix to be plotted
+            target_names (list of str): assigned state names
+            prep_names (list of str): prepared state names, copies
+                ``target_names`` if ``None``
+            title (str): Title of the plot
+            auto_shot_info (bool): Whether to count and plot number of shots
+            ax (matplotlib.axis|optional): axis to plot on, creates new if
+                ``None``
+            cmap (matplotlib.cm|optional): colour map for the fidelity matrix
+                and colour bar, default: ``get.get_cmap('Reds')``
+            normalize (bool): whether to count and normalize ``fm`` row-wise.
+            show (bool): whether to show plot afterward
+            plot_cb (bool): whether to plot colour bar
+            plot_compact (bool): doesn't annotate all fidelity matrix values &
+                doesn't rotate target value tick marks if set to ``True``
+            presel_column (array): array of ``len(prep_names)`` with values in
+                [0, 1] indicating the fraction of shots for which the
+                preselection condition was fulfilled. Will be added to the plot
+                as a separate column.
+            plot_norm (matplotlib.colors.Normalize): set plotting norm, e.g.
+                ``mc.LogNorm()`` for logarithmic colouring (default)
+
+        Returns:
+            Plotted fidelity matrix as a figure.
+        """
         fidelity_avg = np.trace(fm) / float(np.sum(fm))
         if auto_shot_info:
             title += '\nTotal # shots:{}'.format(np.sum(fm))
         if cmap is None:
             cmap = plt.get_cmap('Reds')
+        if plot_norm is None:
+            plot_norm = mc.LogNorm(vmin=5e-3, vmax=1.)
 
         if ax is None:
             fig, ax = plt.subplots()
@@ -975,33 +1014,44 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         if normalize:
             fm = fm.astype('float') / fm.sum(axis=1)[:, np.newaxis]
 
+        if presel_column is not None:
+            fm = np.c_[presel_column, fm]
+
         im = ax.imshow(fm, interpolation='nearest', cmap=cmap,
-                       norm=mc.LogNorm(vmin=5e-3, vmax=1.))
+                       norm=plot_norm)
         ax.set_title(title)
         if plot_cb:
             cb = fig.colorbar(im)
             cb.set_label('Assignment Probability, $P_{ij}$')
 
         if target_names is not None:
-            tick_marks = np.arange(len(target_names))
-            ax.set_xticks(tick_marks)
-            ax.set_xticklabels( target_names, rotation=45)
-            ax.set_yticks(tick_marks)
-            ax.set_yticklabels(target_names)
+            # annotate y axis
+            if prep_names is None:
+                prep_names = target_names
+            ax.set_yticks(np.arange(len(prep_names)))
+            ax.set_yticklabels(prep_names)
+            # annotate x axis
+            if presel_column is not None:
+                target_names = ['pre', *target_names]
+            ax.set_xticks(np.arange(len(target_names)))
+            ax.set_xticklabels(target_names,
+                               rotation=90 if plot_compact else 45)
 
+        # annotate matrix elements with values in readable colour
         thresh = fm.max() / 1.5 if normalize else fm.max() / 2
-        for i, j in itertools.product(range(fm.shape[0]), range(fm.shape[1])):
-            if normalize:
-                ax.text(j, i, "{:0.4f}".format(fm[i, j]),
-                         horizontalalignment="center",
-                         color="white" if fm[i, j] > thresh else "black")
-            else:
-                ax.text(j, i, "{:,}".format(fm[i, j]),
-                         horizontalalignment="center",
-                         color="white" if fm[i, j] > thresh else "black")
+        if not plot_compact:
+            for i, j in itertools.product(range(fm.shape[0]), range(fm.shape[1])):
+                if normalize:
+                    ax.text(j, i, "{:0.4f}".format(fm[i, j]),
+                             horizontalalignment="center",
+                             color="white" if fm[i, j] > thresh else "black")
+                else:
+                    ax.text(j, i, "{:,}".format(fm[i, j]),
+                             horizontalalignment="center",
+                             color="white" if fm[i, j] > thresh else "black")
         plt.tight_layout()
         ax.set_ylabel('Prepared State')
-        ax.set_xlabel('Assigned State\n$\mathcal{{F}}_{{avg}}$={:0.2f} %'
+        ax.set_xlabel('Assigned State\n$\\mathcal{{F}}_{{avg}}$={:0.2f} %'
                       .format(fidelity_avg * 100))
         if show:
             plt.show()
@@ -1177,6 +1227,34 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
             x = np.linspace(xmin, xmax, 100)
             y = np.linspace(ymin, ymax, 100)
             raise NotImplementedError()
+
+        # if necessary, update limits, note that, if both are provided only the
+        # ylim will matter since the aspect ratio is fixed.
+        if kwargs.get('xlim'):
+            ax.set_xlim(kwargs.get('xlim'))
+        if kwargs.get('ylim'):
+            ax.set_ylim(kwargs.get('ylim'))
+        # required to assert axis will be at the same location roughly
+        # independently of the data, this is useful to ensure uniformity of
+        # plots (easier comparison of scatters during a sweep)
+        fig.tight_layout()
+
+        # ensure that 1 unit on x axis == 1 unit of y axis, ie that circles
+        # in the data are plotted as circles and not ellipses
+        # when setting the spect ratio, the axis position of `ax` will change,
+        # anchor it to north east such that space to axr and axt does not change
+        ax.set_aspect('equal', anchor='NE')
+        ax_position = ax.get_position()
+        # Adjust the bounds of the top and right axes to match the main plot
+        # Align the top axis (axt) width with ax and maintain height
+        axt.set_position([ax_position.x0, axt.get_position().y0,
+                          ax_position.width, axt.get_position().height])
+
+        # Align the right axis (axr) height with ax and maintain width
+        axr.set_position([axr.get_position().x0, ax_position.y0,
+                          axr.get_position().width, ax_position.height])
+
+
         return kwargs['fig'], [ax, axr, axt]
 
     @staticmethod
@@ -1188,31 +1266,73 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
                                figure=fig)
         # scatter axis
         ax = plt.subplot(gs[1, 0])
+
         # right marginal histogram axis
-        axr = plt.subplot(gs[1, 1], sharey=ax,
-                          frameon=frameon)
+        axr = plt.subplot(gs[1, 1], frameon=frameon, sharey=ax)
         # top marginal histogram axis
-        axt = plt.subplot(gs[0, 0], sharex=ax,
-                          frameon=frameon)
+        axt = plt.subplot(gs[0, 0], frameon=frameon, sharex=ax)
         return [ax, axr, axt]
 
     @staticmethod
-    def plot_clf_boundaries(X, clf, ax=None, cmap=None, spacing=None):
-        def make_meshgrid(x, y, h=None, margin=None):
-            if margin is None:
-                deltax = x.max() - x.min()
-                deltay = y.max() - y.min()
-                margin_x = deltax * 0.10
-                margin_y = deltay * 0.10
-            else:
-                margin_x, margin_y = margin, margin
-            x_min, x_max = x.min() - margin_x, x.max() + margin_x
-            y_min, y_max = y.min() - margin_y, y.max() + margin_y
+    def plot_clf_boundaries(X, clf,
+                            covered_area: Literal["from_ax_lim", "from_data"]
+                            = "from_ax_lim",
+                            ax=None, cmap=None, spacing: float = None):
+        """
+        plots the decision regions of a classifier `clf`
+        Args:
+            X: data
+            clf: classifier
+            covered_area:
+                'from_ax_lim': the area on which to show the decision regions
+                is taken from the limit of  the provided axis. This is the default.
+                'from_data': the area to plot is taken based on the
+                data provided + a 10% margin.
+            ax: ax on which to plot the decision regions
+            cmap: color map
+            spacing: spacing in normalized axes unit between points on the grid
+                for the decision regions.
+                note: high density takes (considerably) longer to plot.
+
+        Returns:
+
+        """
+        def get_min_max_from_data(x, y):
+            return add_margins(x.min(), x.max(), y.min(), y.max())
+
+        def get_min_max_from_axes(ax):
+            """Retrieve min and max values from axis limits of a given axis
+            object.
+            """
+            x_min, x_max = ax.get_xlim()
+            y_min, y_max = ax.get_ylim()
+            return add_margins(x_min, x_max, y_min, y_max)
+
+        def make_meshgrid(x_min, x_max, y_min, y_max, h=None):
+            """Create a meshgrid based on provided min and max values and step
+            size h.
+            """
             if h is None:
                 h = 0.01 * (x_max - x_min)
+
             xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
                                  np.arange(y_min, y_max, h))
             return xx, yy
+
+        def add_margins(xmin, xmax, ymin, ymax, margin=None):
+            """Adds margins to box."""
+            if margin is None:
+                deltax = xmax - xmin
+                deltay = ymax - ymin
+                margin_x = deltax * 0.10
+                margin_y = deltay * 0.10
+
+            else:
+                margin_x, margin_y = margin, margin
+
+            xmin, xmax = xmin - margin_x, xmax + margin_x
+            ymin, ymax = ymin - margin_y, ymax + margin_y
+            return xmin, xmax, ymin, ymax
 
         def plot_contours(ax, clf, xx, yy, **params):
             Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])
@@ -1223,8 +1343,18 @@ class Singleshot_Readout_Analysis_Qutrit(ba.BaseDataAnalysis):
         if ax is None:
             fig, ax = plt.subplots(1, figsize=(10, 10))
 
-        X0, X1 = X[:, 0], X[:, 1]
-        xx, yy = make_meshgrid(X0, X1, h=spacing)
+        if covered_area == "from_ax_lim":
+            xmin, xmax, ymin, ymax = get_min_max_from_axes(ax)
+        elif covered_area == "from_data":
+            x, y = X[:, 0], X[:, 1]
+            xmin, xmax, ymin, ymax = get_min_max_from_data(x, y)
+        else:
+            raise ValueError(f"{covered_area=} not in "
+                             "'from_ax_lim', 'from_data'")
+        xx, yy = make_meshgrid(xmin, xmax, ymin, ymax, h=spacing)
+        # Disable auto-scaling before plotting boundaries
+        ax.set_autoscalex_on(False)
+        ax.set_autoscaley_on(False)
         plot_contours(ax, clf, xx, yy, cmap=cmap, alpha=0.3)
 
     @staticmethod
@@ -1597,7 +1727,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
             # add all combinations
             for i, states in enumerate(combination_list):
                 name = ''.join(['e' if s else 'g' for s in states])
-                obs_name = '$\| ' + name + '\\rangle$'
+                obs_name = r'$\| ' + name + '\\rangle$'
                 self.observables[obs_name] = dict(zip(qubits, states))
                 # add preselection condition
                 if self.use_preselection:
@@ -1725,18 +1855,23 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
     def prepare_plots(self):
         self.prepare_plot_prob_table(self.use_preselection)
 
-    def prepare_plot_prob_table(self, only_odd=False):
+    @staticmethod
+    def get_highcontrast_colormap():
         # colormap which has a lot of contrast for small and large values
         v = [0, 0.1, 0.2, 0.8, 1]
         c = [(1, 1, 1),
-             (191/255, 38/255, 11/255),
-             (155/255, 10/255, 106/255),
-             (55/255, 129/255, 214/255),
+             (191 / 255, 38 / 255, 11 / 255),
+             (155 / 255, 10 / 255, 106 / 255),
+             (55 / 255, 129 / 255, 214 / 255),
              (0, 0, 0)]
-        cdict = {'red':   [(v[i], c[i][0], c[i][0]) for i in range(len(v))],
+        cdict = {'red': [(v[i], c[i][0], c[i][0]) for i in range(len(v))],
                  'green': [(v[i], c[i][1], c[i][1]) for i in range(len(v))],
-                 'blue':  [(v[i], c[i][2], c[i][2]) for i in range(len(v))]}
-        cm = mc.LinearSegmentedColormap('customcmap', cdict)
+                 'blue': [(v[i], c[i][2], c[i][2]) for i in range(len(v))]}
+        return mc.LinearSegmentedColormap('customcmap', cdict)
+
+
+    def prepare_plot_prob_table(self, only_odd=False):
+        cm = self.get_highcontrast_colormap()
 
         plot_filter = self.options_dict.get('plot_filter', None)
         if plot_filter is not None:
@@ -1762,7 +1897,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
             'zlabel': "Counts",
             'zrange': [0,1],
             'title': (self.timestamps[0] + ' \n' +
-                      self.raw_data_dict['measurementstring'][0]),
+                      self.raw_data_dict['measurementstring']),
             'xunit': None,
             'yunit': None,
             'xtick_loc': np.arange(len(self.observables))[obs_filter],
@@ -1862,7 +1997,7 @@ class MultiQubit_SingleShot_Analysis(ba.BaseDataAnalysis):
                 list(self.channel_map.keys())
             )
         self.proc_data_dict['cal_points_list'] = cal_points_list
-        
+
         means = np.zeros((len(cal_points_list), len(observables)))
         cal_readouts = set()
         for i, cal_point in enumerate(cal_points_list):
@@ -2060,7 +2195,7 @@ class Multiplexed_Readout_Analysis(MultiQubit_SingleShot_Analysis):
         qubits = list(self.channel_map.keys())
 
         def_seg_names_prep = ["".join(l) for l in list(
-            itertools.product(["$0$", "$\pi$"],
+            itertools.product(["$0$", r"$\pi$"],
                               repeat=len(self.channel_map)))]
         self.preselection_available = False
         if self.n_readouts == len(def_seg_names_prep):
@@ -2097,7 +2232,7 @@ class Multiplexed_Readout_Analysis(MultiQubit_SingleShot_Analysis):
                 self.observables["pre"] = preselection_condition
             # add all combinations
             for i, states in enumerate(combination_list):
-                obs_name = '$\| ' + \
+                obs_name = r'$\| ' + \
                            ''.join(['e' if s else 'g' for s in states]) + \
                            '\\rangle$'
                 self.observables[obs_name] = dict(zip(qubits, states))
@@ -2290,7 +2425,7 @@ class SingleQubitResetAnalysis(ba.BaseDataAnalysis):
         qubit_idx = self.options_dict.get('qubit_idx')
         nr_qubits = len(self.raw_data_dict['value_names'])
         nr_bins = self.options_dict.get('nr_bins', 100)
-        
+
         ######################################
         # extract shots to individual arrays #
         ######################################
@@ -2303,7 +2438,7 @@ class SingleQubitResetAnalysis(ba.BaseDataAnalysis):
         self.proc_data_dict['channel_idx'] = self.raw_data_dict['value_names'] \
             .index(self.options_dict['channel_name'])
         channel_idx = self.proc_data_dict['channel_idx']
-        
+
         readout_idxs = np.arange(len(self.raw_data_dict['measured_values'][0]))
         for i in range(nr_readout):
             mask0 = (readout_idxs % nr_readout == i)
@@ -2438,7 +2573,7 @@ class SingleQubitResetAnalysis(ba.BaseDataAnalysis):
         nr_reset = self.options_dict.get('nr_reset')
         nr_readout = nr_reset + 1
         qubit_idx = self.options_dict.get('qubit_idx')
-        
+
         # readout histograms
         for i in range(nr_readout):
             self.plot_dicts['ro_{}_hist_qb_idx{}'.format(i+1, qubit_idx)] = {

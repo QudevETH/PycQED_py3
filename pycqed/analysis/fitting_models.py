@@ -258,14 +258,14 @@ def Qubit_freq_to_dac_res(frequency, Ej_max, E_c, asymmetry, coupling, fr,
     coupling: coupling to resonator (Hz).
     fr (float): frequency of resonator (Hz)
     dac_sweet_spot: voltage at which the sweet-spot is found (V)
-    branch (enum: 'positive' 'negative' or "smallest" or int/float):
+    branch: 'positive', 'negative', 'smallest', or `int`/`float`(= "volt_guess"):
         if "positive": returns voltages corresponding to the positive flux
             branch (right to the upper sweetspot).
         if "negative": returns voltages corresponding to the negative flux
             (left to the upper sweetspot).
         if "smallest": equivalent to branch = 0.
-        if volt_guess (integer):
-            returns voltages in the period closest to volt_guess
+        if volt_guess (integer/float):
+            returns voltages in the branch closest to volt_guess
     n_periods (int, int): range of periods in which to look for voltages
         close to volt_guess
     single_branch (bool): forces all voltages to lie in a single branch (e.g. to
@@ -1077,7 +1077,7 @@ def fit_hanger_with_pf(model, data, simultan=False):
         fit_out = model.fit( data_loc[:,1]/
                            max(data_loc[:,1]),guess,f=data_loc[:,0],)
         tol = 0.1
-    
+
     if fit_out.chisqr > tol:
         fit_lst = []
         for shift_pf in np.linspace(-0.01, 0.01, 5):
@@ -1745,27 +1745,27 @@ def TwoErrorFunc_guess(model, delays, data):
 
 
 def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
-    """Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
+    r"""Analytical model for the max. ampl. of the unwanted SB of an IQ mixer.
 
     Args:
-        alpha (float): Correction factor that is applied to the amplitude of 
+        alpha (float): Correction factor that is applied to the amplitude of
             the Q signal.
-        phi_skew (float): Phase correction of the Q signal relative to the I 
+        phi_skew (float): Phase correction of the Q signal relative to the I
             signal in degree.
-        g (float, optional): Amplitude ratio between the LO power splitter 
+        g (float, optional): Amplitude ratio between the LO power splitter
             outputs. It is defined as amplitude(LO_I)/amplitude(LO_Q).
             Defaults to 1.0.
-        phi (float, optional): Phase between the two ports of the LO power 
-            splitter in degree. Is defined as phase(LO_Q)-phase(LO_I). 
+        phi (float, optional): Phase between the two ports of the LO power
+            splitter in degree. Is defined as phase(LO_Q)-phase(LO_I).
             Defaults to 0 degree.
-        offset (float, optional): Offset in dBV accounting for losses in the 
+        offset (float, optional): Offset in dBV accounting for losses in the
             signal chain. Defaults to 0.0 dBV.
 
     Returns:
         float: maximum sideband amplitude for the specified parameters in dBV
 
     Model Schematic:
-        Note: In the schematic phases are shown as radiant quantities while 
+        Note: In the schematic phases are shown as radiant quantities while
               the function expects phases expressed in degree.
          I >------------------------------ I  R ----+
                                             LO      |
@@ -1777,7 +1777,7 @@ def mixer_imbalance_sideband(alpha, phi_skew, g=1.0, phi=0.0, offset=0.0):
                                             LO      |
          Q >--- alpha*exp(i*phi_skew) ---- I  R ----+
     """
-    return 20*np.log10(np.abs(1 - alpha/g 
+    return 20*np.log10(np.abs(1 - alpha/g
                                   * np.exp(-1j*np.deg2rad(phi + phi_skew)))
                        ) + offset
 
@@ -1786,51 +1786,51 @@ def mixer_imbalance_sideband_guess(model, **kwargs):
     """Prepare and return parameters for the model :py:func:'.mixer_imbalance_sideband.'
 
     Args:
-        model (:py:class:'lmfit.model'): The model that the parameter hints 
-            will be added to and that is used to generate the parameters using 
+        model (:py:class:'lmfit.model'): The model that the parameter hints
+            will be added to and that is used to generate the parameters using
             the :py:meth:'lmfit.model.make_params' method.
-        **kwargs: Arbitrary keyword arguments that will be passed to 
+        **kwargs: Arbitrary keyword arguments that will be passed to
             :py:meth:'lmfit.model.make_params' when creating the parameters.
 
     Returns:
         :py:class:'lmfit.parameters': Parameters
     """
-    model.set_param_hint('g', value=1.0, min=0.5, max=1.5)
+    model.set_param_hint('g', value=1.0, min=0.5, max=2)
     model.set_param_hint('phi', value=0, min=-180, max=180)
     model.set_param_hint('offset', value=0.0, min=-100.0, max=+100.0)
     return model.make_params(**kwargs)
 
 
 def mixer_lo_leakage(vi, vq, li=0.0, lq=0.0, theta_i=0, theta_q=0, offset=0.0):
-    """Analytical model for maximum amplitude of LO leakage of an IQ mixer.
+    r"""Analytical model for maximum amplitude of LO leakage of an IQ mixer.
 
     Args:
         vi (:obj:'float'): DC bias voltage applied on the I input of the mixer.
         vq (:obj:'float'): DC bias voltage applied on the Q input of the mixer.
-        li (float, optional): Amplitude of the LO leakage of the I port mixer. 
+        li (float, optional): Amplitude of the LO leakage of the I port mixer.
             Also see note below. Defaults to 0.0.
-        lq (float, optional): Amplitude of the LO leakage of the Q port mixer. 
+        lq (float, optional): Amplitude of the LO leakage of the Q port mixer.
             Also see note below. Defaults to 0.0.
-        theta_i (int, optional): Phase in radiant of the LO leakage of the I 
+        theta_i (int, optional): Phase in radiant of the LO leakage of the I
             port mixer. Also see note below. Defaults to 0.0 rad.
-        theta_q (int, optional): Phase in radiant of the LO leakage of the Q 
+        theta_q (int, optional): Phase in radiant of the LO leakage of the Q
             port mixer. Also see note below. Defaults to 0.0 rad.
-        offset (float, optional): Offset in dBV accounting for losses in the 
+        offset (float, optional): Offset in dBV accounting for losses in the
             signal chain. Defaults to 0.0 dBV.
 
     Returns:
         :obj:'float': maximum amplitude of the LO leakage for given parameters
 
     Important Note:
-        As can be seen from the model schematic and the implementation the 
-        pair of arguments li and theta_i as well as lq and theta_q each define 
-        a complex number that will be added within the model. Therefore they 
-        are not uniquely defined from the models value and one should prefer 
-        to set one of the two pairs constant when fitting the model to data to 
+        As can be seen from the model schematic and the implementation the
+        pair of arguments li and theta_i as well as lq and theta_q each define
+        a complex number that will be added within the model. Therefore they
+        are not uniquely defined from the models value and one should prefer
+        to set one of the two pairs constant when fitting the model to data to
         prevent unneccesary overhead in the fitting routine.
-    
+
     Model Schematic:
-        Note: We are only interested in the amplitudes of signals that are of 
+        Note: We are only interested in the amplitudes of signals that are of
               LO frequency.
 
          I >-- +V_I (DC) ----------- I  R --- +V_I ---------------+-----+
@@ -1854,17 +1854,17 @@ def mixer_lo_leakage_guess(model, **kwargs):
     """Prepare and return parameters  for the model :py:func:'.mixer_lo_leakage'.
 
     Args:
-        model (:py:class:'lmfit.model'): The model that the parameter hints 
-            will be added to and that is used to generate the parameters using 
+        model (:py:class:'lmfit.model'): The model that the parameter hints
+            will be added to and that is used to generate the parameters using
             the :py:meth:'lmfit.model.make_params' method.
-        **kwargs: Arbitrary keyword arguments that will be passed to 
+        **kwargs: Arbitrary keyword arguments that will be passed to
             :py:meth:'lmfit.model.make_params' when creating the parameters.
 
     Returns:
         :py:class:'lmfit.parameters': Parameters
 
     Note:
-        The values 'lq' and 'theta_q' are set as fixed parameters for reasons 
+        The values 'lq' and 'theta_q' are set as fixed parameters for reasons
         descibed in the documentation of :py:func:'.mixer_lo_leakage'.
     """
     model.set_param_hint('li', value=0.0, min=0, max=1)

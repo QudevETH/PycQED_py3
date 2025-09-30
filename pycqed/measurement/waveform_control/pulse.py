@@ -8,11 +8,13 @@ function.
 The actual pulse implementations are defined in separate modules,
 e.g. pulse_library.py.
 
-The module variable `pulse_libraries` is a
+The module variable `pulse_libraries` of type `set()` is a set of pulse
+implementation libraries that will be searched when a dictionary that
+defines an operation is converted to a pulse object. These libraries
+associate a pulse type with its corresponding class.
 """
 
 import numpy as np
-import scipy as sp
 
 pulse_libraries = set()
 """set of module: The set of pulse implementation libraries.
@@ -22,7 +24,7 @@ The pulse class is stored as a string in a pulse dictionary.
 
 Each pulse library module should add itself to this set, e.g.
 >>> import sys
->>> from pyceqed.measurement.waveform_control import pulse
+>>> from pycqed.measurement.waveform_control import pulse
 >>> pulse.pulse_libraries.add(sys.modules[__name__])
 """
 
@@ -42,7 +44,8 @@ class Pulse:
             Defaults to 0.
         channels (list of str, optional): A list of channel names that the pulse
             instance generates waveforms form. Defaults to empty list.
-            filter_bypass ('FIR', 'IIR', 'all' or None, optional): If not None, skips the listed predistortion filters, see Segment.waveforms for details.
+        filter_bypass ('FIR', 'IIR', 'all' or None, optional): If not None,
+            skips the listed predistortion filters.
     Attrs:
         channel_mask: set[str]
             A set of channel names to be excluded from waveform generation.
@@ -50,16 +53,16 @@ class Pulse:
     """
 
     HASHABLE_TIME_ROUNDING_DIGITS = 12
-    """Specifies the precision of rounding when generating the hash entry for 
-    the difference between algorithm time and t_start. If this parameter has 
-    value n, then all differences will be rounded to the n-th decimal of 
+    """Specifies the precision of rounding when generating the hash entry for
+    the difference between algorithm time and t_start. If this parameter has
+    value n, then all differences will be rounded to the n-th decimal of
     s (second)."""
 
     # This parameter is set to False by default for the robustness of the
     # code. Individual pulse types that support internal modulation should
     # rewrite this class parameter to True.
     SUPPORT_INTERNAL_MOD = False
-    """Indicating whether this pulse is supposed to use hardware 
+    """Indicating whether this pulse is supposed to use hardware
     modulation of generator AWGs. """
 
     # This parameter is set to False by default for the robustness of the
@@ -68,7 +71,7 @@ class Pulse:
     # pulse.amplitude parameter. Developers can rewrite this parameter for
     # individual pulses in pulse_library.py to True if needed.
     SUPPORT_HARMONIZING_AMPLITUDE = False
-    """Indicating whether this pulse allows re-scaling its amplitude during 
+    """Indicating whether this pulse allows re-scaling its amplitude during
     upload and retrieve the original amplitude with AWG hardware commands."""
 
     def __init__(self, name, element_name, **kw):

@@ -100,6 +100,7 @@ class PulsarAWGInterface(ABC):
         super().__init__()
 
         self.awg = awg
+        self.awg_name = awg.name
         self.pulsar = pulsar
 
         self._filter_segment_functions = None
@@ -143,7 +144,7 @@ class PulsarAWGInterface(ABC):
         """
 
         pulsar = self.pulsar
-        name = self.awg.name
+        name = self.awg_name
 
         pulsar.add_parameter(f"{name}_active",
                              initial_value=True,
@@ -244,7 +245,9 @@ class PulsarAWGInterface(ABC):
         awg = self.awg
 
         pulsar.add_parameter(f"{ch_name}_id", get_cmd=lambda: id)
+        pulsar.id_lookup[ch_name] = id
         pulsar.add_parameter(f"{ch_name}_awg", get_cmd=lambda: awg.name)
+        pulsar.awg_lookup[ch_name] = awg.name
         pulsar.add_parameter(f"{ch_name}_type", get_cmd=lambda: ch_type)
         if self._check_if_implemented(id, "amp"):
             pulsar.add_parameter(f"{ch_name}_amp",
@@ -280,6 +283,7 @@ class PulsarAWGInterface(ABC):
                              parameter_class=ManualParameter)
 
         if ch_type == "analog":
+            self.pulsar.analog_channels.add(ch_name)
             pulsar.add_parameter(f"{ch_name}_distortion",
                                  label=f"{ch_name} distortion mode",
                                  initial_value="off",
@@ -358,10 +362,10 @@ class PulsarAWGInterface(ABC):
                      channels_to_program:Union[List[str], str]="all",
                      filter_segments=None):
         """Preprocess filter segments before programming actual hardware"""
-        # Switch of repeat_pattern if not supported or if disabled via
+        # Switch off repeat_pattern if not supported or if disabled via
         # _minimize_sequencer_memory parameter.
-        param = f'{self.awg.name}_minimize_sequencer_memory'
-        if param not in self.pulsar.parameters or not self.pulsar.get(param):
+        param = f'{self.awg_name}_minimize_sequencer_memory'
+        if not self.pulsar.get(param, False, cache=True):
             repeat_pattern = None
         awg_sequence = self.get_filtered_awg_sequence(
             awg_sequence, waveforms, filter_segments, repeat_pattern,
@@ -389,7 +393,7 @@ class PulsarAWGInterface(ABC):
                 # filter segments emulation needed
                 if repeat_pattern is not None:
                     raise NotImplementedError(
-                        f'{self.awg.name} does not support filter_segments and '
+                        f'{self.awg_name} does not support filter_segments and '
                         f'an emulation is needed, but the combination of '
                         f'filter_segments emulation and repeat_pattern is not '
                         f'implemented.')
@@ -408,7 +412,7 @@ class PulsarAWGInterface(ABC):
                     # FIXME: This assumes that filter_segments will be set
                     #  after the call to program_awgs (as it is the case in
                     #  FilteredSweep). Find a more general solution.
-                    self.pulsar._awgs_with_waveforms.add(self.awg.name)
+                    self.pulsar._awgs_with_waveforms.add(self.awg_name)
                     return
                 new_awg_sequence = odict()
                 i_seg = -1
@@ -700,6 +704,7 @@ class Pulsar(Instrument):
                       "the devices' trigger with this parameter.")
         self._inter_element_spacing = 'auto'
         self.channels = set()  # channel names
+        self.analog_channels = set()  # names of analog channels
         self.awgs:Set[str] = set()  # AWG names
         self.awg_interfaces:Dict[str, PulsarAWGInterface] = {}
         self.last_sequence = None
@@ -715,6 +720,9 @@ class Pulsar(Instrument):
 
         self._hash_to_wavename_table = {}
         self._filter_segments = None
+        self.awg_lookup = {}
+        self.id_lookup = {}
+        self._id_channel_lookup = {}
 
         Pulsar._instance = self
 
@@ -729,7 +737,7 @@ class Pulsar(Instrument):
         return os.path.join(gen.get_pycqed_appdata_dir(), "pulsar_id")
 
     def _use_sequence_cache_parser(self, val):
-        if val and not self.use_sequence_cache():
+        if val and not self.parameters['use_sequence_cache'].cache.get():
             self.reset_sequence_cache()
         return val
 
@@ -740,7 +748,8 @@ class Pulsar(Instrument):
         Returns:
             Set of all trigger group names.
         """
-        return set([g for awg in self.awgs for g in self.get(f'{awg}_trigger_groups')])
+        return set([g for awg in self.awgs for g in
+                    self.parameters[f'{awg}_trigger_groups'].cache.get()])
 
     def reset_sequence_cache(self):
         """Resets the sequence cache.
@@ -791,6 +800,7 @@ class Pulsar(Instrument):
                 channel names.
         """
 
+        awg_name = awg.name
         if channel_name_map is None:
             channel_name_map = {}
         if trigger_group_map is None:
@@ -801,27 +811,27 @@ class Pulsar(Instrument):
             if channel_name in self.channels:
                 raise KeyError("Channel named '{}' already defined".format(
                     channel_name))
-        if awg.name in self.awgs:
-            raise KeyError("AWG '{}' already added to pulsar".format(awg.name))
+        if awg_name in self.awgs:
+            raise KeyError(f"AWG '{awg_name}' already added to pulsar")
 
         # Add awg and channels parameters to pulsar
         awg_interface_class = PulsarAWGInterface.get_interface_class(awg)
         awg_interface = awg_interface_class(self, awg)
         awg_interface.create_awg_parameters(channel_name_map)
-        self.awg_interfaces[awg.name] = awg_interface
+        self.awg_interfaces[awg_name] = awg_interface
 
         # Reconstruct the set of unique channel groups from the
         # self.channel_groups dictionary, which stores for each channel a list
         # of all channels in the same group.
-        self.num_channel_groups[awg.name] = len(set(
+        self.num_channel_groups[awg_name] = len(set(
             ['---'.join(v) for k, v in self.channel_groups.items()
-             if self.get('{}_awg'.format(k)) == awg.name]))
+             if self.awg_lookup[k] == awg_name]))
 
-        self.awgs.add(awg.name)
+        self.awgs.add(awg_name)
         # Make sure that registers for filter_segments are set in the new AWG.
         self.filter_segments(self.filter_segments())
         # Define trigger groups of AWG
-        self.define_awg_trigger_groups(awg.name, trigger_group_map)
+        self.define_awg_trigger_groups(awg_name, trigger_group_map)
 
     def define_awg_trigger_groups(self, awg_name: str,
                                   trigger_group_map: dict = {}):
@@ -864,7 +874,7 @@ class Pulsar(Instrument):
 
         channel_list = []
         for channel in self.channels:
-            if self.get('{}_awg'.format(channel)) == awg:
+            if self.awg_lookup[channel] == awg:
                 channel_list.append(channel)
 
         return channel_list
@@ -876,7 +886,7 @@ class Pulsar(Instrument):
             channel: Name of the channel.
         """
 
-        return Instrument.find_instrument(self.get(f"{channel}_awg"))
+        return self.awg_interfaces[self.awg_lookup[channel]].awg
 
     def get_trigger_group(self, channel:str) -> str:
         """Return the corresponding trigger group
@@ -888,16 +898,15 @@ class Pulsar(Instrument):
 
         # currently we assume a trigger group to only
         # span over a single AWG
-        awg_name = self.get_channel_awg(channel).name
-        trigger_groups = self.get(f"{awg_name}_trigger_groups")
-
-        found_group = f"{awg_name}_{_DEFAULT_TRG_GRP}"
+        awg_name = self.awg_lookup[channel]
+        trigger_groups = self.parameters[
+            f"{awg_name}_trigger_groups"].cache.get()
 
         for group, channels in trigger_groups.items():
             if channel in channels:
-                found_group = group
+                return group
 
-        return found_group
+        return f"{awg_name}_{_DEFAULT_TRG_GRP}"
 
     def get_awg_from_trigger_group(self, group:str) -> str:
         """Given a trigger group, returns the AWG which the
@@ -907,13 +916,25 @@ class Pulsar(Instrument):
             group: Name of the trigger group.
         """
 
-        if group not in self.trigger_groups:
-            raise ValueError(f"Provided group {group} not in "
-                             f"list of defined trigger groups.")
+        for awg in self.awgs:
+            if group in self.parameters[f'{awg}_trigger_groups'].cache.get():
+                return awg
+        raise ValueError(f"Provided group {group} not in "
+                         f"list of defined trigger groups.")
 
-        for awg_name in self.awgs:
-            if group in self.get(f"{awg_name}_trigger_groups"):
-                return awg_name
+    def get_awgs_from_trigger_groups(self, groups=None) -> str:
+        """Returns a lookup dict to get awg names for trigger groups.
+
+        Args:
+            groups(list, default: None): if provided, the lookup dict will
+                only include the trigger groups in this list
+        """
+        lookup = {group: awg for awg in self.awgs for group
+                  in self.parameters[f'{awg}_trigger_groups'].cache.get()}
+        if groups is not None:
+            lookup = {group: awg for group, awg in lookup.items()
+                      if group in groups}
+        return lookup
 
     def get_trigger_group_channels(self, group:str)->List[str]:
         """
@@ -923,11 +944,12 @@ class Pulsar(Instrument):
         Args:
             group: Name of group.
         """
-
-        awg_name = self.get_awg_from_trigger_group(group)
-        trigger_groups = self.get(f"{awg_name}_trigger_groups")
-
-        return trigger_groups[group]
+        for awg in self.awgs:
+            groups = self.parameters[f'{awg}_trigger_groups'].cache.get()
+            if group in groups:
+                return groups[group]
+        raise ValueError(f"Provided group {group} not in "
+                         f"list of defined trigger groups.")
 
     def get_trigger_delay(self, group:str):
         """
@@ -938,12 +960,43 @@ class Pulsar(Instrument):
             group: Name of the group.
         """
         awg = self.get_awg_from_trigger_group(group)
-        delay = self.get(f"{awg}_delay")
+        delay = self.parameters[f"{awg}_delay"].cache.get()
 
         if isinstance(delay, float) or isinstance(delay, int):
             return delay
         else:
             return delay[group]
+
+    def get_trigger_groups_info(self):
+        """Returns a dict with information about the trigger groups.
+
+        Returns:
+            A dict containing the following entries:
+            - channels: dict with trigger group name as key and a list of
+                channel names (str) of the trigger group as value
+            - awg: dict with trigger group name as key and the awg name
+                (str) to which the group belongs as value
+            - trigger_channels: dict trigger group name as key and a list
+                of names (str) of channels that trigger the group as value
+            - delay: dict trigger group name as key and the delay of the
+                group (float) as value
+            - group_by_channel: dict with channel name as key and the name
+                (str) of the trigger group containing the channel as value
+        """
+        info = dict(awg={}, channels={}, trigger_channels={}, delay={})
+        for awg in self.awgs:
+            ch = self.parameters[f'{awg}_trigger_groups'].cache.get()
+            info['channels'].update(ch)
+            info['awg'].update({group: awg for group in ch})
+            for key in ['trigger_channels', 'delay']:
+                val = self.parameters[f'{awg}_{key}'].cache.get()
+                if isinstance(val, dict):
+                    info[key].update(val)
+                else:
+                    info[key].update({group: val for group in ch})
+        info['group_by_channel'] = {
+            ch: g for g, chs in info['channels'].items() for ch in chs}
+        return info
 
     def get_element_start_granularity(self, group:str):
         """
@@ -954,7 +1007,8 @@ class Pulsar(Instrument):
         """
 
         awg = self.get_awg_from_trigger_group(group)
-        gran = self.get(f"{awg}_element_start_granularity")
+        gran = self.parameters[
+            f"{awg}_element_start_granularity"].cache.get()
 
         if isinstance(gran, dict):
             gran = gran[group]
@@ -971,7 +1025,8 @@ class Pulsar(Instrument):
         """
 
         awg = self.get_awg_from_trigger_group(group)
-        trigger_channels = self.get(f"{awg}_trigger_channels")
+        trigger_channels = self.parameters[
+            f"{awg}_trigger_channels"].cache.get()
 
         # if trigger channels are list return that
         # list for all groups
@@ -1030,9 +1085,10 @@ class Pulsar(Instrument):
         Returns:
              str with _join_or_split_elements setting for the channel
         """
-        awg = self.get_channel_awg(ch).name
+        awg = self.awg_lookup[ch]
 
-        join_or_split_elements = self.get(f"{awg}_join_or_split_elements")
+        join_or_split_elements = self.parameters[
+            f"{awg}_join_or_split_elements"].cache.get()
 
         if isinstance(join_or_split_elements, str):
             return join_or_split_elements
@@ -1059,7 +1115,7 @@ class Pulsar(Instrument):
                              'Pulsar.clock()')
 
         if channel is not None:
-            awg = self.get('{}_awg'.format(channel))
+            awg = self.awg_lookup[channel]
 
         if self.awgs_prequeried:
             return self._clocks[awg]
@@ -1073,7 +1129,8 @@ class Pulsar(Instrument):
         get updated.
         """
 
-        return {awg for awg in self.awgs if self.get('{}_active'.format(awg))}
+        return {awg for awg in self.awgs
+                if self.parameters[f'{awg}_active'].cache.get()}
 
     def add_awg_with_waveforms(self, awg:str):
         """Adds an awg to the set of AWGs with waveforms programmed."""
@@ -1116,20 +1173,21 @@ class Pulsar(Instrument):
                 awg.stop()
 
         # Exclude AWGs that should not be started
-        used_awgs = [awg for awg in used_awgs if awg.awg.name not in exclude]
+        used_awgs = [awg for awg in used_awgs if awg.awg_name not in exclude]
 
         # Stop master AWG
-        if self.master_awg() and self.master_awg() not in exclude:
+        master_awg_name = self.master_awg()
+        if master_awg_name and master_awg_name not in exclude:
             self.master_awg.get_instr().stop()
 
         # Start slave AWGs
         for awg in used_awgs:
-            if awg.awg.name != self.master_awg():
+            if awg.awg_name != master_awg_name:
                 awg.start()
 
         # Check that all slave AWGs start within 10s
         awgs_to_check = [awg for awg in used_awgs
-                         if awg.awg.name != self.master_awg()]
+                         if awg.awg_name != master_awg_name]
         try:
             with WatchdogTimer(10) as timer:
                 while len(awgs_to_check):
@@ -1141,7 +1199,7 @@ class Pulsar(Instrument):
             raise WatchdogException(f"AWGs {awgs_to_check} did not start in 10s.")
 
         # Start master AWG
-        if self.master_awg() not in exclude:
+        if master_awg_name not in exclude:
             self.master_awg.get_instr().start()
 
     def stop(self):
@@ -1157,8 +1215,7 @@ class Pulsar(Instrument):
     def sigout_on(self, ch, on:bool=True):
         """Turn channel outputs on or off."""
 
-        awg = self.find_instrument(self.get(ch + '_awg'))
-        self.awg_interfaces[awg.name].sigout_on(ch, on)
+        self.awg_interfaces[self.awg_lookup[ch]].sigout_on(ch, on)
 
     def program_awgs(self, sequence, awgs:Union[List[str], str]="all"):
         """Program the AWGs to play a sequence.
@@ -1181,7 +1238,7 @@ class Pulsar(Instrument):
         try:
             self._program_awgs(sequence, awgs)
         except Exception as e:
-            if not self.use_sequence_cache():
+            if not self.parameters['use_sequence_cache'].cache.get():
                 raise
             log.warning(f'Pulsar: Exception {repr(e)} while programming AWGs. '
                         f'Retrying after resetting the sequence cache.')
@@ -1211,7 +1268,7 @@ class Pulsar(Instrument):
 
         log.info(f'Starting compilation of sequence {sequence.name}')
         t0 = time.time()
-        if self.use_sequence_cache():
+        if self.parameters['use_sequence_cache'].cache.get():
             self.invalid_cache_if_other_pulsar()
             # get hashes and information about the sequence structure
             channel_hashes, awg_sequences = \
@@ -1254,7 +1311,7 @@ class Pulsar(Instrument):
             for awg, seq in awg_sequences.items():
                 settings[awg] = {
                     s.format(awg): (
-                        self.get(s.format(awg))
+                        self.parameters[s.format(awg)].cache.get()
                         if s.format(awg) in self.parameters else None)
                     for s in settings_to_check}
 
@@ -1266,7 +1323,7 @@ class Pulsar(Instrument):
                             i_channel = awg_module.i_channel_name
                             setting_name = s.format(i_channel)
                             settings[awg][setting_name] = \
-                                self.get(setting_name) \
+                                self.parameters[setting_name].cache.get() \
                                 if setting_name in self.parameters \
                                 else None
 
@@ -1276,10 +1333,10 @@ class Pulsar(Instrument):
                     for elname, el in seq.items()}
                 if awg not in awgs_to_program:
                     try:
-                        np.testing.assert_equal(
+                        assert np.array_equal(
                             sequence_cache['settings'].get(awg, {}),
                             settings[awg])
-                        np.testing.assert_equal(
+                        assert np.array_equal(
                             sequence_cache['metadata'].get(awg, {}),
                             metadata[awg])
                     except AssertionError:  # settings or metadata change
@@ -1295,10 +1352,10 @@ class Pulsar(Instrument):
             channels_to_upload = []
             channels_to_program = []
             for ch, hashes in channel_hashes.items():
-                ch_awg = self.get(f'{ch}_awg')
+                ch_awg = self.awg_lookup[ch]
                 settings[ch] = {
                     s.format(ch): (
-                        self.get(s.format(ch))
+                        self.parameters[s.format(ch)].cache.get()
                         if s.format(ch) in self.parameters else None)
                     for s in settings_to_check}
                 metadata[ch] = {'repeat_pattern':
@@ -1307,13 +1364,13 @@ class Pulsar(Instrument):
                     continue
                 changed_settings = True
                 try:
-                    np.testing.assert_equal(
+                    assert np.array_equal(
                         sequence_cache['settings'].get(ch, {}),
                         settings[ch])
                     changed_settings = False
-                    np.testing.assert_equal(
+                    assert np.array_equal(
                         sequence_cache['hashes'].get(ch, {}), hashes)
-                    np.testing.assert_equal(
+                    assert np.array_equal(
                         sequence_cache['metadata'].get(ch, {}), metadata[ch])
                 except AssertionError:
                     # changed setting, sequence structure, or hash
@@ -1343,7 +1400,7 @@ class Pulsar(Instrument):
             # channels can be re-uploaded by replacing the existing waveforms.
             ch_length = {}
             for ch, hashes in channel_hashes.items():
-                ch_awg = self.get(f'{ch}_awg')
+                ch_awg = self.awg_lookup[ch]
                 if ch_awg in awgs_to_program + awgs_with_channels_to_upload:
                     ch_length[ch] = {
                         elname: {cw: len(waveforms[h]) for cw, h in el.items()}
@@ -1355,7 +1412,7 @@ class Pulsar(Instrument):
                         or ch_awg in awgs_to_program:
                     continue
                 try:
-                    np.testing.assert_equal(
+                    assert np.array_equal(
                         sequence_cache['length'].get(ch, {}),
                         ch_length[ch])
                 except AssertionError:  # changed length or sequence structure
@@ -1368,7 +1425,7 @@ class Pulsar(Instrument):
             # complete re-programming (these channels might have been skipped
             # above).
             for ch in self.channels:
-                if self.get(f'{ch}_awg') in awgs_to_program:
+                if self.awg_lookup[ch] in awgs_to_program:
                     sequence_cache['settings'][ch] = settings.get(ch, {})
                     sequence_cache['hashes'][ch] = channel_hashes.get(
                         ch, {})
@@ -1394,7 +1451,8 @@ class Pulsar(Instrument):
 
         # TODO: Check if this could be done somewhere else, such that there is
         # no need to import ZIPulsarMixin in this module.
-        if not self.use_sequence_cache() or ZIPulsarMixin.zi_cleanup_needed():
+        if not self.parameters['use_sequence_cache'].cache.get() \
+                or ZIPulsarMixin.zi_cleanup_needed():
             ZIPulsarMixin.zi_waves_clean(False)
         self._hash_to_wavename_table = {}
 
@@ -1414,10 +1472,10 @@ class Pulsar(Instrument):
             if awg in awgs_to_program:
                 ch_upl, ch_prg = 'all', 'all'
             else:
-                ch_upl = [self.get(f'{ch}_id') for ch in channels_to_upload
-                          if self.get(f'{ch}_awg') == awg]
-                ch_prg = [self.get(f'{ch}_id') for ch in channels_to_program
-                          if self.get(f'{ch}_awg') == awg]
+                ch_upl = [self.id_lookup[ch] for ch in channels_to_upload
+                          if self.awg_lookup[ch] == awg]
+                ch_prg = [self.id_lookup[ch] for ch in channels_to_program
+                          if self.awg_lookup[ch] == awg]
 
             self.awg_interfaces[awg]._program_awg(
                 awg_sequences.get(awg, {}),
@@ -1429,13 +1487,13 @@ class Pulsar(Instrument):
 
             log.info(f'Finished programming {awg} in {time.time() - t0}')
 
-        if self.use_mcc():
+        if self.parameters['use_mcc'].cache.get():
             # Use parallel compilation and upload if the _awgs_with_waveforms
             # support it.
             for mcc in self.multi_core_compilers:
                 mcc.execute_mcc()
 
-        if self.use_sequence_cache():
+        if self.parameters['use_sequence_cache'].cache.get():
             # Compilation finished sucessfully. Store sequence cache.
             self._sequence_cache = sequence_cache
 
@@ -1478,8 +1536,8 @@ class Pulsar(Instrument):
         elif not self.awgs:
             return 0
         else:
-            return max([self.get(f"{awg}_inter_element_deadtime")
-                        for awg in self.awgs])
+            return max([awgi.INTER_ELEMENT_DEADTIME
+                        for awgi in self.awg_interfaces.values()])
 
     def _set_filter_segments(self, val:Tuple[int, int]=None,
                              awgs='with_waveforms'):
@@ -1527,11 +1585,16 @@ class Pulsar(Instrument):
         Returns: The corresponding channel name. If the channel is not found,
                  returns `None`.
         """
+        if (found_cname := self._id_channel_lookup.get((cid, awg))) \
+                is not None:
+            return found_cname
         for cname in self.channels:
-            if self.get('{}_awg'.format(cname)) == awg and \
-               self.get('{}_id'.format(cname)) == cid:
-                return cname
-        return None
+            if self.awg_lookup[cname] == awg and self.id_lookup[cname] == cid:
+                found_cname = cname
+        if found_cname:
+            self._id_channel_lookup[(cid, awg)] = found_cname
+
+        return found_cname
 
     @staticmethod
     def _channels_in_awg_sequences(awg_sequences) -> Dict[str, Set[str]]:
@@ -1570,13 +1633,13 @@ class Pulsar(Instrument):
         awg_ch_repeat_dict = dict()
         repeat_dict_per_awg = dict()
         for cname in repeat_dict_per_ch:
-            awg = self.get(f"{cname}_awg")
+            awg = self.awg_lookup[cname]
             param = f'{awg}_minimize_sequencer_memory'
-            if param not in self.parameters or not self.get(param):
+            if not self.get(param, False, cache=True):
                 # repeat_pattern is not supported or is disabled via
                 # _minimize_sequencer_memory parameter.
                 continue
-            chid = self.get(f"{cname}_id")
+            chid = self.id_lookup[cname]
 
             if not awg in awg_ch_repeat_dict.keys():
                 awg_ch_repeat_dict[awg] = []
@@ -1598,12 +1661,12 @@ class Pulsar(Instrument):
         return repeat_dict_per_awg
 
     def get_params_for_spectrum(self, ch:str, requested_freqs:list[float]):
-        awg_name = self.get(f'{ch}_awg')
+        awg_name = self.awg_lookup[ch]
         return self.awg_interfaces[awg_name] \
             .get_params_for_spectrum(ch, requested_freqs)
 
     def get_frequency_sweep_function(self, ch:str, **kw):
-        awg_name = self.get(f'{ch}_awg')
+        awg_name = self.awg_lookup[ch]
         return self.awg_interfaces[awg_name] \
             .get_frequency_sweep_function(ch, **kw)
 
@@ -1616,7 +1679,7 @@ class Pulsar(Instrument):
             center_freq_generator module
         """
 
-        awg_name = self.get(f'{ch}_awg')
+        awg_name = self.awg_lookup[ch]
         return self.awg_interfaces[awg_name] \
             .get_centerfreq_generator(ch)
 
@@ -1640,8 +1703,8 @@ class Pulsar(Instrument):
             is_channel_pair (str): whether these two AWG channels belongs to
                 the same channel pair.
         """
-        awg_1 = self.get(f'{cname1}_awg')
-        awg_2 = self.get(f'{cname2}_awg')
+        awg_1 = self.awg_lookup[cname1]
+        awg_2 = self.awg_lookup[cname2]
 
         if awg_1 != awg_2:
             return False
@@ -1670,7 +1733,7 @@ class Pulsar(Instrument):
             is_i_channel (bool): Boolean variable indicating if this channel
                 is the I channel in its channel pair.
         """
-        awg = self.get(f'{cname}_awg')
+        awg = self.awg_lookup[cname]
         if hasattr(self.awg_interfaces[awg], 'is_i_channel'):
             return self.awg_interfaces[awg].is_i_channel(cname=cname)
         else:
@@ -1684,6 +1747,9 @@ class Pulsar(Instrument):
         this method will try to return the channel-specific parameter,
         and returns False if that does not exist.
 
+        Note that this method reads parameter values from the cache. This is
+        not an issue if used for parameters of type ManualParameter.
+
         Args:
             awg: (str) AWG name.
             channel: (str) Channel name.
@@ -1696,12 +1762,13 @@ class Pulsar(Instrument):
 
         for name in [awg, channel]:
             parameter = name + parameter_suffix
-            if hasattr(self, parameter):
-                if not isinstance(self.get(parameter), bool):
+            if parameter in self.parameters:
+                val = self.parameters[parameter].cache.get()
+                if not isinstance(val, bool):
                     raise RuntimeError(f"Please do not use this method for "
                                        f"checking non-boolean parameter "
                                        f"pulsar.{parameter}")
-                elif self.get(parameter):
+                elif val:
                     return True
 
         return False

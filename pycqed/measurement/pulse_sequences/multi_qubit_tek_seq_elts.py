@@ -22,7 +22,7 @@ def n_qubit_off_on(pulse_pars_list, RO_pars_list, return_seq=False,
     seg_list = []
 
     RO_pars_list_presel = deepcopy(RO_pars_list)
-    
+
     for i, RO_pars in enumerate(RO_pars_list):
         RO_pars['name'] = 'RO_{}'.format(i)
         RO_pars['element_name'] = 'RO'
@@ -310,17 +310,17 @@ def generate_mux_ro_pulse_list(qubit_names, operation_dict, element_name='RO',
 
 
 def interleaved_pulse_list_equatorial_seg(
-        qubit_names, operation_dict, interleaved_pulse_list, phase, 
+        qubit_names, operation_dict, interleaved_pulse_list, phase,
         pihalf_spacing=None, reset_params=None, segment_name='equatorial_segment'):
     pulse_list = []
     for notfirst, qbn in enumerate(qubit_names):
-        pulse_list.append(deepcopy(operation_dict['X90 ' + qbn])) 
+        pulse_list.append(deepcopy(operation_dict['X90 ' + qbn]))
         pulse_list[-1]['ref_point'] = 'start'
         if not notfirst:
             pulse_list[-1]['name'] = 'refpulse'
     pulse_list += interleaved_pulse_list
     for notfirst, qbn in enumerate(qubit_names):
-        pulse_list.append(deepcopy(operation_dict['X90 ' + qbn])) 
+        pulse_list.append(deepcopy(operation_dict['X90 ' + qbn]))
         pulse_list[-1]['phase'] = phase
         if notfirst:
             pulse_list[-1]['ref_point'] = 'start'
@@ -335,7 +335,7 @@ def interleaved_pulse_list_equatorial_seg(
 
 
 def interleaved_pulse_list_list_equatorial_seq(
-        qubit_names, operation_dict, interleaved_pulse_list_list, phases, 
+        qubit_names, operation_dict, interleaved_pulse_list_list, phases,
         pihalf_spacing=None, reset_params=None, cal_points=None,
         sequence_name='equatorial_sequence', upload=True):
     seq = sequence.Sequence(sequence_name)
@@ -355,20 +355,20 @@ def interleaved_pulse_list_list_equatorial_seq(
 
 
 def measurement_induced_dephasing_seq(
-        measured_qubit_names, dephased_qubit_names, operation_dict, 
+        measured_qubit_names, dephased_qubit_names, operation_dict,
         ro_amp_scales, phases, pihalf_spacing=None, reset_params=None,
         cal_points=None, upload=True, sequence_name='measurement_induced_dephasing_seq'):
     interleaved_pulse_list_list = []
     for i, ro_amp_scale in enumerate(ro_amp_scales):
         interleaved_pulse_list = generate_mux_ro_pulse_list(
-            measured_qubit_names, operation_dict, 
+            measured_qubit_names, operation_dict,
             element_name=f'interleaved_readout_{i}')
         for pulse in interleaved_pulse_list:
             pulse['amplitude'] *= ro_amp_scale
             pulse['operation_type'] = None
         interleaved_pulse_list_list.append(interleaved_pulse_list)
     return interleaved_pulse_list_list_equatorial_seq(
-        dephased_qubit_names, operation_dict, interleaved_pulse_list_list, 
+        dephased_qubit_names, operation_dict, interleaved_pulse_list_list,
         phases, pihalf_spacing=pihalf_spacing, reset_params=reset_params,
         cal_points=cal_points, sequence_name=sequence_name, upload=upload)
 

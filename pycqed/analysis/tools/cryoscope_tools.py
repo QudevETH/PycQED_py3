@@ -4,7 +4,6 @@ Brian Tarasinski
 Dec 2017
 Edited by Adriaan Rol
 """
-from typing import Union
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker

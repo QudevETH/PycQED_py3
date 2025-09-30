@@ -1,6 +1,5 @@
 from qcodes.instrument_drivers.tektronix import AWG70002A
-from typing import Any, Dict, List, Optional, Sequence, Union
-import numpy as np
+from typing import Any, Dict, Sequence
 from qcodes import validators as vals
 
 import io

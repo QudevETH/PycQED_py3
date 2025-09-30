@@ -1,4 +1,6 @@
 from .base_settings_dictionary import SettingsDictionary
+from pycqed.measurement.calibration.automatic_calibration_routines.base import\
+    update_nested_dictionary
 from typing import List, Dict, Any, Optional
 from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon\
     import QuDev_transmon
@@ -7,6 +9,8 @@ from pycqed.measurement.quantum_experiment import QuantumExperiment
 from pycqed.measurement.calibration.single_qubit_gates import \
     SingleQubitGateCalibExperiment
 from collections import OrderedDict
+from pycqed.gui import dict_viewer
+from pycqed.utilities.settings_manager import Timestamp
 
 
 class Step:
@@ -414,6 +418,31 @@ class Step:
         if issubclass(cls, QuantumExperiment):
             return cls.__bases__[0]
         return cls
+
+    def spawn_settings_viewer(self):
+        """Spawn a GUI to display the settings dictionary.
+
+        The GUI also shows information where the settings came from
+        (if available).
+        """
+        d = {}
+        update_nested_dictionary(d, self.settings)  # to avoid deepcopy
+
+        def add_tracking_info(d, td):
+            """Recursive helper function to add the origin of the settings"""
+            for k in d.keys():
+                if isinstance(d[k], dict):
+                    add_tracking_info(d[k], td.get(k, {}))
+                else:
+                    # FIXME: we abuse the custom str class Timestamp here
+                    #  because the multi-column view in the dict viewer
+                    #  currently only supports keys of that type.
+                    d[k] = {Timestamp('value'): d[k],
+                            Timestamp('origin'): td.get(k, '')}
+
+        add_tracking_info(d, self.settings.tracking_dict)
+        viewer = dict_viewer.SnapshotViewer(d, ['value', 'origin'])
+        viewer.spawn_viewer()
 
 
 class IntermediateStep(Step):

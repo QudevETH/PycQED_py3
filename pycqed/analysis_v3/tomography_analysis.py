@@ -4,7 +4,7 @@ log = logging.getLogger(__name__)
 import itertools
 import scipy as sp
 import numpy as np
-import qutip as qtp
+import pycqed.utilities.qutip_compat as qtp
 import matplotlib as mpl
 from collections import OrderedDict
 from pycqed.analysis_v2 import tomography_qudev as tomo
@@ -34,17 +34,17 @@ def standard_qubit_pulses_to_rotations(pulse_list):
         'X0': qtp.qeye(2),
         'Z0': qtp.qeye(2),
         'X180': qtp.sigmax(),
-        'mX180': qtp.rotation(qtp.sigmax(), -np.pi),
+        'mX180': qtp.qip.operations.rotation(qtp.sigmax(), -np.pi),
         'Y180': qtp.sigmay(),
-        'mY180': qtp.rotation(qtp.sigmay(), -np.pi),
-        'X90': qtp.rotation(qtp.sigmax(), np.pi/2),
-        'mX90': qtp.rotation(qtp.sigmax(), -np.pi/2),
-        'Y90': qtp.rotation(qtp.sigmay(), np.pi/2),
-        'mY90': qtp.rotation(qtp.sigmay(), -np.pi/2),
-        'Z90': qtp.rotation(qtp.sigmaz(), np.pi/2),
-        'mZ90': qtp.rotation(qtp.sigmaz(), -np.pi/2),
+        'mY180': qtp.qip.operations.rotation(qtp.sigmay(), -np.pi),
+        'X90': qtp.qip.operations.rotation(qtp.sigmax(), np.pi/2),
+        'mX90': qtp.qip.operations.rotation(qtp.sigmax(), -np.pi/2),
+        'Y90': qtp.qip.operations.rotation(qtp.sigmay(), np.pi/2),
+        'mY90': qtp.qip.operations.rotation(qtp.sigmay(), -np.pi/2),
+        'Z90': qtp.qip.operations.rotation(qtp.sigmaz(), np.pi/2),
+        'mZ90': qtp.qip.operations.rotation(qtp.sigmaz(), -np.pi/2),
         'Z180': qtp.sigmaz(),
-        'mZ180': qtp.rotation(qtp.sigmaz(), -np.pi),
+        'mZ180': qtp.qip.operations.rotation(qtp.sigmaz(), -np.pi),
         'CZ': qtp.Qobj(np.diag([1, 1, 1, -1]), dims=[[2, 2], [2, 2]])
     }
     rotations = [qtp.tensor(*[standard_pulses[pulse] for pulse in qb_pulses])
@@ -54,9 +54,11 @@ def standard_qubit_pulses_to_rotations(pulse_list):
     return rotations
 
 
-def state_tomography_analysis(data_dict, keys_in,
-                              estimation_types=('least_squares',
-                                                'max_likelihood'), **params):
+def state_tomography_analysis(
+    data_dict, keys_in,
+    estimation_types=("least_squares", "max_likelihood"),
+    **params
+):
     """
     State tomography analysis. Extracts density matrices based on
         estimation_types, calculates purity, concurrence, and fidelity to
@@ -126,6 +128,7 @@ def state_tomography_analysis(data_dict, keys_in,
 
     cp = hlp_mod.get_measurement_properties(data_dict, props_to_extract=['cp'],
                                             raise_error=False, **params)
+
     basis_rots = hlp_mod.get_param('basis_rots', data_dict,
                                    raise_error=True, **params)
     if hlp_mod.get_param('basis_rots', data_dict) is None:
@@ -133,6 +136,8 @@ def state_tomography_analysis(data_dict, keys_in,
         hlp_mod.add_param(f'{keys_out_container}.basis_rots',
                           basis_rots, data_dict, **params)
 
+
+    # Take active reset into account
     do_preselection = hlp_mod.get_param('do_preselection', data_dict,
                                         **params)
     if do_preselection is None:
@@ -142,7 +147,7 @@ def state_tomography_analysis(data_dict, keys_in,
         hlp_mod.add_param(f'{keys_out_container}.do_preselection',
                           do_preselection, data_dict, **params)
 
-    # get number of readouts
+    # Get number of readouts
     n_readouts = hlp_mod.get_param('n_readouts', data_dict, **params)
     if n_readouts is None:
         n_readouts = (do_preselection + 1) * (
@@ -151,7 +156,7 @@ def state_tomography_analysis(data_dict, keys_in,
         hlp_mod.add_param(f'{keys_out_container}.n_readouts',
                           n_readouts, data_dict, **params)
 
-    # get observables
+    # Get observables
     observables = hlp_mod.get_param('observables', data_dict, **params)
     if observables is None:
         hlp_mod.get_observables(data_dict,
@@ -160,7 +165,7 @@ def state_tomography_analysis(data_dict, keys_in,
         observables = hlp_mod.get_param(f'{keys_out_container}.observables',
                                         data_dict)
 
-    # get probability table
+    # Get probability table
     keys_in_extra = hlp_mod.get_param('keys_in_extra', data_dict,
                                       default_value=[], **params)
     dat_proc_mod.calculate_probability_table(
@@ -170,11 +175,12 @@ def state_tomography_analysis(data_dict, keys_in,
     probability_table = hlp_mod.get_param(
         f'{keys_out_container}.probability_table', data_dict)
 
-    # get measurement_ops and cov_matrix_meas_obs
+    # Get measurement_ops and cov_matrix_meas_obs
     measurement_ops = hlp_mod.get_param('measurement_ops', data_dict, **params)
     correct_readout = hlp_mod.get_param('correct_readout', data_dict, **params)
     add_param_method = hlp_mod.get_param('add_param_method', data_dict,
                                          default_value='replace', **params)
+
     if measurement_ops is None or add_param_method == 'replace':
         # if add_param_method == 'replace', we want to overwrite the found
         # measurement_ops
@@ -209,23 +215,30 @@ def state_tomography_analysis(data_dict, keys_in,
                 hlp_mod.add_param(f'{keys_out_container}.cov_matrix_meas_obs',
                                   measurement_ops, data_dict, **params)
 
-    # get all measurement ops, measurement results, and covariance matrices
+    # Get all measurement ops, measurement results, and covariance matrices
     all_msmt_ops_results_omegas(data_dict, observables, **params)
 
-    # get density matrices, purity, fidelity, concurrence
+    # Get density matrices, purity, fidelity, concurrence
     density_matrices(data_dict, estimation_types, **params)
 
-    # plotting
+    # Get parameters for plotting
     prepare_plotting = hlp_mod.pop_param('prepare_plotting', data_dict,
                                         default_value=True, node_params=params)
     do_plotting = hlp_mod.pop_param('do_plotting', data_dict,
                                     default_value=True, node_params=params)
+
+    # Probability table
     plot_prob_table = hlp_mod.pop_param('plot_prob_table', data_dict,
                                         default_value=True, node_params=params)
+
+    # Target density matrix
     plot_rho_target = hlp_mod.pop_param('plot_rho_target', data_dict,
                                         default_value=True, node_params=params)
+
+    # Pauli basis density matrix
     plot_pauli = hlp_mod.pop_param('plot_pauli', data_dict,
                                    default_value=True, node_params=params)
+
     if prepare_plotting:
         if plot_prob_table:
             prepare_prob_table_plot(data_dict, do_preselection, **params)
@@ -235,11 +248,12 @@ def state_tomography_analysis(data_dict, keys_in,
                 plot_rho_target=(i == 0) and plot_rho_target, **params)
             if plot_pauli:
                 prepare_pauli_basis_plot(data_dict, estimation_type, **params)
+
     if do_plotting:
         getattr(plot_mod, 'plot')(data_dict, keys_in=list(
             data_dict['plot_dicts']), **params)
 
-    # error estimation with boostrapping
+    # Error estimation with boostrapping
     if hlp_mod.get_param('do_bootstrapping', data_dict, default_value=False,
                          **params):
         hlp_mod.pop_param('do_bootstrapping', data_dict, default_value=False,
@@ -273,7 +287,7 @@ def all_msmt_ops_results_omegas(data_dict, observables, probability_table=None,
                 provided, it will try to take it from preparation_params.
                 If preparation_params are not found, it will default to False.
                 Specifies whether to do preselection on the data.
-            - prob_table_filter: filter for the probability table. If not given
+        - prob_table_filter: filter for the probability table. If not given
                 it will calculate it from meas_obj_names + basis_rots +
                 preselection condition
     :return: adds to data_dict:
@@ -440,6 +454,56 @@ def density_matrices(data_dict,
                 hlp_mod.get_param('basis_rots', data_dict))
             hlp_mod.add_param(f'{keys_out_container}.pauli_values.rho',
                               rho_pauli, data_dict, **params)
+        elif estimation_type == 'convex_mle':
+            # FIXME: only supports readout correction so far.
+            #  When there is no readout correction the covariance matrix
+            #  is not square and I dont know how to interpret it.
+            log.warning('Convex MLE only supports tomography with readout '
+                        'correction so far.')
+            
+            rho_guess = hlp_mod.get_param('rho_guess', data_dict,
+                                          default_value = None, **params)
+            """
+            Various comments about this:
+            
+            - The least_squares DM is not used as a guess because it does
+            not meet the physicality constraints, and cvxpy does not like
+            problems in which the guess does not meet the constraints
+            
+            - Fs is a list of measurement operators with shape
+            2**nqubits x 2**nqubits
+            
+            - mus is an array with the expectation values of the Fs
+            
+            - The length of this array and that list is 2**nqubits * NR**nqubits
+            where NR is the number of different rotations applied per qubit
+            to extract the tomographic information. For instance, if we do
+            complete tomography of a 2-qubit state by applying 6 rotations
+            per qubit ([I, X180, X90, mX90, Y90, mY90]) there will be 6**2
+            measurement settings, and for each of them we extract four
+            probabilities (Pgg, Pge, Peg, Pee), so the number of Fs and mus is
+            2**2 * 6**2 = 144. For full tomography of a 4-qubit state we have
+            2**4 * 6**4 = 20736 operators to be taken into account for the
+            convex MLE (a lot!!).
+            """
+            rho_cvx = tomo.convex_mle(
+                mus = all_measurement_results,
+                Fs = all_measurement_operators,
+                Omega = all_cov_matrix_meas_obs if hlp_mod.get_param(
+                    'use_covariance_matrix', data_dict,
+                    default_value=True, **params) else None,
+                rho_guess = rho_guess,
+                solver = hlp_mod.get_param('solver', data_dict,
+                                           default_value = 'SCS', **params),
+                solveropt = hlp_mod.get_param('solveropt', data_dict,
+                                           default_value = {'':None}, **params),
+                cov_threshold = hlp_mod.get_param('cov_threshold', data_dict,
+                                           default_value = 1e-12, **params),
+                verbose = hlp_mod.get_param('verbose', data_dict,
+                                           default_value = False, **params)
+            )
+            hlp_mod.add_param(f'{keys_out_container}.convex_mle.rho',
+                              rho_cvx, data_dict, **params)
         else:
             raise ValueError(f'Unknown estimation_type "{estimation_type}."')
 
@@ -590,7 +654,7 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
     plot_dicts[f'{figures_prefix}counts_table_{"".join(meas_obj_names)}'] = {
         'axid': "ptable",
         'plotfn': 'plot_colorx',
-        'plotsize': [6.4, 4.8],
+        'plotsize': [6.8, 5.0],
         'xvals': np.arange(len(observables))[obs_filter],
         'yvals': np.array(len(observables)*[ylist]),
         'zvals': plt_data,
@@ -605,7 +669,8 @@ def prepare_prob_table_plot(data_dict, exclude_preselection=False, **params):
         'xtick_labels': list(np.array(list(observables.keys()))[obs_filter]),
         'origin': 'upper',
         'cmap': cm,
-        'aspect': 'equal'
+        'aspect': 'auto',
+        'tight_layout': False,
     }
 
     hlp_mod.add_param('plot_dicts', plot_dicts, data_dict,
@@ -661,7 +726,12 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
     cmap = hlp_mod.get_param('rho_colormap', data_dict,
                              default_value=plot_mod.default_phase_cmap(),
                              **params)
+    keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
+                                           default_value='state_tomo', **params)
+    rho_meas = hlp_mod.get_param(f'{keys_out_container}.{estimation_type}.rho',
+                                 data_dict, raise_error=True)
 
+    # Target Density Matrix plot preparation
     rho_target = hlp_mod.get_param('rho_target', data_dict, **params)
     if rho_target is not None:
         rho_target = qtp.Qobj(rho_target)
@@ -695,12 +765,12 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
                 'clabel': 'Phase (rad)',
                 'title': title,
                 'bar_kws': dict(zorder=1),
+                'set_edgecolor': True
             }
+    elif rho_target is None:
+        target_shape = rho_meas.full().shape
+        rho_target = qtp.Qobj(np.zeros(target_shape))
 
-    keys_out_container = hlp_mod.get_param('keys_out_container', data_dict,
-                                           default_value='state_tomo', **params)
-    rho_meas = hlp_mod.get_param(f'{keys_out_container}.{estimation_type}.rho',
-                                 data_dict, raise_error=True)
     if estimation_type == 'least_squares':
         base_title = 'Least squares fit of the density matrix\n'
     elif estimation_type == 'max_likelihood':
@@ -716,7 +786,6 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
     legend_entries = get_legend_artists_labels(data_dict,
                                                estimation_type=estimation_type,
                                                **params)
-
     title = base_title + plot_mod.default_figure_title(
         data_dict, ','.join(meas_obj_names))
     zvals = np.concatenate((np.abs(rho_target.full()),
@@ -724,6 +793,9 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
     color_tar = (0.5 * np.angle(rho_target.full()) / np.pi) % 1.
     color_meas = (0.5 * np.angle(rho_meas.full()) / np.pi) % 1.
     color = np.concatenate((1.1*np.ones_like(color_tar), color_meas))
+
+
+    # FIXME:  Reimplementation of that plot is unclear and duplicated code
     plot_dicts[f'{figures_prefix}density_matrix_' \
                f'{estimation_type}_{"".join(meas_obj_names)}'] = {
         'plotfn': 'plot_bar3D',
@@ -758,8 +830,12 @@ def prepare_density_matrix_plot(data_dict, estimation_type='least_squares',
                       add_param_method='update')
 
 
-def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
-                             leakage=None, **params):
+def prepare_pauli_basis_plot(
+    data_dict,
+    estimation_type="least_squares",
+    leakage=None,
+    **params
+):
     """
     Prepares plot of the density matrix estimated with method estimation_type.
     :param data_dict: OrderedDict containing data to be plotted and where
@@ -831,7 +907,7 @@ def prepare_pauli_basis_plot(data_dict, estimation_type='least_squares',
                   f'pauli_basis_{estimation_type}_{"".join(meas_obj_names)}'
     plot_dicts[figure_name] = {
         'plotfn': 'plot_bar',
-        'plotsize': (4.5, 3),
+        'plotsize': (6.5, 3),
         'xcenters': np.arange(len(order)),
         'xwidth': 0.4,
         'xrange': (-1, len(order)),
@@ -924,7 +1000,7 @@ def get_legend_artists_labels(data_dict, estimation_type='least_squares',
             for key, leak in leakage.items():
                 k = key.split('_')[0]
                 legend_entries += [
-                    (empty_artist, f'Leakage, $L_{{{k}}} = {100*leak:.2f}\%$')]
+                    (empty_artist, rf'Leakage, $L_{{{k}}} = {100*leak:.2f}\%$')]
     return legend_entries
 
 

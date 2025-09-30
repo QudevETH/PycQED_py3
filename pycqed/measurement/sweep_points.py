@@ -1,9 +1,9 @@
 import logging
 log = logging.getLogger(__name__)
-from collections import OrderedDict
+from collections import OrderedDict  # noqa: F401  # Possibly needed for eval
 from copy import copy, deepcopy
 import numpy as np
-from numpy import array  # Needed for eval. Do not remove.
+from numpy import array  # noqa: F401  # Needed for eval. Do not remove.
 
 class SweepPoints(list):
     """
@@ -297,8 +297,8 @@ class SweepPoints(list):
          {mobj_name: [sweep_param_name_0, ..., sweep_param_name_n]}
         """
 
-        # Ensure measurement_objects is a list
-        if isinstance(measurement_objects, list):
+        # Ensure measurement_objects is a list or tuple
+        if isinstance(measurement_objects, (list, tuple)):
             measurement_objects = copy(measurement_objects)
         else:
             measurement_objects = [measurement_objects]

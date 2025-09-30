@@ -8,14 +8,13 @@ import re
 import copy
 from datetime import datetime
 from functools import partial
-# 1 line added to Delft version: default awg dir
-from pycqed.utilities.general import default_awg_dir
 
-from qcodes.instrument.base import Instrument
 from qcodes.utils import validators
 from qcodes.instrument.parameter import ManualParameter
 
 import zhinst.ziPython as zi
+
+from pycqed.instrument_drivers.instrument import Instrument
 
 log = logging.getLogger(__name__)
 
@@ -308,7 +307,10 @@ class MockDAQServer():
         self.nodes[f'/{self.device}/system/fpgarevision'] = {'type': 'Integer', 'value': 99999}
         self.nodes[f'/{self.device}/system/slaverevision'] = {'type': 'Integer', 'value': 99999}
         self.nodes[f'/{self.device}/raw/error/json/errors'] = {
-                'type': 'String', 'value': '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, "timestamp" : 0, "timestamp_utc" : "2019-08-07 17 : 33 : 55", "messages" : []}'}
+                'type': 'String', 'value':
+                '{"sequence_nr" : 0, "new_errors" : 0, "first_timestamp" : 0, '
+                '"timestamp" : 0, "timestamp_utc" : "2019-08-07 17:33:55", '
+                '"messages" : []}'}
         # 1 line added to Delft version: create error/clear node
         self.nodes[f'/{self.device}/raw/error/clear'] = {'type': 'Integer', 'value': 0}
 
@@ -568,9 +570,7 @@ class MockAwgModule():
         self._index = None
         self._sourcestring = None
         self._compilation_count = {}
-        # 2 lines different from Delft version: default awg dir
-        os.makedirs(os.path.join(default_awg_dir(), 'waves'),
-                    exist_ok=True)
+        # 2 lines deleted from Delft version: do not create waves dir
 
     def get_compilation_count(self, index):
         if index not in self._compilation_count:
@@ -655,7 +655,8 @@ class ZI_base_instrument(Instrument):
                  interface: str= '1GbE',
                  server: str= 'localhost',
                  port: int= 8004,
-                 apilevel: int= 5,
+                 # 1 line different from Delft version: apilevel
+                 apilevel: int= 6,
                  num_codewords: int= 0,
                  awg_module: bool=True,
                  logfile: str = None,
@@ -1035,9 +1036,11 @@ class ZI_base_instrument(Instrument):
     def _get_awg_directory(self):
         """
         Returns the AWG directory where waveforms should be stored.
+        # 2 lines added to Delft version: additional explanation
+        Note that this directory is not relevant when programming
+        via configure_awg_from_string.
         """
-        # 1 line different from Delft version: default awg dir
-        return os.path.join(self._awgModule.get('awgModule/directory')['directory'][0], default_awg_dir())
+        return os.path.join(self._awgModule.get('awgModule/directory')['directory'][0], 'awg')
 
     def _initialize_waveform_to_zeros(self):
         """
@@ -1260,13 +1263,6 @@ class ZI_base_instrument(Instrument):
                 self.setv(
                     'awgs/{}/waveform/waves/{}'.format(awg_nr, dio_cw), wf_data)
 
-    def _codeword_table_preamble(self, awg_nr):
-        """
-        Defines a snippet of code to use in the beginning of an AWG program in order to define the waveforms.
-        The generated code depends on the instrument type. For the HDAWG instruments, we use the setDIOWaveform
-        function. For the UHF-QA we simply define the raw waveforms.
-        """
-        raise NotImplementedError('Virtual method with no implementation!')
 
     def _configure_awg_from_variable(self, awg_nr):
         """

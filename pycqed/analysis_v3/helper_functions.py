@@ -8,7 +8,7 @@ import h5py
 import traceback
 import itertools
 import numpy as np
-from numpy import array  # Needed for eval. Do not remove.
+from numpy import array  # noqa: F401  # Needed for eval. Do not remove.
 from copy import deepcopy
 from collections import OrderedDict
 from more_itertools import unique_everseen
@@ -1358,7 +1358,7 @@ def get_observables(data_dict, keys_out=None, preselection_shift=-1,
     # add all combinations
     for i, states in enumerate(combination_list):
         name = ''.join(['e' if s else 'g' for s in states])
-        obs_name = '$\| ' + name + '\\rangle$'
+        obs_name = r'$\| ' + name + '\\rangle$'
         observables[obs_name] = dict(zip(mobj_names, states))
         # add preselection condition
         if do_preselection:
@@ -1546,7 +1546,7 @@ def check_equal(value1, value2):
     :return: True if value1 is the same as value2, else False
     """
     if not isinstance(value1, (float, int, bool, np.number,
-                               np.float_, np.int_, np.bool_)):
+                               np.float64, np.int_, np.bool_)):
         assert type(value1) == type(value2)
 
     if not hasattr(value1, '__iter__'):
@@ -1838,6 +1838,16 @@ def get_preparation_parameters(
         the 'preparation_params' key is also not found.
     """
 
+    if data_dict is None:  # If not provided: extract manually
+        assert 'timestamp' in params, 'Provide either data_dict or timestamp!'
+        timestamp = params['timestamp']
+        data_dict = {"exp_metadata": {}}
+        for key in ['preparation_params', 'reset_params']:
+            try:  # Try to get everything available from the measurement file
+                data_dict["exp_metadata"][key] = (
+                    get_param_from_metadata_group(timestamp, key))
+            except KeyError:
+                pass
     # New reset format or legacy?
     if "reset_params" in data_dict.get("exp_metadata", {}):
         prep_params = translate_reset_to_prep_params(

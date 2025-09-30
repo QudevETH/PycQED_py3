@@ -1,32 +1,40 @@
 from qcodes.instrument.base import Instrument as QcodesInstrument
+from qcodes.parameters import ManualParameter
 from qcodes.instrument.channel import InstrumentModule as QcodesInstrumentModule
 import weakref
+from abc import ABC
+
 
 class FurtherInstrumentsDictMixIn:
     _further_instruments = weakref.WeakValueDictionary()
 
 
-class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
+class PycqedInstrumentMixin(ABC):
     """
-    Class for all QCodes instruments.
+    Mixin to be used for both QCodes-based Instrument and InstrumentModule
     """
 
     def get_idn(self):
         """
         Required as a standard interface for QCoDeS instruments.
         """
-        return {'driver': str(self.__class__), 'name': self.name}
+        return {'driver': self.__class__.__name__, 'name': self.name}
 
-    def get(self, param_name, *args):
+    def get(self, param_name, *args, cache=False):
         """Shortcut for getting a parameter from its name or a default value.
 
         Extends the super method to allow specifying a default value as
         second argument, which is returned if the parameter does not exist.
 
         Args:
-            param_name: The name of a parameter of this instrument.
+            param_name (str): The name of a parameter of this instrument.
             *args: accepts a single unnamed argument, which, if provided, is
                 used as default value if the parameter does not exist.
+            cache (bool): if True, enforces that the value is retrieved
+                from the cache (default: False). Note that parameters of
+                class ManualParameter will always be retrieved from the
+                cache, but explicitly passing cache=True is slightly faster
+                even in this case.
 
         Returns:
             The current value of the parameter.
@@ -38,12 +46,33 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
         >>> instr.get('nonexistent_parameter')
         """
         if len(args) > 1:
-            raise ValueError(f'Pulsar.get accepts 1 or 2 arguments, but '
-                             f'{len(args) + 1} were provided.')
+            raise ValueError(
+                f'{self.name}.get can accept one unnamed argument to '
+                f'specify a default value, but {len(args)} were provided.')
         if param_name not in self.parameters and len(args) == 1:
-            return args[0]  # interpret second argument as default value
-        return super().get(param_name)
+            return args[0] # interpret second argument as default value
+        elif cache or isinstance(self.parameters[param_name], ManualParameter):
+            return self.parameters[param_name].cache.get()
+        else:
+            # qcodes 0.49 deprecated self.get()/self.set() for params;
+            # use the form below instead
+            return self.parameters[param_name].get()
 
+    def set(self, param_name, value):
+        """Shortcut for setting a parameter from its name.
+
+
+        Args:
+            param_name: The name of a parameter of this instrument.
+            value: The value to set.
+        """
+        # qcodes 0.49 deprecated self.get()/self.set() for params;
+        # use the form below instead
+        self.parameters[param_name].set(value)
+
+
+class Instrument(PycqedInstrumentMixin, QcodesInstrument,
+                 FurtherInstrumentsDictMixIn):
     @classmethod
     def find_instrument(cls, name, instrument_class=None):
         # This overrides the super method to allow normal qcodes instruments
@@ -72,24 +101,15 @@ class Instrument(QcodesInstrument, FurtherInstrumentsDictMixIn):
             return ins
 
 
-# FIXME: Is this class really needed?
-class InstrumentModule(QcodesInstrumentModule):
+class InstrumentModule(PycqedInstrumentMixin, QcodesInstrumentModule):
     """
-    Custom extension of QcodesInstrumentModule for ResetScheme.
+    Extends QcodesInstrumentModule to use the compatibility fixes in
+    PycqedInstrumentMixin
 
-    See QCoDeS docs & reset_schemes.py for more details.
+    FIXME: this is currently only used in
+     measurement.waveform_control.reset_schemes, is this needed?
     """
-
-    def get_idn(self):
-        """Get the Instrument Module's ID and Name.
-
-        See QCoDeS docs for more details.
-
-        Returns:
-            dict: A dictionary with two keys: 'driver' and 'name'.
-                The values are the name of the driver and the name of the instrument (set during initialization).
-        """
-        return {'driver': self.__class__.__name__, 'name': self.name}
+    pass
 
 
 class DummyVisaHandle:

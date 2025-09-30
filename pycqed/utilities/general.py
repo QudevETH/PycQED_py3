@@ -1,7 +1,7 @@
+from copy import deepcopy
 import os
 import sys
 import numpy as np
-import h5py
 import json
 import time
 import datetime
@@ -15,20 +15,92 @@ from os.path import dirname, exists
 from os import makedirs
 import logging
 import subprocess
-from functools import reduce  # forward compatibility for Python 3
+from functools import reduce, wraps
 import operator
 import string
-import functools
 from zipfile import ZipFile
+from collections.abc import Mapping
+import frozendict
 
-
-from copy import deepcopy
-log = logging.getLogger(__name__)
 try:
     import msvcrt  # used on windows to catch keyboard input
 except:
     pass
 
+log = logging.getLogger(__name__)
+
+def assert_not_none(*param_names):
+    """
+    Decorator that ensures that all (keyword) arguments of the decorated function
+     `f` provided in param_names are not None.
+
+    Args:
+        *param_names (str): One or several strings indicating the name of the
+            (keyword) arguments which should not have a value of None
+
+    Returns:
+         decorated function.
+
+    Examples:
+        >>>  class Test:
+        >>>    @assert_not_none('arg2', 'kwarg1', "other_kwarg")
+        >>>    def test(self, arg1, arg2, kwarg1=0, kwarg2=None, **kwargs):
+        >>>        pass
+        >>> t = Test()
+        >>> t.test('a', "b") # does not raise an error
+        >>> t.test('a', None) # raises error because arg2 is None
+        >>> t.test('a', 'b', None,) # raises error because kwarg1 is passed
+        >>>                         # as positional argument with a value of None
+        >>> t.test('a', 'b', "c", something=None) # does not raise an error
+        >>> t.test('a', 'b', "c", other_kwarg=None) # raises an error because
+        >>>                                         # other_kwarg is None
+
+    Raises:
+        ValueError if a (keyword) argument mentioned in param_names is None.
+    """
+    import inspect
+
+    def check(f):
+        @wraps(f)
+        def wrapped_func(*args, **kwds):
+            signature_args_and_kwargs = inspect.getfullargspec(f).args
+            default_kwarg_values = inspect.getfullargspec(f).defaults
+            error_msg = (
+                " {name} is None, but {name} should not be None when "
+                "passed to " + f.__qualname__
+            )
+
+            # check if a positional argument is None or a signature keyword
+            # argument is None:
+            # take argument values and default values of keyword arguments
+            # which are not passed as positional arguments (since keyword
+            # arguments can also be provided as positional arguments)
+            x = len(signature_args_and_kwargs) - len(
+                args
+            )  # index of first needed default keyword arg value
+            for name, value in zip(
+                signature_args_and_kwargs, args + default_kwarg_values[x:]
+            ):
+                # print(name, value)
+                if name in param_names and value is None:
+                    raise ValueError(error_msg.format(f=f, name=name))
+
+            # check if a passed keyword argument is None
+            for name, value in kwds.items():
+                if name in param_names and value is None:
+                    raise ValueError(error_msg.format(f=f, name=name))
+
+            return f(*args, **kwds)
+
+        wrapped_func.__name__ = f.__name__
+        return wrapped_func
+
+    return check
+
+
+# FIXME: This global is unnecessary. Search below for:
+#        This can be simplified and made more robust.
+#        e.g., base >= 2, remove global (digs), zero handling, etc...
 digs = string.digits + string.ascii_letters
 
 
@@ -93,6 +165,8 @@ def int_to_bin(x, w, lsb_last=True):
         return bin_str[::-1]
 
 
+# FIXME: This can be simplified and made more robust.
+#        e.g., base >= 2, remove global (digs), zero handling, etc...
 def int2base(x: int, base: int, fixed_length: int=None):
     """
     Convert an integer to string representation in a certain base.
@@ -142,16 +216,6 @@ def mopen(filename, mode='w'):
                 raise
     file = open(filename, mode='w')
     return file
-
-
-def dict_to_ordered_tuples(dic):
-    '''Convert a dictionary to a list of tuples, sorted by key.'''
-    if dic is None:
-        return []
-    keys = dic.keys()
-    # keys.sort()
-    ret = [(key, dic[key]) for key in keys]
-    return ret
 
 
 def to_hex_string(byteval):
@@ -345,7 +409,7 @@ def load_settings_onto_instrument_v2(instrument, load_from_instr: str=None,
                                             older_than=older_than)
                 filepath = a_tools.measurement_filename(folder)
 
-            f = h5py.File(filepath, 'r')
+            f = h5d.safe_file_open(filepath, mode='r')
             snapshot = {}
             h5d.read_dict_from_hdf5(snapshot, h5_group=f['Snapshot'])
 
@@ -384,13 +448,11 @@ def load_settings_onto_instrument_v2(instrument, load_from_instr: str=None,
     return True
 
 
-
 def send_email(subject='PycQED needs your attention!',
                body='', email=None):
     # Import smtplib for the actual sending function
     import smtplib
     # Here are the email package modules we'll need
-    from email.mime.image import MIMEImage
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
 
@@ -576,6 +638,67 @@ def setInDict(dataDict: dict, mapList: list, value):
     getFromDict(dataDict, mapList[:-1])[mapList[-1]] = value
 
 
+def make_values_immutable(obj):
+    """Makes values in a dict immutable
+
+    Args:
+        obj (dict): The dict whose items should be made immutable.
+    """
+    def array_to_tuple(a):
+        """Converts a numpy array to nested tuples"""
+        if a.shape == ():
+            return a.item()
+        else:
+            return tuple(map(array_to_tuple, a))
+
+    for k in obj.keys():
+        obj[k] = frozendict.deepfreeze(obj[k], {
+            np.ndarray: array_to_tuple
+        })
+
+
+def contains_mutable_values(obj):
+    """Returns whether a dict contains mutable values.
+
+    Args:
+        obj (dict): The dict to be tested. Note that obj can also be of a
+            different type (any hashable object, any kind of Mapping or a
+            tuple), but these other types are only meant to be passed
+            in recursive calls.
+    """
+    try:
+        hash(obj)
+        # If obj can be hashed, we assume that it does not contain mutables.
+        # This is in analogy to what the frozendict package assumes.
+        # (It is not always true, but works for types we are interested in).
+        return False
+    except TypeError:
+        pass
+    if isinstance(obj, tuple):
+        iter = range(len(obj))
+    elif isinstance(obj, Mapping):
+        iter = obj.keys()
+    else:
+        raise NotImplementedError
+    for k in iter:  # iterate through items
+        if isinstance(obj[k], (list, dict, set)):
+            return True  # list, dict, and set are mutable
+        # check recursively whether the immutable item contains mutables
+        if contains_mutable_values(obj[k]):
+            return True
+        # no mutables found in current item, proceed to next item
+    return False  # no mutables found while checking all items
+
+
+def setdefault_nested(d, new_d):
+    for key in new_d:
+        # Try and set default whenever possible
+        d.setdefault(key, new_d[key])
+        # If both are dicts: continue with nested call
+        if isinstance(d[key], Mapping) and isinstance(new_d[key], Mapping):
+            setdefault_nested(d[key], new_d[key])
+
+
 def is_more_rencent(filename: str, comparison_filename: str):
     """
     Returns True if the contents of "filename" has changed more recently
@@ -601,7 +724,7 @@ def get_required_upload_information(pulses : list, station):
             if not 'channel' in key:
                 continue
             channel = pulse[key]
-            if isinstance(channel, dict):
+            if isinstance(channel, Mapping):
                 # the the CZ pulse has aux_channels_dict parameter
                 for ch in channel:
                     if not 'AWG' in ch:
@@ -902,15 +1025,6 @@ def get_pycqed_appdata_dir():
     return path
 
 
-def default_awg_dir():
-    """
-    Returns the path of an awg subfolder in the pycqed application data dir.
-    """
-    path = os.path.join(get_pycqed_appdata_dir(), 'awg')
-    os.makedirs(path, exist_ok=True)
-    return path
-
-
 def raise_warning_image(destination_path, warning_image_path=None):
     """
     Copy the image specified by warning_image_path to the folder specified by
@@ -1003,7 +1117,12 @@ def zipfolder(zip_filename, folder, directory):
                 zipObj.write(filePath, os.path.relpath(filePath, folder))
 
 
-def save_zibugreport(interactive=True, save_folder=None):
+def save_zibugreport(
+        station,
+        involved_channels=None,
+        interactive=True,
+        save_folder=None
+):
     """
     Saves a detailed bug report of ZI devices.
 
@@ -1038,6 +1157,11 @@ def save_zibugreport(interactive=True, save_folder=None):
 
     # get the pulsar instance
     from pycqed.measurement.waveform_control import pulsar as ps
+    import zhinst.toolkit as ztk
+    import pycqed.instrument_drivers.acquisition_devices as acq_devs
+    import pycqed.instrument_drivers.physical_instruments as phys_instr
+
+    session = ztk.Session("localhost")
     pulsar = ps.Pulsar.get_instance()
 
     # create the save folder
@@ -1046,14 +1170,7 @@ def save_zibugreport(interactive=True, save_folder=None):
     brdir = os.path.join(
         save_folder,
         f"bugreport_{time.strftime('%Y%m%d_%H%M%S', time.localtime())}")
-    os.mkdir(brdir)
-
-    # save the waveform files
-    try:
-        zipfolder('waves', pulsar.awg_interfaces[
-            list(pulsar.awg_interfaces)[0]]._zi_wave_dir(), brdir)
-    except Exception as e:
-        exceptions['waves'] = e
+    os.makedirs(brdir, exist_ok=True)
 
     # get all connected ZI instruments
     instruments = get_all_connected_zi_instruments()
@@ -1067,82 +1184,6 @@ def save_zibugreport(interactive=True, save_folder=None):
     versions_devs, exceps = get_zhinst_firmware_versions(instruments)
     exceptions.update(exceps)
     write_logfile('versions', repr(versions_devs), brdir)
-
-    # save the firmware git revision
-    for dev in instruments:
-        try:
-            fw_git_revision_node = \
-                f"/{dev.devname}/raw/system/revisions/firmware"
-            fw_git_revision_string = \
-                dev.daq.get(fw_git_revision_node, flat=True)[
-                    fw_git_revision_node][0]['vector']
-            fw_git_revision_dict = json.loads(fw_git_revision_string)
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_firmware_revision'),
-                repr(fw_git_revision_dict), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_firmware_revision'] = e
-
-    # save the bitstream git revision
-    for dev in instruments:
-        try:
-            bs_git_revision_node = \
-                f"/{dev.devname}/raw/system/revisions/bitstream"
-            bs_git_revision_string = \
-                dev.daq.get(bs_git_revision_node, flat=True)[
-                    bs_git_revision_node][0]['vector']
-            bs_git_revision_dict = json.loads(bs_git_revision_string)
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_bitstream_revision'),
-                repr(bs_git_revision_dict), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_bitstream_revision'] = e
-
-    # save awg_source_strings
-    for dev in instruments:
-        try:
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_awg_source_strings'),
-                repr(getattr(dev, '_awg_source_strings', {})), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_awg_source_strings'] = e
-
-    # save compiler status strings
-    for dev in instruments:
-        try:
-            write_logfile(os.path.join(
-                brdir, f'{dev.name}_{dev.devname}_compiler_statusstring'),
-                getattr(dev, 'compiler_statusstring', ''), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_compiler_statusstring'] = e
-
-    # save snapshots
-    for dev in instruments:
-        try:
-            write_logfile(
-                os.path.join(brdir, f'{dev.name}_{dev.devname}_snapshot'),
-                repr(dev.snapshot()), brdir)
-        except Exception as e:
-            exceptions[f'{dev.name}_{dev.devname}_snapshot'] = e
-
-    # save errors reported by the devices
-    for dev in instruments:
-        try:
-            write_logfile(
-                os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
-                repr(json.loads(dev.getv('raw/error/json/errors'))), brdir)
-        except Exception as e:
-            try:
-                # for QCodes-based devices
-                err_dict = dev.daq.get(f'{dev.devname}/raw/error/json/errors',
-                                       settingsonly=False)
-                err_str = err_dict[dev.devname][
-                    'raw']['error']['json']['errors'][0]['vector']
-                write_logfile(
-                    os.path.join(brdir, f'{dev.name}_{dev.devname}_errors'),
-                    repr(json.loads(err_str)), brdir)
-            except Exception as e:
-                exceptions[f'{dev.name}_{dev.devname}_errors'] = e
 
     # save last sequence from pulsar
     try:
@@ -1167,6 +1208,170 @@ def save_zibugreport(interactive=True, save_folder=None):
         except Exception as e:
             exceptions['stdout'] = e
 
+    for component in station.components.values():
+        # export the waveform and sequencer code of the SHFQCs
+        if isinstance(component, acq_devs.shf.SHFQC):
+            SHF = component
+            # crate the top-level folder for this SHF
+            shf_data_dir = os.path.join(brdir, SHF.name)
+            os.makedirs(shf_data_dir, exist_ok=True)
+            os.makedirs(os.path.join(shf_data_dir, 'sg'), exist_ok=True)
+            os.makedirs(os.path.join(shf_data_dir, 'qa'), exist_ok=True)
+
+            n_sg_channels = len(SHF.sgchannels)
+
+            # use zhinst toolkit to connect to the device to pull the waveforms
+            shf_tk = session.connect_device(SHF.serial)
+
+            # save SHFQC settings
+            dev_settings = SHF.daq.get(
+                f'/{SHF.devname}/*',
+                settingsonly=True,
+                flat=True
+            )
+            np.save(os.path.join(shf_data_dir, f'shfqc_settings'), dev_settings)
+
+            if involved_channels and SHF.name not in involved_channels.keys():
+                continue
+
+            # saves settings for SG channels
+            for sg_channel in range(n_sg_channels):
+                # save sg channel waveforms
+                if involved_channels and f"sg{sg_channel + 1}" not in \
+                        involved_channels[SHF.name]:
+                    continue
+
+                ch_dir = os.path.join(shf_data_dir, "sg", f"sg{sg_channel}")
+                os.makedirs(ch_dir, exist_ok=True)
+
+                save_shfsg_channel_data(
+                    shf=SHF,
+                    shf_tk=shf_tk,
+                    shf_data_dir=shf_data_dir,
+                    sg_channel=sg_channel,
+                )
+
+            # saves settings for the QA channel
+            if involved_channels and f"qa1" not in involved_channels[SHF.name]:
+                continue
+
+            save_shfqa_channel_data(
+                shf=SHF,
+                shf_data_dir=shf_data_dir,
+                qa_channel=0,
+            )
+
+        # export the waveform and sequencer code of the SHFQAs
+        if isinstance(component, acq_devs.shf.SHFQA):
+            SHF = component
+            # crate the top-level folder for this SHF
+            shf_data_dir = os.path.join(brdir, SHF.name)
+            os.makedirs(shf_data_dir, exist_ok=True)
+            os.makedirs(os.path.join(shf_data_dir, 'qa'), exist_ok=True)
+
+            # save SHFQC settings
+            dev_settings = SHF.daq.get(
+                f'/{SHF.devname}/*',
+                settingsonly=True,
+                flat=True,
+            )
+            np.save(os.path.join(shf_data_dir, f'shfqa_settings'), dev_settings)
+
+            if involved_channels and SHF.name not in involved_channels.keys():
+                continue
+
+            for qa_channel in list(SHF.qachannels.keys()):
+                if involved_channels and f"qa{qa_channel + 1}" not in \
+                        involved_channels[SHF.name]:
+                    continue
+                save_shfqa_channel_data(
+                    shf=SHF,
+                    shf_data_dir=shf_data_dir,
+                    qa_channel=qa_channel,
+                )
+
+        # export the waveform and sequencer code of the HDAWGs
+        if isinstance(component,
+                      phys_instr.ZurichInstruments.ZI_HDAWG_qudev.ZI_HDAWG_qudev):
+
+            AWG = component
+            if involved_channels and AWG.name not in involved_channels.keys():
+                continue
+
+            # create the data directory of the AWG
+            awg_data_dir = os.path.join(brdir, AWG.name)
+            os.makedirs(awg_data_dir, exist_ok=True)
+
+            # save channel waveforms and sequencer codes
+            for i in range(4):
+                save_hdawg_channel_data(
+                    awg=AWG,
+                    awg_data_dir=awg_data_dir,
+                    awg_module_nr=i,
+                )
+
+            # save HDAWG settings
+            sn = AWG.daq.get(f'/{AWG.devname}/*', settingsonly=True)
+            np.save(os.path.join(awg_data_dir, f'awg_settings'), sn)
+
+        # export the waveform and sequencer code of the UHFQAs
+        if isinstance(component, acq_devs.uhfqa.UHFQA):
+            UHF = component
+            if involved_channels and UHF.name not in involved_channels.keys():
+                continue
+
+            # create the data directory of the AWG
+            uhf_data_dir = os.path.join(brdir, UHF.name)
+            os.makedirs(uhf_data_dir, exist_ok=True)
+
+            # save UHFQA waveforms
+            for i in range(1):
+                save_uhfqa_channel_data(
+                    uhf=UHF,
+                    uhf_data_dir=uhf_data_dir,
+                    uhf_module_nr=i,
+                )
+
+            sn = UHF.daq.get(f'/{UHF.devname}/*', settingsonly=True)
+            np.save(os.path.join(uhf_data_dir, f'uhf_settings'), sn)
+
+        if isinstance(component,
+                      phys_instr.ZurichInstruments.ZI_PQSC.ZI_PQSC):
+            pqsc_data_dir = os.path.join(brdir, station.PQSC.name)
+            os.makedirs(pqsc_data_dir, exist_ok=True)
+
+    # save the firmware git revision
+    for dev in instruments:
+        dev_data_dir = os.path.join(brdir, dev.name)
+        try:
+            fw_git_revision_node = \
+                f"/{dev.devname}/system/fwrevision"
+            fw_git_revision_string = \
+                str(dev.daq.get(fw_git_revision_node, flat=True)[
+                    fw_git_revision_node]["value"][0])
+            fw_git_revision_dict = json.loads(fw_git_revision_string)
+            write_logfile(os.path.join(
+                dev_data_dir, f'{dev.name}_{dev.devname}_firmware_revision'),
+                repr(fw_git_revision_dict), dev_data_dir)
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_firmware_revision'] = e
+
+    # save the bitstream git revision
+    for dev in instruments:
+        dev_data_dir = os.path.join(brdir, dev.name)
+        try:
+            bs_git_revision_node = \
+                f"/{dev.devname}/system/fpgarevision"
+            bs_git_revision_string = \
+                str(dev.daq.get(bs_git_revision_node, flat=True)[
+                    bs_git_revision_node]["value"][0])
+            bs_git_revision_dict = json.loads(bs_git_revision_string)
+            write_logfile(os.path.join(
+                dev_data_dir, f'{dev.name}_{dev.devname}_fpga_revision'),
+                repr(bs_git_revision_dict), dev_data_dir)
+        except Exception as e:
+            exceptions[f'{dev.name}_{dev.devname}_fpga_revision'] = e
+
     # print in kernel
     print(f'Bug report files saved to {brdir}')
     from pprint import pprint
@@ -1178,6 +1383,159 @@ def save_zibugreport(interactive=True, save_folder=None):
               f'Not all elements of the bugreport could be saved. '
               f'Exceptions occurred during: {list(exceptions.keys())}')
     return exceptions
+
+
+def save_shfsg_channel_data(
+        shf,
+        shf_tk,
+        shf_data_dir,
+        sg_channel,
+):
+    """
+    Helper function for exporting the programs on an (SHF)SG channel.
+
+    Args:
+        shf (zhinst.qcodes): zhinst-qcodes instance of the SHF device
+        shf_tk (zhinst-toolkit): zhinst-toolkit instance of the SHF device.
+            This is called to help saving the waveform.
+        shf_data_dir (str): directory for exporting the program
+        sg_channel (int): index (0-based) of the channel to export
+    """
+    wfm_dir = os.path.join(shf_data_dir, "sg",
+                           f"sg{sg_channel}", "waveforms")
+    os.makedirs(wfm_dir, exist_ok=True)
+
+    cmt_dir = os.path.join(shf_data_dir, "sg",
+                           f"sg{sg_channel}", "commandtables")
+    seq_dir = os.path.join(shf_data_dir, "sg", f"sg{sg_channel}")
+
+    wave_idx = 0
+    while True:
+        try:
+            w = shf_tk.sgchannels[sg_channel].awg.waveform.waves[wave_idx]()
+            np.save(os.path.join(wfm_dir, f"wave_{wave_idx}"), w)
+            wave_idx += 1
+        except:
+            break
+
+    # save sg channel commandtable
+    w = eval(shf.sgchannels[sg_channel].awg.commandtable.data().replace(
+        "false", "False"))
+    np.save(cmt_dir, w)
+
+    # save sg sequence code
+    w = shf.sgchannels[sg_channel].awg.sequencer.program()
+    f = open(os.path.join(seq_dir, f'sequencer_sg{sg_channel}.txt'), 'w')
+    f.write(w)
+    f.close()
+
+
+def save_shfqa_channel_data(
+        shf,
+        shf_data_dir,
+        qa_channel,
+):
+    """
+    Helper function for exporting the programs on an (SHF)QA channel.
+
+    Args:
+        shf (zhinst.qcodes): zhinst-qcodes instance of the SHF device
+        shf_data_dir (str): directory for exporting the program
+        qa_channel (int): index (0-based) of the channel to export
+    """
+    # save qa channel waveforms
+    wfm_dir = os.path.join(shf_data_dir, "qa",
+                           f"qa{qa_channel}", "waveforms")
+    os.makedirs(wfm_dir, exist_ok=True)
+    for i, wave in enumerate(shf.qachannels[qa_channel].generator.waveforms):
+        w = wave.wave()
+        np.save(os.path.join(wfm_dir, f'wave_{i}'), w)
+
+    # save qa integration weights
+    wfm_dir = os.path.join(shf_data_dir, "qa",
+                           f"qa{qa_channel}", "int_weights")
+    os.makedirs(wfm_dir, exist_ok=True)
+    for i, wave in enumerate(
+            shf.qachannels[qa_channel].readout.integration.weights):
+        w = wave.wave()
+        np.save(os.path.join(wfm_dir, f'weight_{i}'), w)
+
+    # save qa sequencer code
+    seq_dir = os.path.join(shf_data_dir, "qa",
+                           f"qa{qa_channel}")
+    os.makedirs(seq_dir, exist_ok=True)
+    w = shf.qachannels[qa_channel].generator.sequencer.program()
+    f = open(os.path.join(seq_dir, f'sequencer_qa{qa_channel}.txt'), 'w')
+    f.write(w)
+    f.close()
+
+
+def save_hdawg_channel_data(
+        awg,
+        awg_data_dir,
+        awg_module_nr,
+):
+    """
+    Helper function for exporting the programs on an HDAWG channel.
+
+    Args:
+        awg (zhinst.qcodes): zhinst-qcodes instance of the HDAWG device
+        awg_data_dir (str): directory for exporting the program
+        awg_module_nr (int): index (0-based) of the channel to export
+    """
+
+    from pycqed.measurement.waveform_control import pulsar as ps
+    pulsar = ps.Pulsar.get_instance()
+
+    # save AWG waveform
+    w = awg.daq.get(
+        f'/{awg.devname}/awgs/{awg_module_nr}/waveform/waves/*',
+        settingsonly=False,
+        flat=True,
+        excludevectors=False
+    )
+    np.save(os.path.join(awg_data_dir, f'waves_{awg_module_nr}'), w)
+
+    # save AWG sequencer code
+    w = pulsar.awg_interfaces[awg.name].awg_mcc.awgs[
+        awg_module_nr].sequencer.program()
+    f = open(os.path.join(awg_data_dir, f'seqc_{awg_module_nr}.txt'), 'w')
+    f.write(w)
+    f.close()
+
+
+def save_uhfqa_channel_data(
+        uhf,
+        uhf_data_dir,
+        uhf_module_nr,
+):
+    """
+    Helper function for exporting the programs on an UHFQA channel.
+
+    Args:
+        uhf (zhinst.qcodes): zhinst-qcodes instance of the HDAWG device
+        uhf_data_dir (str): directory for exporting the program
+        uhf_module_nr (int): index (0-based) of the channel to export
+    """
+
+    from pycqed.measurement.waveform_control import pulsar as ps
+    pulsar = ps.Pulsar.get_instance()
+
+    # save UHF waveform
+    w = uhf.daq.get(
+        f'/{uhf.devname}/awgs/{uhf_module_nr}/waveform/waves/*',
+        settingsonly=False,
+        flat=True,
+        excludevectors=False
+    )
+    np.save(os.path.join(uhf_data_dir, f'waves_{uhf_module_nr}'), w)
+
+    # save UHF sequencer code
+    w = pulsar.awg_interfaces[uhf.name].awg_mcc.awgs[
+        uhf_module_nr].sequencer.program()
+    f = open(os.path.join(uhf_data_dir, f'seqc_{uhf_module_nr}.txt'), 'w')
+    f.write(w)
+    f.close()
 
 
 def get_all_connected_zi_instruments():
@@ -1211,6 +1569,8 @@ def get_zhinst_modules_versions():
     import zhinst
     submodules = [sm for sm in dir(zhinst) if not sm.startswith('__')]
     for sm in submodules:
+        if sm in ['hdiq', 'timing_models']:
+            continue
         try:
             versions[f'zhinst-{sm}'] = zhinst.__dict__[sm].__version__
         except Exception as e:
@@ -1278,64 +1638,3 @@ class TempLogLevel:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.logger.setLevel(self.log_level)
-
-
-def assert_not_none(*param_names):
-    """
-    Decorator that ensures that all (keyword) arguments of the decorated function
-     `f` provided in param_names are not None.
-    Args:
-        *param_names (str): One or several strings indicating the name of the
-            (keyword) arguments which should not have a value of None
-    Returns:
-         decorated function.
-    Examples:
-        >>>  class Test:
-        >>>    @assert_not_none('arg2', 'kwarg1', "other_kwarg")
-        >>>    def test(self, arg1, arg2, kwarg1=0, kwarg2=None, **kwargs):
-        >>>        pass
-        >>> t = Test()
-        >>> t.test('a', "b") # does not raise an error
-        >>> t.test('a', None) # raises error because arg2 is None
-        >>> t.test('a', 'b', None,) # raises error because kwarg1 is passed
-        >>>                         # as positional argument with a value of None
-        >>> t.test('a', 'b', "c", something=None) # does not raise an error
-        >>> t.test('a', 'b', "c", other_kwarg=None) # raises an error because
-        >>>                                         # other_kwarg is None
-    Raises:
-        ValueError if a (keyword) argument mentioned in param_names is None.
-    """
-    import inspect
-
-    def check(f):
-        @functools.wraps(f)
-        def wrapped_func(*args, **kwds):
-            signature_args_and_kwargs = inspect.getfullargspec(f).args
-            default_kwarg_values = inspect.getfullargspec(f).defaults
-            error_msg = ' {name} is None, but {name} should not be None when ' \
-                        'passed to ' + f.__qualname__
-
-            # check if a positional argument is None or a signature keyword
-            # argument is None:
-            # take argument values and default values of keyword arguments
-            # which are not passed as positional arguments (since keyword
-            # arguments can also be provided as positional arguments)
-            x = len(signature_args_and_kwargs) - len(
-                args)  # index of first needed default keyword arg value
-            for (name, value) in zip(signature_args_and_kwargs,
-                                     args + default_kwarg_values[x:]):
-                # print(name, value)
-                if name in param_names and value is None:
-                    raise ValueError(error_msg.format(f=f, name=name))
-
-            # check if a passed keyword argument is None
-            for (name, value) in kwds.items():
-                if name in param_names and value is None:
-                    raise ValueError(error_msg.format(f=f, name=name))
-
-            return f(*args, **kwds)
-
-        wrapped_func.__name__ = f.__name__
-        return wrapped_func
-
-    return check

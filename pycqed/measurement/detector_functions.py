@@ -14,6 +14,7 @@ from qcodes.instrument.parameter import _BaseParameter
 from qcodes.instrument.base import Instrument
 from pycqed.utilities.errors import NoProgressError
 from pycqed.measurement.waveform_control import pulsar as ps
+import pycqed.utilities.qutip_compat as qtp
 import logging
 log = logging.getLogger(__name__)
 
@@ -23,6 +24,8 @@ class Detector_Function(object):
     '''
     Detector_Function class for MeasurementControl
     '''
+
+    simulation = False
 
     def __init__(self, **kw):
         self.name = self.__class__.__name__
@@ -246,17 +249,6 @@ class Multi_Detector(Detector_Function):
         values = np.concatenate(values_list)
         return values
 
-    def acquire_data_point(self):
-        # N.B. get_values and acquire_data point are virtually identical.
-        # the only reason for their existence is a historical distinction
-        # between hard and soft detectors that leads to some confusing data
-        # shape related problems, hence the append vs concatenate
-        values = []
-        for detector in self.detectors:
-            new_values = detector.acquire_data_point()
-            values = np.append(values, new_values)
-        return values
-
     def finish(self):
         for detector in self.detectors:
             detector.finish()
@@ -320,13 +312,6 @@ class IndexDetector(Detector_Function):
             v = v[i]
         return v
 
-    def acquire_data_point(self):
-        v = self.detector.get_values()
-        # equivalent to v[self.index[0]][self.index[1]]...[self.index[-1]]
-        for i in self.index:
-            v = v[i]
-        return v
-
     def finish(self):
         self.detector.finish()
 
@@ -357,10 +342,6 @@ class SumDetector(Detector_Function):
         return [np.array(self.detector.get_values())[self.indices]
                 .sum(axis=0)]
 
-    def acquire_data_point(self):
-        return [np.array(self.detector.acquire_data_point())[self.indices]
-                .sum(axis=0)]
-
     def finish(self):
         self.detector.finish()
 
@@ -381,12 +362,6 @@ class None_Detector(Detector_Function):
         self.value_names = ['None']
         self.value_units = ['None']
 
-    def acquire_data_point(self, **kw):
-        '''
-        Returns something random for testing
-        '''
-        return np.random.random()
-
 
 class Hard_Detector(Detector_Function):
 
@@ -394,7 +369,7 @@ class Hard_Detector(Detector_Function):
         super().__init__(**kw)
         self.detector_control = 'hard'
 
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         pass
 
     def finish(self):
@@ -407,10 +382,7 @@ class Soft_Detector(Detector_Function):
         super().__init__(**kw)
         self.detector_control = 'soft'
 
-    def acquire_data_point(self, **kw):
-        return np.random.random()
-
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         pass
 
 
@@ -433,7 +405,7 @@ class Dummy_Detector_Hard(Hard_Detector):
         self.noise = noise
         self.times_called = 0
 
-    def prepare(self, sweep_points):
+    def prepare(self, sweep_points=None, **kw):
         self.sweep_points = sweep_points
 
     def get_values(self):
@@ -459,7 +431,7 @@ class Dummy_Shots_Detector(Hard_Detector):
         self.max_shots = max_shots
         self.times_called = 0
 
-    def prepare(self, sweep_points):
+    def prepare(self, sweep_points=None, **kw):
         self.sweep_points = sweep_points
 
     def get_values(self):
@@ -488,14 +460,11 @@ class Sweep_pts_detector(Detector_Function):
             self.value_names += [par.name]
             self.value_units += [par.units]
 
-    def prepare(self, sweep_points):
+    def prepare(self, sweep_points, **kw):
         self.i = 0
         self.sweep_points = sweep_points
 
     def get_values(self):
-        return self.get()
-
-    def acquire_data_point(self):
         return self.get()
 
     def get(self):
@@ -529,13 +498,6 @@ class Dummy_Detector_Soft(Soft_Detector):
         # self.x can be used to set x value externally
         self.x = None
 
-    def acquire_data_point(self, **kw):
-        if self.x is None:
-            x = self.i/15.
-        self.i += 1
-        time.sleep(self.delay)
-        return np.array([np.sin(x/np.pi), np.cos(x/np.pi)])
-
 
 class Dummy_Detector_Soft_diff_shape(Soft_Detector):
     # For testing purpose, returns data in a slightly different shape
@@ -550,14 +512,6 @@ class Dummy_Detector_Soft_diff_shape(Soft_Detector):
         self.i = 0
         # self.x can be used to set x value externally
         self.x = None
-
-    def acquire_data_point(self, **kw):
-        if self.x is None:
-            x = self.i/15.
-        self.i += 1
-        time.sleep(self.delay)
-        # This is the format an N-D detector returns data in.
-        return np.array([[np.sin(x/np.pi), np.cos(x/np.pi)]]).reshape(2, -1)
 
 
 class Function_Detector(Soft_Detector):
@@ -609,7 +563,7 @@ class Function_Detector(Soft_Detector):
         if self.prepare_function is not None:
             self.prepare_function(**self.prepare_function_kwargs)
 
-    def acquire_data_point(self, **kw):
+    def get_values(self):
         measurement_kwargs = {}
         # If an entry has a get method that will be used to set the value.
         # This makes parameters work in this context.
@@ -629,9 +583,6 @@ class Function_Detector(Soft_Detector):
             if len(results) == 1:
                 return results[0]  # for a single entry we don't want a list
             return results
-
-    def get_values(self):
-        return self.acquire_data_point()
 
 
 
@@ -710,7 +661,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         self.value_names = []
         self._channels_value_names_map = None
 
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         if self.prepare_and_finish_pulsar and not self._pulsar_started:
             self.prepare_pulsar()
         for acq_dev in self.acq_devs:
@@ -904,7 +855,7 @@ class PollDetector(Hard_Detector, metaclass=TimedMetaClass):
         for mobj, chs in self.meas_obj_channel_map.items():
             movnm[mobj] = []
             for ch, vns in self._channels_value_names_map.items():
-                if not isinstance(vns, tuple):
+                if not isinstance(vns, tuple) and not isinstance(vns, list):
                     vns = (vns,)
                 for vn in vns:
                     if ch in chs and vn not in movnm[mobj]:
@@ -1006,16 +957,10 @@ class MultiPollDetector(PollDetector):
         self.correlated = kw.get('correlated', False)
         self.averaged = kw.get('averaged', True)
         if 'classifier' in self.detectors[0].name:
-            self.correlated = self.detectors[0].get_values_function_kwargs.get(
-                'correlated', False)
-            self.averaged = self.detectors[0].get_values_function_kwargs.get(
-                'averaged', True)
+            self.correlated = self.detectors[0].correlated
+            self.averaged = self.detectors[0].averaged
 
-        if self.correlated:
-            self.value_names += ['correlation']
-            self.value_units += ['']
-
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         """
         Calls the prepare method of each polling detector in self.detectors
         and defines self.progress_scaling to be used in poll_data to decide
@@ -1025,9 +970,9 @@ class MultiPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
-        super().prepare()
+        super().prepare(**kw)
         for d in self.detectors:
-            d.prepare(sweep_points)
+            d.prepare(sweep_points, **kw)
         self.progress_scaling = [
             getattr(d, 'progress_scaling', None) for d in self.detectors]
         if any([a is None for a in self.progress_scaling]):
@@ -1058,20 +1003,9 @@ class MultiPollDetector(PollDetector):
         data_processed = [self.det_from_acq_dev[acq_dev].process_data(d)
                           for acq_dev, d in data_raw.items()]
         data_processed = np.concatenate(data_processed)
-        if self.correlated:
-            if not self.detectors[0].get_values_function_kwargs.get(
-                    'averaged', True):
-                data_for_corr = data_processed
-            else:
-                data_for_corr = np.concatenate([d for d in data_raw.values()])
-            corr_data = self.get_correlations_classif_det(data_for_corr)
-            data_processed = np.concatenate([data_processed, corr_data], axis=0)
-
         return data_processed
 
-    def acquire_data_point(self):
-        return self.get_values()
-
+    # FIXME: not used anymore
     def get_correlations_classif_det(self, data):
         """
         Correlate the single shot data obtained with the ClassifyingPollDetector
@@ -1100,7 +1034,7 @@ class MultiPollDetector(PollDetector):
         if len(state_prob_mtx_list) == 0:
             state_prob_mtx_list = None
         d0 = self.detectors[0]
-        nr_states = len(d0.state_labels)
+        nr_states = len(d0.states_map)
         all_ch_pairs = [d.channel_str_mobj for d in self.detectors]
         all_ch_pairs = [e0 for e1 in all_ch_pairs for e0 in e1]
 
@@ -1146,8 +1080,8 @@ class MultiPollDetector(PollDetector):
         # if one qubit is in g or f but the other in e ---> correlator = 1
         corr_data = np.sum(np.array(qb_states_list) % 2, axis=0) % 2
         if self.averaged:
-            corr_data = np.reshape(corr_data,
-                                   (d0.nr_shots, d0.nr_sweep_points/d0.nr_shots))
+            corr_data = np.reshape(
+                corr_data, (d0.nr_shots, d0.nr_sweep_points//d0.nr_shots))
             corr_data = np.mean(corr_data, axis=0)
         corr_data = np.reshape(corr_data, (1, corr_data.size))
 
@@ -1228,7 +1162,7 @@ class AveragingPollDetector(PollDetector):
         self.nr_averages = nr_averages
         self.progress_scaling = nr_averages
 
-    def prepare(self, sweep_points):
+    def prepare(self, sweep_points, **kw):
         """
         Prepares instruments for acquisition by calling
         self.acq_dev.acquisition_initialize.
@@ -1237,7 +1171,7 @@ class AveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
-        super().prepare()
+        super().prepare(**kw)
         if self.AWG is not None:
             self.AWG.stop()
         self.nr_sweep_points = len(sweep_points)
@@ -1472,14 +1406,8 @@ class IntegratingAveragingPollDetector(PollDetector):
         data[1] = np.angle(S21) * 180 / np.pi
         return data
 
-    def acquire_data_point(self):
-        """
-        Calls self.get_values().
-        """
-        return self.get_values()
-
     @Timer()
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         """
         Prepares instruments for acquisition:
          - defines self.nr_sweep_points based on sweep_points,
@@ -1493,7 +1421,7 @@ class IntegratingAveragingPollDetector(PollDetector):
             sweep_points (numpy array): array of sweep points as passed by
                 MeasurementControl
         """
-        super().prepare()
+        super().prepare(**kw)
         if self.AWG is not None:
             self.AWG.stop()
         # Determine the number of sweep points and set them
@@ -1592,9 +1520,9 @@ class ScopePollDetector(PollDetector):
         self.value_names = [f'{acq_dev.name}_{ch[0]}_{data_type} {ch[1]}'
                             for ch in self.channels]
 
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
 
-        super().prepare()
+        super().prepare(**kw)
         if sweep_points is None:
             sweep_points = self.get_sweep_vals()
         self.nr_sweep_points = len(sweep_points)
@@ -1680,8 +1608,8 @@ class UHFQC_correlation_detector(IntegratingAveragingPollDetector):
 
         self.define_correlation_channels()
 
-    def prepare(self, sweep_points=None):
-        super().prepare(sweep_points=sweep_points)
+    def prepare(self, sweep_points=None, **kw):
+        super().prepare(sweep_points=sweep_points, **kw)
         self.set_up_correlation_weights()
 
     def define_correlation_channels(self):
@@ -1815,12 +1743,12 @@ class IntegratingSingleShotPollDetector(IntegratingAveragingPollDetector):
         # Disable MC live plotting by default for SSRO acquisition
         self.live_plot_allowed = kw.get('live_plot_allowed', False)
 
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         if self.single_int_log:
             # If soft sweep (meaning each acq. is triggered in software):
             # the number of values to be acquired is the number of shots
             sweep_points = [0] * self.acq_data_len_scaling
-        super().prepare(sweep_points)
+        super().prepare(sweep_points, **kw)
 
 
 class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
@@ -1880,10 +1808,10 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
         self.value_units = ['' for k in self.value_names]
         self.progress_scaling = self.nr_shots
 
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         self.acq_dev.nb_bins = deepcopy(self.nr_bins)
         self.acq_dev.peak_to_peak = deepcopy(self.peak_to_peak)
-        super().prepare(sweep_points=sweep_points)
+        super().prepare(sweep_points=sweep_points, **kw)
         # undo scaling done in super method because we receive only 1 histogram
         self.nr_sweep_points //= self.nr_shots
 
@@ -1891,7 +1819,7 @@ class IntegratingHistogramPollDetector(IntegratingAveragingPollDetector):
         return [[data['data'][b] for data in data_raw[0]] for b in self.bins]
 
 class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
-    """
+    r"""
     Hybrid detector function:
      - the acq_dev is configured to return single shots, but this function can
      then return either single shots, or averaged sweep points (can average
@@ -1907,7 +1835,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
 
     The only additional keyword argument that is used by this class but not by
     its parent class is get_values_function_kwargs. This parameter is a dict
-    where the user can specify how he wants this detector function to process
+    where the user can specify how they want this detector function to process
     the shots.
     get_values_function_kwargs can contain:
      - classifier_params_list (list or dict): THIS ENTRY MUST EXIST. This class
@@ -1955,11 +1883,12 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
                                                  None)
         self.name = '{}_classifier_det'.format(self.data_type)
 
-        self.state_labels = ['pg', 'pe', 'pf'] if self.qutrit else ['pg', 'pe']
-        classifier_params = self.get_values_function_kwargs.get(
+        state_labels = ['g', 'e', 'f'] if self.qutrit else ['g', 'e']
+        self.states_map = dict(zip(range(len(state_labels)), state_labels))
+        self.classifier_params_list = self.get_values_function_kwargs.get(
             'classifier_params', [])
-        self.n_meas_objs = 1 if not len(classifier_params) else \
-                len(classifier_params)
+        self.n_meas_objs = 1 if not len(self.classifier_params_list) else \
+                len(self.classifier_params_list)
         k = len(self.channels) // self.n_meas_objs
         # this will give <acq unit>_<1st wint ch><2nd wint ch>, e.g., '0_01'
         self.channel_str_mobj = [(
@@ -1967,20 +1896,50 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             ''.join([str(ch[1]) for ch in self.channels[k*j:k*j+k]])
         ) for j in range(self.n_meas_objs)]
 
-        self.classified = self.get_values_function_kwargs.get('classified',
-                                                              True)
+        self.classified = self.get_values_function_kwargs.get(
+            'classified', True)
+        self.thresholded = self.get_values_function_kwargs.get(
+            'thresholded', True)
+        # For now will only be used if wrapped by a SimulatedMultiPollDetector
+        self.correlated = self.get_values_function_kwargs.get(
+            'correlated', True)
+        self.averaged = self.get_values_function_kwargs.get(
+            'averaged', True)
         if self.classified:
             self.value_names = ['']*(
-                    len(self.state_labels) * len(self.channel_str_mobj))
+                    len(self.states_map) * len(self.channel_str_mobj))
             idx = 0
+            self._channels_value_names_map = dict()
             for ch_pair in self.channel_str_mobj:
-                for state in self.state_labels:
+                self._channels_value_names_map[ch_pair] = list()
+                for state in self.states_map.values():
                     self.value_names[idx] = \
-                        f'{acq_dev.name}_{ch_pair[0]}_{state} w{ch_pair[1]}'
+                        f'{acq_dev.name}_{ch_pair[0]}_p{state} w{ch_pair[1]}'
+                    # update the thresholded channel names to
+                    # self._channels_value_names_map
+                    self._channels_value_names_map[ch_pair].append(
+                        self.value_names[idx])
                     idx += 1
             self.value_units = [self.value_units[0]] * len(self.value_names)
 
-        if self.get_values_function_kwargs.get('averaged', True):
+            # update the mapping from the measurement object to the
+            # classified channels. Names of the measured values should have
+            # the format {meas_device_name}_0_p{g/e/f} w{integration_channels} {
+            # meas_device_name}
+            meas_obj_channel_map_new = dict()
+            for mobj, chs in self.meas_obj_channel_map.items():
+                meas_obj_channel_map_new[mobj] = list()
+                for ch in chs:
+                    for dev, channel_processed in self.channel_str_mobj:
+                        if str(ch[1]) in channel_processed and \
+                                len(channel_processed) == 2 * len(str(ch[1]))\
+                                and (dev, channel_processed) not in \
+                                meas_obj_channel_map_new[mobj]:
+                            meas_obj_channel_map_new[mobj].append(
+                                (dev, channel_processed))
+            self.meas_obj_channel_map = meas_obj_channel_map_new
+
+        if self.averaged:
             self.acq_data_len_scaling = 1
             # The following value is only used for correct progress
             # calculation in poll_data.
@@ -2015,13 +1974,9 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         """
         data_processed = super().process_data(data_raw, polar=False,
                                               reshape_data=False).T
-        nr_states = len(self.state_labels)
-        thresholded = self.get_values_function_kwargs.get('thresholded', True)
-        averaged = self.get_values_function_kwargs.get('averaged', True)
+        nr_states = len(self.states_map)
         if self.classified:
             # Classify data into qutrit states
-            self.classifier_params_list = self.get_values_function_kwargs.get(
-                'classifier_params', None)
             if self.classifier_params_list is None:
                 raise ValueError('Please specify the classifier '
                                  'parameters list.')
@@ -2031,14 +1986,14 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
                                                  self.classifier_params_list,
                                                  nr_states)
 
-        if thresholded:
+        if self.thresholded:
             if not self.classified:
                 raise NotImplementedError(
                     'Currently the threshold_shots only works if the data '
                     'was first classified.')
             data_processed = self.threshold_shots(data_processed, nr_states)
 
-        if averaged:
+        if self.averaged:
             data_processed = self.average_shots(data_processed)
 
         # do readout correction
@@ -2050,7 +2005,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             raise ValueError('"ro_corrected_seq_cal_mtx" and '
                              '"ro_corrected_stored_mtx" cannot both be True.')
         ro_corrected = ro_corrected_seq_cal_mtx or ro_corrected_stored_mtx
-        if (ro_corrected and thresholded) and not averaged:
+        if (ro_corrected and self.thresholded) and not self.averaged:
             raise ValueError('It does not make sense to apply readout '
                              'correction if thresholded==True and '
                              'averaged==False.')
@@ -2061,7 +2016,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
         elif ro_corrected_seq_cal_mtx:
             # correct data with the calibration matrix extracted from
             # the data array
-            if not averaged:
+            if not self.averaged:
                 raise NotImplementedError(
                     'Data correction based on calibration state_prob_mtx '
                     'from measurement sequence is currently only '
@@ -2098,7 +2053,7 @@ class ClassifyingPollDetector(IntegratingSingleShotPollDetector):
             # where len(nr_sweep_points) = len(mc_sweep_points) * nr_shots
             mobj_data = data[:, k*i: k*i+k]
             clf_data = a_tools.predict_gm_proba_from_clf(
-                mobj_data, classifier_params_list[i])
+                mobj_data, classifier_params_list[i], nr_states=nr_states)
             classified_data[:, nr_states * i: nr_states * i + nr_states] = \
                 clf_data
 
@@ -2311,7 +2266,7 @@ class UHFQC_scope_detector(Hard_Detector):
         return [x.reshape(self.nr_averages, -1).mean(0) for
                 x in result[self.UHFQC.devname]['scopes']['0']['wave'][0][0]['wave']]
 
-    def prepare(self, sweep_points=None):
+    def prepare(self, sweep_points=None, **kw):
         if self.AWG is not None:
             self.AWG.stop()
 

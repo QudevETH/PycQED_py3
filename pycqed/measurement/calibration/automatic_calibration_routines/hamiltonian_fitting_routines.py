@@ -2,8 +2,7 @@ from pycqed.measurement.calibration.automatic_calibration_routines.base import (
     IntermediateStep, AutomaticCalibrationRoutine, update_nested_dictionary,
     ROUTINES)
 from pycqed.measurement.calibration.automatic_calibration_routines.base. \
-    base_automatic_calibration_routine import (_device_db_client_module_missing,
-                                               keyword_subset_for_function)
+    base_automatic_calibration_routine import (_device_db_client_module_missing)
 from pycqed.measurement.calibration.automatic_calibration_routines import (
     routines_utils, AdaptiveReparkingRamsey, UpdateFrequency, SetBiasVoltage)
 
@@ -22,8 +21,6 @@ import pycqed.analysis.analysis_toolbox as a_tools
 import numpy as np
 import logging
 from typing import Dict, Tuple
-from pycqed.instrument_drivers.meta_instrument.qubit_objects.QuDev_transmon \
-    import QuDev_transmon
 
 log = logging.getLogger(ROUTINES)
 
@@ -457,7 +454,10 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
 
         # Updating ge-frequency at this voltage to guess value
         qb.ge_freq(ge_freq := qb.calculate_frequency(flux=flux))
+        qb.ef_freq(ef_freq := qb.calculate_frequency(flux=flux,
+                                                     transition="ef"))
         log.info(f'{qb.name} updated with ge-frequency {ge_freq} Hz.')
+        log.info(f'{qb.name} updated with ef-frequency {ef_freq} Hz.')
 
         AutomaticCalibrationRoutine.post_run(self)
 
@@ -846,7 +846,8 @@ class HamiltonianFitting(AutomaticCalibrationRoutine,
                 fluxline(voltage)
 
                 # Finding frequency
-                ff = FindFrequency([qubit], dev=kw.get('dev'), update=True)
+                ff = FindFrequency(dev=kw.get('dev'), qubits=[qubit],
+                                   update=True)
 
                 # Storing experimental result
                 experimental_values[voltage] = {"ge": qubit.ge_freq()}

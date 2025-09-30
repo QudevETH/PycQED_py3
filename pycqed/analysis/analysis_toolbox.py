@@ -1,29 +1,44 @@
+"""
+A tooblox for data analysis and processing in quantum experiments.
+
+This module provides various utility functions for data analysis, file handling,
+plotting, and data processing in the context of quantum experiments.
+
+The module includes functions for:
+- Data & file handling and data retrieval/storage
+- Peak and dip finding in datasets
+- Gaussian mixture probability prediction, normalization, and rotation
+- Datetime and timestamp conversions
+- Various plotting functions
+
+Many functions in this module are designed to work with PycQED's data structures
+and experiment workflows. We assume `datadir` will be set in an init script or a
+jupyter notebook cell.
+"""
+
 import logging
 log = logging.getLogger(__name__)
 
 import os
 import shutil
 import time
-import h5py
 import datetime
 import numpy as np
-# used by compare_instrument_settings_timestamp():
-from numpy import array  # DO not remove;
 from copy import deepcopy
 from matplotlib.colors import LogNorm
 from matplotlib.colors import LinearSegmentedColormap as lscmap
 from sklearn.mixture import GaussianMixture as GM
-from pycqed.utilities.get_default_datadir import get_default_datadir
+from pycqed.utilities.io import hdf5 as h5d
 from scipy.interpolate import griddata
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.optimize import Bounds, LinearConstraint, minimize
 from pycqed.analysis.tools.plotting import *
 from matplotlib import cm
-from typing import Union
 
 latest_data_match_whole_words = False
-datadir = get_default_datadir()
+datadir = None
 fetch_data_dir = None
+original_datadir = None  # Local datadir path on the original measurement PC
 ignore_delegate_plotting = False
 
 
@@ -146,6 +161,7 @@ def get_all_daystamps(data_folder: str) -> list:
             day_directories.append(verify_daystamp(directory))
         except ValueError:
             pass
+
     if len(day_directories) == 0:
         log.warning('No data found in datadir')
     return day_directories
@@ -196,10 +212,11 @@ def latest_data(contains='', older_than=None, newer_than=None, or_equal=False,
     assert return_timestamp or return_path, \
         'No return value chosen (return_timestamp=return_path=False).'
 
-    if folder is None:
-        search_dir = datadir
-    else:
-        search_dir = folder
+    search_dir = folder or datadir
+
+    if search_dir is None:
+        log.error('Both folder and datadir are not set. Please set at least one.')
+        return None
 
     daydirs = os.listdir(search_dir)
     if len(daydirs) == 0:
@@ -314,10 +331,16 @@ def data_from_time(timestamp, folder=None, auto_fetch=None):
     returns the full path of the data specified by its timestamp in the
     form YYYYmmddHHMMSS.
     '''
+
+    folder = folder or datadir
+
     if folder is None:
-        folder = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
+
     if auto_fetch is None:
         auto_fetch = (fetch_data_dir is not None)
+
     daydirs = os.listdir(folder)
     if len(daydirs) == 0 and not auto_fetch:
         raise Exception('No data in the data directory specified')
@@ -393,7 +416,7 @@ def open_hdf_file(timestamp=None, folder=None, filepath=None, mode='r',
             assert timestamp is not None
             folder = get_folder(timestamp)
         filepath = measurement_filename(folder, file_id=file_id, **kw)
-    return h5py.File(filepath, mode)
+    return h5d.safe_file_open(filepath, mode=mode)
 
 
 def open_config_file(timestamp=None, folder=None, filepath=None, mode='r',
@@ -436,169 +459,34 @@ def get_plot_title_from_folder(folder):
     return default_plot_title
 
 
-def _compare_instrument_settings_groups(sets_a, sets_b, name_a, name_b,
-                                        parent='', instruments='all',
-                                        verbose=True):
-    """Helper function to implement recursion in compare_instrument_settings
-    """
-    all_msg = []
-    all_diff = {}
-    for ins_key in sorted(set(list(sets_a.keys()) + list(sets_b.keys()))):
-        if not parent and instruments != 'all' and ins_key not in instruments:
-            continue
-        ins_name = ins_key if not parent else '.'.join([parent, ins_key])
-        if ins_key not in sets_a.keys():
-            all_msg.append(f'\nInstrument "{ins_name}" missing in {name_a}.\n')
-            continue
-        if ins_key not in sets_b.keys():
-            all_msg.append(f'\nInstrument "{ins_name}" missing in {name_b}.\n')
-            continue
+def compare_instrument_settings(*timestamps, **kwargs):
+    """Compare instrument settings from two instrument settings files.
 
-        ins_a = sets_a[ins_key]
-        ins_b = sets_b[ins_key]
-        msg = ''
-        diff = {}
-        ins_childs = ins_name.split('.')[1:]
-
-        for par_key in sorted(set(list(ins_a.attrs.keys())
-                                  + list(ins_b.attrs.keys()))):
-            par_name = '.'.join(ins_childs + [par_key])
-            vals = {}
-            if par_key not in ins_a.attrs.keys():
-                msg += (f'    Parameter "{par_name}" missing in {name_a}.\n')
-            else:
-                vals[name_a] = ins_a.attrs[par_key]
-                try:
-                    vals[name_a] = eval(vals[name_a])
-                except Exception:
-                    pass  # compare raw string
-            if par_key not in ins_b.attrs.keys():
-                msg += (f'    Parameter "{par_name}" missing in {name_b}.\n')
-            else:
-                vals[name_b] = ins_b.attrs[par_key]
-                try:
-                    vals[name_b] = eval(vals[name_b])
-                except Exception:
-                    pass  # compare raw string
-            if len(vals) < 2:
-                diff[par_name] = vals
-                continue
-            try:
-                np.testing.assert_equal(vals[name_a], vals[name_b])
-            except AssertionError:
-                msg += (f'    "{par_name}" has a different value: '
-                        f'"{vals[name_a]}" for {name_a}, '
-                        f'"{vals[name_b]}" for {name_b}\n')
-                diff[par_name] = vals
-
-        new_msg, new_diff = _compare_instrument_settings_groups(
-            ins_a, ins_b, name_a, name_b, ins_name, verbose=verbose)
-        msg += new_msg
-        diff.update(new_diff)
-
-        if len(diff):
-            if not parent:
-                msg = f'\nInstrument "{ins_key}"\n' + msg
-                all_diff[ins_key] = diff
-            else:
-                all_diff = diff
-            if verbose and not parent:
-                print(msg)
-            else:
-                all_msg.append(msg)
-    return '\n'.join(all_msg), all_diff
-
-
-def compare_instrument_settings(a, b, folder=None, instruments='all',
-                                output='print'):
-    """Compare instrument settings from two hdf files.
+    Convenience wrapper for SettingsManager.compare_stations.
 
     Args:
-        a (str, obj): first hdf file identified by a timestamp or by giving an
-            analysis object containing an open hdf file as property data_file
-        b (str, obj): second hdf file identified by a timestamp or by giving an
-            analysis object containing an open hdf file as property data_file
-        folder (str): data directory, only used if a or b is a timestamp
-            (default: the stored datadir)
-        instruments (str, list of str): either 'all' (default) or a list of
-            instrument names to compare only a subset of instruments
-        output (str): One of the following output formats:
-            'print' (default): print comparison report and return None
-            'str': return comparison report as str
-            'dict': return comparison results as a dict
-            'html': return results as a table in an IPython HTML object
+        see SettingsManager.compare_stations
 
     Returns:
-        None or the results as str or dict, see parameter of arg output
+        see SettingsManager.compare_stations
     """
-    log.warning('This function is no longer maintained and works only for hdf'
-                'files. '
-                'Please instantiate a settings manager object '
-                '(pycqed.utilitities.settings_manager.SettingsManager) and '
-                'use the function '
-                'SettingsManager.compare_stations([%ts1%, %ts2%, %ts3%, ...]) '
-                'instead.')
-    h5mode = 'r'
-    files_to_close = []
-    try:
-        if isinstance(a, str):
-            h5filepath = measurement_filename(get_folder(a, folder=folder))
-            file_a = h5py.File(h5filepath, h5mode)
-            files_to_close += [file_a]
-        else:
-            file_a = a.data_file
-            a = getattr(a, 'timestamp', 'file a').replace('/', '_')
-        if isinstance(b, str):
-            h5filepath = measurement_filename(get_folder(b, folder=folder))
-            file_b = h5py.File(h5filepath, h5mode)
-            files_to_close += [file_b]
-        else:
-            file_b = b.data_file
-            b = getattr(b, 'timestamp', 'file b').replace('/', '_')
-        sets_a = file_a['Instrument settings']
-        sets_b = file_b['Instrument settings']
-
-        msg, diff = _compare_instrument_settings_groups(
-            sets_a, sets_b, a, b, instruments=instruments,
-            verbose=(output == 'print'))
-    except Exception:
-        for f in files_to_close:
-            f.close()
-        raise
-    if output == 'str':
-        return msg
-    elif output == 'dict':
-        return diff
-    elif output == 'html':
-        from IPython.display import HTML
-        missing = '<b>!!! MISSING !!!</b>'
-        html = f'<table><tr>'
-        html += f'<td></td><td></td><td><b>{a}</b></td>' \
-                f'<td><b>{b}</b></td></tr>'
-        for k, v in diff.items():
-            html += f'<tr rowspan={len(v)}><td><b>{k}</b></td>'
-            first = True
-            for par, vals in v.items():
-                if not first:
-                    html += f'<tr><td></td>'
-                first = False
-                html += f"<td>{par}</td>"
-                html += f"<td>{vals.get(a, missing)}</td>"
-                html += f"<td>{vals.get(b, missing)}</td>"
-                html += f'</tr>'
-        html += f'</tr></table>'
-        return HTML(html)
-
-
-# The following is for backwards-compatibility
-compare_instrument_settings_timestamp = compare_instrument_settings
+    from pycqed.utilities.settings_manager import SettingsManager
+    sm = SettingsManager()
+    for ts in timestamps:
+        if not isinstance(ts, str):
+            raise TypeError(f'Comparison is only compatible with timestamp '
+                            f'strings as input. '
+                            f'({ts} is not a timestamp string.)')
+    return sm.compare_stations(timestamps=timestamps, **kwargs)
 
 
 def get_timestamps_in_range(timestamp_start, timestamp_end=None,
                             label=None, exact_label_match=False, folder=None,
                             auto_fetch=None, **kw):
+    folder = folder or datadir
     if folder is None:
-        folder = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
     if auto_fetch is None:
         auto_fetch = (fetch_data_dir is not None)
     if not isinstance(label, list):
@@ -696,6 +584,8 @@ def get_timestamps_in_range(timestamp_start, timestamp_end=None,
 
 def get_folder(timestamp=None, older_than=None, label='',
                suppress_printing=True, folder=None, **kw):
+    # NOTE: **kw are used to catch keyword arguments in 
+    # case more are passed than neeeded. We ignore them. :)
     if timestamp is not None:
         folder_ts = data_from_time(timestamp, folder=folder)
         if not suppress_printing:
@@ -711,6 +601,7 @@ def get_folder(timestamp=None, older_than=None, label='',
         if not suppress_printing:
             print('loaded file from folder "%s" using label "%s"' % (
                 folder_ts, label))
+
     return folder_ts
 
 
@@ -1517,7 +1408,7 @@ def predict_gm_proba_from_cal_points(X, cal_points):
     return np.array(probas)
 
 
-def predict_gm_proba_from_clf(X, clf_params):
+def predict_gm_proba_from_clf(X, clf_params, nr_states=None):
     """
     Predict gaussian mixture posterior probabilities for single shots
     of different levels of a qudit.
@@ -1533,25 +1424,37 @@ def predict_gm_proba_from_clf(X, clf_params):
             For more info see about parameters see :
             https://scikit-learn.org/stable/modules/generated/sklearn.mixture.
             GaussianMixture.html
+        nr_states: Ensures that clf_params are cut to the right number of
+            states, useful e.g. when classifying qubit data with a qutrit
+            classifier. If None, clf_params stays unchanged
     Returns: (n_datapoints, n_levels) array of posterior probability of being
         in each level
 
     """
-    reqs_params = ['means_', 'covariances_', 'covariance_type',
-                   'weights_', 'precisions_cholesky_']
-    clf_params = deepcopy(clf_params)
-    for r in reqs_params:
-        assert r in clf_params, "Required Classifier parameter {} " \
-                                "not given.".format(r)
-    gm = GM(covariance_type=clf_params.pop('covariance_type'))
-    for param_name, param_value in clf_params.items():
-        setattr(gm, param_name, param_value)
+    gm = load_gm_from_clf_params(clf_params, nr_states=nr_states)
 
     X_to_use = deepcopy(X)
     if X.ndim == 1:
         X_to_use = X.reshape(1, -1) if len(X) == 1 else X.reshape(-1, 1)
     probas = gm.predict_proba(X_to_use)
     return probas
+
+
+def load_gm_from_clf_params(clf_params, nr_states=None):
+    reqs_params = ['means_', 'covariances_', 'covariance_type',
+                   'weights_', 'precisions_cholesky_']
+    nr_state_dependent_params = ['means_', 'weights_']
+    clf_params = deepcopy(clf_params)
+    if nr_states is not None:
+        for r in nr_state_dependent_params:
+            clf_params[r] = clf_params[r][:nr_states]
+    for r in reqs_params:
+        assert r in clf_params, f"Required Classifier parameter {r} not given."
+    gm = GM(covariance_type=clf_params.pop('covariance_type'))
+    for param_name, param_value in clf_params.items():
+        setattr(gm, param_name, param_value)
+    setattr(gm, 'n_components', clf_params['means_'].shape[0])
+    return gm
 
 
 def threshold_shots(data):
@@ -1915,8 +1818,12 @@ def copy_data(timestamp, source_dir=None, target_dir=None,
             copy_data(t, source_dir, target_dir=target_dir,
                       delete_if_exists=delete_if_exists)
         return
+
+    target_dir = target_dir or datadir
     if target_dir is None:
-        target_dir = datadir
+        log.error('datadir is not set. Please set it.')
+        return None
+
     f_src = data_from_time(timestamp, folder=source_dir, auto_fetch=False)
     daystamp, tstamp = verify_timestamp(timestamp)
     daydir = os.path.join(target_dir, daystamp)

@@ -16,14 +16,14 @@ log = logging.getLogger(__name__)
 
 class Sequence:
     """
-    A Sequence consists of several segments, which can be played back on the 
+    A Sequence consists of several segments, which can be played back on the
     AWGs sequentially.
     """
 
     RENAMING_SEPARATOR = "+"
     AMPLITUDE_ROUNDING_DIGITS = 7
-    """Specifies the rounding precision when processing waveform amplitudes 
-    in harmonize_amplitude method. If this parameter has value n, then the 
+    """Specifies the rounding precision when processing waveform amplitudes
+    in harmonize_amplitude method. If this parameter has value n, then the
     waveform amplitudes will be rounded to the n-th digit of V (volt)."""
 
     def __init__(self, name, segments=()):
@@ -42,7 +42,7 @@ class Sequence:
         self.extend(segments)
         self.is_resolved = False
         self.awg_scaling_factors = dict()
-        """A list of AWG names whose pulse amplitudes has processed with 
+        """A list of AWG names whose pulse amplitudes has processed with
         method 'self.harmonize_amplitude'."""
 
     def add(self, segment):
@@ -80,7 +80,7 @@ class Sequence:
                                      trigger_groups=None,
                                      awg_sequences=None):
         """
-        Calculates and returns 
+        Calculates and returns
             * waveforms: a dictionary of waveforms used in the sequence,
                 indexed by their hash value
             * sequences: For each awg, a list of elements, each element
@@ -115,17 +115,16 @@ class Sequence:
                                 and not self.is_resolved):
             for seg in self.segments.values():
                 seg.resolve_segment()
-                seg.gen_elements_on_awg()
+                seg.gen_elements_on_awg(return_sorted=True)
 
         if trigger_groups is None:
             trigger_groups = set()
             for seg in self.segments.values():
                 trigger_groups |= set(seg.elements_on_awg)
 
+        awg_by_group = self.pulsar.get_awgs_from_trigger_groups(trigger_groups)
         if awgs is None:
-            awgs = set()
-            for group in trigger_groups:
-                awgs.add(self.pulsar.get_awg_from_trigger_group(group))
+            awgs = set(awg_by_group.values())
 
         # Note that method 'self.generate_waveforms_sequences' will be
         # called by 'pulsar._program_awgs' multiple times, but we only
@@ -138,7 +137,7 @@ class Sequence:
 
         for segname, seg in self.segments.items():
             for group in trigger_groups:
-                awg = self.pulsar.get_awg_from_trigger_group(group)
+                awg = awg_by_group[group]
                 if awg not in awgs:
                     continue
                 scaling_factors = self.awg_scaling_factors[awg]
@@ -150,13 +149,7 @@ class Sequence:
                 # Take element metadata from the resolved segments.
                 element_metadata = seg.element_metadata
                 elnames = seg.elements_on_awg.get(group, [])
-                # Determine when each element starts in the current group
-                el_start_times = {
-                    elname: seg.element_start_length(elname, group)[0]
-                    for elname in elnames}
-                # Loop through elements in the order of their start time
-                for i in np.argsort(list(el_start_times.values())):
-                    elname = elnames[i]
+                for elname in elnames:
                     # uelname = element name unique within the AWG
                     # If elements are shared between trigger groups of an AWG,
                     # this ensures that the following logic correctly orders
@@ -169,7 +162,7 @@ class Sequence:
                         sequences[awg][uelname].setdefault(cw, {})
                         for ch in seg.get_element_channels(elname,
                                                            trigger_group=group):
-                            chid = self.pulsar.get(f'{ch}_id')
+                            chid = self.pulsar.id_lookup[ch]
                             if awg_sequences:
                                 h = awg_sequences[awg][uelname][cw][chid]
                             else:
@@ -189,8 +182,11 @@ class Sequence:
                                         codewords={cw})
                                     waveforms[h] = wf.popitem()[1].popitem()[1]\
                                                      .popitem()[1].popitem()[1]
+                    # FIXME this should rather happen in Segment
                     if elname in seg.acquisition_elements:
                         metadata['acq'] = seg.acquisition_mode
+                        metadata['log_acquisition'] = element_metadata.get(
+                            elname, {}).get('log_acquisition', True)
                     else:
                         metadata['acq'] = False
                     metadata['allow_filter'] = seg.allow_filter
@@ -239,6 +235,7 @@ class Sequence:
         """
         # Setting the property will prequery all AWG clock and amplitudes
         sequences[0].pulsar.awgs_prequeried = True
+        awg_by_group = sequences[0].pulsar.get_awgs_from_trigger_groups()
         seq_groups = []
         if awgs is None:
             awgs = sequences[0].pulsar.awgs
@@ -248,10 +245,10 @@ class Sequence:
             seq_groups.append(set())
             for seg in seq.segments.values():
                 seg.resolve_segment()
-                seg.gen_elements_on_awg()
+                seg.gen_elements_on_awg(return_sorted=False)
             seq_groups[i] |= set(
                 [group for group in seg.elements_on_awg
-                 if seq.pulsar.get_awg_from_trigger_group(group) in awgs])
+                 if awg_by_group[group] in awgs])
             for group in seq_groups[i]:
                 if group not in lengths:
                     lengths[group] = odict()
@@ -279,14 +276,14 @@ class Sequence:
 
     def harmonize_amplitude(self, awg):
         """Rescale waveform amplitudes such that the largest pulse amplitude
-        in an element is the same as the largest in that sequence. The 
-        scaling factor is saved in the dictionary scaling_factors and 
-        passed to element metadata, such that the original waveform can be 
-        retrieved when generating command table entries. This allows reusing 
-        waveforms to the largest extent based on wave hashes. Note that 
-        the rescaling will be skipped on the target AWG modules where command 
+        in an element is the same as the largest in that sequence. The
+        scaling factor is saved in the dictionary scaling_factors and
+        passed to element metadata, such that the original waveform can be
+        retrieved when generating command table entries. This allows reusing
+        waveforms to the largest extent based on wave hashes. Note that
+        the rescaling will be skipped on the target AWG modules where command
         table is not activated.
-        
+
         Args:
             awg: (str) AWG name to be processed.
 
@@ -347,12 +344,12 @@ class Sequence:
                         # boolean parameter indicating whether one pulse
                         # overlaps with the current AWG module
                         pulse_overlaps_with_channel = any([
-                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            self.pulsar.id_lookup[channel] in channel_ids
                             for channel in pulse.channels])
                         # boolean parameter indicating whether one pulse
                         # is played solely on the current AWG module
                         pulse_only_on_channel = all([
-                            self.pulsar.get(f'{channel}_id') in channel_ids
+                            self.pulsar.id_lookup[channel] in channel_ids
                             for channel in pulse.channels])
 
                         if not pulse_overlaps_with_channel:
@@ -411,7 +408,7 @@ class Sequence:
 
                     for pulse in seg.elements[elname]:
                         if len(pulse.channels) == 0 or \
-                                not all([self.pulsar.get(f'{channel}_id')
+                                not all([self.pulsar.id_lookup[channel]
                                          in channel_ids
                                          for channel in pulse.channels]):
                             continue
@@ -426,22 +423,41 @@ class Sequence:
 
         return scaling_factors
 
-    def n_acq_elements(self, per_segment=False):
+    def n_acq_elements(self, per_segment=False,
+                       include_non_logged_acquisitions=False):
         """
         Gets the number of acquisition elements in the sequence.
         Args:
             per_segment (bool): Whether or not to return the number of
                 acquisition elements per segment. Defaults to False.
+            include_non_logged_acquisitions (bool): If True, returns the
+                total number of acquisitions including those which are not
+                logged in the data returned by the acquisition device
 
         Returns:
             number of acquisition elements (list (if per_segment) or int)
-
+            non_logged_acqs_preceed_logged_acqs (bool): checks if non-logged
+                acquisitions precede logged acquisitions in all segments of
+                the sequence.
         """
-        n_readouts = [len(seg.acquisition_elements)
-                      for seg in self.segments.values()]
+        # e.g. [[False, False, True...]]  where True indicates a logged acq
+        acqs_per_seg = [
+            [seg.element_metadata.get(e, {}).get('log_acquisition',True)
+             for e in seg.acquisition_elements
+             ] for seg in self.segments.values()
+        ]
+        non_logged_acqs_preceed_logged_acqs = all(
+            [[acqs[i]<=acqs[i+1] for i in range(len(acqs)-1)]
+             for acqs in acqs_per_seg])
+        n_acqs = [sum(
+            [acq or include_non_logged_acquisitions for acq in acqs]
+        ) for acqs in acqs_per_seg]
         if not per_segment:
-            n_readouts = np.sum(n_readouts)
-        return n_readouts
+            n_acqs = np.sum(n_acqs)
+        if include_non_logged_acquisitions:
+            return n_acqs, non_logged_acqs_preceed_logged_acqs
+        else:
+            return n_acqs
 
     def n_segments(self):
         """
@@ -480,11 +496,33 @@ class Sequence:
         Wrapper for repeated readout
         :param pulse_name:
         :param operation_dict:
-        :param sequence:
         :return:
         """
-        return self.repeat(pulse_name, operation_dict,
-                           (self.n_acq_elements(), 1))
+
+        n_acq_per_seg, non_logged_preceed_logged = self.n_acq_elements(
+            per_segment=True, include_non_logged_acquisitions=True)
+        n_logged_acq_per_seg = self.n_acq_elements(per_segment=True)
+        n_non_logged_acq_per_seg = \
+            np.array(n_acq_per_seg) - np.array(n_logged_acq_per_seg)
+        if sum(n_non_logged_acq_per_seg):  # If there are non logged acqs
+            if np.unique(n_non_logged_acq_per_seg).size > 1 or\
+                    np.unique(n_logged_acq_per_seg).size > 1:
+                raise ValueError(
+                    "All segments in sequence must have the same number of"
+                    "non-logged acquisitions, as well as logged acquisitions, "
+                    "when using repeat readout patterns, but currently"
+                    f"{n_non_logged_acq_per_seg=} and {n_logged_acq_per_seg=}")
+            if not non_logged_preceed_logged:
+                raise NotImplementedError(
+                    "All non-logged acquisitions should happen before "
+                    "logged acquisitions in a segment when using repeat "
+                    "readout patterns!")
+            pattern = (self.n_acq_elements(),
+                       (n_non_logged_acq_per_seg[0], 1),
+                       (n_logged_acq_per_seg[0], 1))
+        else:
+            pattern = (self.n_acq_elements(), 1)
+        return self.repeat(pulse_name, operation_dict, pattern)
 
 
     @staticmethod
@@ -661,9 +699,39 @@ class Sequence:
         assert len(np.unique([s.n_segments() for s in sequences])) == 1, \
             "To allow compression, all sequences must have the same number " \
             "of segments"
-        from pycqed.utilities.math import factors
         n_soft_sp = len(sequences)
         n_seg = sequences[0].n_segments()
+        seg_lim_eff, factor = Sequence.compute_compression_seg_lim(
+            n_soft_sp, n_seg, segment_limit)
+        compressed_2D_sweep = Sequence.merge(sequences, seg_lim_eff,
+                                              merge_repeat_patterns)
+        if mc_points is None:
+            hard_sp_ind = np.arange(compressed_2D_sweep[0].n_acq_elements())
+            soft_sp_ind = np.arange(len(compressed_2D_sweep))
+        else:
+            hard_sp_ind = np.arange(len(mc_points)*len(sequences) //
+                                    len(compressed_2D_sweep))
+            soft_sp_ind = np.arange(len(compressed_2D_sweep))
+
+        return compressed_2D_sweep, hard_sp_ind, soft_sp_ind, factor
+
+    @staticmethod
+    def compute_compression_seg_lim(n_soft_sp, n_seg, segment_limit=None):
+        """
+        Computes the maximum compression possible for a list of sequences
+
+        See compress_2D_sweep for details.
+        Args:
+            n_soft_sp: original number of sequences (soft sweep points)
+            n_seg: number of segments in one Sequence
+            segment_limit: maximum allowed number of segments per Sequence
+
+        Returns:
+            seg_lim_eff: number of segments in one compressed Sequence
+            factor: compression factor (size of a compressed Sequence / size of
+                an uncompressed Sequence, which is >= 1)
+        """
+        from pycqed.utilities.math import factors
         if segment_limit is None:
             segment_limit = np.inf
 
@@ -688,17 +756,7 @@ class Sequence:
                       f'{np.floor(segment_limit / n_seg)} (full compression)')
             break
         seg_lim_eff = factor * n_seg
-        compressed_2D_sweep = Sequence.merge(sequences, seg_lim_eff,
-                                              merge_repeat_patterns)
-        if mc_points is None:
-            hard_sp_ind = np.arange(compressed_2D_sweep[0].n_acq_elements())
-            soft_sp_ind = np.arange(len(compressed_2D_sweep))
-        else:
-            hard_sp_ind = np.arange(len(mc_points)*len(sequences) //
-                                    len(compressed_2D_sweep))
-            soft_sp_ind = np.arange(len(compressed_2D_sweep))
-
-        return compressed_2D_sweep, hard_sp_ind, soft_sp_ind, factor
+        return seg_lim_eff, factor
 
     def rename(self, new_name):
         self.name = new_name
@@ -709,7 +767,7 @@ class Sequence:
         for seg_name, seg in self.segments.items():
             string_repr += str(seg) + "\n"
         return string_repr
-    
+
     def __deepcopy__(self, memo):
         cls = self.__class__
         new_seq = cls.__new__(cls)

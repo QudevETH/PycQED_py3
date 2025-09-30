@@ -1,4 +1,3 @@
-import h5py
 import numpy as np
 from copy import deepcopy
 from collections import OrderedDict
@@ -10,6 +9,7 @@ from pycqed.analysis import analysis_toolbox as a_tools
 from pycqed.analysis_v3 import helper_functions as hlp_mod
 from pycqed.analysis_v3 import processing_pipeline as pp_mod
 from pycqed.measurement import sweep_points as sp_mod
+from pycqed.utilities.io import hdf5 as h5d
 
 import sys
 pp_mod.search_modules.add(sys.modules[__name__])
@@ -258,7 +258,7 @@ def add_measured_data_hdf(data_dict, folder=None, append_data=False,
     if dtype is not None:
         log.warning(f'Setting Experimental data type: {dtype}')
     h5filepath = a_tools.measurement_filename(folder)
-    data_file = h5py.File(h5filepath, h5mode)
+    data_file = h5d.safe_file_open(h5filepath, mode=h5mode)
     meas_data_array = np.array(data_file['Experimental Data']['Data'],
                                dtype=dtype).T
     if 'measured_data' in data_dict:
@@ -318,7 +318,7 @@ def add_measured_data_dict(data_dict, **params):
     if 'measured_data' in data_dict and 'value_names' in metadata:
         value_names = metadata['value_names']
         rev_movnm = hlp_mod.get_measurement_properties(
-            data_dict, props_to_extract=['rev_movnm'])
+            data_dict, props_to_extract=['rev_movnm'], **params)
 
         if rev_movnm is not None:
             data_key = lambda ro_ch, rev_movnm=rev_movnm: f'{rev_movnm[ro_ch]}.{ro_ch}'
